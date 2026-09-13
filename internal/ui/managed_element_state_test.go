@@ -527,6 +527,11 @@ const controls = payload.controls.map((control) => ({
   disabled: control.disabled,
   readOnly: control.readOnly,
   dataset: control.checkboxPresence ? {obCheckboxPresence: '1'} : {},
+  // Все контролы принадлежат одному элементу формы: applyElementStates правит
+  // только свои и не лезет в чужие (#1184).
+  closest(selector) {
+    return selector === '[data-ob-el]' ? wrapper : null;
+  },
 }));
 const wrapper = {
   tagName: 'DIV',
@@ -1012,22 +1017,39 @@ function matchesCompound(node, selector) {
   return ok;
 }
 const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+let anchor;
 const nodes = payload.nodes.map((n) => ({
   tagName: n.tag.toUpperCase(),
   type: n.attrs.type || '',
   disabled: n.disabled,
   readOnly: n.readOnly,
-  dataset: n.attrs['data-ob-checkbox-presence'] === '1' ? {obCheckboxPresence: '1'} : {},
+  dataset: {
+    obCheckboxPresence: n.attrs['data-ob-checkbox-presence'],
+    obReadonlyNavigation: n.attrs['data-ob-readonly-navigation'],
+  },
   attrs: n.attrs,
+  parentElement: null,
   hasAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attrs, name); },
+  closest(selector) {
+    const match = /^\[([a-z0-9-]+)\]$/.exec(String(selector));
+    if (!match) throw new Error('стаб DOM не разбирает closest: ' + selector);
+    for (let node = this; node; node = node.parentElement) {
+      if (node.hasAttribute(match[1])) return node;
+    }
+    return null;
+  },
 }));
-const anchor = {
+anchor = {
   tagName: 'DIV',
+  attrs: {'data-ob-el': 'ПолеКлиент'},
   style: {},
+  parentElement: null,
+  hasAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attrs, name); },
   querySelectorAll(selector) {
     return nodes.filter((n) => selector.split(',').some((part) => matchesCompound(n, part)));
   },
 };
+nodes.forEach((node) => { node.parentElement = anchor; });
 global.window = {CSS: null};
 global.document = {querySelector() { return anchor; }};
 const applyElementStates = new Function(
