@@ -367,7 +367,7 @@ func analyze(prs []apiPull, owner string) report {
 		priority, prioritySource := queuePriority(labels, pr.CreatedAt, now)
 		item := candidate{Number: pr.Number, Title: pr.Title, URL: pr.HTMLURL, Head: pr.Head.SHA, Depth: depth, Stage: "review", Priority: priority, PrioritySource: prioritySource, UpdatedAt: pr.UpdatedAt}
 		currentCompletions, latestCompletion, latestOverride := currentProtocolState(pr.Comments, owner, pr.Head.SHA)
-		carryDone, carryIntentOpen, baseAdvanced, protocolHistory, integrationAt := baseSyncRESTState(pr.Comments, owner, pr.Head.SHA)
+		carryDone, carryIntentOpen, baseAdvanced, protocolHistory, integrationAt := baseSyncRESTState(pr.Comments, owner, pr.Head.SHA, pr.HeadParents)
 		item.IntegrationAt = integrationAt
 		if baseAdvanced {
 			result.add("yellow", "base_sync_base_advanced", pr.Number,
@@ -855,12 +855,18 @@ type baseSyncIntentShape struct {
 	from, base, previous, shipEvent, createdAt string
 }
 
+type baseSyncDoneShape struct {
+	intentID                      int64
+	from, to, previous, shipEvent string
+}
+
 // baseSyncRESTState is deliberately only an operational hint. The mutation
 // contracts still prove comment nodes, timeline edges and commit parents with
 // two stable GraphQL snapshots before changing GitHub state.
-func baseSyncRESTState(comments []apiComment, owner, head string) (doneCurrent, intentOpen, baseAdvanced, protocolHistory bool, integrationAt string) {
+func baseSyncRESTState(comments []apiComment, owner, head string, headParents []string) (doneCurrent, intentOpen, baseAdvanced, protocolHistory bool, integrationAt string) {
 	intents := map[int64]baseSyncIntentShape{}
 	doneIntents := map[int64]bool{}
+	dones := map[int64]baseSyncDoneShape{}
 	for _, comment := range comments {
 		if !trustedUnedited(comment, owner) {
 			continue
@@ -878,24 +884,74 @@ func baseSyncRESTState(comments []apiComment, owner, head string) (doneCurrent, 
 				continue
 			}
 			doneIntents[intentID] = true
+			dones[comment.ID] = baseSyncDoneShape{
+				intentID: intentID, from: match[2], to: match[3],
+				previous: match[5], shipEvent: match[6],
+			}
 			if match[3] == head {
 				doneCurrent = true
 				baseAdvanced = intent.base != match[4]
-				if integrationAt == "" || intent.createdAt < integrationAt {
-					integrationAt = intent.createdAt
+				startedAt := baseSyncIntegrationStart(intent, intents, dones)
+				if integrationAt == "" || startedAt < integrationAt {
+					integrationAt = startedAt
 				}
 			}
 		}
 	}
-	for id := range intents {
-		if !doneIntents[id] {
-			intentOpen = true
-			if integrationAt == "" || intents[id].createdAt < integrationAt {
-				integrationAt = intents[id].createdAt
-			}
+	for id, intent := range intents {
+		if doneIntents[id] || !intentCanDescribeCurrentHead(intent, head, headParents) {
+			continue
+		}
+		// A valid done for the current merge commit completes this exact
+		// parent-to-head transition. Any other unmatched intent from the same
+		// first parent is a parallel/stale duplicate, not a new recovery owner.
+		if doneCurrent && len(headParents) == 2 && headParents[0] == intent.from {
+			continue
+		}
+		intentOpen = true
+		startedAt := baseSyncIntegrationStart(intent, intents, dones)
+		if integrationAt == "" || startedAt < integrationAt {
+			integrationAt = startedAt
 		}
 	}
 	return doneCurrent, intentOpen, baseAdvanced, protocolHistory, integrationAt
+}
+
+// baseSyncIntegrationStart preserves ownership across a multi-hop carry chain.
+// An updated PR may need another base-sync while it waits for merge. Its new
+// intent points at the previous done comment; using only the new comment time
+// would let a later PR overtake an already active single-flight owner.
+func baseSyncIntegrationStart(intent baseSyncIntentShape, intents map[int64]baseSyncIntentShape, dones map[int64]baseSyncDoneShape) string {
+	startedAt := intent.createdAt
+	seen := map[int64]bool{}
+	current := intent
+	for current.previous != "none" {
+		doneID, err := strconv.ParseInt(current.previous, 10, 64)
+		if err != nil || seen[doneID] {
+			break
+		}
+		seen[doneID] = true
+		done, ok := dones[doneID]
+		previous, previousOK := intents[done.intentID]
+		if !ok || !previousOK || done.to != current.from ||
+			done.from != previous.from || done.previous != previous.previous ||
+			done.shipEvent != current.shipEvent || previous.shipEvent != current.shipEvent {
+			break
+		}
+		if previous.createdAt < startedAt {
+			startedAt = previous.createdAt
+		}
+		current = previous
+	}
+	return startedAt
+}
+
+// intentCanDescribeCurrentHead limits recovery to a transaction that can still
+// be completed without rewriting history: update-branch has either not moved
+// the head yet, or it produced the current two-parent merge from intent.from.
+// Intents from older heads remain audit history but must not own single-flight.
+func intentCanDescribeCurrentHead(intent baseSyncIntentShape, head string, headParents []string) bool {
+	return intent.from == head || (len(headParents) == 2 && headParents[0] == intent.from)
 }
 
 func duplicateCompletionEpoch(comments []apiComment, owner, head string) bool {
