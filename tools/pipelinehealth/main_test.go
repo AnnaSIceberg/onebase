@@ -505,14 +505,14 @@ func TestContractRejectsIncompleteTargetReviewGate(t *testing.T) {
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(path, []byte(incomplete), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte(incomplete), 0o600); err != nil { //nolint:gosec // G703: test-owned path below t.TempDir
 				t.Fatal(err)
 			}
 			legacyPath := filepath.Join(filepath.Dir(path), "references", "legacy-protocol.md")
 			if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(legacyPath, legacy, 0o600); err != nil {
+			if err := os.WriteFile(legacyPath, legacy, 0o600); err != nil { //nolint:gosec // G703: test-owned path below t.TempDir
 				t.Fatal(err)
 			}
 			got := report{State: "green"}
