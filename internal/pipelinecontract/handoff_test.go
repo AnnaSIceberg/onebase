@@ -34,10 +34,22 @@ func TestFallbackHandoffPreservesFreshGateAndExactTarget(t *testing.T) {
 	review := skill(t, "review-queue")
 	merge := skill(t, "merge-shepherd")
 	requireAllCompact(t, review, "integration_owner", "review_candidates", "content_review_candidates",
-		"два GraphQL snapshot", "canonical claim", "edit/delete")
+		"два GraphQL snapshot", "canonical claim", "edit/delete",
+		"Только для быстрого `action=audit`", "`complete review`",
+		"после `action=validated`", "полную mutation-транзакцию",
+		"review → claim → label → completion", "полного legacy-протокола")
 	requireAllCompact(t, merge, "integration_owner", "merge_executable", "pending cleanup",
 		"GraphQL/ship/CI/base-sync/CAS", "sha", "expected_head_sha")
-	requireAllCompact(t, repositoryFile(t, "docs", "maintenance-pipeline.md"),
-		"ровно два полных `pipelinehealth` scan", "не означает два API-запроса",
-		"без обещания двух scan")
+	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
+	requireAllCompact(t, docs,
+		"до первой мутации выполняются ровно два полных `pipelinehealth` scan",
+		"свежий post-completion scan для wake-up следующих этапов",
+		"с четырёх scan до трёх (`4 → 3`)",
+		"«два scan до мутации» не означает два API-запроса",
+		"без такого бюджета scan")
+	requireAllCompact(t, repositoryFile(t, "CLAUDE.md"),
+		"До первой мутации выполняются ровно два полных `pipelinehealth` scan",
+		"отдельно запускает свежий scan для wake-up следующих этапов",
+		"с четырёх scan до трёх (`4 → 3`)",
+	)
 }
