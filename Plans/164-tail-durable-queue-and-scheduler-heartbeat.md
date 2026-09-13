@@ -89,10 +89,25 @@ Telegram означает пустую очередь, хотя `ИТОГ: ПУ�
 
 ### WIP-бюджет служебного конвейера
 
-- Служебным считается объект с точной меткой `area:pipeline`; PLAN, FIX, REVIEW
-  и MERGE используют один и тот же классификатор текущей стадии и один snapshot
-  GitHub. Backlog без branch/PR, `hold`, `needs-decision` и завершённые объекты не
-  считаются активным WIP.
+- Канонический источник класса — **ведущая issue**. Служебной считается цепочка,
+  чья ведущая issue имеет точную метку `area:pipeline`; метку ставит TRIAGE.
+  Собственная `area:pipeline` на производном PR не требуется и классификатором
+  не читается. Для PLAN/FIX ведущей является сама выбранная issue. Для
+  REVIEW/MERGE plan-PR наследует её через единственную согласованную пару точных
+  строк `Plan-Issue: #N` / `Plan-Path: Plans/...`, а fix-PR — через единственную
+  закрывающую связь `Fixes #N`. Связь проверяется по одному snapshot GitHub:
+  номер существует, `Plan-Path` входит в diff plan-PR, а распознанная
+  `Fixes #N` совпадает с `closingIssuesReferences` GitHub.
+- Отсутствующая, неоднозначная или противоречивая связь не означает product.
+  Такой активный объект получает состояние `unclassified`, консервативно входит
+  в service WIP и общий limit и показывается жёлтой диагностикой
+  «неклассифицированный активный объект» с причиной. Несколько ведущих issues с
+  разным классом, несовпадение `Plan-Issue`/`Plan-Path` с diff либо текста
+  `Fixes #N` с GitHub relation — те же fail-closed случаи. Тихо исключать такой
+  объект из `active` запрещено.
+- PLAN, FIX, REVIEW и MERGE используют один reducer связи и класса. Backlog без
+  branch/PR, `hold`, `needs-decision` и завершённые объекты не считаются
+  активным WIP.
 - Одновременно допускаются не более трёх активных служебных объектов суммарно на
   четырёх стадиях. Проверка выполняется в транзакции `next` непосредственно
   перед выдачей новой служебной цели; recovery уже начатой транзакции не
@@ -144,6 +159,13 @@ TAIL получает расписание раз в четыре часа. Пр
     }
   ],
   "pipeline_work": {
+    "unclassified_active": [
+      {
+        "stage": "review",
+        "number": 9999,
+        "reason": "leading-issue-not-proven"
+      }
+    ],
     "service": {
       "limit": 3,
       "active": 3,
@@ -178,9 +200,12 @@ PromptPilot хранит записи в своей транзакционной
   причина reconciliation;
 - `scheduled_run_v1`: task/run identity, planned/start/finish/success timestamps,
   parsed verdict, counters и alert transition.
-- `pipeline_wip_v1`: repository, canonical object identity, класс
-  `service|product`, стадия `plan|fix|review|merge`, active/queued state,
-  `queue:p0`, timestamps и generation lane-debt.
+- `pipeline_wip_v1`: repository, canonical object identity, `source_issue`,
+  доказательство связи, состояние класса `service|product|unclassified`, стадия
+  `plan|fix|review|merge`, active/queued state, `queue:p0`, timestamps и
+  generation lane-debt. `unclassified` учитывается в service-счётчике, но не
+  переписывается в `service`: оператору должна оставаться видна причина
+  консервативного учёта.
 
 Одна транзакция upsert-ит весь обнаруженный batch и только затем двигает cursor.
 Crash до commit оставляет старый cursor; повторный импорт идемпотентен по ключу.
@@ -190,10 +215,11 @@ DB lease. Проигравший перечитывает состояние, а
 
 `pipeline_wip_v1` — такой же восстанавливаемый индекс, а не источник полномочий.
 Перед каждым `next plan|fix|review|merge` PromptPilot перечитывает GitHub,
-классифицирует объекты одинаковым reducer и в одной транзакции обновляет WIP,
-проверяет limit/overdraft/lane-debt и выдаёт цель. Расхождение ledger с GitHub
-останавливает выдачу новой служебной цели и запускает reconciliation; уже
-начатый protocol recovery остаётся доступен. Нельзя освободить слот одним
+доказывает ведущую issue, берёт класс только с неё и в одной транзакции обновляет
+WIP, проверяет limit/overdraft/lane-debt и выдаёт цель. Расхождение ledger с
+GitHub запускает reconciliation; недоказанная связь активного объекта сохраняет
+его как `unclassified` в service WIP и жёлтой диагностике, а не освобождает слот.
+Уже начатый protocol recovery остаётся доступен. Нельзя освободить слот одним
 локальным timeout: объект перестаёт быть active только после подтверждённого
 GitHub-перехода либо явной durable reconciliation.
 
@@ -306,6 +332,10 @@ Grace задаётся рядом с желаемым расписанием в 
     маршрутных label-мутаций.
 12. WIP-бюджет не скрывает продуктовую очередь: lane-debt переживает restart и
     гарантирует следующий non-recovery продуктовый выбор после служебного.
+13. Класс производного PR наследуется только от доказанной ведущей issue;
+    собственная метка PR не нужна. Недоказанная или противоречивая связь даёт
+    `unclassified`, считается в service WIP и никогда не превращается в тихий
+    product/skip.
 
 ## Инвентаризация затронутых границ
 
@@ -318,13 +348,15 @@ Grace задаётся рядом с желаемым расписанием в 
   capability `tail-ledger-v1`, общий `pipeline_service_wip_limit: 3`, правила
   lane-debt, health grace и путь/команда snapshot.
 - `promptpilot.project_pipeline next/complete` для PLAN/FIX/REVIEW/MERGE: общий
-  reducer service/product, transactional WIP generation, P0-overdraft и
-  отдельные candidate lanes; stage-specific GitHub gates не ослабляются.
+  reducer связи issue→PR и класса service/product/unclassified, transactional
+  WIP generation, P0-overdraft и отдельные candidate lanes; stage-specific
+  GitHub gates не ослабляются.
 - `tools/pipelinehealth/main.go`: tail backlog и scheduler health в JSON/тексте,
   отдельные service/product backlog, active WIP, oldest age и строгий reader
   versioned snapshot; существующая строка `scheduler` остаётся.
 - `tools/pipelinehealth/main_test.go`: offline fixtures backlog, cursor и
-  fresh/stale/failed/unknown heartbeat, WIP limit/P0-overdraft/lane-debt.
+  fresh/stale/failed/unknown heartbeat, WIP limit/P0-overdraft/lane-debt,
+  наследование класса от issue и жёлтый `unclassified`.
 - `internal/pipelinecontract/skills_test.go`: обязательность durable allowlist,
   запрет age-window как источника истины, сохранение UTF-8/trust/re-check gates
   и совпадение руководства.
@@ -389,10 +421,15 @@ transactional generation в `next/complete`, limit 3, P0-overdraft и durable
 lane-debt. `pipelinehealth` и PromptPilot UI получают раздельные service/product
 backlog, active и oldest age. На этом срезе TAIL discovery ещё не меняется.
 
-Публичная приёмка: при трёх активных `area:pipeline` обычная четвёртая цель
-остаётся queued без `hold`/`needs-decision`; `queue:p0` становится четвёртой,
-показывает `overdraft=1`, а следующий non-recovery выбор при живой продуктовой
-очереди принадлежит продуктовой полосе. Restart не сбрасывает lane-debt.
+Публичная приёмка включает fixture реальной формы `#1245 → #1378`: у ведущей
+issue есть `area:pipeline`, у plan-PR собственной метки нет, связь доказана
+`Plan-Issue`/`Plan-Path`, поэтому PR наследует service-класс и занимает слот.
+Парный fixture с отсутствующей либо противоречивой связью учитывает активный PR
+как service, но показывает жёлтый `unclassified`, а не исключает его. При трёх
+активных service обычная четвёртая цель остаётся queued без
+`hold`/`needs-decision`; `queue:p0` становится четвёртой, показывает
+`overdraft=1`, а следующий non-recovery выбор при живой продуктовой очереди
+принадлежит продуктовой полосе. Restart не сбрасывает lane-debt.
 
 ### Срез C — durable discovery и reconciliation в PromptPilot
 
@@ -445,7 +482,10 @@ alerts. Провести bootstrap/double reconciliation, dry-run и затем 
   overdue boundary, disabled task, alert dedupe и recovery;
 - WIP reducer/integration: три active service, обычная четвёртая, P0-overdraft,
   recovery поверх полного бюджета, запрет route-label mutations, durable
-  lane-debt и product selection при переполненном service backlog;
+  lane-debt и product selection при переполненном service backlog; отдельно —
+  plan-PR без собственной метки + ведущая issue с `area:pipeline` (`#1245 →
+  #1378`), fix-PR через `Fixes #N`, несовпадающие/множественные связи и
+  жёлтый `unclassified`, который всё равно входит в service limit;
 - `pipelinehealth` fixtures и text/JSON golden output для `ok`, `unknown`,
   `overdue`, backlog remainder, cursor rebuild и раздельных service/product
   backlog/active/oldest-age;
@@ -458,6 +498,8 @@ alerts. Провести bootstrap/double reconciliation, dry-run и затем 
 
 Тест считается приёмочным только через публичный `pipelinehealth` или
 `project_pipeline next/complete <stage>` над fake GitHub и scheduler store.
+После каждого обновления ветки PR обязательные CI получают штатно на новом
+точном HEAD; отдельный API или protocol для запуска CI этим планом не вводится.
 Прямой вызов приватного reducer не заменяет сквозную проверку.
 
 ## Риски и откат
@@ -519,10 +561,17 @@ item-level recovery. Heartbeat monitor можно перевести в read-onl
 10. Создать три active `area:pipeline`, оставить четвёртый обычный queued,
     затем добавить `queue:p0`: CLI и UI показывают active=4/limit=3/overdraft=1,
     а GitHub routing labels обычной цели не меняются.
-11. При непустых service/product очередях завершить служебный выбор и
+11. Прогнать fixture `#1245 → #1378`: точные `Plan-Issue`/`Plan-Path` связывают
+    plan-PR без собственной `area:pipeline` с ведущей issue, PR наследует
+    service-класс и входит в active/limit. Удалить либо исказить связь: тот же
+    активный PR остаётся в service-счётчике как `unclassified`, а CLI/JSON/UI
+    показывают жёлтую причину.
+12. При непустых service/product очередях завершить служебный выбор и
     перезапустить PromptPilot: следующий non-recovery выбор остаётся продуктовым,
     то есть restart не сбрасывает lane-debt.
-12. После одного dry-run интервала включить capability на реальном TAIL и
+13. Обновить ветку PR обычным push, дождаться обязательных checks точного нового
+    HEAD и убедиться, что никакой отдельный механизм запуска CI не понадобился.
+14. После одного dry-run интервала включить capability на реальном TAIL и
     убедиться, что старейший backlog уменьшается, cursor продвигается, а
     `remaining` никогда не скрыт.
 
@@ -546,7 +595,9 @@ item-level recovery. Heartbeat monitor можно перевести в read-onl
 - `pipelinehealth` показывает durable TAIL backlog и свежесть всех configured
   scheduled stages, а отсутствие snapshot не выглядит зелёным;
 - PLAN/FIX/REVIEW/MERGE вместе не начинают больше трёх обычных активных
-  `area:pipeline`, а P0-overdraft и старейший service backlog видны отдельно;
+  служебных цепочек: класс наследуется от ведущей issue, производному PR не
+  нужна собственная `area:pipeline`, а недоказанная связь остаётся учтённой как
+  жёлтый `unclassified`; P0-overdraft и старейший service backlog видны отдельно;
 - переполненный служебный WIP не меняет routing labels, не скрывает product
   backlog и не сбрасывает durable lane-debt после restart;
 - `ПУСТО` обновляет heartbeat, но тишина больше нигде не документирована как
