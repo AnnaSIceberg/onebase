@@ -54,6 +54,27 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
 
 ## Процедура
 
+**Путь exact handoff.** Если канонический SKILL.md принял доверенный локальный
+`promptpilot-fallback-target-v1` envelope с `next_already_run=true`, цель уже
+выбрана. Не повторяй `pipelinectl next merge` и сбор/сортировку глобальной
+очереди из п. 1. Непосредственно перед первой мутацией выполни `gate_command`
+(`gate-fallback merge --lease ...`) по правилам SKILL.md. Он заново выполняет
+`pipelinehealth -json`, требует exact `integration_owner`/`merge_executable`
+с тем же number/head/stage и проверяет pending cleanup. Требуется
+`action=validated` с теми же repository/stage/number/head/stage цели; затем
+сразу выполняются прежние GraphQL/ship/CI/base-sync/CAS-гейты выбранного PR.
+HMAC/TTL или любой другой отказ — стоп без мутаций и без подстановки другого
+PR. Не повторяй отдельный initial/fresh health после успешного gate. Это один
+запуск для одного PR: указания ниже «перейди к следующему»/«не больше 3» в этом
+пути означают закончить запуск. Следующие фазы его base-sync/merge/cleanup
+по-прежнему требуют все прежние проверки и доказательство собственного
+разрешённого перехода HEAD. Generic/manual запуск без envelope полностью
+сохраняет обычную процедуру ниже.
+
+В exact handoff проверку всего потока cleanup-intent/done из следующего абзаца
+выполняет `gate_command`; не дублируй её вручную. Любой pending intent закрывает
+handoff, следующий запуск `next merge` обслужит recovery раньше новой election.
+
 Перед ручной очередью проверь, не вернул ли `pipelinectl next merge`
 `action=cleanup`: такой lease всегда заверши через `complete merge-cleanup`, не
 вызывая merge API повторно. Если быстрый путь вернул `fallback`, отдельно найди

@@ -234,6 +234,16 @@ onebase describe --project <dir>                # вся структура ко
   полного GraphQL gate интеграционного владельца не разрешает fallback к
   обычной очереди в том же запуске. Integration-stage и полный fallback перед
   первой мутацией по-прежнему повторяют глобальный allowlist/owner gate.
+  Opt-in `fallback_handoff=target-v1` передаёт доказанную цель из `next` в
+  полный скилл без повторной election: доверенный локальный
+  `promptpilot-fallback-target-v1` envelope содержит `next_already_run=true`,
+  exact command/preflight/target и HMAC lease на два часа. Один envelope — один
+  PR. Перед первой мутацией `gate-fallback` заново запускает полный
+  `pipelinehealth -json`, проверяет exact HEAD/stage/allowlist/owner, конфигурацию
+  и pending MERGE cleanup. Нужен `action=validated`; этот read-only ответ не
+  разрешает мутацию сам по себе и не заменяет GraphQL/ship/CI/base-sync/CAS.
+  Ошибка, смена цели или срока — стоп без другого PR; без envelope сохраняется
+  обычная процедура. Экономятся повторные election scan, не свежие проверки.
   REVIEW получает полный пагинированный список PR и считает каждый завершённый
   `review-comment=<id>` только один раз; override между заключением и committed-
   маркером делает пару невалидной. Транзакция `заключение → review-claim →

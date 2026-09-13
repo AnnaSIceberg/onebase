@@ -60,6 +60,23 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
 
 ## Процедура
 
+**Путь exact handoff.** Если канонический SKILL.md принял доверенный локальный
+`promptpilot-fallback-target-v1` envelope с `next_already_run=true`, цель уже
+выбрана. Не повторяй `pipelinectl next review`, initial `pipelinehealth` из п. 0
+и сбор/сортировку глобальной очереди из п. 1: они относятся только к выбору
+новой цели. Читай все данные и полный протокол только выбранного PR, сохрани
+его exact HEAD и GraphQL epoch/snapshot до аудита. Непосредственно перед первой
+мутацией выполни `gate_command` (`gate-fallback review --lease ...`) по правилам
+SKILL.md; это заново выполняет `pipelinehealth -json` и exact allowlist/owner
+gate, поэтому ещё один отдельный health не нужен. Требуется `action=validated`
+с теми же repository/stage/number/head/stage цели. HMAC/TTL или любой другой
+отказ — стоп без мутаций; старый envelope не даёт права выбрать новую цель.
+После этого все проверки п. 1 и п. 7 для **состояния выбранного PR**, включая
+два GraphQL snapshot, восстановление canonical claim, carry, ship, edit/delete
+fence и проверку перед каждой мутацией, остаются обязательными. Не выполняй
+второй аудит и не начинай новую election после stale HEAD. Generic/manual
+запуск без envelope полностью сохраняет п. 0 и п. 1 ниже.
+
 0. **Исполняемый preflight — единственный источник списка кандидатов.** До
    самостоятельного разбора очереди и до любой GitHub-мутации выполни из корня
    этой рабочей копии:
@@ -106,7 +123,8 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
    запуск без мутаций с `НУЖЕН ЧЕЛОВЕК` или `НЕ СМОГ`; к обычной очереди в этом
    же запуске не переходи. Этот полный fallback-протокол не использует
    `review_completion_gate=target-v1`: непосредственно перед первой мутацией
-   каждого выбранного PR повтори `pipelinehealth -json`. Для интеграционного аудита PR
+   каждого выбранного PR повтори `pipelinehealth -json` (в exact handoff это
+   выполняет `gate-fallback review`). Для интеграционного аудита PR
    всё ещё обязан быть текущим `integration_owner` и входить в
    `review_candidates` с тем же integration-stage. Для обычного аудита он
    обязан входить в `content_review_candidates` с `stage=review`; оставаться

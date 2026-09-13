@@ -67,8 +67,10 @@ type apiPull struct {
 	Base struct {
 		Ref string `json:"ref"`
 	} `json:"base"`
-	Labels   []apiLabel   `json:"labels"`
-	Comments []apiComment `json:"-"`
+	Labels []apiLabel `json:"labels"`
+	// Thread is fixture data only; live loadPulls replaces it with the complete
+	// paginated comments response before analysis, just as loadIssues does.
+	Comments []apiComment `json:"thread,omitempty"`
 	// HeadParents holds the parent SHAs of the head commit. An automatic
 	// base-sync always leaves a merge commit; an ordinary FIX push leaves a
 	// single-parent commit. Without this the integration lane cannot be told

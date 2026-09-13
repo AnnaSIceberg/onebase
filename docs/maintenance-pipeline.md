@@ -1021,6 +1021,29 @@ OS-песочницей: локальный процесс с доступом �
 Integration-stage и полный fallback сохраняют повторный глобальный
 allowlist/owner gate перед мутацией: без общей durable lane lease ослаблять их
 нельзя.
+
+`fallback_handoff: "target-v1"` устраняет повторный выбор уже выбранной цели при
+передаче в полный скилл. PromptPilot передаёт доверенный локальный envelope
+`promptpilot-fallback-target-v1` с `next_already_run=true`, точной командой,
+полным preflight и HMAC lease для repository/этапа/PR/HEAD/stage на два часа.
+Скилл читает только выбранный PR. Перед первой мутацией он запускает показанную
+команду `gate-fallback`: инструмент заново выполняет полный `pipelinehealth
+-json`, сравнивает exact allowlist/owner, повторно проверяет конфигурацию после
+sync и останавливается при pending MERGE cleanup. `action=validated` с той же
+целью — необходимое условие, а `mutation_authorized=false` явно оставляет все
+GraphQL/ship/CI/base-sync/CAS-гейты полной процедуре. Неоднозначность и ошибка
+закрывают запуск без мутаций и без подстановки другого PR. Обычный REVIEW lease
+переживает перестановку чужой очереди, интеграционная цель обязана оставаться
+тем же единственным владельцем; обычная MERGE-цель — первой в `merge_executable`.
+
+На этом пути ровно два полных `pipelinehealth` scan: election и свежий gate
+перед первой мутацией. Пагинированные проверки cleanup и точные GraphQL-чтения
+остаются отдельными обращениями к GitHub; «два scan» не означает два API-запроса.
+Один handoff обрабатывает один PR. Generic/manual и недоказанный legacy/recovery
+fallback сохраняют полную старую процедуру без обещания двух scan. Включать
+opt-in следует вместе с поддержкой envelope в канонических скиллах и новой
+версией PromptPilot; старый CLI игнорирует opt-in и сохраняет прежний путь.
+
 На Windows preflight сначала ищет `gh` и `go` в `PATH`, затем проверяет
 стандартные `C:\Program Files\GitHub CLI\gh.exe` и
 `C:\Program Files\Go\bin\go.exe`. Путь к GitHub CLI передаётся через `GH_EXE`,
