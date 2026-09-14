@@ -60,6 +60,18 @@ func TestReviewAndMergeRouteThroughPipelinectlWithDiscoverableFallback(t *testin
 	}
 }
 
+func TestReviewAndMergePollTheOriginalPipelinectlProcess(t *testing.T) {
+	for _, name := range []string{"review-queue", "merge-shepherd"} {
+		entry := repositoryFile(t, ".claude", "skills", name, "SKILL.md")
+		requireAllCompact(t, entry,
+			"`next <stage>` запускай ровно один раз за прогон",
+			"session/cell ID",
+			"опрашивай/возобновляй только этот идентификатор до терминального результата",
+			"не разрешают запускать второй `next` параллельно",
+		)
+	}
+}
+
 func TestMergeFastPathRecoversPostMergeCleanup(t *testing.T) {
 	entry := repositoryFile(t, ".claude", "skills", "merge-shepherd", "SKILL.md")
 	legacy := skill(t, "merge-shepherd")
