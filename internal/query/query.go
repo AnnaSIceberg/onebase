@@ -2789,6 +2789,53 @@ func buildColTypes(tokens []tok, opts CompileOpts) map[string]metadata.FieldType
 	return m
 }
 
+// buildScopedColTypes maps each SELECT scope to the types of the columns its own
+// sources expose without a qualifier. buildColTypes deliberately describes only
+// the first source of the whole token stream, so an unqualified argument inside
+// a nested SELECT or another UNION branch would otherwise be typed by a foreign
+// source. A name that two sources of the same scope type differently is dropped:
+// the compiler must not guess which one the author meant.
+func buildScopedColTypes(tokens []tok, opts CompileOpts, sourceCtx sourceContext) map[int]map[string]metadata.FieldType {
+	scoped := map[int]map[string]metadata.FieldType{}
+	ambiguous := map[int]map[string]bool{}
+
+	for i := 0; i+2 < len(tokens); i++ {
+		if tokens[i].kind != tIdent || tokens[i+1].kind != tDot || tokens[i+2].kind != tIdent {
+			continue
+		}
+		typeUpper := upperFast(tokens[i].val)
+		if !isSourceType(typeUpper) {
+			continue
+		}
+		scopeID, ok := sourceCtx.scopeIDAt(i)
+		if !ok {
+			continue
+		}
+		fields := sourceColTypes(typeUpper, tokens[i+2].val, opts)
+		if fields == nil {
+			continue
+		}
+		if scoped[scopeID] == nil {
+			scoped[scopeID] = map[string]metadata.FieldType{}
+			ambiguous[scopeID] = map[string]bool{}
+		}
+		for name, typ := range fields {
+			if ambiguous[scopeID][name] {
+				continue
+			}
+			if current, exists := scoped[scopeID][name]; exists {
+				if current != typ {
+					delete(scoped[scopeID], name)
+					ambiguous[scopeID][name] = true
+				}
+				continue
+			}
+			scoped[scopeID][name] = typ
+		}
+	}
+	return scoped
+}
+
 // buildQualifiedColTypes maps each unambiguous source qualifier to the field
 // types of that exact source within its SELECT scope. Scalar functions are
 // rewritten before FROM is emitted, so a qualified argument such as Other.Value
@@ -3821,10 +3868,11 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	colTypes := buildColTypes(tokens, opts)
 	scalarSourceCtx := preScanSourceContext(tokens)
 	qualifiedColTypes := buildQualifiedColTypes(tokens, opts, scalarSourceCtx)
+	scopedColTypes := buildScopedColTypes(tokens, opts, scalarSourceCtx)
 	tokens = rewriteGroupingReferenceAliases(tokens)
 	// расширяем НачалоДня/Год/Месяц/ОКР/АБС/ЦЕЛ/... в SQL-эквиваленты
 	// до основной трансляции, чтобы остальные шаги ничего не знали о них.
-	tokens = rewriteScalarFuncs(tokens, dialectName(opts.Dialect), colTypes, qualifiedColTypes, scalarSourceCtx, 0, opts.Params)
+	tokens = rewriteScalarFuncs(tokens, dialectName(opts.Dialect), scopedColTypes, qualifiedColTypes, scalarSourceCtx, 0, opts.Params)
 	tokens = rewriteStrftime(tokens, dialectName(opts.Dialect))
 	tr := &translator{
 		tokens:      tokens,
@@ -4470,7 +4518,7 @@ func scalarFuncRewrites(dialect string) map[string]funcRewrite {
 // т.п., чтобы основной транслятор обработал внутренний аргумент через обычные
 // правила (resolve ref dims, параметры и т.п.). Рекурсивно для вложенных
 // вызовов: Месяц(НачалоМесяца(x)) и ОКР(СУММА(x), 0) тоже разворачиваются.
-func rewriteScalarFuncs(tokens []tok, dialect string, colTypes map[string]metadata.FieldType, qualifiedColTypes map[int]map[string]map[string]metadata.FieldType, sourceCtx sourceContext, tokenOffset int, params map[string]any) []tok {
+func rewriteScalarFuncs(tokens []tok, dialect string, scopedColTypes map[int]map[string]metadata.FieldType, qualifiedColTypes map[int]map[string]map[string]metadata.FieldType, sourceCtx sourceContext, tokenOffset int, params map[string]any) []tok {
 	rewrites := scalarFuncRewrites(dialect)
 	var out []tok
 	for i := 0; i < len(tokens); i++ {
@@ -4501,13 +4549,21 @@ func rewriteScalarFuncs(tokens []tok, dialect string, colTypes map[string]metada
 					continue
 				}
 				rawInner := tokens[i+2 : end]
-				inner := rewriteScalarFuncs(rawInner, dialect, colTypes, qualifiedColTypes, sourceCtx, tokenOffset+i+2, params) // рекурсия
+				inner := rewriteScalarFuncs(rawInner, dialect, scopedColTypes, qualifiedColTypes, sourceCtx, tokenOffset+i+2, params) // рекурсия
 				// SQLite хранит date как UTC-текст. Переводим момент в стенные
 				// часы приложения до календарной операции, но только когда тип
 				// аргумента это доказывает. Поэтому будущий localdate останется
 				// «как записан», а строка с похожим содержимым не сменит смысл.
-				scopeID, _ := sourceCtx.scopeIDAt(tokenOffset + i)
-				if dialect == "sqlite" && isCalendarDateFunc(key) && dateArgumentIsMoment(rawInner, colTypes, qualifiedColTypes[scopeID], params) {
+				// Тип аргумента доказывает область компилируемого SELECT, а не
+				// первый источник всего потока: одноимённое поле соседней
+				// области не должно решать за эту (#1243, круг 4).
+				var scopeColTypes map[string]metadata.FieldType
+				var scopeQualified map[string]map[string]metadata.FieldType
+				if scopeID, ok := sourceCtx.scopeIDAt(tokenOffset + i); ok {
+					scopeColTypes = scopedColTypes[scopeID]
+					scopeQualified = qualifiedColTypes[scopeID]
+				}
+				if dialect == "sqlite" && isCalendarDateFunc(key) && dateArgumentIsMoment(rawInner, scopeColTypes, scopeQualified, params) {
 					wrapped := tokenizeFragment("ob_local_datetime(")
 					wrapped = append(wrapped, inner...)
 					wrapped = append(wrapped, tokenizeFragment(")")...)

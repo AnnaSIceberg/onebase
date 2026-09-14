@@ -187,6 +187,58 @@ func TestDateFunctionScopesQualifiedSourceTypesAcrossUnion(t *testing.T) {
 	require.Contains(t, compiled.SQL, "ob_local_datetime(т.значение)", compiled.SQL)
 }
 
+// Неквалифицированное имя типизируется областью своего SELECT, а не первым
+// источником всего потока. Здесь внешний Значение — строка, внутренний — дата,
+// и первым в тексте встречается именно внутренний источник: до областной карты
+// его тип решал и за внешнее поле, localizуя строку.
+func TestDateFunctionScopesUnqualifiedFieldTypesInNestedSelect(t *testing.T) {
+	dateEntity, stringEntity := dateFunctionScopeEntities()
+	compiled, err := query.Compile(`
+		ВЫБРАТЬ
+			День(Значение) КАК ДеньСтроки,
+			(ВЫБРАТЬ День(Значение) ИЗ Справочник.Даты) КАК ДеньДаты
+		ИЗ Справочник.Строки`, query.CompileOpts{
+		Entities: []*metadata.Entity{dateEntity, stringEntity},
+		Dialect:  storage.SQLiteDialect{},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(compiled.SQL, "ob_local_datetime("), compiled.SQL)
+	require.Contains(t, compiled.SQL, "ob_local_datetime(значение)) AS integer) FROM даты", compiled.SQL)
+	require.Contains(t, compiled.SQL, "strftime('%d', значение) AS integer) AS деньстроки", compiled.SQL)
+}
+
+// Ветки ОБЪЕДИНИТЬ — соседние области одного уровня. Дата локализуется в своей
+// ветке, строка в соседней остаётся как записана.
+func TestDateFunctionScopesUnqualifiedFieldTypesAcrossUnion(t *testing.T) {
+	dateEntity, stringEntity := dateFunctionScopeEntities()
+	compiled, err := query.Compile(`
+		ВЫБРАТЬ День(Значение) ИЗ Справочник.Даты
+		ОБЪЕДИНИТЬ ВСЕ
+		ВЫБРАТЬ День(Значение) ИЗ Справочник.Строки`, query.CompileOpts{
+		Entities: []*metadata.Entity{dateEntity, stringEntity},
+		Dialect:  storage.SQLiteDialect{},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(compiled.SQL, "ob_local_datetime("), compiled.SQL)
+	require.Contains(t, compiled.SQL, "ob_local_datetime(значение)) AS integer) FROM даты", compiled.SQL)
+}
+
+// Одно имя с разными типами внутри одной области не угадывается: компиляция
+// остаётся в прежней семантике, а не выбирает тип первого источника.
+func TestDateFunctionLeavesAmbiguousUnqualifiedFieldUnlocalized(t *testing.T) {
+	dateEntity, stringEntity := dateFunctionScopeEntities()
+	compiled, err := query.Compile(`
+		ВЫБРАТЬ День(Значение) КАК Д
+		ИЗ Справочник.Даты
+			ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Строки
+			ПО Даты.Ссылка = Строки.Ссылка`, query.CompileOpts{
+		Entities: []*metadata.Entity{dateEntity, stringEntity},
+		Dialect:  storage.SQLiteDialect{},
+	})
+	require.NoError(t, err)
+	require.NotContains(t, compiled.SQL, "ob_local_datetime(", compiled.SQL)
+}
+
 func dateFunctionScopeEntities() (*metadata.Entity, *metadata.Entity) {
 	dateEntity := &metadata.Entity{
 		Name: "Даты",
