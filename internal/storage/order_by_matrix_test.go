@@ -89,3 +89,56 @@ func TestOrderByEmptyTextLastMatrix(t *testing.T) {
 		}
 	})
 }
+
+// Незаполненное — это один класс, а не два. NULL и ” обязаны давать
+// одинаковый вторичный ключ, иначе следующий ключ порядка до сравнения не
+// доходит: на SQLite NULL при ASC оказывается раньше ”, и «Бета» без ранга
+// обгоняет «Альфу» с пустым рангом вопреки order_by: [Ранг, Наименование].
+func TestOrderByEmptyGroupFallsThroughToSecondaryKeyMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		entity := &metadata.Entity{
+			Name:    "ПустаяГруппа" + uuid.NewString()[:8],
+			Kind:    metadata.KindCatalog,
+			OrderBy: []string{"Ранг", "Наименование"},
+			Fields: []metadata.Field{
+				{Name: "Наименование", Type: metadata.FieldTypeString},
+				{Name: "Ранг", Type: metadata.FieldTypeString},
+			},
+		}
+		if err := db.Migrate(ctx, []*metadata.Entity{entity}); err != nil {
+			t.Fatalf("Migrate: %v", err)
+		}
+		for _, row := range []struct {
+			name   string
+			fields map[string]any
+		}{
+			// Ранг не передан вовсе — в колонке остаётся NULL.
+			{name: "Бета", fields: map[string]any{"Наименование": "Бета"}},
+			{name: "Альфа", fields: map[string]any{"Наименование": "Альфа", "Ранг": ""}},
+			{name: "Гамма", fields: map[string]any{"Наименование": "Гамма", "Ранг": "A"}},
+		} {
+			if err := db.Upsert(ctx, entity.Name, uuid.New(), row.fields, entity); err != nil {
+				t.Fatalf("Upsert %s: %v", row.name, err)
+			}
+		}
+
+		rows, err := db.List(ctx, entity.Name, entity, storage.ListParams{RowFilterEvaluated: true})
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		var got []string
+		for _, row := range rows {
+			got = append(got, row["Наименование"].(string))
+		}
+		want := []string{"Гамма", "Альфа", "Бета"}
+		if len(got) != len(want) {
+			t.Fatalf("получено %v, want %v", got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("порядок %v, want %v", got, want)
+			}
+		}
+	})
+}

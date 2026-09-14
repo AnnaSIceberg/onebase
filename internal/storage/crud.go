@@ -849,10 +849,12 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 			// сверху, в PostgreSQL при DESC — тоже; поэтому признак пустоты
 			// выносим отдельным ключом сортировки.
 			empty := col + " IS NULL"
+			emptyHasBlank := false
 			if field.RefEntity == "" && (field.Type == metadata.FieldTypeString ||
 				field.Type == metadata.FieldTypeRichText || field.Type == metadata.FieldTypeImage ||
 				field.EnumName != "") {
 				empty = "(" + empty + " OR " + col + " = '')"
+				emptyHasBlank = true
 			}
 			parts = append(parts, "CASE WHEN "+empty+" THEN 1 ELSE 0 END ASC")
 			expr := col
@@ -860,6 +862,14 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 			// стороне Go), и без приведения «100» сортируется раньше «20».
 			if field.Type == metadata.FieldTypeNumber && d.Name() == "sqlite" {
 				expr = "CAST(" + col + " AS NUMERIC)"
+			}
+			// «Незаполнено» — один класс, а не два. Без этого внутри группы
+			// порядок задаёт само значение: на SQLite NULL при ASC идёт раньше
+			// '', и следующий ключ order_by до сравнения не доходит. Для
+			// однобранчевого IS NULL группа и так вся NULL, поэтому нормализуем
+			// только там, где '' считается пустым наравне с NULL.
+			if emptyHasBlank {
+				expr = "CASE WHEN " + empty + " THEN NULL ELSE " + expr + " END"
 			}
 			dir := "ASC"
 			if desc {
