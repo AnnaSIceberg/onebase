@@ -1083,8 +1083,10 @@ func infoRegPath(nameParam any, errors map[string]any) map[string]any {
 				map[string]any{"name": "offset", "in": "query", "schema": map[string]any{"type": "integer", "minimum": 0}},
 				map[string]any{
 					"name": "filter[Dimension]", "in": "query",
-					"description": "Exact match on a register dimension. " +
-						"An unknown name is rejected with 400 rather than ignored.",
+					"description": "Exact match on a register dimension. The value is compared verbatim: " +
+						"surrounding spaces are significant and an empty value selects records whose " +
+						"dimension is the empty string. An unknown name is rejected with 400 rather " +
+						"than ignored.",
 					"schema": map[string]any{"type": "string"},
 				},
 				map[string]any{

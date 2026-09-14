@@ -198,6 +198,51 @@ func TestInfoRegV2FiltersByReturnedDateDimension(t *testing.T) {
 	})
 }
 
+// Точный отбор обязан быть точным. Пробелы и пустая строка — законные ключи
+// строкового измерения: нормализация значения на границе API отдавала запись
+// 'padded' на запрос ' padded ', то есть чужую строку за найденную, а
+// отброшенный пустой отбор возвращал весь регистр с total=3 вместо одной
+// записи. Тест матричный, потому что проверяет SQL-отбор, а не разбор URL.
+func TestInfoRegV2FiltersStringDimensionExactly(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ir := &metadata.InfoRegister{
+			Name: "ReviewStringKeys",
+			Dimensions: []metadata.Field{
+				{Name: "Key", Type: metadata.FieldTypeString},
+			},
+		}
+		srv := matrixInfoRegAPI(t, db, ir)
+		keys := []string{"", "padded", " padded "}
+		for _, key := range keys {
+			if err := db.InfoRegSet(context.Background(), ir,
+				map[string]any{"Key": key}, nil, nil); err != nil {
+				t.Fatalf("InfoRegSet %q: %v", key, err)
+			}
+		}
+
+		w, all := getInfoReg(t, srv, "/api/v2/inforeg/ReviewStringKeys", nil)
+		if w.Code != http.StatusOK || len(all.Data) != len(keys) || all.Meta.Total != len(keys) {
+			t.Fatalf("чтение без отбора: код %d, строк %d, total %d, тело %s",
+				w.Code, len(all.Data), all.Meta.Total, w.Body.String())
+		}
+
+		for _, key := range keys {
+			target := "/api/v2/inforeg/ReviewStringKeys?filter[Key]=" + url.QueryEscape(key)
+			w, got := getInfoReg(t, srv, target, nil)
+			if w.Code != http.StatusOK {
+				t.Fatalf("отбор по %q: код %d, тело %s", key, w.Code, w.Body.String())
+			}
+			if len(got.Data) != 1 || got.Meta.Total != 1 {
+				t.Fatalf("отбор по %q вернул %d строк, total=%d — ожидалась ровно своя запись",
+					key, len(got.Data), got.Meta.Total)
+			}
+			if returned := toStr(got.Data[0]["Key"]); returned != key {
+				t.Fatalf("отбор по %q вернул запись с Key=%q", key, returned)
+			}
+		}
+	})
+}
+
 // Булевы значения из query string должны доходить до SQL типизированными:
 // SQLite хранит bool как INTEGER, и сравнение с сырыми строками "true"/"false"
 // не находит ни одну из существующих записей.

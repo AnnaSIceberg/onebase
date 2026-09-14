@@ -131,7 +131,11 @@ func parseInfoRegFilters(r *http.Request, ir *metadata.InfoRegister) (infoRegFil
 		}
 		inner := strings.TrimSuffix(strings.TrimPrefix(key, inforegFilterPrefix), "]")
 		field, attr := splitFilterKey(inner)
-		value := strings.TrimSpace(vals[0])
+		// raw — значение ровно как прислал клиент. Для измерения оно и есть
+		// ключ: у type:string пробелы и пустая строка — законные значения, а
+		// не «отбор не задан». «Нет отбора» выражается отсутствием параметра.
+		raw := vals[0]
+		value := strings.TrimSpace(raw)
 		if strings.EqualFold(field, inforegPeriodField) {
 			if !ir.Periodic {
 				return out, errInfoRegUnknownFilter(field)
@@ -169,23 +173,24 @@ func parseInfoRegFilters(r *http.Request, ir *metadata.InfoRegister) (infoRegFil
 			// равенство, диапазона по нему нет.
 			return out, errInfoRegUnknownFilter(inner)
 		}
-		if value != "" {
-			switch dim.Type {
-			case metadata.FieldTypeDate:
-				t, ok := parseInfoRegDate(value)
-				if !ok {
-					return out, errInfoRegBadDate(dim.Name)
-				}
-				out.dimValues[dim.Name] = t
-			case metadata.FieldTypeBool:
-				b, ok := metadata.ParseBoolLiteral(value)
-				if !ok {
-					return out, errInfoRegBadBool(dim.Name)
-				}
-				out.dimValues[dim.Name] = b
-			default:
-				out.dims[dim.Name] = value
+		switch dim.Type {
+		case metadata.FieldTypeDate:
+			// Присутствующий параметр обязан быть значением: пустая строка —
+			// не дата, и промолчать о ней значило бы вернуть весь регистр на
+			// запрос, который клиент считает отфильтрованным.
+			t, ok := parseInfoRegDate(value)
+			if !ok {
+				return out, errInfoRegBadDate(dim.Name)
 			}
+			out.dimValues[dim.Name] = t
+		case metadata.FieldTypeBool:
+			b, ok := metadata.ParseBoolLiteral(value)
+			if !ok {
+				return out, errInfoRegBadBool(dim.Name)
+			}
+			out.dimValues[dim.Name] = b
+		default:
+			out.dims[dim.Name] = raw
 		}
 	}
 	return out, nil
