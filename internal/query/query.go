@@ -4241,8 +4241,9 @@ func queriedColumnTypes(tokens []tok, opts CompileOpts) (map[string]map[metadata
 			vtUpper := upperFast(tokens[i+4].val)
 			_, isAccumVT := accumVTKinds[vtUpper]
 			_, isInfoVT := infoVTKinds[vtUpper]
-			if !(isAccumVT && (isAccumRegType(upper) || isAccountRegType(upper))) &&
-				!(isInfoVT && isInfoRegType(upper)) {
+			knownVT := (isAccumVT && (isAccumRegType(upper) || isAccountRegType(upper))) ||
+				(isInfoVT && isInfoRegType(upper))
+			if !knownVT {
 				continue
 			}
 		}
