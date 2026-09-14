@@ -653,7 +653,7 @@ func reportParamsFromQuery(q url.Values, rep *reportpkg.Report) (map[string]any,
 			// необязательной датой приходит пустым, потому что «Срок < NULL» не
 			// выбирает ничего. Явно переданное пустое значение — выбор клиента,
 			// его умолчание не перебивает.
-			raw = scheduler.ResolveParamTemplateText(p.Default)
+			raw = scheduler.ResolveParamTemplateText(p.Default, p.Type)
 		}
 		v, err := reportpkg.ParseParamValue(raw, p, reportpkg.ParamParseAPI)
 		if err != nil {

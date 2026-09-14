@@ -47,6 +47,16 @@ func ParseParamValue(raw string, p Param, mode ParamParseMode) (any, error) {
 		typ = strings.ToLower(strings.TrimSpace(typ))
 	}
 	switch typ {
+	case "datetime":
+		// Три формата — те же, что у параметров обработок: браузер отдаёт
+		// datetime-local без секунд, а ссылка со старым значением может нести
+		// одну дату, и ломать её из-за нового типа незачем.
+		for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02"} {
+			if t, err := time.ParseInLocation(layout, raw, time.Local); err == nil {
+				return t, nil
+			}
+		}
+		return nil, errors.New("expected datetime YYYY-MM-DDTHH:MM[:SS]")
 	case "date":
 		t, err := time.ParseInLocation("2006-01-02", raw, time.Local)
 		if err != nil {

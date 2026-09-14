@@ -57,3 +57,43 @@ func TestAPIV2_ReportRejectsInvalidDateParam(t *testing.T) {
 		t.Fatalf("API ответил %d на пустой bool: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// Параметр datetime в query-строке: значение со временем суток разбирается,
+// негодное даёт 400 с внятным текстом (#1204, план 160).
+func TestAPIV2_ReportParsesDatetimeParam(t *testing.T) {
+	cat := &metadata.Entity{
+		Name: "СобытиеАПИ",
+		Kind: metadata.KindCatalog,
+		Fields: []metadata.Field{
+			{Name: "Наименование", Type: metadata.FieldTypeString},
+			{Name: "Момент", Type: metadata.FieldTypeDate},
+		},
+	}
+	rep := &reportpkg.Report{
+		Name:   "СобытияАПИ",
+		Params: []reportpkg.Param{{Name: "С", Type: "datetime"}},
+		Query:  `ВЫБРАТЬ Наименование ИЗ Справочник.СобытиеАПИ ГДЕ Момент >= &С`,
+	}
+	h, _ := newAPITestHandlerWithReports(t, []*metadata.Entity{cat}, []*reportpkg.Report{rep}, nil)
+	user := apiUser("api", auth.Permission{
+		Catalogs: map[string][]string{cat.Name: {"read"}},
+		Reports:  map[string][]string{rep.Name: {"run"}},
+	})
+	run := func(query string) *httptest.ResponseRecorder {
+		req := withUser(reqWithEntity("GET", "/api/v2/report/"+rep.Name+query, nil,
+			map[string]string{"name": rep.Name}, nil), user)
+		rec := httptest.NewRecorder()
+		h.runReportV2().ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := run("?%D0%A1=2026-08-29T12:30:41"); rec.Code != http.StatusOK {
+		t.Fatalf("API ответил %d на datetime: %s", rec.Code, rec.Body.String())
+	}
+	rec := run("?%D0%A1=%D0%BC%D1%83%D1%81%D0%BE%D1%80")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("API ответил %d на негодный datetime, ожидался 400: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "expected datetime") {
+		t.Fatalf("в ответе нет причины отказа: %s", rec.Body.String())
+	}
+}

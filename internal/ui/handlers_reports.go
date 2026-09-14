@@ -93,7 +93,7 @@ func (s *Server) reportRun(w http.ResponseWriter, r *http.Request) {
 // подстановками ({{today}} и прочие) — той же грамматикой, что у виджетов и
 // регламентных заданий. Пусто, если умолчание не задано.
 func reportParamDefault(p reportpkg.Param) string {
-	return scheduler.ResolveParamTemplateText(p.Default)
+	return scheduler.ResolveParamTemplateText(p.Default, p.Type)
 }
 
 // reportParamDefaults — значения параметров для ПЕРВОГО показа формы, пока
@@ -502,16 +502,18 @@ func applyResolvedLabels(rows []map[string]any, uuidToLabel map[string]string, s
 
 // reportParamUI is a template-friendly wrapper around a report parameter.
 type reportParamUI struct {
-	Name    string
-	Label   string
-	Type    string // raw type string
-	IsDate  bool
-	IsNum   bool
-	IsBool  bool
-	IsSel   bool
-	IsRef   bool
-	Options []string         // for IsSel
-	Opts    []map[string]any // for IsRef: [{id, _label}]
+	Name   string
+	Label  string
+	Type   string // raw type string
+	IsDate bool
+	// IsDateTime — тип datetime: поле принимает время суток, а не только дату.
+	IsDateTime bool
+	IsNum      bool
+	IsBool     bool
+	IsSel      bool
+	IsRef      bool
+	Options    []string         // for IsSel
+	Opts       []map[string]any // for IsRef: [{id, _label}]
 	// RefEntity — имя сущности (для IsRef), используется на UI для лупы
 	// в picker'е (открытие карточки через /ui/_ref-open/<entity>/<id>).
 	RefEntity string
@@ -529,6 +531,8 @@ func (s *Server) buildReportParams(ctx context.Context, lang string, params []re
 		switch {
 		case p.Type == "date":
 			ui.IsDate = true
+		case p.Type == "datetime":
+			ui.IsDateTime = true
 		case p.Type == "number":
 			ui.IsNum = true
 		case p.Type == "bool":

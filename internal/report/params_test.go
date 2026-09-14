@@ -14,6 +14,9 @@ func TestParseParamValue(t *testing.T) {
 	local := func(y int, m time.Month, d int) time.Time {
 		return time.Date(y, m, d, 0, 0, 0, 0, time.Local)
 	}
+	moment := func(y int, m time.Month, d, hh, mm, ss int) time.Time {
+		return time.Date(y, m, d, hh, mm, ss, 0, time.Local)
+	}
 	for _, c := range []struct {
 		name    string
 		typ     string
@@ -23,6 +26,14 @@ func TestParseParamValue(t *testing.T) {
 		wantErr bool
 	}{
 		{"форма: дата разбирается", "date", "2026-08-29", ParamParseForm, local(2026, time.August, 29), false},
+		{"форма: datetime с секундами", "datetime", "2026-08-29T12:30:41", ParamParseForm, moment(2026, time.August, 29, 12, 30, 41), false},
+		{"форма: datetime без секунд", "datetime", "2026-08-29T12:30", ParamParseForm, moment(2026, time.August, 29, 12, 30, 0), false},
+		{"форма: datetime принимает одну дату", "datetime", "2026-08-29", ParamParseForm, local(2026, time.August, 29), false},
+		{"форма: негодный datetime — ошибка", "datetime", "мусор", ParamParseForm, nil, true},
+		{"api: datetime с секундами", "datetime", "2026-08-29T12:30:41", ParamParseAPI, moment(2026, time.August, 29, 12, 30, 41), false},
+		{"api: негодный datetime — ошибка", "datetime", "2026-08-29 12:30", ParamParseAPI, nil, true},
+		{"api: имя datetime нормализуется", " DateTime ", "2026-08-29T12:30:41", ParamParseAPI, moment(2026, time.August, 29, 12, 30, 41), false},
+		{"форма: пустой datetime — nil", "datetime", "", ParamParseForm, nil, false},
 		{"форма: негодная дата — ошибка вызывающему", "date", "мусор", ParamParseForm, nil, true},
 		{"форма: имя типа сравнивается строго", "DATE", "2026-08-29", ParamParseForm, "2026-08-29", false},
 		{"форма: bool — узкий набор", "bool", "on", ParamParseForm, true, false},
