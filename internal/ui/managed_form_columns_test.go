@@ -8,10 +8,11 @@ import (
 	"github.com/ivantit66/onebase/internal/metadata"
 )
 
-// Ширина группы (width) доезжает до разметки колонки. Без неё ширина колонки
-// равна max-content содержимого: одно широкое поле забирает всю строку, и
-// соседняя колонка — обычно та, где кнопки, — переносится под форму.
-func TestManagedFormGroupWidthRendersAsFlexBasis(t *testing.T) {
+// Ширина группы (width) доезжает до разметки колонки общим контрактом раскладки.
+// Без неё ширина колонки равна max-content содержимого: одно широкое поле
+// забирает всю строку, и соседняя колонка — обычно та, где кнопки, —
+// переносится под форму.
+func TestManagedFormGroupWidthUsesLayoutContract(t *testing.T) {
 	form := &metadata.FormModule{
 		Name: "ФормаОбъекта", Kind: "object", EntityName: "Обращение",
 		LayoutKind: metadata.FormLayoutManaged,
@@ -31,8 +32,10 @@ func TestManagedFormGroupWidthRendersAsFlexBasis(t *testing.T) {
 		Forms:  []*metadata.FormModule{form},
 	}
 	html := renderManagedForm(t, entity, form, map[string]string{})
-	if !strings.Contains(html, "flex:0 1 470px;min-width:0") {
-		t.Error("ширина группы не доехала до стиля колонки")
+	// Ширина группы едет через общий контракт раскладки (metadata.FormElementLayoutCSS),
+	// тот же, что у остальных элементов формы: отдельной семантики у ГруппаФормы нет.
+	if !strings.Contains(html, "width:470px;max-width:100%;flex:0 0 auto;min-width:0;") {
+		t.Error("ширина группы не доехала до стиля колонки по общему контракту раскладки")
 	}
 	// Колонка без width растягивается сама — иначе справа остаётся пустое место.
 	if !strings.Contains(html, ".managed-group-horizontal>.managed-group-body>.form-group-box{min-width:0;flex:1 1 auto}") {
