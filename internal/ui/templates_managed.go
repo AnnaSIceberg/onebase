@@ -657,6 +657,8 @@ const tplManagedForm = `
              style="flex:1;display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px">{{.Name}}{{if .External}} <span style="color:#94a3b8;font-size:11px">({{t $.Lang "внешняя"}})</span>{{end}}</a>
           <a href="/ui/{{lower (str $.Entity.Kind)}}/{{$.Entity.Name}}/{{$.ID}}/print/{{.Name}}/pdf" target="_blank"
              style="padding:9px 14px;color:#16a34a;text-decoration:none;font-size:12px;font-weight:600">PDF</a>
+		  {{if .HasXLSX}}<a href="/ui/{{lower (str $.Entity.Kind)}}/{{$.Entity.Name}}/{{$.ID}}/print/{{.Name}}/xlsx"
+		     style="padding:9px 14px;color:#15803d;text-decoration:none;font-size:12px;font-weight:600">Excel</a>{{end}}
         </div>
         {{end}}
         {{if .HasPrintProc}}
@@ -666,13 +668,13 @@ const tplManagedForm = `
       </div>
     </div>
     {{end}}
-    {{if .Receivers}}
+    {{if .BasedOnActions}}
     <div style="position:relative;display:inline-block">
       <button type="button" class="btn btn-sm btn-secondary" data-ob-toggle-next>{{t $.Lang "Ввести на основании"}} ▾</button>
       <div style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.1);min-width:200px;z-index:50;margin-top:4px">
-        {{range .Receivers}}
-        <a href="/ui/{{lower (str .Kind)}}/{{.Name}}/new?based_on={{$.Entity.Name}}&based_on_id={{$.ID}}"
-           style="display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px;border-bottom:1px solid #f1f5f9">{{.DisplayName $.Lang}}</a>
+        {{range .BasedOnActions}}
+        <a href="{{.URL}}&based_on_id={{$.ID}}"
+           style="display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px;border-bottom:1px solid #f1f5f9">{{.Label}}</a>
         {{end}}
       </div>
     </div>

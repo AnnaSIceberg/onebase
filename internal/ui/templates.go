@@ -357,6 +357,20 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// entityHasRichText — есть ли среди реквизитов шапки сущности richtext-поле.
 		// Quill (vendor-ассеты + init) грузятся на форме только при true, чтобы не
 		// тянуть редактор на формы без richtext-полей.
+		// infoRegHasRichText — есть ли у регистра сведений richtext-ресурс. По нему
+		// форма записи решает, тянуть ли вендор-ассеты редактора: у большинства
+		// регистров их грузить незачем.
+		"infoRegHasRichText": func(ir *metadata.InfoRegister) bool {
+			if ir == nil {
+				return false
+			}
+			for _, f := range append(append([]metadata.Field{}, ir.Dimensions...), ir.Resources...) {
+				if metadata.IsRichText(f.Type) {
+					return true
+				}
+			}
+			return false
+		},
 		"entityHasRichText": func(e *metadata.Entity) bool {
 			if e == nil {
 				return false
@@ -1822,6 +1836,7 @@ const tplList = `
 {{range .TreeRows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}{{$depth := index $row "_depth"}}
 <tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer"{{else}}style="cursor:pointer"{{end}}
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if $.CanWrite}} F9{{end}}{{if and $.CanDelete (not (index $row "_is_predefined"))}} Delete{{end}}"
+  data-ob-entity-id="{{index $row "id"}}"
   data-tree-id="{{index $row "id"}}"
   data-tree-depth="{{$depth}}"
   data-tree-parent="{{index $row "parent_id"}}"
@@ -1879,6 +1894,7 @@ const tplList = `
 {{range .Rows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}
 <div class="tile-card{{if index $row "deletion_mark"}} tile-deleted{{end}}"
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if $.CanWrite}} F9{{end}}{{if and $.CanDelete (not (index $row "_is_predefined"))}} Delete{{end}}" role="option"
+  data-ob-entity-id="{{index $row "id"}}"
   data-predefined="{{if index $row "_is_predefined"}}1{{end}}"
   data-is-folder="{{if $isFolder}}1{{end}}"
   data-folder-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}"
@@ -1937,6 +1953,7 @@ const tplList = `
 {{range .Rows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}
 <tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer"{{else}}style="cursor:pointer"{{end}}
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if $.CanWrite}} F9{{end}}{{if and $.CanDelete (not (index $row "_is_predefined"))}} Delete{{end}}"
+  data-ob-entity-id="{{index $row "id"}}"
   data-predefined="{{if index $row "_is_predefined"}}1{{end}}"
   data-is-folder="{{if $isFolder}}1{{end}}"
   data-folder-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}"
@@ -2006,6 +2023,7 @@ const tplList = `
   "canWrite" .CanWrite
   "canDelete" .CanDelete
   "canUnpost" .CanUnpost
+  "basedOn" .BasedOnActions
   "treeEntity" .Entity.Name
   "subsystem" (str $.CurrentSubsystem)
   "labels" (dict
@@ -2013,6 +2031,7 @@ const tplList = `
     "edit" (t $.Lang "Редактировать")
     "open" (t $.Lang "Открыть")
     "copy" (t $.Lang "Скопировать")
+    "basedOn" (t $.Lang "Ввести на основании")
     "enter" (t $.Lang "▶ Войти")
     "activityShow" (t $.Lang "Вернуть в выбор")
     "activityShowConfirm" (t $.Lang "Вернуть в выбор?")
@@ -2097,6 +2116,8 @@ const tplForm = `
              style="flex:1;display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px">{{.Name}}{{if .External}} <span style="color:#94a3b8;font-size:11px">({{t $.Lang "внешняя"}})</span>{{end}}</a>
           <a href="/ui/{{lower (str $.Entity.Kind)}}/{{$.Entity.Name}}/{{$.ID}}/print/{{.Name}}/pdf" target="_blank"
              style="padding:9px 14px;color:#16a34a;text-decoration:none;font-size:12px;font-weight:600">PDF</a>
+		  {{if .HasXLSX}}<a href="/ui/{{lower (str $.Entity.Kind)}}/{{$.Entity.Name}}/{{$.ID}}/print/{{.Name}}/xlsx"
+		     style="padding:9px 14px;color:#15803d;text-decoration:none;font-size:12px;font-weight:600">Excel</a>{{end}}
         </div>
         {{end}}
         {{if .HasPrintProc}}
@@ -2106,13 +2127,13 @@ const tplForm = `
       </div>
     </div>
     {{end}}
-    {{if .Receivers}}
+    {{if .BasedOnActions}}
     <div style="position:relative">
       <button type="button" class="btn btn-sm btn-secondary" data-ob-toggle-next>{{t $.Lang "Ввести на основании"}} ▾</button>
       <div style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.1);min-width:200px;z-index:50;margin-top:4px">
-        {{range .Receivers}}
-        <a href="/ui/{{lower (str .Kind)}}/{{.Name}}/new?based_on={{$.Entity.Name}}&based_on_id={{$.ID}}"
-           style="display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px;border-bottom:1px solid #f1f5f9">{{.DisplayName $.Lang}}</a>
+        {{range .BasedOnActions}}
+        <a href="{{.URL}}&based_on_id={{$.ID}}"
+           style="display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px;border-bottom:1px solid #f1f5f9">{{.Label}}</a>
         {{end}}
       </div>
     </div>
@@ -3183,6 +3204,12 @@ const tplInfoReg = `
 
 {{define "page-inforeg-form"}}
 {{template "head" .}}{{template "nav" .}}
+{{if infoRegHasRichText .InfoReg}}
+{{/* Вендор-ассеты редактора грузятся ТОЛЬКО когда у регистра есть richtext-
+     ресурс — как и на форме объекта. */}}
+<link rel="stylesheet" href="/vendor/quill/quill.snow.css">
+<script src="/vendor/quill/quill.js"></script>
+{{end}}
 <main>
 <h2>{{.InfoReg.DisplayName $.Lang}} — {{t $.Lang "новая запись"}}</h2>
 {{if .Error}}<div style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:12px 16px;border-radius:7px;margin-bottom:16px;font-size:14px">{{.Error}}</div>{{end}}
@@ -3215,7 +3242,17 @@ const tplInfoReg = `
   {{range .InfoReg.Resources}}
   <div class="form-row">
     <label>{{.DisplayName $.Lang}}</label>
+    {{if isRichText (str .Type)}}
+    {{/* Тот же редактор, что и в карточке объекта: скрытая textarea хранит HTML
+         для записи, Quill монтируется на соседний .richtext-editor (см.
+         obInitRichText в /static/ui.js). Без этой ветки richtext-ресурс
+         редактировался однострочным вводом — оформление в регистре можно было
+         задать только правкой разметки руками. */}}
+    <textarea name="{{.Name}}" autocomplete="off" class="richtext-field" rows="8" style="width:100%">{{index $.Values .Name}}</textarea>
+    <div class="richtext-editor"></div>
+    {{else}}
     <input type="text" name="{{.Name}}" value="{{index $.Values .Name}}">
+    {{end}}
   </div>
   {{end}}
   <div style="margin-top:20px;display:flex;gap:8px">
