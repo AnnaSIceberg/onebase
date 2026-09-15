@@ -83,6 +83,14 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 	managed := pickManagedForm(entity, kind)
 	if managed != nil {
 		data["Form"] = managed
+		// Кнопка «Открыть карточку» (🔍) у заполненного ссылочного поля рисуется по
+		// умолчанию; форма может её выключить (ref_card_button: false). Признак
+		// кладём ОТРИЦАТЕЛЬНЫЙ: managed-шаблон рендерит и формы обработок
+		// (handlers_processors.go), где этого ключа в данных нет вовсе, — при
+		// положительном признаке кнопка бы там молча исчезла.
+		if managed.RefCardButton != nil && !*managed.RefCardButton {
+			data["HideRefCard"] = true
+		}
 		// Фикс A: команды формы, не размещённые вручную элементом kind: Кнопка,
 		// рисуются автоматической командной панелью (иначе объявленная в commands:
 		// команда в UI не видна — её кнопку рисует только kind: Кнопка). Fire-click
@@ -179,6 +187,15 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 // walkBrowserFormElements — тот же обход, которым его берёт серверная отрисовка
 // ($ro в шаблоне managed-element).
 //
+// Условие КАСКАДИТ на потомков ровно так же, как статический readonly (#1184):
+// «после проведения группа реквизитов замерзает» пишется одним условием на
+// группе. Итоговое состояние элемента — «статический readonly (свой или
+// предка) ИЛИ истинное условие (своё или предка)», и считается оно ЗДЕСЬ, в
+// одном месте, а не тремя способами. Раньше правило было размазано по трём
+// исполнителям и в каждом получалось своё: шаблон условие предка не смотрел
+// вовсе, а клиент запирал потомков обходом DOM — и до первого события формы
+// поле было редактируемым, после первого запиралось.
+//
 // Ошибка вычисления НЕ скрывает и НЕ блокирует элемент: неверное условие — это
 // ошибка конфигурации, и молча запертое поле объяснить пользователю нечем.
 // Вместо этого условие игнорируется, а конфигуратор получает предупреждение на
@@ -202,21 +219,34 @@ func managedFormElementStates(form *metadata.FormModule, header map[string]any, 
 		}
 		return ok
 	}
+	// Условие каждого элемента считается ровно один раз — на его собственном
+	// заходе, — и потомки берут результат отсюда. Так предупреждение о сломанном
+	// выражении достаётся тому элементу, который его объявил, и не размножается
+	// по всей ветке. Обход прямой (предок раньше потомков), поэтому к моменту
+	// захода потомка условие предка в карте уже лежит.
+	conds := map[*metadata.FormElement]bool{}
 	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
 		el := visit.element
 		if el == nil {
 			return
 		}
-		// В карту попадает КАЖДЫЙ элемент с условием — в том числе с ложным.
-		// Ответ события формы переносит эти карты на клиент, и без явного
-		// «false» он не смог бы снять запрет, когда условие перестало
-		// выполняться (отличить «условия нет» от «условие ложно» было бы нечем).
-		if strings.TrimSpace(el.ReadOnlyWhen) != "" {
+		own := strings.TrimSpace(el.ReadOnlyWhen) != ""
+		if own {
 			// Условие считается всегда, даже под постоянным запретом: иначе
 			// сломанное выражение под readonly-группой молчало бы вместо
 			// предупреждения конфигуратору.
-			cond := eval(el.ReadOnlyWhen, "условие readonly_when", el.Name)
-			ro[el.Name] = cond || visit.effectiveReadOnly
+			conds[el] = eval(el.ReadOnlyWhen, "условие readonly_when", el.Name)
+		}
+		// В карту попадает КАЖДЫЙ элемент, на который условие влияет, — в том
+		// числе с ложным. Ответ события формы переносит эти карты на клиент, и
+		// без явного «false» он не смог бы снять запрет, когда условие перестало
+		// выполняться (отличить «условия нет» от «условие ложно» было бы нечем).
+		if own || len(visit.readOnlyWhenAncestors) > 0 {
+			state := visit.effectiveReadOnly || conds[el]
+			for _, ancestor := range visit.readOnlyWhenAncestors {
+				state = state || conds[ancestor]
+			}
+			ro[el.Name] = state
 		}
 		if strings.TrimSpace(el.HiddenWhen) != "" {
 			hidden[el.Name] = eval(el.HiddenWhen, "условие hidden_when", el.Name)
@@ -259,6 +289,22 @@ func unplacedCommands(form *metadata.FormModule) []*metadata.FormCommand {
 		}
 	}
 	return out
+}
+
+// managedCommandBarElement связывает фактическую автоматическую панель команд
+// из обвязки page-managed-form с декларативным элементом КоманднаяПанель.
+// Сам элемент в дереве намеренно не рисует вторую панель: кнопки уже собраны из
+// form.Commands выше дерева. Без этой связи readonly_when/hidden_when попадали
+// в карту состояний, но применить их было не к чему — у настоящего DOM панели
+// не было data-ob-el.
+func managedCommandBarElement(form *metadata.FormModule) *metadata.FormElement {
+	var found *metadata.FormElement
+	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+		if found == nil && visit.element != nil && visit.element.Kind == metadata.FormElementCommandBar {
+			found = visit.element
+		}
+	})
+	return found
 }
 
 // attrRefEntityName извлекает имя сущности-справочника/документа из типа реквизита

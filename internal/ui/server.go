@@ -96,30 +96,34 @@ type Server struct {
 	messages               *MessageStore
 	incidents              *incident.Store // последние ошибки и паники с кодом E-… (план 116)
 	svcCache               *serviceCache   // кэш ответов HTTP-сервисов (план 126)
-	widgetCache            *widget.Cache
-	lockMgr                *runtime.LockManager   // #2 managed locks
-	entitySvc              *entityservice.Service // упсёрт + ТЧ + движения + проведение + удаление, разделяется с api
-	entitySvcOnce          sync.Once              // ленивая сборка для серверов, собранных напрямую (тесты, offline)
-	aiChatLimit            *aiWindowLimiter       // лимит частоты ИИ-чата на пользователя (план 54)
-	endpointLimit          endpointLimiter        // rate-limit HTTP-сервисов (план 61)
-	loginLimit             *auth.LoginLimiter     // брутфорс-защита basic-auth сервисов (общий с формой входа)
-	extforms               *extform.Repo          // внешний контур: печатные формы из БД
-	extreports             *extform.ReportRepo    // внешний контур: отчёты из БД
-	extprocessors          *extform.ProcessorRepo // внешний контур: обработки из БД
-	tmpl                   *template.Template
-	hub                    *realtime.Hub // real-time-шина уведомлений сервер→браузер (план 74)
-	devGeneration          string        // метка запуска процесса для dev-режима (см. eventsStream)
-	ops                    *operationLimiter
-	exportJobsMu           sync.Mutex
-	exportJobs             *exportJobStore
-	closeOnce              sync.Once
-	lifecycleMu            sync.Mutex
-	backgroundCtx          context.Context
-	backgroundCancel       context.CancelFunc
-	backgroundWG           sync.WaitGroup
-	closing                bool
-	wsMu                   sync.Mutex                // защищает wsIntakes
-	wsIntakes              map[string]*wsIntakeEntry // живые WS-соединения приёмки (план 120A)
+	// svcCacheCookieWarned не даёт потоку запросов с одной и той же cookie
+	// забить журнал одинаковыми предупреждениями. Карта принадлежит серверу,
+	// поэтому новый запуск снова сообщает оператору о причине обхода кэша.
+	svcCacheCookieWarned sync.Map
+	widgetCache          *widget.Cache
+	lockMgr              *runtime.LockManager   // #2 managed locks
+	entitySvc            *entityservice.Service // упсёрт + ТЧ + движения + проведение + удаление, разделяется с api
+	entitySvcOnce        sync.Once              // ленивая сборка для серверов, собранных напрямую (тесты, offline)
+	aiChatLimit          *aiWindowLimiter       // лимит частоты ИИ-чата на пользователя (план 54)
+	endpointLimit        endpointLimiter        // rate-limit HTTP-сервисов (план 61)
+	loginLimit           *auth.LoginLimiter     // брутфорс-защита basic-auth сервисов (общий с формой входа)
+	extforms             *extform.Repo          // внешний контур: печатные формы из БД
+	extreports           *extform.ReportRepo    // внешний контур: отчёты из БД
+	extprocessors        *extform.ProcessorRepo // внешний контур: обработки из БД
+	tmpl                 *template.Template
+	hub                  *realtime.Hub // real-time-шина уведомлений сервер→браузер (план 74)
+	devGeneration        string        // метка запуска процесса для dev-режима (см. eventsStream)
+	ops                  *operationLimiter
+	exportJobsMu         sync.Mutex
+	exportJobs           *exportJobStore
+	closeOnce            sync.Once
+	lifecycleMu          sync.Mutex
+	backgroundCtx        context.Context
+	backgroundCancel     context.CancelFunc
+	backgroundWG         sync.WaitGroup
+	closing              bool
+	wsMu                 sync.Mutex                // защищает wsIntakes
+	wsIntakes            map[string]*wsIntakeEntry // живые WS-соединения приёмки (план 120A)
 }
 
 func New(reg *runtime.Registry, store *storage.DB, interp *interpreter.Interpreter, authRepo *auth.Repo, cfg Config, sched *scheduler.Scheduler) *Server {
@@ -468,6 +472,7 @@ func (s *Server) Mount(r chi.Router) {
 	// Admin: аутентификация — политики и провайдеры единого входа (план 84)
 	r.Get("/ui/admin/auth", s.adminAuth)
 	r.Post("/ui/admin/auth/policy", s.adminAuthPolicySave)
+	r.Post("/ui/admin/auth/password-policy", s.adminAuthPasswordPolicySave)
 	r.Get("/ui/admin/auth/providers/{id}", s.adminAuthProvider)
 	r.Post("/ui/admin/auth/providers/{id}", s.adminAuthProvider)
 	r.Post("/ui/admin/auth/providers/{id}/delete", s.adminAuthProviderDelete)
@@ -552,6 +557,7 @@ func (s *Server) Mount(r chi.Router) {
 	// план 64, этап 3. Старый /print-dsl/ оставлен как 301-редирект на /print/.
 	r.Get("/ui/{kind}/{entity}/{id}/print/{form}", s.printDocument)
 	r.Get("/ui/{kind}/{entity}/{id}/print/{form}/pdf", s.printDocumentPDF)
+	r.Get("/ui/{kind}/{entity}/{id}/print/{form}/xlsx", s.printDocumentXLSX)
 	r.Get("/ui/{kind}/{entity}/{id}/print-dsl/{pfName}", s.redirectDSLPrint)
 	r.Get("/ui/{kind}/{entity}/{id}/print-dsl/{pfName}/pdf", s.redirectDSLPrint)
 

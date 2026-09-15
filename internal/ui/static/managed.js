@@ -127,6 +127,59 @@ function obManagedSetTablePartJSON(tpName, rows) {
 }
 window.obManagedSetTablePartJSON = obManagedSetTablePartJSON;
 
+// Keeps the object and per-field arrays stable because SlickGrid formatters and
+// editors retain them in closures. Replacing either would leave the visible
+// grid on the options embedded at initial render.
+function obManagedSyncRefOptionMap(target, source) {
+  if (!target || typeof target !== 'object') return target;
+  source = source && typeof source === 'object' ? source : {};
+  Object.keys(target).forEach(function(field) {
+    if (Object.prototype.hasOwnProperty.call(source, field)) return;
+    if (Array.isArray(target[field])) target[field].splice(0, target[field].length);
+    else delete target[field];
+  });
+  Object.keys(source).forEach(function(field) {
+    var rows = Array.isArray(source[field]) ? source[field] : [];
+    if (!Array.isArray(target[field])) {
+      target[field] = rows.slice();
+      return;
+    }
+    target[field].splice(0, target[field].length);
+    for (var i = 0; i < rows.length; i++) target[field].push(rows[i]);
+  });
+  return target;
+}
+
+// The event response contains a complete option map for every returned table
+// part. Apply it before rows: formatters must know a newly assigned UUID when
+// SlickGrid invalidates and renders the updated DataView.
+function obManagedApplyTablePartRefOptions(next) {
+  if (!next || typeof next !== 'object') return;
+  window._tpRefOpts = window._tpRefOpts || {};
+  Object.keys(next).forEach(function(tpName) {
+    var current = window._tpRefOpts[tpName];
+    if (!current || typeof current !== 'object') {
+      current = {};
+      window._tpRefOpts[tpName] = current;
+    }
+    obManagedSyncRefOptionMap(current, next[tpName]);
+
+    // Compatibility with grids initialized by an older/custom host that did
+    // not take its option object from window._tpRefOpts.
+    var views = window._obGridViews || [];
+    for (var i = 0; i < views.length; i++) {
+      if (views[i] && views[i].tpName === tpName && views[i].refOpts && views[i].refOpts !== current) {
+        obManagedSyncRefOptionMap(views[i].refOpts, next[tpName]);
+      }
+    }
+    var registered = window._obGrids && window._obGrids[tpName];
+    if (registered && registered.refOpts && registered.refOpts !== current) {
+      obManagedSyncRefOptionMap(registered.refOpts, next[tpName]);
+    }
+  });
+}
+window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
+
 // Отправляет текущие form-values + имя элемента/события в /ui/.../form-event,
 // получает JSON с новыми значениями и сообщениями от Сообщить(), применяет их.
 (function(){
@@ -222,6 +275,25 @@ window.obManagedSetTablePartJSON = obManagedSetTablePartJSON;
   }
   // Доступно другим скриптам (например, грид-IIFE показывает ошибки настройки).
   window.obFlash = flash;
+  // managedRefParts распознаёт только две wire-формы ссылки. Произвольный
+  // JSON-объект с похожим полем нельзя молча превращать в ссылку.
+  function managedRefParts(v){
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+    const own = Object.prototype.hasOwnProperty;
+    let id, label;
+    if (own.call(v, 'UUID') && (own.call(v, 'Name') || own.call(v, 'Наименование'))) {
+      id = v.UUID;
+      label = own.call(v, 'Name') ? v.Name : (own.call(v, 'Наименование') ? v.Наименование : '');
+    } else if (own.call(v, 'id') && own.call(v, '_label')) {
+      id = v.id;
+      label = v._label;
+    } else {
+      return null;
+    }
+    if (id == null || (typeof id !== 'string' && typeof id !== 'number')) return null;
+    if (label == null || (typeof label !== 'string' && typeof label !== 'number')) label = '';
+    return {id: String(id), label: String(label)};
+  }
   // ensureRefOption добавляет в <select> недостающий <option> для значения,
   // присвоенного обработчиком.
   //
@@ -233,14 +305,14 @@ window.obManagedSetTablePartJSON = obManagedSetTablePartJSON;
   //
   // Подпись берём из refOptions ответа (сервер догрузил её той же дорогой, что
   // и выбранное значение при отрисовке, — с маской ПДн и проверкой доступа).
-  // Если её нет, ставим сам идентификатор: он некрасив, но значение сохраняется,
-  // а это важнее подписи.
-  function ensureRefOption(sel, val, rows){
+  // Если её нет, используем представление из объектной ссылки, затем сам
+  // идентификатор: сохранность значения важнее отсутствующей подписи.
+  function ensureRefOption(sel, val, rows, fallbackLabel){
     if (!val) return;
     for (let i = 0; i < sel.options.length; i++){
       if (String(sel.options[i].value) === String(val)) return;
     }
-    let label = val;
+    let label = (fallbackLabel != null && fallbackLabel !== '') ? fallbackLabel : val;
     if (rows) {
       for (let i = 0; i < rows.length; i++){
         if (rows[i] && String(rows[i].id) === String(val)) {
@@ -268,13 +340,22 @@ window.obManagedSetTablePartJSON = obManagedSetTablePartJSON;
       if (inp.type === 'checkbox') {
         inp.checked = v === true || v === 'true' || v === 1;
       } else {
-        var val = (v === null || v === undefined) ? '' : String(v);
+        var ref = managedRefParts(v);
+        var val;
+        if (ref) {
+          // У select видна подпись option, но value остаётся UUID и именно он
+          // отправляется обратно. Обычному текстовому полю нужна подпись; hidden
+          // хранит идентификатор и не должен подменять его именем.
+          val = (inp.tagName === 'SELECT' || inp.type === 'hidden') ? ref.id : (ref.label || ref.id);
+        } else {
+          val = (v === null || v === undefined) ? '' : String(v);
+        }
         // Сервер сериализует дату как «2026-08-04T00:00» (формат datetime-local).
         // Для <input type="date"> это невалидное значение: браузер молча очищает
         // поле — дата на форме пропадала после первого же события, а следующая
         // запись затирала её в базе.
         if (inp.type === 'date' && val.indexOf('T') > 0) val = val.slice(0, val.indexOf('T'));
-        if (inp.tagName === 'SELECT') ensureRefOption(inp, val, refOptions && refOptions[k]);
+        if (inp.tagName === 'SELECT') ensureRefOption(inp, val, refOptions && refOptions[k], ref && ref.label);
         if (inp.classList && inp.classList.contains('code-field') && inp._obSetCodeValue) {
           inp._obSetCodeValue(val);
         } else {
@@ -350,6 +431,14 @@ window.obManagedSetTablePartJSON = obManagedSetTablePartJSON;
   // DOM отсутствует, якорь data-ob-el не находится, и hidden=false для него —
   // пустая операция. Снова показать такой элемент может только перезагрузка
   // страницы; скрыть уже отрисованный — можно.
+  //
+  // Клиент НИЧЕГО не выводит сам. Условие на контейнере каскадит на потомков,
+  // но считает каскад сервер: в карте лежит готовое состояние каждого
+  // затронутого элемента, а здесь оно только применяется к контролам этого
+  // элемента и никого больше (#1184). Разбирать дерево тут нельзя: клиент не
+  // знает ни статического readonly потомка, ни права на запись, и обход
+  // потомков скопом отпирал бы при ложном условии поле, которое сервер
+  // отрисовал нередактируемым навсегда.
   function applyElementStates(st) {
     if (!st) return;
     var byName = function (name) {
@@ -361,6 +450,19 @@ window.obManagedSetTablePartJSON = obManagedSetTablePartJSON;
       if (el) el.style.display = hidden[name] ? 'none' : '';
     });
     var ro = st.readonly || {};
+    // Свой ли это редактирующий контрол: ближайший якорь элемента формы — сам
+    // el. У контрола вложенного элемента якорь ближе, и его состояние приедет
+    // отдельной строкой карты. Навигацию (переход к выбранной ссылке, вкладки)
+    // сервер намеренно оставляет доступной при readonly; шаблон помечает её,
+    // чтобы обработка события сохранила ту же классификацию. Содержимое
+    // табличной части (data-ob-tp) не трогаем вовсе: там состояние складывается
+    // ещё и из права на запись, которого в карте нет, а сама ТЧ каскад получает
+    // при отрисовке.
+    var ownControl = function (el, node) {
+      if (node.closest('[data-ob-tp]')) return false;
+      if (node.dataset && node.dataset.obReadonlyNavigation === '1') return false;
+      return node.closest('[data-ob-el]') === el;
+    };
     Object.keys(ro).forEach(function (name) {
       var el = byName(name);
       if (!el) return;
@@ -370,6 +472,7 @@ window.obManagedSetTablePartJSON = obManagedSetTablePartJSON;
       // input/textarea оставляем видимыми и выделяемыми (readonly), select и
       // кнопку подбора гасим (disabled) — как это делает серверный рендер.
       el.querySelectorAll('input, textarea').forEach(function (inp) {
+        if (!ownControl(el, inp)) return;
         // Hidden presence-marker distinguishes an unchecked checkbox from a
         // checkbox absent from the submitted form. It must be successful only
         // while the checkbox itself is editable; otherwise marker-without-value
@@ -378,7 +481,10 @@ window.obManagedSetTablePartJSON = obManagedSetTablePartJSON;
         if (inp.type === 'checkbox' || inp.type === 'radio' || checkboxPresence) inp.disabled = on;
         else inp.readOnly = on;
       });
-      el.querySelectorAll('select, button').forEach(function (n) { n.disabled = on; });
+      el.querySelectorAll('select, button').forEach(function (n) {
+        if (!ownControl(el, n)) return;
+        n.disabled = on;
+      });
     });
   }
   window.applyElementStates = applyElementStates;
@@ -859,6 +965,7 @@ window.obManagedSetTablePartJSON = obManagedSetTablePartJSON;
       }
       if (Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
       applyElementStates(data.elementStates);
+      window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
       window.applyTableParts(data.tableparts);
       applyValues(data.values, data.refOptions);
       applyChoiceList(elementName, data.choiceList);
@@ -1014,8 +1121,12 @@ window.obManagedSetTablePartJSON = obManagedSetTablePartJSON;
   // ошибочно закрывали документ прямо из редактирования ячейки.
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape' && e.keyCode !== 27) return;
-    var modal = document.getElementById('_item-picker-modal') || document.getElementById('_ref-picker-modal');
-    if (modal) { modal.remove(); e.preventDefault(); e.stopPropagation(); return; }
+    var modal = document.getElementById('_ref-create-modal') || document.getElementById('_item-picker-modal') || document.getElementById('_ref-picker-modal');
+    if (modal) {
+      if (typeof modal._obClose === 'function') modal._obClose();
+      else modal.remove();
+      e.preventDefault(); e.stopPropagation(); return;
+    }
     // Выпадающий список ячейки-ссылки закрываем ДО проверки editor-lock: этот
     // слушатель в фазе перехвата, и без отдельной ветки Esc из подбора отменял
     // бы всю правку ячейки, а не только список.
@@ -2028,9 +2139,14 @@ obManagedReady(obManagedInitDelegates);
         // allowCreate приходит из allow_inline_create поля ТЧ (сервер кладёт
         // его в data-sg-cols только когда создание разрешено).
         col.allowCreate = !!c.allowCreate;
+        var refOptsList = refOpts[c.id];
+        if (!Array.isArray(refOptsList)) {
+          refOptsList = [];
+          refOpts[c.id] = refOptsList;
+        }
         col.editor = (function(refField, refOptsList) {
           return ObRefEditor.bind(null, refField, refOptsList);
-        })(c.id, refOpts[c.id] || []);
+        })(c.id, refOptsList);
         col.formatter = (function(refField) {
           return function(row, cell, value, colDef, dataCtx) {
             if (!value) return "";
@@ -2581,7 +2697,13 @@ obManagedReady(obManagedInitDelegates);
     colsRaw = colsRaw.filter(function(c) {
       return !(c && c.virtual && obManagedIsReservedVirtualColumnName(c.id));
     });
-    var refOpts = JSON.parse(div.getAttribute("data-sg-ref") || "null") || {};
+    var embeddedRefOpts = JSON.parse(div.getAttribute("data-sg-ref") || "null") || {};
+    window._tpRefOpts = window._tpRefOpts || {};
+    var refOpts = window._tpRefOpts[tpName];
+    if (!refOpts || typeof refOpts !== "object") {
+      refOpts = embeddedRefOpts;
+      window._tpRefOpts[tpName] = refOpts;
+    }
     var enumLabels = JSON.parse(div.getAttribute("data-sg-enum") || "null") || {};
     var rowsRaw = JSON.parse(div.getAttribute("data-sg-rows") || "[]") || [];
 
