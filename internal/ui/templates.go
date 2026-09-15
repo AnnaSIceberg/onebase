@@ -507,6 +507,33 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			handler, ok := el.Handlers[metadata.FormEventType(eventName)]
 			return ok && strings.TrimSpace(handler) != ""
 		},
+		// elLayout / elAlign / elFill — раскладка элемента (width/height/halign/
+		// valign) по контракту metadata.FormElementLayoutCSS. Шаблон подставляет
+		// результат в style= внешнего блока; правила собираются из словарей и
+		// целых чисел, поэтому отдаются как template.CSS (иначе html/template
+		// вырежет объявления целиком, подставив ZgotmplZ).
+		//
+		// elAlign — вариант без размеров, для ПолеКартинки: там width/height
+		// ограничивают саму картинку и были такими до #1185.
+		"elLayout": func(el *metadata.FormElement) template.CSS {
+			return template.CSS(metadata.FormElementLayoutCSS(el)) //nolint:gosec // G203: стиль собран из словаря выравнивания и целых размеров 1…4000 px
+		},
+		"elAlign": func(el *metadata.FormElement) template.CSS {
+			return template.CSS(metadata.FormElementAlignCSS(el)) //nolint:gosec // G203: стиль собран только из нормализованных значений словаря выравнивания
+		},
+		"elFill": func(el *metadata.FormElement) bool {
+			return metadata.FormElementFillsHeight(el)
+		},
+		// elPictureSize сохраняет особую семантику width/height картинки, но
+		// применяет к ним тот же диапазон 1…4000, что общий layout-контракт.
+		"elPictureSize": func(size int) int {
+			return metadata.NormalizeFormLayoutSize(size)
+		},
+		// tpGridCSS — стиль контейнера SlickGrid: высота по числу строк либо по
+		// ключу height, ширина и выравнивание — по общему контракту раскладки.
+		"tpGridCSS": func(el *metadata.FormElement, rows int) template.CSS {
+			return template.CSS(metadata.FormTablePartGridCSS(el, rows)) //nolint:gosec // G203: стиль собран из словаря выравнивания, числа строк и целых размеров 1…4000 px
+		},
 		// elReadOnly / elHidden — итоговое состояние элемента управляемой формы
 		// с учётом условий readonly_when/hidden_when по полям записи. Условия
 		// вычисляются на сервере при отрисовке (и заново после каждого события
@@ -2084,6 +2111,8 @@ const tplForm = `
              style="flex:1;display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px">{{.Name}}{{if .External}} <span style="color:#94a3b8;font-size:11px">({{t $.Lang "внешняя"}})</span>{{end}}</a>
           <a href="/ui/{{lower (str $.Entity.Kind)}}/{{$.Entity.Name}}/{{$.ID}}/print/{{.Name}}/pdf" target="_blank"
              style="padding:9px 14px;color:#16a34a;text-decoration:none;font-size:12px;font-weight:600">PDF</a>
+		  {{if .HasXLSX}}<a href="/ui/{{lower (str $.Entity.Kind)}}/{{$.Entity.Name}}/{{$.ID}}/print/{{.Name}}/xlsx"
+		     style="padding:9px 14px;color:#15803d;text-decoration:none;font-size:12px;font-weight:600">Excel</a>{{end}}
         </div>
         {{end}}
         {{if .HasPrintProc}}
