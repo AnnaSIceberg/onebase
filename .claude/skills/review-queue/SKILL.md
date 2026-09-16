@@ -39,9 +39,16 @@ python -m promptpilot.project_pipeline --config pipelinectl.json next review
 Выбранный обычный PR закреплён за запуском его HEAD/epoch lease. Появление
 чужого интеграционного владельца или перестановка приоритетов не отменяют уже
 выполненный аудит; стопом остаётся только изменение собственного состояния
-цели. Для обычного аудита он обязан входить в `content_review_candidates`
-непосредственно перед мутацией. То же правило обязательно для
-fallback-протокола.
+цели. Полный health-election выполняется один раз в `next review`: в этот момент
+обычная цель обязана входить в `content_review_candidates`. При
+`review_completion_gate=target-v1` последующий `complete review` не перечитывает
+чужую очередь, а заново доказывает только номер/HEAD цели, open/base/draft,
+routing labels, review-depth и стабильную server timeline/epoch. Передавай lease
+в `complete` без изменений: target-v1 проверяет HMAC-целостность opaque-токена и
+срок `expires_at`. Это защита штатного cooperative execution, а не OS-песочница;
+локальный процесс с доступом к ключу и GitHub-аккаунту входит в доверенную
+границу. Для integration-stage и любого fallback-протокола повторная глобальная
+проверка перед мутацией остаётся обязательной.
 
 Не публикуй комментарии и не меняй метки вручную: обычную транзакцию
 review → claim → label → completion выполняет инструмент с повторной проверкой
