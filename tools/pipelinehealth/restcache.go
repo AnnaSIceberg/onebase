@@ -98,9 +98,13 @@ func newGitHubRESTClientWithBase(apiBase, token, cacheDir string, httpClient *ht
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
+	// cacheDir is explicit trusted operator configuration, not a path derived
+	// from repository or GitHub response data.
+	//nolint:gosec // G703: writing to the operator-selected cache directory is intentional.
 	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create pipelinehealth cache directory: %w", err)
 	}
+	//nolint:gosec // G302: directories need the execute bit; 0700 is the restrictive directory mode.
 	if err := os.Chmod(cacheDir, 0o700); err != nil {
 		return nil, fmt.Errorf("secure pipelinehealth cache directory: %w", err)
 	}
@@ -171,6 +175,9 @@ func (client *githubRESTClient) getJSON(endpoint string, destination any) error 
 		}
 	}
 
+	// requestURL was resolved by endpointURL against the validated API base and
+	// is rejected if it changes either the scheme or host.
+	//nolint:gosec // G704: the endpoint cannot escape the configured GitHub API host.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return fmt.Errorf("create GitHub REST request: %w", err)
@@ -183,14 +190,18 @@ func (client *githubRESTClient) getJSON(endpoint string, destination any) error 
 		req.Header.Set("If-None-Match", entry.ETag)
 	}
 
+	//nolint:gosec // G704: req uses the same-host URL validated immediately above.
 	response, err := client.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("GitHub REST GET %s: %w", endpoint, err)
 	}
-	defer response.Body.Close()
-	body, err := readLimitedBody(response.Body, maxResponseBytes)
-	if err != nil {
-		return fmt.Errorf("read GitHub REST response for %s: %w", endpoint, err)
+	body, readErr := readLimitedBody(response.Body, maxResponseBytes)
+	closeErr := response.Body.Close()
+	if readErr != nil {
+		return fmt.Errorf("read GitHub REST response for %s: %w", endpoint, readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close GitHub REST response for %s: %w", endpoint, closeErr)
 	}
 
 	if response.StatusCode == http.StatusNotModified {
@@ -317,10 +328,14 @@ func (cache *restResponseCache) lockPath(requestURL string) string {
 
 func (cache *restResponseCache) read(requestURL string) (restCacheEntry, bool) {
 	path := cache.entryPath(requestURL)
+	// entryPath appends a fixed suffix to a SHA-256 digest under the trusted
+	// operator-selected cache directory; requestURL cannot add path segments.
+	//nolint:gosec // G703: path is a digest-derived cache entry, not a request path.
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() || info.Size() > maxResponseBytes*2 {
 		return restCacheEntry{}, false
 	}
+	//nolint:gosec // G703: path is the same digest-derived cache entry validated above.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return restCacheEntry{}, false
@@ -350,7 +365,7 @@ func (cache *restResponseCache) write(requestURL string, entry restCacheEntry) e
 	temporaryPath := temporary.Name()
 	cleanup := func() {
 		_ = temporary.Close()
-		_ = os.Remove(temporaryPath)
+		removeCreatedCacheTemp(temporaryPath)
 	}
 	if err := temporary.Chmod(0o600); err != nil {
 		cleanup()
@@ -365,16 +380,25 @@ func (cache *restResponseCache) write(requestURL string, entry restCacheEntry) e
 		return err
 	}
 	if err := temporary.Close(); err != nil {
-		_ = os.Remove(temporaryPath)
+		removeCreatedCacheTemp(temporaryPath)
 		return err
 	}
 	if err := replaceCacheFile(temporaryPath, cache.entryPath(requestURL)); err != nil {
-		_ = os.Remove(temporaryPath)
+		removeCreatedCacheTemp(temporaryPath)
 		return err
 	}
+	// cache.dir is explicit trusted operator configuration.
+	//nolint:gosec // G703: opening the selected cache directory is intentional.
 	if directory, err := os.Open(cache.dir); err == nil {
 		_ = directory.Sync()
 		_ = directory.Close()
 	}
 	return nil
+}
+
+func removeCreatedCacheTemp(path string) {
+	// path is returned by os.CreateTemp above and is never constructed from
+	// repository or response content.
+	//nolint:gosec // G703: only the file created by this process is removed.
+	_ = os.Remove(path)
 }

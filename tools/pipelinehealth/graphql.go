@@ -1034,7 +1034,7 @@ func convertGQLPull(raw gqlPull) (apiPull, error) {
 	pull.Head.SHA = raw.HeadRefOID
 	pull.Base.Ref = raw.BaseRefName
 	for _, label := range raw.Labels.Nodes {
-		pull.Labels = append(pull.Labels, apiLabel{Name: label.Name})
+		pull.Labels = append(pull.Labels, apiLabel(label))
 	}
 	return pull, nil
 }
@@ -1055,7 +1055,7 @@ func convertGQLIssue(raw gqlIssue) (apiIssue, error) {
 		Thread:       comments,
 	}
 	for _, label := range raw.Labels.Nodes {
-		issue.Labels = append(issue.Labels, apiLabel{Name: label.Name})
+		issue.Labels = append(issue.Labels, apiLabel(label))
 	}
 	return issue, nil
 }
