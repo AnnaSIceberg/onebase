@@ -62,7 +62,11 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
    checkout считай недоверенным: он может отставать от `main`, содержать чужой
    код или незакоммиченные изменения. Не обновляй, не переключай и не используй
    его для чтения кода. Сначала зафиксируй immutable SHA только что полученного
-   `origin/main` и создай уникальный detached-worktree именно на нём:
+   `origin/main` и создай уникальный detached-worktree именно на нём. Выбери
+   ровно один блок для текущей ОС; оба блока реализуют один и тот же fail-closed
+   контракт.
+
+   Windows (PowerShell):
 
    ```powershell
    git fetch origin main
@@ -87,17 +91,64 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
    }
    ```
 
+   POSIX shell (Linux/macOS):
+
+   ```sh
+   git fetch origin main || {
+     echo "git fetch origin main failed" >&2
+     exit 1
+   }
+   triageBase=$(git rev-parse FETCH_HEAD) || {
+     echo "cannot freeze fetched origin/main SHA" >&2
+     exit 1
+   }
+   if ! printf '%s\n' "$triageBase" | grep -Eq '^[0-9a-f]{40}$'; then
+     echo "cannot freeze fetched origin/main SHA" >&2
+     exit 1
+   fi
+   triageTmpRoot=${TMPDIR:-/tmp}
+   case "$triageTmpRoot" in
+     /*) ;;
+     *) echo "TMPDIR must be absolute for a triage worktree" >&2; exit 1 ;;
+   esac
+   triageWorktree=$(mktemp -d "${triageTmpRoot%/}/pp-triage.XXXXXXXXXX") || {
+     echo "cannot reserve a unique triage worktree path" >&2
+     exit 1
+   }
+   rmdir "$triageWorktree" || {
+     echo "cannot prepare the reserved triage worktree path: $triageWorktree" >&2
+     exit 1
+   }
+   git worktree add --detach "$triageWorktree" "$triageBase" || {
+     echo "detached triage worktree creation failed" >&2
+     exit 1
+   }
+   analysisHead=$(git -C "$triageWorktree" rev-parse HEAD) || {
+     echo "cannot read detached triage HEAD" >&2
+     exit 1
+   }
+   analysisDirty=$(git -C "$triageWorktree" status --porcelain=v1 --untracked-files=all) || {
+     echo "cannot inspect detached triage worktree" >&2
+     exit 1
+   }
+   if [ "$analysisHead" != "$triageBase" ] || [ -n "$analysisDirty" ]; then
+     echo "detached triage worktree does not match frozen origin/main" >&2
+     exit 1
+   fi
+   ```
+
    После сверки повторно полностью прочитай `CLAUDE.md` и
-   `.claude/skills/triage-issues/SKILL.md` через
-   `Get-Content -LiteralPath <path> -Encoding UTF8 -Raw` **из
-   `$triageWorktree`**; дальше действует эта свежая версия процедуры. Все
+   `.claude/skills/triage-issues/SKILL.md` **из `$triageWorktree`**; на Windows
+   используй `Get-Content -LiteralPath <path> -Encoding UTF8 -Raw`, на POSIX —
+   побайтно сохраняющий UTF-8 `cat "$triageWorktree/<path>"`. Дальше действует
+   эта свежая версия процедуры. Все
    поиски по репозиторию, чтение кода, сборки и тесты выполняй только с рабочим
    каталогом `$triageWorktree`. Текущий checkout, даже если он чист и указывает
    на `main`, больше не является источником анализа.
 
    Непосредственно перед **каждой GitHub-мутацией** снова получи
-   `git -C $triageWorktree rev-parse HEAD` и
-   `git -C $triageWorktree status --porcelain=v1 --untracked-files=all`:
+   `git -C "$triageWorktree" rev-parse HEAD` и
+   `git -C "$triageWorktree" status --porcelain=v1 --untracked-files=all`:
    обе команды обязаны завершиться с кодом 0, анализируемый HEAD — побайтно
    равняться сохранённому `$triageBase`, а tracked/untracked изменения —
    отсутствовать. Эта проверка идёт вместе с issue gate соответствующей фазы.
@@ -106,7 +157,9 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
    comments/labels.
 
    На любом выходе убери только зарегистрированный точный worktree командой
-   `git worktree remove $triageWorktree`; не удаляй каталог рекурсивно. Если
+   `git worktree remove $triageWorktree` в PowerShell либо
+   `git worktree remove "$triageWorktree"` в POSIX shell; не удаляй каталог
+   рекурсивно. Если
    безопасная очистка не удалась, оставь путь в `ИТОГ` для человека. Уникальный
    путь исключает захват или перезапись worktree другого запуска.
 
