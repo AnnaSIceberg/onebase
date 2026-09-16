@@ -42,6 +42,11 @@ type managedTPColumnJSON struct {
 	Index int `json:"index"`
 }
 
+func refWriteAllowed(access any, entity string) bool {
+	writable, ok := access.(map[string]bool)
+	return ok && writable[entity]
+}
+
 // infoRegKeyValue serialises an information-register dimension for the hidden
 // delete form. Display formatting is not a primary-key format: SQLite booleans
 // arrive as 0/1 and dates as time.Time, while the delete parser requires a
@@ -174,6 +179,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		return key
 	}
 	return template.FuncMap{
+		"refWriteAllowed": refWriteAllowed,
 		"lower":           strings.ToLower,
 		"infoRegKeyValue": infoRegKeyValue,
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
@@ -351,6 +357,20 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// entityHasRichText — есть ли среди реквизитов шапки сущности richtext-поле.
 		// Quill (vendor-ассеты + init) грузятся на форме только при true, чтобы не
 		// тянуть редактор на формы без richtext-полей.
+		// infoRegHasRichText — есть ли у регистра сведений richtext-ресурс. По нему
+		// форма записи решает, тянуть ли вендор-ассеты редактора: у большинства
+		// регистров их грузить незачем.
+		"infoRegHasRichText": func(ir *metadata.InfoRegister) bool {
+			if ir == nil {
+				return false
+			}
+			for _, f := range append(append([]metadata.Field{}, ir.Dimensions...), ir.Resources...) {
+				if metadata.IsRichText(f.Type) {
+					return true
+				}
+			}
+			return false
+		},
 		"entityHasRichText": func(e *metadata.Entity) bool {
 			if e == nil {
 				return false
@@ -486,6 +506,33 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			handler, ok := el.Handlers[metadata.FormEventType(eventName)]
 			return ok && strings.TrimSpace(handler) != ""
+		},
+		// elLayout / elAlign / elFill — раскладка элемента (width/height/halign/
+		// valign) по контракту metadata.FormElementLayoutCSS. Шаблон подставляет
+		// результат в style= внешнего блока; правила собираются из словарей и
+		// целых чисел, поэтому отдаются как template.CSS (иначе html/template
+		// вырежет объявления целиком, подставив ZgotmplZ).
+		//
+		// elAlign — вариант без размеров, для ПолеКартинки: там width/height
+		// ограничивают саму картинку и были такими до #1185.
+		"elLayout": func(el *metadata.FormElement) template.CSS {
+			return template.CSS(metadata.FormElementLayoutCSS(el)) //nolint:gosec // G203: стиль собран из словаря выравнивания и целых размеров 1…4000 px
+		},
+		"elAlign": func(el *metadata.FormElement) template.CSS {
+			return template.CSS(metadata.FormElementAlignCSS(el)) //nolint:gosec // G203: стиль собран только из нормализованных значений словаря выравнивания
+		},
+		"elFill": func(el *metadata.FormElement) bool {
+			return metadata.FormElementFillsHeight(el)
+		},
+		// elPictureSize сохраняет особую семантику width/height картинки, но
+		// применяет к ним тот же диапазон 1…4000, что общий layout-контракт.
+		"elPictureSize": func(size int) int {
+			return metadata.NormalizeFormLayoutSize(size)
+		},
+		// tpGridCSS — стиль контейнера SlickGrid: высота по числу строк либо по
+		// ключу height, ширина и выравнивание — по общему контракту раскладки.
+		"tpGridCSS": func(el *metadata.FormElement, rows int) template.CSS {
+			return template.CSS(metadata.FormTablePartGridCSS(el, rows)) //nolint:gosec // G203: стиль собран из словаря выравнивания, числа строк и целых размеров 1…4000 px
 		},
 		// elReadOnly / elHidden — итоговое состояние элемента управляемой формы
 		// с учётом условий readonly_when/hidden_when по полям записи. Условия
@@ -965,7 +1012,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return template.JS(b) //nolint:gosec // G203: JSON сформирован encoding/json
 		},
-		"managedTPColumnsJSON": func(plan []managedTPColumn, virtual []metadata.FormVirtualColumn, lang string) template.JS {
+		"managedTPColumnsJSON": func(plan []managedTPColumn, virtual []metadata.FormVirtualColumn, lang string, refWriteAccess any) template.JS {
 			fields := make([]metadata.Field, 0, len(plan))
 			for _, column := range plan {
 				fields = append(fields, column.Field)
@@ -979,7 +1026,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 					Name:        field.DisplayName(lang),
 					Type:        string(field.Type),
 					Ref:         field.RefEntity,
-					AllowCreate: field.RefEntity != "" && field.InlineCreateEnabled(true),
+					AllowCreate: field.RefEntity != "" && field.InlineCreateEnabled(true) && refWriteAllowed(refWriteAccess, field.RefEntity),
 					Enum:        strings.HasPrefix(string(field.Type), "enum:"),
 					Hidden:      column.Hidden,
 					Index:       column.Index,
@@ -1170,7 +1217,15 @@ const tplHead = `
 <style>
 .ob-embedded .topbar,.ob-embedded .subsys-bar,.ob-embedded #ob-nav{display:none!important}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;min-height:100vh;background:#f5f5f5}
+/* height:100vh + overflow:hidden — окно приложения ровно по экрану. С одним лишь
+   min-height:100vh страницу растягивало САМОЕ ВЫСОКОЕ содержимое (обычно длинное
+   меню слева): при окне 908px тело становилось 1283px, вместе с ним росла
+   вкладка-iframe (.ob-tabbody iframe — height:100% растянутой области), и
+   диалог с position:fixed внутри неё центрировался по ФРЕЙМУ, а не по экрану —
+   то есть уезжал под нижний край. Прокрутка никуда не делась: меню и рабочая
+   область прокручиваются каждая сама (overflow-y:auto). На узком экране правило
+   снимается — там страница прокручивается целиком, см. media-запрос ниже. */
+body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;height:100vh;min-height:100vh;overflow:hidden;background:#f5f5f5}
 .topbar{background:#1e293b;color:#fff;padding:0 16px;display:flex;align-items:center;height:38px;flex-shrink:0;position:sticky;top:0;z-index:100}
 .topbar-title{font-size:14px;font-weight:600;color:#7dd3fc;flex:1}
 .sys-menu{position:relative}
@@ -1212,8 +1267,11 @@ body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;min-hei
 .report-composed.rep-lines-both td:last-child,.report-composed.rep-lines-both th:last-child{border-right:none}
 .report-composed.rep-lines-none td,.report-composed.rep-lines-none th{border-bottom:none}
 .report-composed.rep-zebra tbody tr:nth-child(even){background:#fafbfc}
-.app-body{display:flex;flex:1;overflow:hidden}
-aside{width:210px;background:#1e293b;color:#fff;padding:16px 0;flex-shrink:0;overflow-y:auto}
+/* min-height:0 у строки и её колонок: у flex-элемента min-height по умолчанию
+   auto, поэтому он не может стать ниже своего содержимого — и длинное меню
+   растягивало всю страницу, несмотря на overflow:hidden выше. */
+.app-body{display:flex;flex:1;overflow:hidden;min-height:0}
+aside{width:210px;background:#1e293b;color:#fff;padding:16px 0;flex-shrink:0;overflow-y:auto;min-height:0}
 aside .sec{font-size:11px;text-transform:uppercase;color:#94a3b8;margin:14px 12px 4px;letter-spacing:.05em}
 aside a{display:block;padding:6px 14px;color:#cbd5e1;text-decoration:none;font-size:14px;margin:1px 6px;border-radius:5px;line-height:1.3;overflow-wrap:break-word}
 aside a:hover{background:#334155;color:#fff}
@@ -1223,7 +1281,7 @@ aside details.navsec>summary::-webkit-details-marker{display:none}
 aside details.navsec>summary::before{content:"\25B8";display:inline-block;width:1em;color:#64748b}
 aside details.navsec[open]>summary::before{content:"\25BE"}
 aside details.navsec>summary:hover{color:#cbd5e1}
-main{flex:1;padding:28px;overflow-y:auto}
+main{flex:1;padding:28px;overflow-y:auto;min-height:0;min-width:0}
 h2{font-size:22px;font-weight:600;margin-bottom:20px;color:#1e293b}
 h3{font-size:16px;font-weight:600;margin:24px 0 10px;color:#1e293b}
 .card{background:#fff;border-radius:10px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,.1);max-width:1400px}
@@ -1307,6 +1365,9 @@ body{padding-bottom:32px}
   html.nav-collapsed #ob-nav{display:none}
 }
 @media (max-width:820px){
+  /* Мобильная раскладка прокручивает страницу целиком — возвращаем ей высоту по
+     содержимому, иначе низ формы стал бы недоступен. */
+  body{height:auto;overflow:visible}
   .app-body{display:block;overflow:visible}
   aside{position:fixed;left:0;top:0;bottom:0;width:78vw;max-width:300px;z-index:401;transform:translateX(-100%);transition:transform .2s ease;box-shadow:2px 0 16px rgba(0,0,0,.3)}
   body.nav-open aside{transform:translateX(0)}
@@ -1789,6 +1850,7 @@ const tplList = `
 {{range .TreeRows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}{{$depth := index $row "_depth"}}
 <tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer"{{else}}style="cursor:pointer"{{end}}
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if $.CanWrite}} F9{{end}}{{if and $.CanDelete (not (index $row "_is_predefined"))}} Delete{{end}}"
+  data-ob-entity-id="{{index $row "id"}}"
   data-tree-id="{{index $row "id"}}"
   data-tree-depth="{{$depth}}"
   data-tree-parent="{{index $row "parent_id"}}"
@@ -1846,6 +1908,7 @@ const tplList = `
 {{range .Rows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}
 <div class="tile-card{{if index $row "deletion_mark"}} tile-deleted{{end}}"
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if $.CanWrite}} F9{{end}}{{if and $.CanDelete (not (index $row "_is_predefined"))}} Delete{{end}}" role="option"
+  data-ob-entity-id="{{index $row "id"}}"
   data-predefined="{{if index $row "_is_predefined"}}1{{end}}"
   data-is-folder="{{if $isFolder}}1{{end}}"
   data-folder-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}"
@@ -1904,6 +1967,7 @@ const tplList = `
 {{range .Rows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}
 <tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer"{{else}}style="cursor:pointer"{{end}}
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if $.CanWrite}} F9{{end}}{{if and $.CanDelete (not (index $row "_is_predefined"))}} Delete{{end}}"
+  data-ob-entity-id="{{index $row "id"}}"
   data-predefined="{{if index $row "_is_predefined"}}1{{end}}"
   data-is-folder="{{if $isFolder}}1{{end}}"
   data-folder-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}"
@@ -1973,6 +2037,7 @@ const tplList = `
   "canWrite" .CanWrite
   "canDelete" .CanDelete
   "canUnpost" .CanUnpost
+  "basedOn" .BasedOnActions
   "treeEntity" .Entity.Name
   "subsystem" (str $.CurrentSubsystem)
   "labels" (dict
@@ -1980,6 +2045,7 @@ const tplList = `
     "edit" (t $.Lang "Редактировать")
     "open" (t $.Lang "Открыть")
     "copy" (t $.Lang "Скопировать")
+    "basedOn" (t $.Lang "Ввести на основании")
     "enter" (t $.Lang "▶ Войти")
     "activityShow" (t $.Lang "Вернуть в выбор")
     "activityShowConfirm" (t $.Lang "Вернуть в выбор?")
@@ -2064,6 +2130,8 @@ const tplForm = `
              style="flex:1;display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px">{{.Name}}{{if .External}} <span style="color:#94a3b8;font-size:11px">({{t $.Lang "внешняя"}})</span>{{end}}</a>
           <a href="/ui/{{lower (str $.Entity.Kind)}}/{{$.Entity.Name}}/{{$.ID}}/print/{{.Name}}/pdf" target="_blank"
              style="padding:9px 14px;color:#16a34a;text-decoration:none;font-size:12px;font-weight:600">PDF</a>
+		  {{if .HasXLSX}}<a href="/ui/{{lower (str $.Entity.Kind)}}/{{$.Entity.Name}}/{{$.ID}}/print/{{.Name}}/xlsx"
+		     style="padding:9px 14px;color:#15803d;text-decoration:none;font-size:12px;font-weight:600">Excel</a>{{end}}
         </div>
         {{end}}
         {{if .HasPrintProc}}
@@ -2073,13 +2141,13 @@ const tplForm = `
       </div>
     </div>
     {{end}}
-    {{if .Receivers}}
+    {{if .BasedOnActions}}
     <div style="position:relative">
       <button type="button" class="btn btn-sm btn-secondary" data-ob-toggle-next>{{t $.Lang "Ввести на основании"}} ▾</button>
       <div style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.1);min-width:200px;z-index:50;margin-top:4px">
-        {{range .Receivers}}
-        <a href="/ui/{{lower (str .Kind)}}/{{.Name}}/new?based_on={{$.Entity.Name}}&based_on_id={{$.ID}}"
-           style="display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px;border-bottom:1px solid #f1f5f9">{{.DisplayName $.Lang}}</a>
+        {{range .BasedOnActions}}
+        <a href="{{.URL}}&based_on_id={{$.ID}}"
+           style="display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px;border-bottom:1px solid #f1f5f9">{{.Label}}</a>
         {{end}}
       </div>
     </div>
@@ -2155,7 +2223,7 @@ const tplForm = `
   {{if isRef (str .Type)}}
     <div style="display:flex;gap:6px;align-items:center">
       {{if $ro}}<input type="hidden" name="{{$fn}}" value="{{index $.Values $fn}}">{{end}}
-      <select id="ref-{{$fn}}"{{if not $ro}} name="{{$fn}}"{{end}} style="flex:1" data-ref-entity="{{.RefEntity}}"{{if and (not $ro) (.InlineCreateEnabled false)}} data-ref-allow-create="1"{{end}}{{if $ro}} disabled{{end}}>
+      <select id="ref-{{$fn}}"{{if not $ro}} name="{{$fn}}"{{end}} style="flex:1" data-ref-entity="{{.RefEntity}}"{{if and (not $ro) (.InlineCreateEnabled false) (refWriteAllowed $.RefWriteAccess .RefEntity)}} data-ref-allow-create="1"{{end}}{{if $ro}} disabled{{end}}>
         <option value="">{{t $.Lang "— выбрать —"}}</option>
         {{range index $.RefOptions $fn}}
         <option value="{{index . "id"}}" {{if eq (index . "id") (index $.Values $fn)}}selected{{end}}>{{index . "_label"}}</option>
@@ -2229,7 +2297,7 @@ const tplForm = `
         <td>
         {{if isRef (str .Type)}}
           <div style="display:flex;gap:4px;align-items:center">
-            <select name="tp.{{$tpName}}.{{$i}}.{{$fn}}" style="flex:1" data-ref-entity="{{.RefEntity}}"{{if .InlineCreateEnabled true}} data-ref-allow-create="1"{{end}}{{if $tpReadOnly}} disabled{{end}}>
+            <select name="tp.{{$tpName}}.{{$i}}.{{$fn}}" style="flex:1" data-ref-entity="{{.RefEntity}}"{{if and (.InlineCreateEnabled true) (refWriteAllowed $.RefWriteAccess .RefEntity)}} data-ref-allow-create="1"{{end}}{{if $tpReadOnly}} disabled{{end}}>
               <option value="">{{t $.Lang "— выбрать —"}}</option>
               {{range index $tpRef $fn}}
               <option value="{{index . "id"}}" {{if eq (str (index . "id")) (refID (index $row $fn))}}selected{{end}}>{{index . "_label"}}</option>
@@ -3150,6 +3218,12 @@ const tplInfoReg = `
 
 {{define "page-inforeg-form"}}
 {{template "head" .}}{{template "nav" .}}
+{{if infoRegHasRichText .InfoReg}}
+{{/* Вендор-ассеты редактора грузятся ТОЛЬКО когда у регистра есть richtext-
+     ресурс — как и на форме объекта. */}}
+<link rel="stylesheet" href="/vendor/quill/quill.snow.css">
+<script src="/vendor/quill/quill.js"></script>
+{{end}}
 <main>
 <h2>{{.InfoReg.DisplayName $.Lang}} — {{t $.Lang "новая запись"}}</h2>
 {{if .Error}}<div style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:12px 16px;border-radius:7px;margin-bottom:16px;font-size:14px">{{.Error}}</div>{{end}}
@@ -3182,7 +3256,17 @@ const tplInfoReg = `
   {{range .InfoReg.Resources}}
   <div class="form-row">
     <label>{{.DisplayName $.Lang}}</label>
+    {{if isRichText (str .Type)}}
+    {{/* Тот же редактор, что и в карточке объекта: скрытая textarea хранит HTML
+         для записи, Quill монтируется на соседний .richtext-editor (см.
+         obInitRichText в /static/ui.js). Без этой ветки richtext-ресурс
+         редактировался однострочным вводом — оформление в регистре можно было
+         задать только правкой разметки руками. */}}
+    <textarea name="{{.Name}}" autocomplete="off" class="richtext-field" rows="8" style="width:100%">{{index $.Values .Name}}</textarea>
+    <div class="richtext-editor"></div>
+    {{else}}
     <input type="text" name="{{.Name}}" value="{{index $.Values .Name}}">
+    {{end}}
   </div>
   {{end}}
   <div style="margin-top:20px;display:flex;gap:8px">
