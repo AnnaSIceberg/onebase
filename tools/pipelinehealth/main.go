@@ -474,8 +474,8 @@ func analyze(prs []apiPull, owner string) report {
 	}
 	sortCandidates(result.ReviewBacklog)
 	sortCandidates(result.ReviewedWaitingShip)
-	sortCandidates(result.MergeCandidates)
-	sortCandidates(result.MergeExecutable)
+	sortMergeCandidates(result.MergeCandidates)
+	sortMergeCandidates(result.MergeExecutable)
 	sortCandidates(result.FixCandidates)
 	sortCandidates(result.HumanWaiting)
 	return result
@@ -669,11 +669,27 @@ func checkContract(result *report, path string) {
 		"Не сортируй очередь только по номеру PR",
 		"single_flight_barrier` защищает только интеграционную полосу",
 		"Интеграционное REVIEW не повторяет содержательный аудит",
-		"Для обычного аудита он обязан входить в `content_review_candidates`",
 	} {
 		if !strings.Contains(text, required) {
 			result.add("red", "unfair_review_contract", 0,
 				"активный REVIEW contract не гарантирует breadth-first порядок")
+			return
+		}
+	}
+	for _, required := range []string{
+		"Полный health-election выполняется один раз в `next review`",
+		"обычная цель обязана входить в `content_review_candidates`",
+		"review_completion_gate=target-v1",
+		"номер/HEAD цели, open/base/draft,",
+		"routing labels, review-depth и стабильную server timeline/epoch",
+		"HMAC",
+		"expires_at",
+		"Для integration-stage и любого fallback-протокола повторная глобальная",
+		"проверка перед мутацией остаётся обязательной",
+	} {
+		if !strings.Contains(text, required) {
+			result.add("red", "unsafe_target_review_contract", 0,
+				"активный REVIEW contract не связывает быстрый target-gate с выданной целью")
 			return
 		}
 	}
@@ -995,6 +1011,21 @@ func sortCandidates(items []candidate) {
 			return items[i].Number < items[j].Number
 		}
 		return items[i].Depth < items[j].Depth
+	})
+}
+
+func sortMergeCandidates(items []candidate) {
+	sort.Slice(items, func(i, j int) bool {
+		if candidatePriority(items[i].Stage) != candidatePriority(items[j].Stage) {
+			return candidatePriority(items[i].Stage) < candidatePriority(items[j].Stage)
+		}
+		if candidatePriority(items[i].Stage) <= 1 {
+			return items[i].Number < items[j].Number
+		}
+		if items[i].Priority != items[j].Priority {
+			return items[i].Priority < items[j].Priority
+		}
+		return items[i].Number < items[j].Number
 	})
 }
 

@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -466,6 +468,68 @@ func TestOrdinaryCandidatesUsePriorityBeforeReviewDepth(t *testing.T) {
 	sortCandidates(items)
 	if items[0].Number != 20 || items[1].Number != 30 {
 		t.Fatalf("safety must win, then queue priority: %+v", items)
+	}
+}
+
+func TestOrdinaryMergeCandidatesIgnoreReviewDepth(t *testing.T) {
+	items := []candidate{
+		{Number: 20, Depth: 0, Stage: "merge", Priority: 2},
+		{Number: 10, Depth: 8, Stage: "merge", Priority: 2},
+		{Number: 30, Depth: 9, Stage: "merge", Priority: 1},
+	}
+	sortMergeCandidates(items)
+	if items[0].Number != 30 || items[1].Number != 10 || items[2].Number != 20 {
+		t.Fatalf("MERGE order must be priority then number: %+v", items)
+	}
+}
+
+func TestContractRejectsIncompleteTargetReviewGate(t *testing.T) {
+	current, err := os.ReadFile(filepath.Join("..", "..", ".claude", "skills", "review-queue", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := os.ReadFile(filepath.Join("..", "..", ".claude", "skills", "review-queue", "references", "legacy-protocol.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fragment := range []string{
+		"обычная цель обязана входить в `content_review_candidates`",
+		"routing labels, review-depth и стабильную server timeline/epoch",
+	} {
+		t.Run(fragment, func(t *testing.T) {
+			incomplete := strings.Replace(string(current), fragment, "", 1)
+			if incomplete == string(current) {
+				t.Fatalf("test fragment is absent from the active contract: %q", fragment)
+			}
+			path := filepath.Join(t.TempDir(), "review-queue", "SKILL.md")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(incomplete), 0o600); err != nil { //nolint:gosec // G703: test-owned path below t.TempDir
+				t.Fatal(err)
+			}
+			legacyPath := filepath.Join(filepath.Dir(path), "references", "legacy-protocol.md")
+			if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(legacyPath, legacy, 0o600); err != nil { //nolint:gosec // G703: test-owned path below t.TempDir
+				t.Fatal(err)
+			}
+			got := report{State: "green"}
+			checkContract(&got, path)
+			if !hasFinding(got, "unsafe_target_review_contract") {
+				t.Fatalf("incomplete target gate stayed green: %+v", got.Findings)
+			}
+		})
+	}
+}
+
+func TestActiveContractPassesHealthCheck(t *testing.T) {
+	path := filepath.Join("..", "..", ".claude", "skills", "review-queue", "SKILL.md")
+	got := report{State: "green"}
+	checkContract(&got, path)
+	if len(got.Findings) != 0 || got.State != "green" {
+		t.Fatalf("active pipeline contract is unhealthy: %+v", got.Findings)
 	}
 }
 

@@ -22,8 +22,15 @@ func TestPipelinectlRefreshesRepositoryOwnedHealthContract(t *testing.T) {
 	if enabled, ok := config["sync_base_before_health"].(bool); !ok || !enabled {
 		t.Fatal("pipelinectl.json must enable sync_base_before_health")
 	}
+	if gate, ok := config["review_completion_gate"].(string); !ok || gate != "target-v1" {
+		t.Fatal("pipelinectl.json must opt in to the target-v1 REVIEW completion gate")
+	}
+	if seconds, ok := config["review_lease_seconds"].(float64); !ok || seconds != 7200 {
+		t.Fatal("pipelinectl.json must bound target-v1 REVIEW leases to two hours")
+	}
 	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
-	requireAll(t, docs, "sync_base_before_health", "merge --ff-only", "без провайдера")
+	requireAll(t, docs, "sync_base_before_health", "merge --ff-only", "без провайдера",
+		"review_completion_gate: \"target-v1\"")
 }
 
 func repositoryFile(t *testing.T, parts ...string) string {
@@ -505,8 +512,14 @@ func TestReviewQueueUsesTwoLaneExecutableAllowlist(t *testing.T) {
 		"обычное содержательное REVIEW не блокируется",
 		"Следующий интеграционный PR при этом брать нельзя",
 		"бери до двух элементов stage `review` из `review_candidates`",
-		"Непосредственно перед первой мутацией каждого выбранного PR повтори `pipelinehealth -json`",
-		"Для обычного аудита он обязан входить в `content_review_candidates`",
+		"Полный health-election выполняется один раз в `next review`",
+		"обычная цель обязана входить в `content_review_candidates`",
+		"`review_completion_gate=target-v1` последующий `complete review` не перечитывает чужую очередь",
+		"номер/HEAD цели, open/base/draft, routing labels, review-depth и стабильную server timeline/epoch",
+		"target-v1 проверяет HMAC-целостность opaque-токена",
+		"локальный процесс с доступом к ключу и GitHub-аккаунту входит в доверенную",
+		"Для integration-stage и любого fallback-протокола повторная глобальная проверка",
+		"неподписанный base64 lease за полномочие",
 		"Изменились только чужие PR, приоритеты, `main` или интеграционная полоса",
 	)
 }
@@ -605,6 +618,20 @@ func TestReviewQueueUsesPriorityThenBreadthFirstAndAging(t *testing.T) {
 		"Single-flight/recovery всё равно старше priority",
 	)
 	rejectAll(t, review, "Просматривай PR по возрастанию номера")
+}
+
+func TestMaintenanceDocsMatchEffectivePriorityOrder(t *testing.T) {
+	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
+	requireAllCompact(t, docs,
+		"Очередь сортируется по `(priority, review-depth, number)`",
+		"Вливает только PR с `ship` и без `hold`/`needs-decision`, по `(priority, number)`",
+		"показывает первые два PR в фактическом порядке `(priority, review-depth, number)`",
+	)
+	rejectAll(t, docs,
+		"Очередь сортируется не только по номеру, а по `(review-depth, number)`",
+		"по возрастанию номера, не больше трёх за прогон",
+		"фактическом порядке `(review-depth, number)`",
+	)
 }
 
 func TestReviewMarkersCannotCollideWithTailMarker(t *testing.T) {
@@ -1497,7 +1524,8 @@ func TestDetailedMaintenanceGuideMatchesQueueContracts(t *testing.T) {
 	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
 	requireAll(t, docs,
 		"`changes-requested`, но без `ship`/`hold`/`needs-decision`",
-		"Обычный PR с\n`ship` пропускается, но доказанный автоматический base-sync и узкий legacy\nre-ship после синхронизации старым протоколом — исключения",
+		"Метка `ship` сама\nпо себе не пропускает REVIEW",
+		"если текущий HEAD ещё не имеет канонического\ncommitted-review, обычный PR остаётся кандидатом",
 		"`changes-requested`/`needs-decision` обычно передают мяч дальше",
 		"маркером `pp:head-reviewed`",
 		"отдельная строка\nкоторого равна `pp:review-again`",
@@ -1561,6 +1589,7 @@ func TestDetailedMaintenanceGuideMatchesQueueContracts(t *testing.T) {
 		"Вливает только PR с `ship` и без `hold`,",
 		"не вливает PR без `ship` и не трогает такой PR вовсе",
 	)
+	rejectAll(t, docs, "Обычный PR с\n`ship` пропускается")
 }
 
 func TestTopLevelNeedsDecisionMatchesAutomaticHandoffs(t *testing.T) {
