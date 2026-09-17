@@ -68,7 +68,9 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
 
 0. **Исполняемый preflight — единственный источник списка кандидатов.** До
    самостоятельного разбора очереди и до любой GitHub-мутации выполни из корня
-   этой рабочей копии:
+   этой рабочей копии ровно один блок для текущей ОС.
+
+   Windows (PowerShell):
 
    ```powershell
    $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
@@ -88,6 +90,43 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
      throw 'Go not found in PATH or the standard Windows location'
    }
    & $goExe run ./tools/pipelinehealth -json
+   ```
+
+   POSIX shell (Linux/macOS). Сначала ищи инструменты в `PATH`, затем в
+   стандартных каталогах Homebrew/MacPorts и официальной установки Go; найденные
+   пути обязаны быть абсолютными и исполняемыми:
+
+   ```sh
+   ghExe=$(command -v gh 2>/dev/null || true)
+   if [ -z "$ghExe" ]; then
+     for candidate in /opt/homebrew/bin/gh /usr/local/bin/gh /opt/local/bin/gh; do
+       if [ -x "$candidate" ]; then
+         ghExe=$candidate
+         break
+       fi
+     done
+   fi
+   case "$ghExe" in
+     /*) ;;
+     *) echo "GitHub CLI not found at an absolute executable path on POSIX" >&2; exit 1 ;;
+   esac
+   GH_EXE=$ghExe
+   export GH_EXE
+
+   goExe=$(command -v go 2>/dev/null || true)
+   if [ -z "$goExe" ]; then
+     for candidate in /opt/homebrew/bin/go /usr/local/bin/go /opt/local/bin/go /usr/local/go/bin/go; do
+       if [ -x "$candidate" ]; then
+         goExe=$candidate
+         break
+       fi
+     done
+   fi
+   case "$goExe" in
+     /*) ;;
+     *) echo "Go not found at an absolute executable path on POSIX" >&2; exit 1 ;;
+   esac
+   "$goExe" run ./tools/pipelinehealth -json
    ```
 
    Ошибка команды, stderr вместо JSON или неразбираемый JSON означают
@@ -119,7 +158,11 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
    первым или вообще присутствовать в сокращённом исполняемом
    `review_candidates` не требуется. Во всех случаях заново докажи неизменность
    именно выбранного PR: HEAD, open/base, отсутствие `hold`/`needs-decision`,
-   server epoch anchor/hash и полный стабильный timeline. Изменилось собственное
+   server epoch anchor/hash и полный стабильный timeline. `needs-decision`
+   считается стопом, кроме точного случая: после каноничной committed-пары
+   текущего HEAD есть доверенный не редактированный и ещё не поглощённый
+   `pp:review-again`; тогда override разрешает снять только парковочную метку по
+   процедуре ниже и закончить тот же повторный аудит. Изменилось собственное
    состояние цели — стоп без подстановки следующего PR. Изменились только чужие
    PR, приоритеты, `main` или интеграционная полоса — закончи уже выполненный
    содержательный аудит по сохранённому lease, затем новый запуск обслужит
@@ -187,6 +230,30 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
    раза; похожие строки, чужого автора и claim-less legacy markers не считай.
    Это только безопасный приоритет планирования, а не proof для мутации:
    каноничность выбранного PR всё равно доказывается полным GraphQL gate ниже.
+   Исторические круги проверяй только по неизменяемой структурной связи
+   `review → claim → completion`: все три комментария доверенные и не
+   редактированы, числовые ids/SHA/`epoch-sha256` совпадают, completion ссылается
+   на этот review и claim, а между review и completion нет `pp:review-again`.
+   Для планировочного `review-depth` и номера нового обычного круга этого
+   достаточно; прежний server epoch старого круга ради счётчика заново не
+   создавай. Это не превращает историческую пару в текущий proof и не заменяет
+   отдельный полный proof-gate исходного `from`, когда его требует base-sync
+   carry или другой потребитель.
+
+   **Запрещено реконструировать историческую epoch** подменой текущего
+   `headRefOid` старым SHA или срезом сегодняшнего timeline по старому
+   completion. GraphQL `PullRequestCommit` в объединённом timeline может стоять
+   по времени самого commit, а не по времени появления соответствующего HEAD в
+   PR; поэтому commit более позднего HEAD способен оказаться до старого
+   review/completion. Текущий полный timeline не является снимком прошлого, и
+   такая реконструкция ложно объявляет валидный старый круг опасным. Для
+   текущего обычного REVIEW полный epoch-safety с запретом
+   `PullRequestCommit`/force-push/delete/restore и base-lifecycle событий
+   применяй к **выбранной текущей epoch**, построенной из фактического текущего
+   `headRefOid` и его server anchor либо более позднего `pp:review-again`.
+   Опасный event после текущего anchor по-прежнему закрывает gate; это правило
+   не ослабляй.
+
    Сначала вычисли effective priority: manual `queue:p0`…`queue:p3` старше
    `queue:auto:p0`…`queue:auto:p3`; без них P0 дают critical/security labels,
    P1 — `bug`, P2 — `enhancement`/`documentation` и default, P3 — `question`.
@@ -206,7 +273,10 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
 
    `needs-decision` — парковка, а не ещё один вид очереди: на третьем круге эту
    метку ставишь ты сам, потому что дальше нужен выбор человека. Пока она висит,
-   PR повторно не ревьюить.
+   PR повторно не ревьюить, **кроме** точного текущего HEAD с более поздним
+   доверенным не редактированным и ещё не поглощённым `pp:review-again`: это
+   явное решение человека вернуть тот же SHA в REVIEW, после свежего gate сними
+   только `needs-decision` и продолжи один повтор по процедуре ниже.
 
    Сценарный инвариант эскалации: committed-третий круг с
    `Outcome-Label: needs-decision` не порождает ни нового review-комментария, ни
