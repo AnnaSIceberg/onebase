@@ -101,6 +101,7 @@ type candidate struct {
 	Priority       int    `json:"priority"`
 	PrioritySource string `json:"priority_source"`
 	UpdatedAt      string `json:"updated_at"`
+	IntegrationAt  string `json:"-"`
 }
 
 type finding struct {
@@ -368,7 +369,8 @@ func analyze(prs []apiPull, owner string) report {
 		priority, prioritySource := queuePriority(labels, pr.CreatedAt, now)
 		item := candidate{Number: pr.Number, Title: pr.Title, URL: pr.HTMLURL, Head: pr.Head.SHA, Depth: depth, Stage: "review", Priority: priority, PrioritySource: prioritySource, UpdatedAt: pr.UpdatedAt}
 		currentCompletions, latestCompletion, latestOverride := currentProtocolState(pr.Comments, owner, pr.Head.SHA)
-		carryDone, carryIntentOpen, baseAdvanced, protocolHistory := baseSyncRESTState(pr.Comments, owner, pr.Head.SHA)
+		carryDone, carryIntentOpen, baseAdvanced, protocolHistory, integrationAt := baseSyncRESTState(pr.Comments, owner, pr.Head.SHA, pr.HeadParents)
+		item.IntegrationAt = integrationAt
 		if baseAdvanced {
 			result.add("yellow", "base_sync_base_advanced", pr.Number,
 				"base сдвинулся между intent и done; GraphQL gate должен проверить actual parent и ancestry")
@@ -444,6 +446,10 @@ func analyze(prs []apiPull, owner string) report {
 			case currentCompletions > 0:
 				item.Stage = "merge"
 				result.MergeCandidates = append(result.MergeCandidates, item)
+			default:
+				result.HumanWaiting = append(result.HumanWaiting, item)
+				result.add("yellow", "ship_without_current_review_proof", pr.Number,
+					"ship есть, но доказательств ревью текущего HEAD нет при существующей истории протокола; нужен человек")
 			}
 			continue
 		}
@@ -474,8 +480,8 @@ func analyze(prs []apiPull, owner string) report {
 	}
 	sortCandidates(result.ReviewBacklog)
 	sortCandidates(result.ReviewedWaitingShip)
-	sortCandidates(result.MergeCandidates)
-	sortCandidates(result.MergeExecutable)
+	sortMergeCandidates(result.MergeCandidates)
+	sortMergeCandidates(result.MergeExecutable)
 	sortCandidates(result.FixCandidates)
 	sortCandidates(result.HumanWaiting)
 	return result
@@ -724,11 +730,27 @@ func checkContract(result *report, path string) {
 		"Не сортируй очередь только по номеру PR",
 		"single_flight_barrier` защищает только интеграционную полосу",
 		"Интеграционное REVIEW не повторяет содержательный аудит",
-		"Для обычного аудита он обязан входить в `content_review_candidates`",
 	} {
 		if !strings.Contains(text, required) {
 			result.add("red", "unfair_review_contract", 0,
 				"активный REVIEW contract не гарантирует breadth-first порядок")
+			return
+		}
+	}
+	for _, required := range []string{
+		"Полный health-election выполняется один раз в `next review`",
+		"обычная цель обязана входить в `content_review_candidates`",
+		"review_completion_gate=target-v1",
+		"номер/HEAD цели, open/base/draft,",
+		"routing labels, review-depth и стабильную server timeline/epoch",
+		"HMAC",
+		"expires_at",
+		"Для integration-stage и любого fallback-протокола повторная глобальная",
+		"проверка перед мутацией остаётся обязательной",
+	} {
+		if !strings.Contains(text, required) {
+			result.add("red", "unsafe_target_review_contract", 0,
+				"активный REVIEW contract не связывает быстрый target-gate с выданной целью")
 			return
 		}
 	}
@@ -907,22 +929,28 @@ func currentClaimCount(comments []apiComment, owner, head string) int {
 }
 
 type baseSyncIntentShape struct {
-	from, base, previous, shipEvent string
+	from, base, previous, shipEvent, createdAt string
+}
+
+type baseSyncDoneShape struct {
+	intentID                      int64
+	from, to, previous, shipEvent string
 }
 
 // baseSyncRESTState is deliberately only an operational hint. The mutation
 // contracts still prove comment nodes, timeline edges and commit parents with
 // two stable GraphQL snapshots before changing GitHub state.
-func baseSyncRESTState(comments []apiComment, owner, head string) (doneCurrent, intentOpen, baseAdvanced, protocolHistory bool) {
+func baseSyncRESTState(comments []apiComment, owner, head string, headParents []string) (doneCurrent, intentOpen, baseAdvanced, protocolHistory bool, integrationAt string) {
 	intents := map[int64]baseSyncIntentShape{}
 	doneIntents := map[int64]bool{}
+	dones := map[int64]baseSyncDoneShape{}
 	for _, comment := range comments {
 		if !trustedUnedited(comment, owner) {
 			continue
 		}
 		if match := baseSyncIntent.FindStringSubmatch(comment.Body); match != nil {
 			protocolHistory = true
-			intents[comment.ID] = baseSyncIntentShape{from: match[1], base: match[2], previous: match[7], shipEvent: match[6]}
+			intents[comment.ID] = baseSyncIntentShape{from: match[1], base: match[2], previous: match[7], shipEvent: match[6], createdAt: comment.CreatedAt}
 		}
 		if match := baseSyncDone.FindStringSubmatch(comment.Body); match != nil {
 			protocolHistory = true
@@ -933,19 +961,74 @@ func baseSyncRESTState(comments []apiComment, owner, head string) (doneCurrent, 
 				continue
 			}
 			doneIntents[intentID] = true
+			dones[comment.ID] = baseSyncDoneShape{
+				intentID: intentID, from: match[2], to: match[3],
+				previous: match[5], shipEvent: match[6],
+			}
 			if match[3] == head {
 				doneCurrent = true
 				baseAdvanced = intent.base != match[4]
+				startedAt := baseSyncIntegrationStart(intent, intents, dones)
+				if integrationAt == "" || startedAt < integrationAt {
+					integrationAt = startedAt
+				}
 			}
 		}
 	}
-	for id := range intents {
-		if !doneIntents[id] {
-			intentOpen = true
-			break
+	for id, intent := range intents {
+		if doneIntents[id] || !intentCanDescribeCurrentHead(intent, head, headParents) {
+			continue
+		}
+		// A valid done for the current merge commit completes this exact
+		// parent-to-head transition. Any other unmatched intent from the same
+		// first parent is a parallel/stale duplicate, not a new recovery owner.
+		if doneCurrent && len(headParents) == 2 && headParents[0] == intent.from {
+			continue
+		}
+		intentOpen = true
+		startedAt := baseSyncIntegrationStart(intent, intents, dones)
+		if integrationAt == "" || startedAt < integrationAt {
+			integrationAt = startedAt
 		}
 	}
-	return doneCurrent, intentOpen, baseAdvanced, protocolHistory
+	return doneCurrent, intentOpen, baseAdvanced, protocolHistory, integrationAt
+}
+
+// baseSyncIntegrationStart preserves ownership across a multi-hop carry chain.
+// An updated PR may need another base-sync while it waits for merge. Its new
+// intent points at the previous done comment; using only the new comment time
+// would let a later PR overtake an already active single-flight owner.
+func baseSyncIntegrationStart(intent baseSyncIntentShape, intents map[int64]baseSyncIntentShape, dones map[int64]baseSyncDoneShape) string {
+	startedAt := intent.createdAt
+	seen := map[int64]bool{}
+	current := intent
+	for current.previous != "none" {
+		doneID, err := strconv.ParseInt(current.previous, 10, 64)
+		if err != nil || seen[doneID] {
+			break
+		}
+		seen[doneID] = true
+		done, ok := dones[doneID]
+		previous, previousOK := intents[done.intentID]
+		if !ok || !previousOK || done.to != current.from ||
+			done.from != previous.from || done.previous != previous.previous ||
+			done.shipEvent != current.shipEvent || previous.shipEvent != current.shipEvent {
+			break
+		}
+		if previous.createdAt < startedAt {
+			startedAt = previous.createdAt
+		}
+		current = previous
+	}
+	return startedAt
+}
+
+// intentCanDescribeCurrentHead limits recovery to a transaction that can still
+// be completed without rewriting history: update-branch has either not moved
+// the head yet, or it produced the current two-parent merge from intent.from.
+// Intents from older heads remain audit history but must not own single-flight.
+func intentCanDescribeCurrentHead(intent baseSyncIntentShape, head string, headParents []string) bool {
+	return intent.from == head || (len(headParents) == 2 && headParents[0] == intent.from)
 }
 
 func duplicateCompletionEpoch(comments []apiComment, owner, head string) bool {
@@ -989,6 +1072,21 @@ func sortCandidates(items []candidate) {
 			return items[i].Number < items[j].Number
 		}
 		return items[i].Depth < items[j].Depth
+	})
+}
+
+func sortMergeCandidates(items []candidate) {
+	sort.Slice(items, func(i, j int) bool {
+		if candidatePriority(items[i].Stage) != candidatePriority(items[j].Stage) {
+			return candidatePriority(items[i].Stage) < candidatePriority(items[j].Stage)
+		}
+		if candidatePriority(items[i].Stage) <= 1 {
+			return items[i].Number < items[j].Number
+		}
+		if items[i].Priority != items[j].Priority {
+			return items[i].Priority < items[j].Priority
+		}
+		return items[i].Number < items[j].Number
 	})
 }
 
@@ -1051,7 +1149,15 @@ func applySingleFlight(result *report) {
 		result.ReviewCandidates = append([]candidate{}, result.ContentReviewCandidates...)
 		return
 	}
+	// Stage priority decides which worker can act, but it must not replace an
+	// already visible owner. The earliest base-sync intent owns the lane across
+	// review/merge transitions; legacy chains without an intent use PR number.
 	owner := result.ReviewCandidates[0]
+	for _, item := range result.ReviewCandidates[1:] {
+		if integrationOwnerLess(item, owner) {
+			owner = item
+		}
+	}
 	result.IntegrationOwner = &owner
 	deferredIntegration := len(result.ReviewCandidates) - 1
 	if candidatePriority(owner.Stage) == 0 {
@@ -1063,6 +1169,16 @@ func applySingleFlight(result *report) {
 	result.ReviewCandidates = []candidate{owner}
 	result.add("yellow", "single_flight_barrier", owner.Number,
 		fmt.Sprintf("владелец интеграционной полосы; REVIEW проверяет только интеграционную дельту этого PR, содержательных кандидатов отложено: %d, следующих интеграционных: %d", len(result.ContentReviewCandidates), deferredIntegration))
+}
+
+func integrationOwnerLess(left, right candidate) bool {
+	if (left.IntegrationAt != "") != (right.IntegrationAt != "") {
+		return left.IntegrationAt != ""
+	}
+	if left.IntegrationAt != "" && right.IntegrationAt != "" && left.IntegrationAt != right.IntegrationAt {
+		return left.IntegrationAt < right.IntegrationAt
+	}
+	return left.Number < right.Number
 }
 
 func setMergeExecutable(result *report) {
