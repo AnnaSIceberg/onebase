@@ -472,6 +472,7 @@ func (s *Server) Mount(r chi.Router) {
 	// Admin: аутентификация — политики и провайдеры единого входа (план 84)
 	r.Get("/ui/admin/auth", s.adminAuth)
 	r.Post("/ui/admin/auth/policy", s.adminAuthPolicySave)
+	r.Post("/ui/admin/auth/password-policy", s.adminAuthPasswordPolicySave)
 	r.Get("/ui/admin/auth/providers/{id}", s.adminAuthProvider)
 	r.Post("/ui/admin/auth/providers/{id}", s.adminAuthProvider)
 	r.Post("/ui/admin/auth/providers/{id}/delete", s.adminAuthProviderDelete)
@@ -556,6 +557,7 @@ func (s *Server) Mount(r chi.Router) {
 	// план 64, этап 3. Старый /print-dsl/ оставлен как 301-редирект на /print/.
 	r.Get("/ui/{kind}/{entity}/{id}/print/{form}", s.printDocument)
 	r.Get("/ui/{kind}/{entity}/{id}/print/{form}/pdf", s.printDocumentPDF)
+	r.Get("/ui/{kind}/{entity}/{id}/print/{form}/xlsx", s.printDocumentXLSX)
 	r.Get("/ui/{kind}/{entity}/{id}/print-dsl/{pfName}", s.redirectDSLPrint)
 	r.Get("/ui/{kind}/{entity}/{id}/print-dsl/{pfName}/pdf", s.redirectDSLPrint)
 
