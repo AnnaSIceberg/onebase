@@ -90,6 +90,55 @@ func TestMergeFastPathRecoversPostMergeCleanup(t *testing.T) {
 	)
 }
 
+func TestMergeFallbackUsesValidatedGateAsCleanupBarrier(t *testing.T) {
+	legacy := repositoryFile(t, ".claude", "skills", "merge-shepherd", "references", "legacy-protocol.md")
+	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
+
+	for _, text := range []string{legacy, docs} {
+		requireAllCompact(t, text,
+			"`promptpilot-fallback-target-v1`",
+			"`gate-fallback merge`",
+			"`action=validated`",
+			"точном совпадении",
+			"queue-wide cleanup recovery barrier",
+			"Ручной/legacy fallback без такого envelope",
+			"во всём пагинированном потоке repository issue comments",
+			"GraphQL-, `ship`-, CI-, base-sync-, CAS- и exact-target-проверки",
+			"без повторного gate",
+			"без выбора другого PR",
+		)
+	}
+
+	requireCompactInOrder(t, legacy,
+		"Доверенный PromptPilot-handoff",
+		"Сначала выполни все обязательные read-only проверки этой цели, предусмотренные процедурой до первой мутации",
+		"Непосредственно перед первой внешней мутацией",
+		"`gate-fallback merge` ровно один раз",
+		"`action=validated`",
+		"**не выполняй** отдельный полный скан repository issue comments",
+		"первой следующей внешней операцией должна быть уже подготовленная мутация exact target",
+	)
+	requireCompactInOrder(t, legacy,
+		"Ручной/legacy fallback без такого envelope",
+		"Если быстрый путь вернул `fallback`",
+		"во всём пагинированном потоке repository issue comments",
+		"до выбора обычной очереди",
+	)
+	requireCompactInOrder(t, docs,
+		"все target-local GraphQL/ship/CI/base-sync/CAS-проверки, требуемые до первой мутации",
+		"непосредственно перед ней",
+		"`gate-fallback merge`",
+		"`action=validated`",
+		"первой внешней операцией идёт подготовленная мутация exact target",
+	)
+	requireAllCompact(t, legacy,
+		"все последующие повторные проверки выполняй в указанных процедурой контрольных точках",
+	)
+	requireAllCompact(t, docs,
+		"включая повторные проверки в последующих контрольных точках",
+	)
+}
+
 func requireAll(t *testing.T, text string, fragments ...string) {
 	t.Helper()
 	for _, fragment := range fragments {
