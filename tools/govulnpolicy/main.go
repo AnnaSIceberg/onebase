@@ -150,17 +150,18 @@ func run(r io.Reader, out io.Writer) error {
 	}
 
 	for _, v := range violations {
-		fmt.Fprintf(out, "ЗАПРЕЩЕНО: %s (модуль-версия %s): %s\n", v.osv, v.version, v.detail)
+		// stdout/stderr — не вердикт: ошибка записи не меняет исход проверки.
+		_, _ = fmt.Fprintf(out, "ЗАПРЕЩЕНО: %s (модуль-версия %s): %s\n", v.osv, v.version, v.detail)
 	}
 	if len(violations) > 0 {
 		return fmt.Errorf("%d достижимых уязвимостей нарушают политику", len(violations))
 	}
 
-	fmt.Fprintf(out, "govulnpolicy: OK — достижимых уязвимостей вне allowlist нет; "+
+	_, _ = fmt.Fprintf(out, "govulnpolicy: OK — достижимых уязвимостей вне allowlist нет; "+
 		"подавлено %d (пин подтверждён), module-level пропущено %d.\n", allowlisted, skippedLevel)
 	for osv := range calledOSVs {
 		if entry, ok := allowlist[osv]; ok {
-			fmt.Fprintf(out, "  %s подавлен: %s\n", osv, entry.reason)
+			_, _ = fmt.Fprintf(out, "  %s подавлен: %s\n", osv, entry.reason)
 		}
 	}
 	return nil
