@@ -447,7 +447,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var hidden = st.hidden || {};
     Object.keys(hidden).forEach(function (name) {
       var el = byName(name);
-      if (el) el.style.display = hidden[name] ? 'none' : '';
+      if (!el) return;
+      // Some managed elements keep their layout only in an inline display
+      // declaration (checkbox and command bar use flex). Remember that value
+      // before the first state update instead of erasing it on hidden=false.
+      if (!Object.prototype.hasOwnProperty.call(el, '_obDisplay')) el._obDisplay = el.style.display || '';
+      el.style.display = hidden[name] ? 'none' : el._obDisplay;
     });
     var ro = st.readonly || {};
     // Свой ли это редактирующий контрол: ближайший якорь элемента формы — сам
@@ -985,7 +990,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         var idInput = document.querySelector('#main-form [name="_id"]');
         if (idInput) idInput.value = DOC_ID;
         if (window.history && history.replaceState) {
-          history.replaceState(null, '', location.pathname.replace(/\/new$/, '/' + DOC_ID));
+          var savedURL = location.pathname.replace(/\/new$/, '/' + DOC_ID);
+          history.replaceState(null, '', savedURL);
+          try {
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
+            }
+          } catch (_) {}
         }
         window._obFormDirty = false;
       }
