@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 const (
 	headA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	headB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	headC = "cccccccccccccccccccccccccccccccccccccccc"
 	epoch = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 )
 
@@ -146,6 +149,61 @@ func TestBaseSyncIntentWithoutDoneIsMergeRecoveryNotReview(t *testing.T) {
 		!hasFinding(got, "base_sync_recovery") ||
 		!hasFinding(got, "single_flight_barrier") {
 		t.Fatalf("MERGE recovery incorrectly blocked content review: %+v", got)
+	}
+}
+
+func TestHistoricalUnfinishedIntentDoesNotOverrideCurrentCompletedSync(t *testing.T) {
+	item := testPR(1323, headC, "ship", "reviewed")
+	item.HeadParents = []string{headB, headA}
+	item = addComment(item, 20, syncIntent(headA, 10, 11, 12))
+	item = addComment(item, 21, syncIntent(headA, 10, 11, 12))
+	item = addComment(item, 30, syncIntent(headB, 13, 14, 15))
+	item = addComment(item, 31, syncDone(30, headB, headC))
+
+	got := analyze([]apiPull{item}, "ivanarama")
+	if got.IntegrationOwner == nil || got.IntegrationOwner.Number != 1323 ||
+		got.IntegrationOwner.Stage != "integration-review" ||
+		len(got.ReviewCandidates) != 1 || got.ReviewCandidates[0].Number != 1323 ||
+		hasFinding(got, "base_sync_recovery") ||
+		!hasFinding(got, "base_sync_waiting_review") {
+		t.Fatalf("old intents from superseded heads blocked current integration review: %+v", got)
+	}
+}
+
+func TestNewIntentFromCurrentCompletedHeadStillRequiresRecovery(t *testing.T) {
+	item := testPR(99, headC, "ship", "reviewed")
+	item.HeadParents = []string{headB, headA}
+	item = addComment(item, 30, syncIntent(headB, 10, 20, 25))
+	item = addComment(item, 31, syncDone(30, headB, headC))
+	item = addComment(item, 40, syncIntent(headC, 32, 33, 34))
+
+	got := analyze([]apiPull{item}, "ivanarama")
+	if got.IntegrationOwner == nil || got.IntegrationOwner.Stage != "integration-merge-recovery" ||
+		!hasFinding(got, "base_sync_recovery") {
+		t.Fatalf("open intent from the current head was not recoverable: %+v", got)
+	}
+}
+
+func TestMultiHopRecoveryKeepsOriginalSingleFlightOwnership(t *testing.T) {
+	owner := testPR(1218, headC, "ship", "reviewed")
+	owner.HeadParents = []string{headB, headA}
+	owner = addComment(owner, 10,
+		fmt.Sprintf("<!-- pp:base-sync-intent from=%s base=%s review-comment=1 claim=2 completion=3 ship-event=LE_test previous=none -->", headA, headB))
+	owner = addComment(owner, 11,
+		fmt.Sprintf("<!-- pp:base-sync-done intent=10 from=%s to=%s base=%s previous=none ship-event=LE_test -->", headA, headB, headB))
+	owner = addComment(owner, 50,
+		fmt.Sprintf("<!-- pp:base-sync-intent from=%s base=%s review-comment=4 claim=5 completion=6 ship-event=LE_test previous=11 -->", headB, headA))
+
+	later := testPR(1220, headB, "ship", "reviewed")
+	later.HeadParents = []string{headA, headB}
+	later = addComment(later, 20, syncIntent(headA, 7, 8, 9))
+	later = addComment(later, 21, syncDone(20, headA, headB))
+
+	got := analyze([]apiPull{later, owner}, "ivanarama")
+	if got.IntegrationOwner == nil || got.IntegrationOwner.Number != 1218 ||
+		got.IntegrationOwner.Stage != "integration-merge-recovery" ||
+		len(got.MergeExecutable) != 1 || got.MergeExecutable[0].Number != 1218 {
+		t.Fatalf("multi-hop owner was overtaken by a later chain: %+v", got)
 	}
 }
 
@@ -359,6 +417,48 @@ func TestSingleFlightOwnerUsesNumberInsteadOfReviewDepth(t *testing.T) {
 	}
 }
 
+func TestSingleFlightOwnerDoesNotChangeAtMergeReadyStage(t *testing.T) {
+	result := report{
+		ReviewCandidates: []candidate{
+			{Number: 10, Stage: "integration-merge-ready", IntegrationAt: "2026-09-02T00:00:00Z"},
+			{Number: 20, Stage: "integration-review", IntegrationAt: "2026-09-01T00:00:00Z"},
+		},
+		MergeCandidates: []candidate{
+			{Number: 10, Stage: "integration-merge-ready"},
+		},
+	}
+	sortCandidates(result.ReviewCandidates)
+	applySingleFlight(&result)
+	setMergeExecutable(&result)
+
+	if result.IntegrationOwner == nil || result.IntegrationOwner.Number != 20 {
+		t.Fatalf("merge-ready phase stole the integration owner: %+v", result.IntegrationOwner)
+	}
+	if len(result.ReviewCandidates) != 1 || result.ReviewCandidates[0].Number != 20 {
+		t.Fatalf("REVIEW did not retain the stable owner: %+v", result.ReviewCandidates)
+	}
+	if len(result.MergeExecutable) != 0 {
+		t.Fatalf("MERGE bypassed the stable owner: %+v", result.MergeExecutable)
+	}
+
+	result = report{
+		ReviewCandidates: []candidate{
+			{Number: 10, Stage: "integration-review", IntegrationAt: "2026-09-02T00:00:00Z"},
+			{Number: 20, Stage: "integration-merge-ready", IntegrationAt: "2026-09-01T00:00:00Z"},
+		},
+		MergeCandidates: []candidate{
+			{Number: 20, Stage: "integration-merge-ready"},
+		},
+	}
+	sortCandidates(result.ReviewCandidates)
+	applySingleFlight(&result)
+	setMergeExecutable(&result)
+	if result.IntegrationOwner == nil || result.IntegrationOwner.Number != 20 ||
+		len(result.MergeExecutable) != 1 || result.MergeExecutable[0].Number != 20 {
+		t.Fatalf("stable owner did not advance to MERGE: %+v", result)
+	}
+}
+
 func TestOrdinaryCandidatesUsePriorityBeforeReviewDepth(t *testing.T) {
 	items := []candidate{
 		{Number: 10, Depth: 0, Stage: "review", Priority: 2},
@@ -368,6 +468,68 @@ func TestOrdinaryCandidatesUsePriorityBeforeReviewDepth(t *testing.T) {
 	sortCandidates(items)
 	if items[0].Number != 20 || items[1].Number != 30 {
 		t.Fatalf("safety must win, then queue priority: %+v", items)
+	}
+}
+
+func TestOrdinaryMergeCandidatesIgnoreReviewDepth(t *testing.T) {
+	items := []candidate{
+		{Number: 20, Depth: 0, Stage: "merge", Priority: 2},
+		{Number: 10, Depth: 8, Stage: "merge", Priority: 2},
+		{Number: 30, Depth: 9, Stage: "merge", Priority: 1},
+	}
+	sortMergeCandidates(items)
+	if items[0].Number != 30 || items[1].Number != 10 || items[2].Number != 20 {
+		t.Fatalf("MERGE order must be priority then number: %+v", items)
+	}
+}
+
+func TestContractRejectsIncompleteTargetReviewGate(t *testing.T) {
+	current, err := os.ReadFile(filepath.Join("..", "..", ".claude", "skills", "review-queue", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := os.ReadFile(filepath.Join("..", "..", ".claude", "skills", "review-queue", "references", "legacy-protocol.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fragment := range []string{
+		"обычная цель обязана входить в `content_review_candidates`",
+		"routing labels, review-depth и стабильную server timeline/epoch",
+	} {
+		t.Run(fragment, func(t *testing.T) {
+			incomplete := strings.Replace(string(current), fragment, "", 1)
+			if incomplete == string(current) {
+				t.Fatalf("test fragment is absent from the active contract: %q", fragment)
+			}
+			path := filepath.Join(t.TempDir(), "review-queue", "SKILL.md")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(incomplete), 0o600); err != nil { //nolint:gosec // G703: test-owned path below t.TempDir
+				t.Fatal(err)
+			}
+			legacyPath := filepath.Join(filepath.Dir(path), "references", "legacy-protocol.md")
+			if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(legacyPath, legacy, 0o600); err != nil { //nolint:gosec // G703: test-owned path below t.TempDir
+				t.Fatal(err)
+			}
+			got := report{State: "green"}
+			checkContract(&got, path)
+			if !hasFinding(got, "unsafe_target_review_contract") {
+				t.Fatalf("incomplete target gate stayed green: %+v", got.Findings)
+			}
+		})
+	}
+}
+
+func TestActiveContractPassesHealthCheck(t *testing.T) {
+	path := filepath.Join("..", "..", ".claude", "skills", "review-queue", "SKILL.md")
+	got := report{State: "green"}
+	checkContract(&got, path)
+	if len(got.Findings) != 0 || got.State != "green" {
+		t.Fatalf("active pipeline contract is unhealthy: %+v", got.Findings)
 	}
 }
 
