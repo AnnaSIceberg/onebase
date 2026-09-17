@@ -3,6 +3,9 @@ package pipelinecontract
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,26 +107,38 @@ gh api --method GET \
   "repos/ivanarama/onebase/contents/.github/trusted-priority-contributors.json?ref=${GITHUB_SHA}" \
   >"$config_file"
 
-jq -e '
-  type == "object"
-  and (keys == ["contributors", "version"])
-  and (.version | type == "number")
-  and (.version == 1)
-  and (.contributors | type == "array")
-  and all(.contributors[];
+jq -e -s '
+  def positive_decimal:
+    if type != "string" then false
+    else
+      explode as $chars
+      | ($chars | length) > 0
+        and ($chars[0] >= 49 and $chars[0] <= 57)
+        and all($chars[]; . >= 48 and . <= 57)
+    end;
+
+  length == 1
+  and (.[0] |
     type == "object"
-    and (keys == ["github_id", "login_hint"])
-    and (.github_id | type == "string" and test("^[1-9][0-9]*$"))
-    and (.login_hint | type == "string" and length > 0)
-  )
-  and (
-    ([.contributors[].github_id] | length)
-    == ([.contributors[].github_id] | unique | length)
+    and (keys == ["contributors", "version"])
+    and (.version | type == "number")
+    and (.version == 1)
+    and (.contributors | type == "array")
+    and all(.contributors[];
+      type == "object"
+      and (keys == ["github_id", "login_hint"])
+      and (.github_id | positive_decimal)
+      and (.login_hint | type == "string" and length > 0)
+    )
+    and (
+      ([.contributors[].github_id] | length)
+      == ([.contributors[].github_id] | unique | length)
+    )
   )
 ' "$config_file" >/dev/null
 
-if ! jq -e --arg author_id "$AUTHOR_ID" \
-  '.contributors | any(.github_id == $author_id)' \
+if ! jq -e -s --arg author_id "$AUTHOR_ID" \
+  'length == 1 and (.[0].contributors | any(.github_id == $author_id))' \
   "$config_file" >/dev/null; then
   exit 0
 fi
@@ -321,6 +336,150 @@ func TestTrustedPriorityConfigFailsClosedOnMalformedOrDuplicateEntries(t *testin
 	if len(contributors) == 0 {
 		t.Fatal("repository trusted contributor config must contain the confirmed contributor")
 	}
+}
+
+func TestTrustedPriorityWorkflowScriptFailsClosedOnAmbiguousJSON(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is unavailable; the exact workflow harness runs on ubuntu CI")
+	}
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq is unavailable; the exact workflow harness runs on ubuntu CI")
+	}
+
+	raw := repositoryFile(t, ".github", "workflows", "trusted-contributor-priority.yml")
+	var workflow trustedContributorWorkflow
+	if err := yaml.Unmarshal([]byte(raw), &workflow); err != nil {
+		t.Fatal(err)
+	}
+	job, ok := workflow.Jobs["prioritize"]
+	if !ok || len(job.Steps) != 1 {
+		t.Fatalf("prioritize workflow must contain exactly one step: %#v", job)
+	}
+	script := job.Steps[0].Run
+
+	testCases := []struct {
+		name     string
+		config   string
+		wantExit bool
+		wantPost bool
+	}{
+		{
+			name:     "one valid document author listed",
+			config:   `{"version":1,"contributors":[{"github_id":"101","login_hint":"User"}]}`,
+			wantExit: true,
+			wantPost: true,
+		},
+		{
+			name:     "one valid document author absent",
+			config:   `{"version":1,"contributors":[{"github_id":"202","login_hint":"Other"}]}`,
+			wantExit: true,
+		},
+		{
+			name:   "two valid root documents",
+			config: "{\"version\":1,\"contributors\":[]}\n{\"version\":1,\"contributors\":[{\"github_id\":\"101\",\"login_hint\":\"User\"}]}",
+		},
+		{
+			name:   "empty object before valid document",
+			config: "{}\n{\"version\":1,\"contributors\":[{\"github_id\":\"101\",\"login_hint\":\"User\"}]}",
+		},
+		{
+			name:   "null before valid document",
+			config: "null\n{\"version\":1,\"contributors\":[{\"github_id\":\"101\",\"login_hint\":\"User\"}]}",
+		},
+		{
+			name:   "newline tainted id before valid author",
+			config: "{\"version\":1,\"contributors\":[{\"github_id\":\"999\\n\",\"login_hint\":\"Invalid\"},{\"github_id\":\"101\",\"login_hint\":\"User\"}]}",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			binDir := filepath.Join(tempDir, "bin")
+			if err := os.Mkdir(binDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			postLog := filepath.Join(tempDir, "post.log")
+			postBody := filepath.Join(tempDir, "post-body.json")
+			stub := `#!/usr/bin/env bash
+set -euo pipefail
+case " $* " in
+  *" --method GET "*)
+    printf '%s' "$STUB_CONFIG"
+    ;;
+  *" --method POST "*)
+    cat >"$STUB_POST_BODY"
+    printf '%s\n' "$*" >>"$STUB_POST_LOG"
+    ;;
+  *)
+    printf 'unexpected gh invocation: %s\n' "$*" >&2
+    exit 90
+    ;;
+esac
+`
+			if err := os.WriteFile(filepath.Join(binDir, "gh"), []byte(stub), 0o700); err != nil {
+				t.Fatal(err)
+			}
+
+			// bash is a test-environment executable, while script is the exact
+			// repository-owned workflow body and gh is replaced by the local stub.
+			cmd := exec.Command(bash, "-c", script) //nolint:gosec // G204: intentional execution of the production workflow in an isolated harness.
+			cmd.Dir = tempDir
+			cmd.Env = workflowHarnessEnv(map[string]string{
+				"PATH":           binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"GH_TOKEN":       "test-token",
+				"GITHUB_SHA":     strings.Repeat("a", 40),
+				"AUTHOR_ID":      "101",
+				"ISSUE_NUMBER":   "17",
+				"STUB_CONFIG":    testCase.config,
+				"STUB_POST_LOG":  postLog,
+				"STUB_POST_BODY": postBody,
+			})
+			output, err := cmd.CombinedOutput()
+			if testCase.wantExit && err != nil {
+				t.Fatalf("workflow exited with error: %v\n%s", err, output)
+			}
+			if !testCase.wantExit && err == nil {
+				t.Fatalf("invalid config must fail closed\n%s", output)
+			}
+
+			log, readErr := os.ReadFile(postLog)
+			posted := readErr == nil && len(log) > 0
+			if readErr != nil && !os.IsNotExist(readErr) {
+				t.Fatal(readErr)
+			}
+			if posted != testCase.wantPost {
+				t.Fatalf("label POST = %v, want %v; workflow error=%v\n%s", posted, testCase.wantPost, err, output)
+			}
+			if testCase.wantPost {
+				body, err := os.ReadFile(postBody)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.TrimSpace(string(body)) != `{"labels":["queue:p0"]}` {
+					t.Fatalf("label body = %q, want only literal queue:p0", body)
+				}
+			}
+		})
+	}
+}
+
+func workflowHarnessEnv(overrides map[string]string) []string {
+	env := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, entry := range os.Environ() {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		if _, overridden := overrides[name]; !overridden {
+			env = append(env, entry)
+		}
+	}
+	for name, value := range overrides {
+		env = append(env, name+"="+value)
+	}
+	return env
 }
 
 type modeledTriagePriorityItem struct {

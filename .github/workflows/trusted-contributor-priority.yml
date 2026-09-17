@@ -40,26 +40,38 @@ jobs:
             "repos/ivanarama/onebase/contents/.github/trusted-priority-contributors.json?ref=${GITHUB_SHA}" \
             >"$config_file"
 
-          jq -e '
-            type == "object"
-            and (keys == ["contributors", "version"])
-            and (.version | type == "number")
-            and (.version == 1)
-            and (.contributors | type == "array")
-            and all(.contributors[];
+          jq -e -s '
+            def positive_decimal:
+              if type != "string" then false
+              else
+                explode as $chars
+                | ($chars | length) > 0
+                  and ($chars[0] >= 49 and $chars[0] <= 57)
+                  and all($chars[]; . >= 48 and . <= 57)
+              end;
+
+            length == 1
+            and (.[0] |
               type == "object"
-              and (keys == ["github_id", "login_hint"])
-              and (.github_id | type == "string" and test("^[1-9][0-9]*$"))
-              and (.login_hint | type == "string" and length > 0)
-            )
-            and (
-              ([.contributors[].github_id] | length)
-              == ([.contributors[].github_id] | unique | length)
+              and (keys == ["contributors", "version"])
+              and (.version | type == "number")
+              and (.version == 1)
+              and (.contributors | type == "array")
+              and all(.contributors[];
+                type == "object"
+                and (keys == ["github_id", "login_hint"])
+                and (.github_id | positive_decimal)
+                and (.login_hint | type == "string" and length > 0)
+              )
+              and (
+                ([.contributors[].github_id] | length)
+                == ([.contributors[].github_id] | unique | length)
+              )
             )
           ' "$config_file" >/dev/null
 
-          if ! jq -e --arg author_id "$AUTHOR_ID" \
-            '.contributors | any(.github_id == $author_id)' \
+          if ! jq -e -s --arg author_id "$AUTHOR_ID" \
+            'length == 1 and (.[0].contributors | any(.github_id == $author_id))' \
             "$config_file" >/dev/null; then
             exit 0
           fi
