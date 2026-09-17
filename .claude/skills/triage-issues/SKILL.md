@@ -62,7 +62,11 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
    checkout считай недоверенным: он может отставать от `main`, содержать чужой
    код или незакоммиченные изменения. Не обновляй, не переключай и не используй
    его для чтения кода. Сначала зафиксируй immutable SHA только что полученного
-   `origin/main` и создай уникальный detached-worktree именно на нём:
+   `origin/main` и создай уникальный detached-worktree именно на нём. Выбери
+   ровно один блок для текущей ОС; оба блока реализуют один и тот же fail-closed
+   контракт.
+
+   Windows (PowerShell):
 
    ```powershell
    git fetch origin main
@@ -87,17 +91,64 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
    }
    ```
 
+   POSIX shell (Linux/macOS):
+
+   ```sh
+   git fetch origin main || {
+     echo "git fetch origin main failed" >&2
+     exit 1
+   }
+   triageBase=$(git rev-parse FETCH_HEAD) || {
+     echo "cannot freeze fetched origin/main SHA" >&2
+     exit 1
+   }
+   if ! printf '%s\n' "$triageBase" | grep -Eq '^[0-9a-f]{40}$'; then
+     echo "cannot freeze fetched origin/main SHA" >&2
+     exit 1
+   fi
+   triageTmpRoot=${TMPDIR:-/tmp}
+   case "$triageTmpRoot" in
+     /*) ;;
+     *) echo "TMPDIR must be absolute for a triage worktree" >&2; exit 1 ;;
+   esac
+   triageWorktree=$(mktemp -d "${triageTmpRoot%/}/pp-triage.XXXXXXXXXX") || {
+     echo "cannot reserve a unique triage worktree path" >&2
+     exit 1
+   }
+   rmdir "$triageWorktree" || {
+     echo "cannot prepare the reserved triage worktree path: $triageWorktree" >&2
+     exit 1
+   }
+   git worktree add --detach "$triageWorktree" "$triageBase" || {
+     echo "detached triage worktree creation failed" >&2
+     exit 1
+   }
+   analysisHead=$(git -C "$triageWorktree" rev-parse HEAD) || {
+     echo "cannot read detached triage HEAD" >&2
+     exit 1
+   }
+   analysisDirty=$(git -C "$triageWorktree" status --porcelain=v1 --untracked-files=all) || {
+     echo "cannot inspect detached triage worktree" >&2
+     exit 1
+   }
+   if [ "$analysisHead" != "$triageBase" ] || [ -n "$analysisDirty" ]; then
+     echo "detached triage worktree does not match frozen origin/main" >&2
+     exit 1
+   fi
+   ```
+
    После сверки повторно полностью прочитай `CLAUDE.md` и
-   `.claude/skills/triage-issues/SKILL.md` через
-   `Get-Content -LiteralPath <path> -Encoding UTF8 -Raw` **из
-   `$triageWorktree`**; дальше действует эта свежая версия процедуры. Все
+   `.claude/skills/triage-issues/SKILL.md` **из `$triageWorktree`**; на Windows
+   используй `Get-Content -LiteralPath <path> -Encoding UTF8 -Raw`, на POSIX —
+   побайтно сохраняющий UTF-8 `cat "$triageWorktree/<path>"`. Дальше действует
+   эта свежая версия процедуры. Все
    поиски по репозиторию, чтение кода, сборки и тесты выполняй только с рабочим
    каталогом `$triageWorktree`. Текущий checkout, даже если он чист и указывает
    на `main`, больше не является источником анализа.
 
    Непосредственно перед **каждой GitHub-мутацией** снова получи
-   `git -C $triageWorktree rev-parse HEAD` и
-   `git -C $triageWorktree status --porcelain=v1 --untracked-files=all`:
+   `git -C "$triageWorktree" rev-parse HEAD` и
+   `git -C "$triageWorktree" status --porcelain=v1 --untracked-files=all`:
    обе команды обязаны завершиться с кодом 0, анализируемый HEAD — побайтно
    равняться сохранённому `$triageBase`, а tracked/untracked изменения —
    отсутствовать. Эта проверка идёт вместе с issue gate соответствующей фазы.
@@ -106,7 +157,9 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
    comments/labels.
 
    На любом выходе убери только зарегистрированный точный worktree командой
-   `git worktree remove $triageWorktree`; не удаляй каталог рекурсивно. Если
+   `git worktree remove $triageWorktree` в PowerShell либо
+   `git worktree remove "$triageWorktree"` в POSIX shell; не удаляй каталог
+   рекурсивно. Если
    безопасная очистка не удалась, оставь путь в `ИТОГ` для человека. Уникальный
    путь исключает захват или перезапись worktree другого запуска.
 
@@ -361,9 +414,26 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
 
    **Смешанный случай — часть кодом, часть руками — `manual` не получает.**
    Метка снимает заявку с конвейера целиком, поэтому кодовая половина уехала бы
-   вместе с ручной. Заводи такую заявку как обычную (её кодовую часть), а ручной
-   остаток выноси отдельной заявкой с `manual` и ссылкой на первую. Делить
-   поручено тебе: у следующих этапов на это нет ни повода, ни материала.
+   вместе с ручной. TRIAGE не создаёт вторую issue: такого действия нет в его
+   полномочиях из раздела «Безопасность». Текущую заявку считай кодовой частью,
+   но направь человеку с `route=needs-decision` и `manual=false`, даже если сама
+   кодовая правка прошла бы критерии `ready-fix`.
+
+   В видимом разборе перечисли точный ручной остаток и попроси человека создать
+   отдельную manual-заявку со ссылкой на текущую, а затем решить судьбу кодовой
+   части (`approved` / закрыть / `hold`). Перед `<!-- pp:triage -->` добавь
+   точную отдельную строку:
+
+   ```
+   <!-- pp:triage-manual-split -->
+   ```
+
+   Маркер считается только внутри каноничного root; он входит в
+   `analysis-sha256` и тем самым связан с route fingerprint. Он не разрешает
+   TRIAGE вызывать `gh issue create` и не означает, что ручная заявка уже
+   существует. Пока человек не оставил ссылку на созданную manual-заявку либо
+   явно не отказался от ручного остатка, `approved` на кодовой части ставить не
+   следует.
 
    **Снять `manual` некому, и это намеренно.** Ни один этап её не снимает —
    в отличие от `needs-decision`, который гасит `approved`. Заявка живёт с
@@ -500,8 +570,10 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
 <Если фикс не лечит уже испорченное состояние — сказать это здесь и назвать,
 что сделать руками.>
 
-Заявка ушла в автоматическую починку: PR будет привязан к ней, и заявка
-закроется вместе с ним, когда его вольют.
+Заявка принята в очередь автоматической починки. FIX ещё раз проверит состояние
+и принятое решение перед началом работы. Если исправление получится, PR будет
+привязан к этой заявке; если автоматическая починка остановится или потребуется
+новое решение, отдельный статус появится в этом же треде.
 <!-- pp:reply -->
 <!-- pp:triage-author-reply claim=<canonical-root-id> fingerprint-sha256=<точный-root-fingerprint> -->
 ```
@@ -509,8 +581,8 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
 Начала ровно два, и третьего быть не может: ответ пишется только вместе с
 `ready-fix`, а тот (п. 5) требует либо воспроизведения, либо корня, доказанного
 по коду. Случай «не воспроизвёл и корня не назвал» до автоответа не доходит — и
-не должен: «пришлите ещё данных» рядом с «заявка ушла в автоматическую починку»
-автор прочтёт как два взаимоисключающих письма разом.
+не должен: «пришлите ещё данных» рядом с «заявка принята в очередь
+автоматической починки» автор прочтёт как два взаимоисключающих письма разом.
 
 Чего в ответе не бывает:
 

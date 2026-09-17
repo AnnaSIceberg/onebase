@@ -90,6 +90,55 @@ func TestMergeFastPathRecoversPostMergeCleanup(t *testing.T) {
 	)
 }
 
+func TestMergeFallbackUsesValidatedGateAsCleanupBarrier(t *testing.T) {
+	legacy := repositoryFile(t, ".claude", "skills", "merge-shepherd", "references", "legacy-protocol.md")
+	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
+
+	for _, text := range []string{legacy, docs} {
+		requireAllCompact(t, text,
+			"`promptpilot-fallback-target-v1`",
+			"`gate-fallback merge`",
+			"`action=validated`",
+			"точном совпадении",
+			"queue-wide cleanup recovery barrier",
+			"Ручной/legacy fallback без такого envelope",
+			"во всём пагинированном потоке repository issue comments",
+			"GraphQL-, `ship`-, CI-, base-sync-, CAS- и exact-target-проверки",
+			"без повторного gate",
+			"без выбора другого PR",
+		)
+	}
+
+	requireCompactInOrder(t, legacy,
+		"Доверенный PromptPilot-handoff",
+		"Сначала выполни все обязательные read-only проверки этой цели, предусмотренные процедурой до первой мутации",
+		"Непосредственно перед первой внешней мутацией",
+		"`gate-fallback merge` ровно один раз",
+		"`action=validated`",
+		"**не выполняй** отдельный полный скан repository issue comments",
+		"первой следующей внешней операцией должна быть уже подготовленная мутация exact target",
+	)
+	requireCompactInOrder(t, legacy,
+		"Ручной/legacy fallback без такого envelope",
+		"Если быстрый путь вернул `fallback`",
+		"во всём пагинированном потоке repository issue comments",
+		"до выбора обычной очереди",
+	)
+	requireCompactInOrder(t, docs,
+		"все target-local GraphQL/ship/CI/base-sync/CAS-проверки, требуемые до первой мутации",
+		"непосредственно перед ней",
+		"`gate-fallback merge`",
+		"`action=validated`",
+		"первой внешней операцией идёт подготовленная мутация exact target",
+	)
+	requireAllCompact(t, legacy,
+		"все последующие повторные проверки выполняй в указанных процедурой контрольных точках",
+	)
+	requireAllCompact(t, docs,
+		"включая повторные проверки в последующих контрольных точках",
+	)
+}
+
 func requireAll(t *testing.T, text string, fragments ...string) {
 	t.Helper()
 	for _, fragment := range fragments {
@@ -416,6 +465,8 @@ func TestTriageUsesFrozenMainInsteadOfTheCurrentCheckout(t *testing.T) {
 	triage := skill(t, "triage-issues")
 	requireAllCompact(t, triage,
 		"Текущий checkout считай недоверенным: он может отставать от `main`, содержать чужой код или незакоммиченные изменения",
+		"Выбери ровно один блок для текущей ОС; оба блока реализуют один и тот же fail-closed контракт",
+		"Windows (PowerShell)",
 		"git fetch origin main",
 		"$triageBase = (git rev-parse FETCH_HEAD).Trim()",
 		"[guid]::NewGuid().ToString(\"N\")",
@@ -430,9 +481,24 @@ func TestTriageUsesFrozenMainInsteadOfTheCurrentCheckout(t *testing.T) {
 		"git worktree remove $triageWorktree",
 		"не удаляй каталог рекурсивно",
 	)
+	requireAllCompact(t, triage,
+		"POSIX shell (Linux/macOS)",
+		"triageBase=$(git rev-parse FETCH_HEAD)",
+		"grep -Eq '^[0-9a-f]{40}$'",
+		"TMPDIR must be absolute for a triage worktree",
+		"triageWorktree=$(mktemp -d \"${triageTmpRoot%/}/pp-triage.XXXXXXXXXX\")",
+		"rmdir \"$triageWorktree\"",
+		"git worktree add --detach \"$triageWorktree\" \"$triageBase\"",
+		"analysisHead=$(git -C \"$triageWorktree\" rev-parse HEAD)",
+		"analysisDirty=$(git -C \"$triageWorktree\" status --porcelain=v1 --untracked-files=all)",
+		"[ \"$analysisHead\" != \"$triageBase\" ] || [ -n \"$analysisDirty\" ]",
+		"cat \"$triageWorktree/<path>\"",
+		"git worktree remove \"$triageWorktree\"",
+	)
 	rejectAll(t, triage,
 		"git merge --ff-only origin/main",
 		"Иначе работай на том, что есть",
+		"rm -rf",
 	)
 
 	const frozenMain = "fresh-main"
@@ -464,6 +530,16 @@ func requireAllCompact(t *testing.T, text string, fragments ...string) {
 	for _, fragment := range fragments {
 		if !strings.Contains(compact, strings.Join(strings.Fields(fragment), " ")) {
 			t.Errorf("pipeline contract is missing compact fragment %q", fragment)
+		}
+	}
+}
+
+func rejectAllCompact(t *testing.T, text string, fragments ...string) {
+	t.Helper()
+	compact := strings.Join(strings.Fields(text), " ")
+	for _, fragment := range fragments {
+		if strings.Contains(compact, strings.Join(strings.Fields(fragment), " ")) {
+			t.Errorf("pipeline contract still contains forbidden compact fragment %q", fragment)
 		}
 	}
 }
@@ -521,6 +597,18 @@ func TestReviewQueueUsesTwoLaneExecutableAllowlist(t *testing.T) {
 		"Для integration-stage и любого fallback-протокола повторная глобальная проверка",
 		"неподписанный base64 lease за полномочие",
 		"Изменились только чужие PR, приоритеты, `main` или интеграционная полоса",
+	)
+	requireAllCompact(t, review,
+		"POSIX shell (Linux/macOS)",
+		"ghExe=$(command -v gh 2>/dev/null || true)",
+		"/opt/homebrew/bin/gh /usr/local/bin/gh /opt/local/bin/gh",
+		"GitHub CLI not found at an absolute executable path on POSIX",
+		"GH_EXE=$ghExe",
+		"export GH_EXE",
+		"goExe=$(command -v go 2>/dev/null || true)",
+		"/opt/homebrew/bin/go /usr/local/bin/go /opt/local/bin/go /usr/local/go/bin/go",
+		"Go not found at an absolute executable path on POSIX",
+		"\"$goExe\" run ./tools/pipelinehealth -json",
 	)
 }
 
@@ -1138,6 +1226,49 @@ func TestTriageAndFixShareDeterministicCanonicalCommentRule(t *testing.T) {
 	)
 }
 
+func TestTriageKeepsManualSplitHumanOwnedAndFixReportsStoppedWork(t *testing.T) {
+	triage := skill(t, "triage-issues")
+	fixer := skill(t, "fix-approved")
+	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
+
+	requireAllCompact(t, triage,
+		"TRIAGE не создаёт вторую issue: такого действия нет в его полномочиях",
+		"Текущую заявку считай кодовой частью",
+		"`route=needs-decision` и `manual=false`",
+		"<!-- pp:triage-manual-split -->",
+		"человека создать отдельную manual-заявку со ссылкой на текущую",
+		"не разрешает TRIAGE вызывать `gh issue create`",
+		"Заявка принята в очередь автоматической починки",
+		"PR будет привязан к этой заявке; если автоматическая починка остановится",
+	)
+	rejectAll(t, triage,
+		"Заводи такую заявку как обычную (её кодовую часть)",
+		"Заявка ушла в автоматическую починку",
+	)
+
+	requireAllCompact(t, fixer,
+		"Новый вопрос не обещает PR или закрытие заявки",
+		"Автоматическая починка остановлена: <точная причина>.",
+		"Нужен ответ мейнтейнера: <конкретный вопрос>.",
+		"Если автор issue не `ivanarama` и не `ivantit66`, добавь отдельную строку `<!-- pp:reply -->`",
+		"На успешном пути его пишет триаж (`/triage-issues`) или человек; при остановке FIX-handoff его добавляет FIX в свой комментарий-вопрос по п. 9",
+		"эта информационная строка разрешена post-root gate и не является отдельным control marker",
+		"уже опубликованный доверенный question-marker остаётся достаточным",
+	)
+	rejectAllCompact(t, fixer,
+		"Ответ автору — отдельный комментарий с `<!-- pp:reply -->`, и пишет его триаж (`/triage-issues`) или человек",
+	)
+
+	requireAllCompact(t, docs,
+		"его полномочия — комментарии и метки, но не `gh issue create`",
+		"<!-- pp:triage-manual-split -->",
+		"человек должен создать отдельную manual-заявку со ссылкой на текущую",
+		"PR и закрытие не гарантируются заранее",
+		"Автоматическая починка остановлена",
+		"для внешнего автора он также содержит `<!-- pp:reply -->`",
+	)
+}
+
 type modeledControlComment struct {
 	author string
 	body   string
@@ -1571,6 +1702,40 @@ func TestTailUsesCanonicalPaginatedCommittedReview(t *testing.T) {
 		"**все** repository issues прямым пагинированным REST без\n   `since`",
 	)
 	rejectAll(t, tail, "--json number,title,mergedAt,labels,url,comments")
+}
+
+func TestTailMergedWindowUsesNativeDateArithmeticOnEveryWorkerOS(t *testing.T) {
+	tail := skill(t, "tail-issues")
+	requireAllCompact(t, tail,
+		"Сначала вычисли календарную UTC-дату ровно средствами текущей ОС",
+		"ошибка вычисления или команды списка останавливает запуск, а не заменяется датой вручную",
+		"Windows (PowerShell)",
+		"$tailSince = (Get-Date).ToUniversalTime().AddDays(-14).ToString(\"yyyy-MM-dd\", [Globalization.CultureInfo]::InvariantCulture)",
+		"--search (\"merged:>=\" + $tailSince)",
+		"macOS (BSD `date`)",
+		"tail_since=$(date -u -v-14d +%F)",
+		"GNU/Linux",
+		"tail_since=$(date -u -d '14 days ago' +%F)",
+		"--search \"merged:>=$tail_since\"",
+	)
+	rejectAll(t, tail,
+		"--search \"merged:>=$(date -d '14 days ago' +%F)\"",
+		"на другой системе подставь дату руками",
+	)
+}
+
+func TestMaintenanceGuideDocumentsEquivalentWindowsAndMacOSPreparation(t *testing.T) {
+	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
+	requireAllCompact(t, docs,
+		"Воркер может работать на Windows, Linux или macOS",
+		"ОС меняет только синтаксис локальной подготовки, но не выбор цели, полномочия или GitHub-гейты",
+		"Linux/macOS резервирует абсолютный путь через `mktemp -d`",
+		"очистка выполняется только `git worktree remove`, без рекурсивного удаления каталогов",
+		"На POSIX он использует `command -v`",
+		"стандартные пути Homebrew/MacPorts и `/usr/local/go/bin/go`",
+		"TAIL вычисляет 14-дневную UTC-границу без ручной подстановки",
+		"macOS — через BSD `date -u -v-14d`",
+	)
 }
 
 func TestDetailedMaintenanceGuideMatchesQueueContracts(t *testing.T) {
