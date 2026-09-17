@@ -465,6 +465,8 @@ func TestTriageUsesFrozenMainInsteadOfTheCurrentCheckout(t *testing.T) {
 	triage := skill(t, "triage-issues")
 	requireAllCompact(t, triage,
 		"Текущий checkout считай недоверенным: он может отставать от `main`, содержать чужой код или незакоммиченные изменения",
+		"Выбери ровно один блок для текущей ОС; оба блока реализуют один и тот же fail-closed контракт",
+		"Windows (PowerShell)",
 		"git fetch origin main",
 		"$triageBase = (git rev-parse FETCH_HEAD).Trim()",
 		"[guid]::NewGuid().ToString(\"N\")",
@@ -479,9 +481,24 @@ func TestTriageUsesFrozenMainInsteadOfTheCurrentCheckout(t *testing.T) {
 		"git worktree remove $triageWorktree",
 		"не удаляй каталог рекурсивно",
 	)
+	requireAllCompact(t, triage,
+		"POSIX shell (Linux/macOS)",
+		"triageBase=$(git rev-parse FETCH_HEAD)",
+		"grep -Eq '^[0-9a-f]{40}$'",
+		"TMPDIR must be absolute for a triage worktree",
+		"triageWorktree=$(mktemp -d \"${triageTmpRoot%/}/pp-triage.XXXXXXXXXX\")",
+		"rmdir \"$triageWorktree\"",
+		"git worktree add --detach \"$triageWorktree\" \"$triageBase\"",
+		"analysisHead=$(git -C \"$triageWorktree\" rev-parse HEAD)",
+		"analysisDirty=$(git -C \"$triageWorktree\" status --porcelain=v1 --untracked-files=all)",
+		"[ \"$analysisHead\" != \"$triageBase\" ] || [ -n \"$analysisDirty\" ]",
+		"cat \"$triageWorktree/<path>\"",
+		"git worktree remove \"$triageWorktree\"",
+	)
 	rejectAll(t, triage,
 		"git merge --ff-only origin/main",
 		"Иначе работай на том, что есть",
+		"rm -rf",
 	)
 
 	const frozenMain = "fresh-main"
@@ -580,6 +597,18 @@ func TestReviewQueueUsesTwoLaneExecutableAllowlist(t *testing.T) {
 		"Для integration-stage и любого fallback-протокола повторная глобальная проверка",
 		"неподписанный base64 lease за полномочие",
 		"Изменились только чужие PR, приоритеты, `main` или интеграционная полоса",
+	)
+	requireAllCompact(t, review,
+		"POSIX shell (Linux/macOS)",
+		"ghExe=$(command -v gh 2>/dev/null || true)",
+		"/opt/homebrew/bin/gh /usr/local/bin/gh /opt/local/bin/gh",
+		"GitHub CLI not found at an absolute executable path on POSIX",
+		"GH_EXE=$ghExe",
+		"export GH_EXE",
+		"goExe=$(command -v go 2>/dev/null || true)",
+		"/opt/homebrew/bin/go /usr/local/bin/go /opt/local/bin/go /usr/local/go/bin/go",
+		"Go not found at an absolute executable path on POSIX",
+		"\"$goExe\" run ./tools/pipelinehealth -json",
 	)
 }
 
@@ -1620,6 +1649,40 @@ func TestTailUsesCanonicalPaginatedCommittedReview(t *testing.T) {
 		"**все** repository issues прямым пагинированным REST без\n   `since`",
 	)
 	rejectAll(t, tail, "--json number,title,mergedAt,labels,url,comments")
+}
+
+func TestTailMergedWindowUsesNativeDateArithmeticOnEveryWorkerOS(t *testing.T) {
+	tail := skill(t, "tail-issues")
+	requireAllCompact(t, tail,
+		"Сначала вычисли календарную UTC-дату ровно средствами текущей ОС",
+		"ошибка вычисления или команды списка останавливает запуск, а не заменяется датой вручную",
+		"Windows (PowerShell)",
+		"$tailSince = (Get-Date).ToUniversalTime().AddDays(-14).ToString(\"yyyy-MM-dd\", [Globalization.CultureInfo]::InvariantCulture)",
+		"--search (\"merged:>=\" + $tailSince)",
+		"macOS (BSD `date`)",
+		"tail_since=$(date -u -v-14d +%F)",
+		"GNU/Linux",
+		"tail_since=$(date -u -d '14 days ago' +%F)",
+		"--search \"merged:>=$tail_since\"",
+	)
+	rejectAll(t, tail,
+		"--search \"merged:>=$(date -d '14 days ago' +%F)\"",
+		"на другой системе подставь дату руками",
+	)
+}
+
+func TestMaintenanceGuideDocumentsEquivalentWindowsAndMacOSPreparation(t *testing.T) {
+	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
+	requireAllCompact(t, docs,
+		"Воркер может работать на Windows, Linux или macOS",
+		"ОС меняет только синтаксис локальной подготовки, но не выбор цели, полномочия или GitHub-гейты",
+		"Linux/macOS резервирует абсолютный путь через `mktemp -d`",
+		"очистка выполняется только `git worktree remove`, без рекурсивного удаления каталогов",
+		"На POSIX он использует `command -v`",
+		"стандартные пути Homebrew/MacPorts и `/usr/local/go/bin/go`",
+		"TAIL вычисляет 14-дневную UTC-границу без ручной подстановки",
+		"macOS — через BSD `date -u -v-14d`",
+	)
 }
 
 func TestDetailedMaintenanceGuideMatchesQueueContracts(t *testing.T) {
