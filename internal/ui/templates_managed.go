@@ -528,6 +528,18 @@ const tplManagedForm = `
 /* Поле в горизонтальной группе не растягивается на всю строку: иначе одинокое
    поле уезжало во всю ширину, а кнопка рядом с ним — к правому краю экрана. */
 .managed-group-horizontal>.managed-group-body>.form-group{flex:0 1 260px;min-width:180px;margin-bottom:0}
+/* Колонка-группа внутри горизонтальной группы делит ширину строки: растягивается
+   вместе с окном и сжимается вместе с ним. min-width:0 — иначе флекс-элемент не
+   становится уже своего содержимого и выталкивает соседнюю колонку на следующую
+   строку. Без flex-grow колонки занимали ширину по содержимому, и на широком
+   экране справа от формы оставалось пустое место в половину окна.
+   Явная ширина группы (width, см. FormElement.Width) правило перебивает: там,
+   где ширина колонки задана, растягивать её не надо. */
+.managed-group-horizontal>.managed-group-body>.form-group-box{min-width:0;flex:1 1 auto}
+/* Управляемая форма — рабочий экран, а не статья: карточка занимает всю ширину
+   рабочей области, а не 1400px, иначе на широком мониторе половина экрана
+   пустует. Списки и прочие страницы ограничение сохраняют. */
+main>.card{max-width:none}
 .managed-group-horizontal>.managed-group-body>.form-decoration,.managed-group-horizontal>.managed-group-body>button,.managed-group-horizontal>.managed-group-body>.managed-btn-layout,.managed-group-horizontal>.managed-group-body>.form-picture{flex:0 0 auto}
 /* Кнопка формы: отступы задаются классом, а не inline-стилем — иначе правило
    выравнивания в горизонтальной группе ниже проигрывало бы по приоритету. */
@@ -668,13 +680,13 @@ const tplManagedForm = `
       </div>
     </div>
     {{end}}
-    {{if .Receivers}}
+    {{if .BasedOnActions}}
     <div style="position:relative;display:inline-block">
       <button type="button" class="btn btn-sm btn-secondary" data-ob-toggle-next>{{t $.Lang "Ввести на основании"}} ▾</button>
       <div style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.1);min-width:200px;z-index:50;margin-top:4px">
-        {{range .Receivers}}
-        <a href="/ui/{{lower (str .Kind)}}/{{.Name}}/new?based_on={{$.Entity.Name}}&based_on_id={{$.ID}}"
-           style="display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px;border-bottom:1px solid #f1f5f9">{{.DisplayName $.Lang}}</a>
+        {{range .BasedOnActions}}
+        <a href="{{.URL}}&based_on_id={{$.ID}}"
+           style="display:block;padding:9px 16px;color:#334155;text-decoration:none;font-size:13px;border-bottom:1px solid #f1f5f9">{{.Label}}</a>
         {{end}}
       </div>
     </div>
