@@ -36,6 +36,17 @@ python -m promptpilot.project_pipeline --config pipelinectl.json next review
 Для `integration-review` / `legacy-integration-review` не повторяй его: проверь
 только доказанную base-sync дельту, разрешение конфликтов и актуальные CI.
 
+Материал PR читай совместимыми командами:
+
+```powershell
+gh pr view <M> --json title,body,headRefName,files,statusCheckRollup
+gh pr diff <M>
+```
+
+`--stat` не является флагом `gh pr diff` и использовать его нельзя. Если нужна
+сводка размеров, возьми `additions`/`deletions` из элементов поля `files` уже
+полученного `gh pr view`; отдельная диагностическая команда для этого не нужна.
+
 ## Объём локальных проверок
 
 Если `audit` затрагивает Go или прикладной слой, `go build ./...` обязателен.
