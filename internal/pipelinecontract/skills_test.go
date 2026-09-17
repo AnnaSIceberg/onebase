@@ -691,6 +691,18 @@ func TestReviewDefaultsToTargetedTestsAndGatesFullSuite(t *testing.T) {
 	)
 }
 
+func TestReviewUsesSupportedGhDiffArguments(t *testing.T) {
+	entry := repositoryFile(t, ".claude", "skills", "review-queue", "SKILL.md")
+	requireAllCompact(t, entry,
+		"gh pr view <M> --json title,body,headRefName,files,statusCheckRollup",
+		"gh pr diff <M>",
+		"`--stat` не является флагом `gh pr diff`",
+		"возьми `additions`/`deletions` из элементов поля `files`",
+		"отдельная диагностическая команда для этого не нужна",
+	)
+	rejectAll(t, entry, "gh pr diff <M> --stat")
+}
+
 func TestReviewQueueUsesPriorityThenBreadthFirstAndAging(t *testing.T) {
 	review := skill(t, "review-queue")
 	requireAllCompact(t, review,
@@ -706,6 +718,47 @@ func TestReviewQueueUsesPriorityThenBreadthFirstAndAging(t *testing.T) {
 		"Single-flight/recovery всё равно старше priority",
 	)
 	rejectAll(t, review, "Просматривай PR по возрастанию номера")
+}
+
+func TestReviewHistoryNeverSynthesizesOldEpochFromCurrentTimeline(t *testing.T) {
+	review := skill(t, "review-queue")
+	requireAllCompact(t, review,
+		"Исторические круги проверяй только по неизменяемой структурной связи `review → claim → completion`",
+		"Для планировочного `review-depth` и номера нового обычного круга этого достаточно",
+		"не превращает историческую пару в текущий proof",
+		"не заменяет отдельный полный proof-gate исходного `from`",
+		"**Запрещено реконструировать историческую epoch** подменой текущего `headRefOid` старым SHA",
+		"срезом сегодняшнего timeline по старому completion",
+		"commit более позднего HEAD способен оказаться до старого review/completion",
+		"Для текущего обычного REVIEW полный epoch-safety",
+		"к **выбранной текущей epoch**",
+		"Опасный event после текущего anchor по-прежнему закрывает gate",
+	)
+
+	// #1426 had three structurally complete historical rounds. GitHub placed
+	// commit edges for later heads before old completion comments, so treating a
+	// prefix of today's timeline as an old snapshot rejected valid history.
+	pairs := []modeledHistoricalReview{
+		{reviewID: 101, claimReviewID: 101, completionReviewID: 101, trustedUnedited: true, fieldsMatch: true},
+		{reviewID: 201, claimReviewID: 201, completionReviewID: 201, trustedUnedited: true, fieldsMatch: true},
+		{reviewID: 301, claimReviewID: 301, completionReviewID: 301, trustedUnedited: true, fieldsMatch: true},
+	}
+	if got := modeledHistoricalReviewDepth(pairs); got != 3 {
+		t.Fatalf("historical review depth = %d, want 3", got)
+	}
+
+	const currentOverride = 40
+	laterHeadCommitsPlacedBeforeOverride := []reviewEpochEvent{
+		{sequence: 7, headMutation: true},
+		{sequence: 15, headMutation: true},
+	}
+	if !reviewEpochGate(currentOverride, laterHeadCommitsPlacedBeforeOverride) {
+		t.Fatal("head commits before the current override must not poison the selected current epoch")
+	}
+	if reviewEpochGate(currentOverride, append(laterHeadCommitsPlacedBeforeOverride,
+		reviewEpochEvent{sequence: 41, headMutation: true})) {
+		t.Fatal("a PullRequestCommit after the current anchor must remain fail-closed")
+	}
 }
 
 func TestMaintenanceDocsMatchEffectivePriorityOrder(t *testing.T) {
@@ -1875,11 +1928,12 @@ func recoveryTarget(orphans []orderedClaim, claims []orderedClaim) string {
 }
 
 type reviewEpochEvent struct {
-	sequence   int
-	wallSecond int
-	deleted    bool
-	trusted    bool
-	edited     bool
+	sequence     int
+	wallSecond   int
+	deleted      bool
+	trusted      bool
+	edited       bool
+	headMutation bool
 }
 
 func reviewEpochGate(anchorSequence int, events []reviewEpochEvent) bool {
@@ -1887,11 +1941,32 @@ func reviewEpochGate(anchorSequence int, events []reviewEpochEvent) bool {
 		if event.sequence <= anchorSequence {
 			continue
 		}
-		if event.deleted || (event.trusted && event.edited) {
+		if event.deleted || event.headMutation || (event.trusted && event.edited) {
 			return false
 		}
 	}
 	return true
+}
+
+type modeledHistoricalReview struct {
+	reviewID           int
+	claimReviewID      int
+	completionReviewID int
+	trustedUnedited    bool
+	fieldsMatch        bool
+	overrideBetween    bool
+}
+
+func modeledHistoricalReviewDepth(pairs []modeledHistoricalReview) int {
+	seen := map[int]bool{}
+	for _, pair := range pairs {
+		if !pair.trustedUnedited || !pair.fieldsMatch || pair.overrideBetween ||
+			pair.reviewID != pair.claimReviewID || pair.reviewID != pair.completionReviewID {
+			continue
+		}
+		seen[pair.reviewID] = true
+	}
+	return len(seen)
 }
 
 func reviewClaimsAfter(claims []orderedClaim, epochStart int) []orderedClaim {
