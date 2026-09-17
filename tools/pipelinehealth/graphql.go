@@ -372,18 +372,84 @@ type gqlPageInfo struct {
 	EndCursor   *string `json:"endCursor"`
 }
 
+func (info *gqlPageInfo) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "pageInfo")
+	if err != nil {
+		return err
+	}
+	if err := decodeGQLRequired(fields, "hasNextPage", &info.HasNextPage); err != nil {
+		return err
+	}
+	return decodeGQLNullable(fields, "endCursor", &info.EndCursor)
+}
+
 type gqlLabel struct {
 	Name string `json:"name"`
 }
 
-type gqlLabelConnection struct {
+func (label *gqlLabel) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "label")
+	if err != nil {
+		return err
+	}
+	return decodeGQLRequired(fields, "name", &label.Name)
+}
+
+type gqlConnection[T any] struct {
 	TotalCount int         `json:"totalCount"`
-	Nodes      []gqlLabel  `json:"nodes"`
+	Nodes      []T         `json:"nodes"`
 	PageInfo   gqlPageInfo `json:"pageInfo"`
+}
+
+func unmarshalGQLConnection[T any](data []byte, connection *gqlConnection[T]) error {
+	fields, err := decodeGQLObject(data, "connection")
+	if err != nil {
+		return err
+	}
+	if err := decodeGQLRequired(fields, "totalCount", &connection.TotalCount); err != nil {
+		return err
+	}
+	if connection.TotalCount < 0 {
+		return fmt.Errorf("GraphQL field %q is negative", "totalCount")
+	}
+	rawNodes, ok := fields["nodes"]
+	if !ok {
+		return fmt.Errorf("GraphQL field %q is missing", "nodes")
+	}
+	if isJSONNull(rawNodes) {
+		return fmt.Errorf("GraphQL field %q is null", "nodes")
+	}
+	if err := json.Unmarshal(rawNodes, &connection.Nodes); err != nil {
+		return fmt.Errorf("decode GraphQL field %q: %w", "nodes", err)
+	}
+	if err := decodeGQLRequired(fields, "pageInfo", &connection.PageInfo); err != nil {
+		return err
+	}
+	return nil
+}
+
+type gqlLabelConnection gqlConnection[gqlLabel]
+
+func (connection *gqlLabelConnection) UnmarshalJSON(data []byte) error {
+	return unmarshalGQLConnection(data, (*gqlConnection[gqlLabel])(connection))
 }
 
 type gqlActor struct {
 	Login string `json:"login"`
+}
+
+func (actor *gqlActor) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "actor")
+	if err != nil {
+		return err
+	}
+	if err := decodeGQLRequired(fields, "login", &actor.Login); err != nil {
+		return err
+	}
+	if actor.Login == "" {
+		return fmt.Errorf("GraphQL actor login is empty")
+	}
+	return nil
 }
 
 type gqlComment struct {
@@ -394,10 +460,31 @@ type gqlComment struct {
 	Body           string    `json:"body"`
 }
 
-type gqlCommentConnection struct {
-	TotalCount int          `json:"totalCount"`
-	Nodes      []gqlComment `json:"nodes"`
-	PageInfo   gqlPageInfo  `json:"pageInfo"`
+func (comment *gqlComment) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "comment")
+	if err != nil {
+		return err
+	}
+	for _, field := range []struct {
+		name        string
+		destination any
+	}{
+		{"fullDatabaseId", &comment.FullDatabaseID},
+		{"createdAt", &comment.CreatedAt},
+		{"updatedAt", &comment.UpdatedAt},
+		{"body", &comment.Body},
+	} {
+		if err := decodeGQLRequired(fields, field.name, field.destination); err != nil {
+			return err
+		}
+	}
+	return decodeGQLNullable(fields, "author", &comment.Author)
+}
+
+type gqlCommentConnection gqlConnection[gqlComment]
+
+func (connection *gqlCommentConnection) UnmarshalJSON(data []byte) error {
+	return unmarshalGQLConnection(data, (*gqlConnection[gqlComment])(connection))
 }
 
 type gqlHeadCommit struct {
@@ -405,26 +492,98 @@ type gqlHeadCommit struct {
 	OID string `json:"oid"`
 }
 
+func (commit *gqlHeadCommit) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "head commit")
+	if err != nil {
+		return err
+	}
+	if err := decodeGQLRequired(fields, "id", &commit.ID); err != nil {
+		return err
+	}
+	return decodeGQLRequired(fields, "oid", &commit.OID)
+}
+
+type gqlPullCommitNode struct {
+	Commit gqlHeadCommit `json:"commit"`
+}
+
+func (node *gqlPullCommitNode) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "pull commit node")
+	if err != nil {
+		return err
+	}
+	return decodeGQLRequired(fields, "commit", &node.Commit)
+}
+
+type gqlPullCommitConnection struct {
+	Nodes []gqlPullCommitNode `json:"nodes"`
+}
+
+func (connection *gqlPullCommitConnection) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "pull commit connection")
+	if err != nil {
+		return err
+	}
+	return decodeGQLRequired(fields, "nodes", &connection.Nodes)
+}
+
 type gqlPull struct {
-	NodeID      string               `json:"id"`
-	Number      int                  `json:"number"`
-	Title       string               `json:"title"`
-	Body        string               `json:"body"`
-	URL         string               `json:"url"`
-	CreatedAt   string               `json:"createdAt"`
-	UpdatedAt   string               `json:"updatedAt"`
-	State       string               `json:"state"`
-	Draft       bool                 `json:"isDraft"`
-	HeadRefOID  string               `json:"headRefOid"`
-	BaseRefName string               `json:"baseRefName"`
-	Labels      gqlLabelConnection   `json:"labels"`
-	Comments    gqlCommentConnection `json:"comments"`
-	Commits     struct {
-		Nodes []struct {
-			Commit gqlHeadCommit `json:"commit"`
-		} `json:"nodes"`
-	} `json:"commits"`
-	HeadParents []string `json:"-"`
+	NodeID      string                  `json:"id"`
+	Number      int                     `json:"number"`
+	Title       string                  `json:"title"`
+	Body        string                  `json:"body"`
+	URL         string                  `json:"url"`
+	CreatedAt   string                  `json:"createdAt"`
+	UpdatedAt   string                  `json:"updatedAt"`
+	State       string                  `json:"state"`
+	Draft       bool                    `json:"isDraft"`
+	HeadRefOID  string                  `json:"headRefOid"`
+	BaseRefName string                  `json:"baseRefName"`
+	Labels      gqlLabelConnection      `json:"labels"`
+	Comments    gqlCommentConnection    `json:"comments"`
+	Commits     gqlPullCommitConnection `json:"commits"`
+	HeadParents []string                `json:"-"`
+}
+
+func (pull *gqlPull) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "pull request")
+	if err != nil {
+		return err
+	}
+	for _, field := range []struct {
+		name        string
+		destination any
+	}{
+		{"id", &pull.NodeID},
+		{"number", &pull.Number},
+		{"title", &pull.Title},
+		{"body", &pull.Body},
+		{"url", &pull.URL},
+		{"createdAt", &pull.CreatedAt},
+		{"updatedAt", &pull.UpdatedAt},
+		{"state", &pull.State},
+		{"isDraft", &pull.Draft},
+		{"headRefOid", &pull.HeadRefOID},
+		{"baseRefName", &pull.BaseRefName},
+		{"labels", &pull.Labels},
+		{"comments", &pull.Comments},
+		{"commits", &pull.Commits},
+	} {
+		if err := decodeGQLRequired(fields, field.name, field.destination); err != nil {
+			return err
+		}
+	}
+	if pull.NodeID == "" || pull.Number <= 0 || pull.State != "OPEN" || pull.HeadRefOID == "" || pull.BaseRefName == "" {
+		return fmt.Errorf("GraphQL pull request has invalid identity or state")
+	}
+	if len(pull.Commits.Nodes) != 1 {
+		return fmt.Errorf("GraphQL pull request head commit count is %d, want 1", len(pull.Commits.Nodes))
+	}
+	commit := pull.Commits.Nodes[0].Commit
+	if commit.ID == "" || commit.OID == "" || commit.OID != pull.HeadRefOID {
+		return fmt.Errorf("GraphQL pull request head commit does not match headRefOid")
+	}
+	return nil
 }
 
 type gqlIssue struct {
@@ -439,16 +598,45 @@ type gqlIssue struct {
 	Comments  gqlCommentConnection `json:"comments"`
 }
 
-type gqlPullConnection struct {
-	TotalCount int         `json:"totalCount"`
-	Nodes      []gqlPull   `json:"nodes"`
-	PageInfo   gqlPageInfo `json:"pageInfo"`
+func (issue *gqlIssue) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "issue")
+	if err != nil {
+		return err
+	}
+	for _, field := range []struct {
+		name        string
+		destination any
+	}{
+		{"id", &issue.NodeID},
+		{"number", &issue.Number},
+		{"title", &issue.Title},
+		{"url", &issue.URL},
+		{"createdAt", &issue.CreatedAt},
+		{"updatedAt", &issue.UpdatedAt},
+		{"state", &issue.State},
+		{"labels", &issue.Labels},
+		{"comments", &issue.Comments},
+	} {
+		if err := decodeGQLRequired(fields, field.name, field.destination); err != nil {
+			return err
+		}
+	}
+	if issue.NodeID == "" || issue.Number <= 0 || issue.State != "OPEN" {
+		return fmt.Errorf("GraphQL issue has invalid identity or state")
+	}
+	return nil
 }
 
-type gqlIssueConnection struct {
-	TotalCount int         `json:"totalCount"`
-	Nodes      []gqlIssue  `json:"nodes"`
-	PageInfo   gqlPageInfo `json:"pageInfo"`
+type gqlPullConnection gqlConnection[gqlPull]
+
+func (connection *gqlPullConnection) UnmarshalJSON(data []byte) error {
+	return unmarshalGQLConnection(data, (*gqlConnection[gqlPull])(connection))
+}
+
+type gqlIssueConnection gqlConnection[gqlIssue]
+
+func (connection *gqlIssueConnection) UnmarshalJSON(data []byte) error {
+	return unmarshalGQLConnection(data, (*gqlConnection[gqlIssue])(connection))
 }
 
 type gqlSnapshotData struct {
@@ -470,10 +658,18 @@ type gqlParent struct {
 	OID string `json:"oid"`
 }
 
-type gqlParentConnection struct {
-	TotalCount int         `json:"totalCount"`
-	Nodes      []gqlParent `json:"nodes"`
-	PageInfo   gqlPageInfo `json:"pageInfo"`
+func (parent *gqlParent) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "commit parent")
+	if err != nil {
+		return err
+	}
+	return decodeGQLRequired(fields, "oid", &parent.OID)
+}
+
+type gqlParentConnection gqlConnection[gqlParent]
+
+func (connection *gqlParentConnection) UnmarshalJSON(data []byte) error {
+	return unmarshalGQLConnection(data, (*gqlConnection[gqlParent])(connection))
 }
 
 type gqlCommitParentsNode struct {
@@ -481,6 +677,27 @@ type gqlCommitParentsNode struct {
 	ID       string              `json:"id"`
 	OID      string              `json:"oid"`
 	Parents  gqlParentConnection `json:"parents"`
+}
+
+func (node *gqlCommitParentsNode) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "commit node")
+	if err != nil {
+		return err
+	}
+	for _, field := range []struct {
+		name        string
+		destination any
+	}{
+		{"__typename", &node.TypeName},
+		{"id", &node.ID},
+		{"oid", &node.OID},
+		{"parents", &node.Parents},
+	} {
+		if err := decodeGQLRequired(fields, field.name, field.destination); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type gqlCommitParentsData struct {
@@ -497,8 +714,71 @@ type gqlPullHeadNode struct {
 	HeadRefOID string `json:"headRefOid"`
 }
 
+func (node *gqlPullHeadNode) UnmarshalJSON(data []byte) error {
+	fields, err := decodeGQLObject(data, "pull request head node")
+	if err != nil {
+		return err
+	}
+	for _, field := range []struct {
+		name        string
+		destination any
+	}{
+		{"__typename", &node.TypeName},
+		{"id", &node.ID},
+		{"headRefOid", &node.HeadRefOID},
+	} {
+		if err := decodeGQLRequired(fields, field.name, field.destination); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type gqlPullHeadsData struct {
 	Nodes []*gqlPullHeadNode `json:"nodes"`
+}
+
+func decodeGQLObject(data []byte, name string) (map[string]json.RawMessage, error) {
+	if isJSONNull(data) {
+		return nil, fmt.Errorf("GraphQL %s is null", name)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, fmt.Errorf("decode GraphQL %s: %w", name, err)
+	}
+	if fields == nil {
+		return nil, fmt.Errorf("GraphQL %s is not an object", name)
+	}
+	return fields, nil
+}
+
+func decodeGQLRequired(fields map[string]json.RawMessage, name string, destination any) error {
+	raw, ok := fields[name]
+	if !ok {
+		return fmt.Errorf("GraphQL field %q is missing", name)
+	}
+	if isJSONNull(raw) {
+		return fmt.Errorf("GraphQL field %q is null", name)
+	}
+	if err := json.Unmarshal(raw, destination); err != nil {
+		return fmt.Errorf("decode GraphQL field %q: %w", name, err)
+	}
+	return nil
+}
+
+func decodeGQLNullable(fields map[string]json.RawMessage, name string, destination any) error {
+	raw, ok := fields[name]
+	if !ok {
+		return fmt.Errorf("GraphQL field %q is missing", name)
+	}
+	if err := json.Unmarshal(raw, destination); err != nil {
+		return fmt.Errorf("decode GraphQL field %q: %w", name, err)
+	}
+	return nil
+}
+
+func isJSONNull(data []byte) bool {
+	return bytes.Equal(bytes.TrimSpace(data), []byte("null"))
 }
 
 type limitedPipelineGraphQLClient struct {

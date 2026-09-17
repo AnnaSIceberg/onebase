@@ -6,13 +6,23 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
 )
+
+func TestMain(m *testing.M) {
+	if os.Getenv("PIPELINEHEALTH_TEST_GH_HELPER") == "1" {
+		_, _ = io.WriteString(os.Stdout, os.Getenv("PIPELINEHEALTH_TEST_GH_RESPONSE"))
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
 
 type graphQLCall struct {
 	query     string
@@ -55,6 +65,9 @@ func emptyConnection() map[string]any {
 }
 
 func connection(total int, nodes []any, next bool, cursor any) map[string]any {
+	if nodes == nil {
+		nodes = []any{}
+	}
 	return map[string]any{
 		"totalCount": total,
 		"nodes":      nodes,
@@ -112,6 +125,225 @@ func snapshotResult(pullTotal int, pulls []any, pullNext bool, pullCursor any, i
 		"pullRequests": connection(pullTotal, pulls, pullNext, pullCursor),
 		"issues":       connection(issueTotal, issues, issueNext, issueCursor),
 	}}
+}
+
+func rawGraphQLClient(t *testing.T, data any) *ghPipelineGraphQLClient {
+	t.Helper()
+	response, err := json.Marshal(map[string]any{"data": data})
+	if err != nil {
+		t.Fatalf("marshal raw GraphQL response: %v", err)
+	}
+	return &ghPipelineGraphQLClient{
+		executable: "unused",
+		run: func(_ context.Context, _ string, _ []byte, stdout, _ io.Writer) error {
+			_, err := stdout.Write(response)
+			return err
+		},
+	}
+}
+
+func TestGraphQLProductionIngressRejectsIncompleteSnapshots(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data func() map[string]any
+		want string
+	}{
+		{
+			name: "empty pull request connection object",
+			data: func() map[string]any {
+				return map[string]any{"repository": map[string]any{
+					"pullRequests": map[string]any{},
+					"issues":       emptyConnection(),
+				}}
+			},
+			want: `field "totalCount" is missing`,
+		},
+		{
+			name: "empty issue connection object",
+			data: func() map[string]any {
+				return map[string]any{"repository": map[string]any{
+					"pullRequests": emptyConnection(),
+					"issues":       map[string]any{},
+				}}
+			},
+			want: `field "totalCount" is missing`,
+		},
+		{
+			name: "null labels connection",
+			data: func() map[string]any {
+				pull := gqlTestPullNode("pr-1", 10, headA, nil, nil)
+				pull["labels"] = nil
+				return snapshotResult(1, []any{pull}, false, nil, 0, nil, false, nil)
+			},
+			want: `field "labels" is null`,
+		},
+		{
+			name: "null comments connection",
+			data: func() map[string]any {
+				pull := gqlTestPullNode("pr-1", 10, headA, nil, nil)
+				pull["comments"] = nil
+				return snapshotResult(1, []any{pull}, false, nil, 0, nil, false, nil)
+			},
+			want: `field "comments" is null`,
+		},
+		{
+			name: "missing false boolean",
+			data: func() map[string]any {
+				pull := gqlTestPullNode("pr-1", 10, headA, nil, nil)
+				delete(pull, "isDraft")
+				return snapshotResult(1, []any{pull}, false, nil, 0, nil, false, nil)
+			},
+			want: `field "isDraft" is missing`,
+		},
+		{
+			name: "missing page info member",
+			data: func() map[string]any {
+				pulls := connection(0, nil, false, nil)
+				pulls["pageInfo"] = map[string]any{"hasNextPage": false}
+				return map[string]any{"repository": map[string]any{
+					"pullRequests": pulls,
+					"issues":       emptyConnection(),
+				}}
+			},
+			want: `field "endCursor" is missing`,
+		},
+		{
+			name: "null nodes in empty connection",
+			data: func() map[string]any {
+				pulls := emptyConnection()
+				pulls["nodes"] = nil
+				return map[string]any{"repository": map[string]any{
+					"pullRequests": pulls,
+					"issues":       emptyConnection(),
+				}}
+			},
+			want: `field "nodes" is null`,
+		},
+		{
+			name: "missing nullable author key",
+			data: func() map[string]any {
+				comment := gqlTestComment("5702456239")
+				delete(comment, "author")
+				pull := gqlTestPullNode("pr-1", 10, headA, nil, []any{comment})
+				return snapshotResult(1, []any{pull}, false, nil, 0, nil, false, nil)
+			},
+			want: `field "author" is missing`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := rawGraphQLClient(t, test.data())
+			pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "", "")
+			if err == nil || pulls != nil || issues != nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("incomplete production response was accepted: pulls=%+v issues=%+v err=%v", pulls, issues, err)
+			}
+		})
+	}
+}
+
+func TestGraphQLProductionIngressAcceptsCompleteEmptySnapshot(t *testing.T) {
+	client := rawGraphQLClient(t, snapshotResult(0, nil, false, nil, 0, nil, false, nil))
+	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "", "")
+	if err != nil || len(pulls) != 0 || len(issues) != 0 {
+		t.Fatalf("complete empty snapshot was rejected: pulls=%+v issues=%+v err=%v", pulls, issues, err)
+	}
+}
+
+func TestGraphQLProductionIngressPreservesNullableAuthor(t *testing.T) {
+	comment := gqlTestComment("5702456239")
+	comment["author"] = nil
+	pull := gqlTestPullNode("pr-1", 10, headA, nil, []any{comment})
+	data := snapshotResult(1, []any{pull}, false, nil, 0, nil, false, nil)
+	pullConnection := data["repository"].(map[string]any)["pullRequests"].(map[string]any)
+	pullConnection["nodes"] = []any{pull}
+
+	client := rawGraphQLClient(t, data)
+	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "", "")
+	if err != nil || len(pulls) != 1 || len(issues) != 0 || pulls[0].Comments[0].User.Login != "" {
+		t.Fatalf("valid nullable fields were rejected: pulls=%+v issues=%+v err=%v", pulls, issues, err)
+	}
+}
+
+func TestGraphQLCLIRejectsIncompleteConnections(t *testing.T) {
+	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	binaryName := "pipelinehealth"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	binaryPath := filepath.Join(t.TempDir(), binaryName)
+	build := exec.Command("go", "build", "-o", binaryPath, "./tools/pipelinehealth")
+	build.Dir = repositoryRoot
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build pipelinehealth CLI: %v\n%s", err, output)
+	}
+	helperPath, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		name string
+		data func() map[string]any
+		want string
+	}{
+		{
+			name: "null labels",
+			data: func() map[string]any {
+				pull := gqlTestPullNode("pr-1", 10, headA, nil, nil)
+				pull["labels"] = nil
+				return snapshotResult(1, []any{pull}, false, nil, 0, nil, false, nil)
+			},
+			want: `field "labels" is null`,
+		},
+		{
+			name: "null comments",
+			data: func() map[string]any {
+				pull := gqlTestPullNode("pr-1", 10, headA, nil, nil)
+				pull["comments"] = nil
+				return snapshotResult(1, []any{pull}, false, nil, 0, nil, false, nil)
+			},
+			want: `field "comments" is null`,
+		},
+		{
+			name: "empty outer connections",
+			data: func() map[string]any {
+				return map[string]any{"repository": map[string]any{
+					"pullRequests": map[string]any{},
+					"issues":       map[string]any{},
+				}}
+			},
+			want: `field "totalCount" is missing`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response, err := json.Marshal(map[string]any{"data": test.data()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// binaryPath is built by this test inside t.TempDir, not supplied by input.
+			//nolint:gosec
+			command := exec.Command(binaryPath, "-transport", "graphql", "-json")
+			command.Dir = repositoryRoot
+			command.Env = append(os.Environ(),
+				"GH_EXE="+helperPath,
+				"PIPELINEHEALTH_TEST_GH_HELPER=1",
+				"PIPELINEHEALTH_TEST_GH_RESPONSE="+string(response),
+			)
+			output, err := command.Output()
+			var exitError *exec.ExitError
+			exitCode := -1
+			var stderr []byte
+			if errors.As(err, &exitError) {
+				exitCode = exitError.ExitCode()
+				stderr = exitError.Stderr
+			}
+			if exitCode != 2 || !strings.Contains(string(stderr), test.want) || len(output) != 0 {
+				t.Fatalf("CLI accepted incomplete response: exit=%v stdout=%q stderr=%q", err, output, stderr)
+			}
+		})
+	}
 }
 
 func TestGraphQLSnapshotMapsRESTSemanticsAndLargeDatabaseID(t *testing.T) {
