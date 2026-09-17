@@ -273,6 +273,8 @@ func TestGraphQLCLIRejectsIncompleteConnections(t *testing.T) {
 		binaryName += ".exe"
 	}
 	binaryPath := filepath.Join(t.TempDir(), binaryName)
+	// Both the executable name and output path are fixed by the test.
+	//nolint:gosec
 	build := exec.Command("go", "build", "-o", binaryPath, "./tools/pipelinehealth")
 	build.Dir = repositoryRoot
 	if output, err := build.CombinedOutput(); err != nil {
