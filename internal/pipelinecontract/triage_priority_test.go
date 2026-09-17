@@ -1,6 +1,8 @@
 package pipelinecontract
 
 import (
+	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,8 +51,9 @@ func TestTrustedContributorPriorityWorkflowIsNarrowAndTextIndependent(t *testing
 	if !ok || len(issues.Types) != 1 || issues.Types[0] != "opened" {
 		t.Fatalf("issues trigger = %#v, want only issues.opened", issues)
 	}
-	if len(workflow.Permissions) != 1 || workflow.Permissions["issues"] != "write" {
-		t.Fatalf("workflow permissions = %#v, want only issues: write", workflow.Permissions)
+	if len(workflow.Permissions) != 2 || workflow.Permissions["contents"] != "read" ||
+		workflow.Permissions["issues"] != "write" {
+		t.Fatalf("workflow permissions = %#v, want only contents: read and issues: write", workflow.Permissions)
 	}
 	if len(workflow.Jobs) != 1 {
 		t.Fatalf("workflow jobs = %#v, want one narrow mutation job", workflow.Jobs)
@@ -59,8 +62,8 @@ func TestTrustedContributorPriorityWorkflowIsNarrowAndTextIndependent(t *testing
 	if !ok {
 		t.Fatal("workflow must define the prioritize job")
 	}
-	if strings.TrimSpace(job.If) != "github.repository == 'ivanarama/onebase' && github.event.issue.user.id == 330018641" {
-		t.Fatalf("workflow identity gate = %q, want the upstream repository and immutable numeric GitHub user id", job.If)
+	if strings.TrimSpace(job.If) != "github.repository == 'ivanarama/onebase'" {
+		t.Fatalf("workflow repository gate = %q, want only the exact upstream repository", job.If)
 	}
 	if job.RunsOn != "ubuntu-latest" || job.TimeoutMinutes != 2 {
 		t.Fatalf("workflow runner budget = %q/%d, want ubuntu-latest/2 minutes", job.RunsOn, job.TimeoutMinutes)
@@ -75,17 +78,56 @@ func TestTrustedContributorPriorityWorkflowIsNarrowAndTextIndependent(t *testing
 	if step.Uses != "" {
 		t.Fatalf("workflow must not execute a third-party action: %q", step.Uses)
 	}
-	if len(step.Env) != 2 || step.Env["GH_TOKEN"] != "${{ github.token }}" ||
+	if len(step.Env) != 3 || step.Env["GH_TOKEN"] != "${{ github.token }}" ||
+		step.Env["AUTHOR_ID"] != "${{ github.event.issue.user.id }}" ||
 		step.Env["ISSUE_NUMBER"] != "${{ github.event.issue.number }}" {
-		t.Fatalf("workflow environment = %#v, want only token and numeric issue id", step.Env)
+		t.Fatalf("workflow environment = %#v, want only token, immutable author id and numeric issue id", step.Env)
 	}
 	if step.Shell != "bash" {
 		t.Fatalf("workflow shell = %q, want bash", step.Shell)
 	}
 	const expectedScript = `set -euo pipefail
-if [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
   exit 1
 fi
+if [[ ! "$AUTHOR_ID" =~ ^[1-9][0-9]*$ ]]; then
+  exit 1
+fi
+if [[ ! "$ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+  exit 1
+fi
+
+config_file="$(mktemp)"
+trap 'rm -f "$config_file"' EXIT
+gh api --method GET \
+  -H 'Accept: application/vnd.github.raw+json' \
+  "repos/ivanarama/onebase/contents/.github/trusted-priority-contributors.json?ref=${GITHUB_SHA}" \
+  >"$config_file"
+
+jq -e '
+  type == "object"
+  and (keys == ["contributors", "version"])
+  and (.version | type == "number")
+  and (.version == 1)
+  and (.contributors | type == "array")
+  and all(.contributors[];
+    type == "object"
+    and (keys == ["github_id", "login_hint"])
+    and (.github_id | type == "string" and test("^[1-9][0-9]*$"))
+    and (.login_hint | type == "string" and length > 0)
+  )
+  and (
+    ([.contributors[].github_id] | length)
+    == ([.contributors[].github_id] | unique | length)
+  )
+' "$config_file" >/dev/null
+
+if ! jq -e --arg author_id "$AUTHOR_ID" \
+  '.contributors | any(.github_id == $author_id)' \
+  "$config_file" >/dev/null; then
+  exit 0
+fi
+
 gh api --method POST \
   "repos/ivanarama/onebase/issues/${ISSUE_NUMBER}/labels" \
   --input - <<'JSON'
@@ -98,12 +140,17 @@ JSON
 	if strings.Count(step.Run, "queue:p0") != 1 {
 		t.Fatalf("queue:p0 must be the one literal label payload, got %d occurrences", strings.Count(step.Run, "queue:p0"))
 	}
+	if strings.Count(step.Run, "gh api --method GET") != 1 || strings.Count(step.Run, "gh api --method POST") != 1 {
+		t.Fatal("workflow must perform exactly one immutable config read and one conditional label mutation")
+	}
 	remainingEventContext := strings.Replace(raw, "github.event.issue.user.id", "", 1)
 	remainingEventContext = strings.Replace(remainingEventContext, "github.event.issue.number", "", 1)
 	if strings.Contains(remainingEventContext, "github.event") {
 		t.Fatal("workflow must not consume any event data beyond immutable author id and numeric issue number")
 	}
 	rejectAll(t, raw,
+		"330018641",
+		"AnnaSIceberg",
 		"pull_request_target",
 		"workflow_dispatch",
 		"github.event.issue.title",
@@ -122,6 +169,158 @@ JSON
 		"plan-needed",
 		"plan-in-review",
 	)
+	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
+	requireAllCompact(t, docs,
+		"Список хранится в `.github/trusted-priority-contributors.json` и меняется обычным PR",
+		"Корневой `version: 1` фиксирует версию схемы",
+		"Логин служит только подсказкой при чтении файла: workflow никогда не авторизует по нему",
+		"Добавьте отдельный объект в массив `contributors`, не повторяя `github_id`",
+		"ровно с default-branch SHA события (`GITHUB_SHA`)",
+		"неизвестной версии или неоднозначный список завершает job ошибкой до постановки метки (fail closed)",
+		"отсутствие автора в валидном списке — штатный успешный выход без метки",
+		"Текст, заголовок и комментарии issue не читаются",
+	)
+}
+
+type modeledTrustedPriorityContributor struct {
+	githubID  string
+	loginHint string
+}
+
+func positiveDecimal(value string) bool {
+	if value == "" || value[0] == '0' {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func modeledTrustedPriorityConfig(data []byte) ([]modeledTrustedPriorityContributor, error) {
+	var decoded any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return nil, err
+	}
+	root, ok := decoded.(map[string]any)
+	if !ok || len(root) != 2 {
+		return nil, fmt.Errorf("root must contain exactly version and contributors")
+	}
+	version, ok := root["version"].(float64)
+	if !ok || version != 1 {
+		return nil, fmt.Errorf("unsupported config version")
+	}
+	rawContributors, ok := root["contributors"].([]any)
+	if !ok {
+		return nil, fmt.Errorf("contributors must be an array")
+	}
+
+	contributors := make([]modeledTrustedPriorityContributor, 0, len(rawContributors))
+	seen := make(map[string]bool, len(rawContributors))
+	for _, rawContributor := range rawContributors {
+		object, ok := rawContributor.(map[string]any)
+		if !ok || len(object) != 2 {
+			return nil, fmt.Errorf("contributor must contain exactly github_id and login_hint")
+		}
+		githubID, idOK := object["github_id"].(string)
+		loginHint, loginOK := object["login_hint"].(string)
+		if !idOK || !loginOK || !positiveDecimal(githubID) || loginHint == "" {
+			return nil, fmt.Errorf("contributor fields have invalid types or values")
+		}
+		if seen[githubID] {
+			return nil, fmt.Errorf("duplicate github_id %s", githubID)
+		}
+		seen[githubID] = true
+		contributors = append(contributors, modeledTrustedPriorityContributor{
+			githubID:  githubID,
+			loginHint: loginHint,
+		})
+	}
+	return contributors, nil
+}
+
+func modeledTrustedPriorityAuthorized(data []byte, authorID string) (bool, error) {
+	if !positiveDecimal(authorID) {
+		return false, fmt.Errorf("author id must be a positive decimal string")
+	}
+	contributors, err := modeledTrustedPriorityConfig(data)
+	if err != nil {
+		return false, err
+	}
+	for _, contributor := range contributors {
+		if contributor.githubID == authorID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func TestTrustedPriorityConfigSupportsManyIDsAndNeverAuthorizesByLogin(t *testing.T) {
+	configured := []byte(`{
+		"version": 1,
+		"contributors": [
+			{"github_id":"101", "login_hint":"FirstUser"},
+			{"github_id":"202", "login_hint":"SameLoginAsEvent"}
+		]
+	}`)
+	contributors, err := modeledTrustedPriorityConfig(configured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contributors) != 2 {
+		t.Fatalf("contributors = %d, want two independently configured users", len(contributors))
+	}
+	authorized, err := modeledTrustedPriorityAuthorized(configured, "202")
+	if err != nil || !authorized {
+		t.Fatalf("second configured immutable id must authorize: authorized=%v err=%v", authorized, err)
+	}
+	authorized, err = modeledTrustedPriorityAuthorized(configured, "303")
+	if err != nil || authorized {
+		t.Fatalf("an unlisted id must not authorize even when a login hint could match: authorized=%v err=%v", authorized, err)
+	}
+
+	renamed := []byte(`{"version":1,"contributors":[{"github_id":"202","login_hint":"CompletelyDifferentLogin"}]}`)
+	authorized, err = modeledTrustedPriorityAuthorized(renamed, "202")
+	if err != nil || !authorized {
+		t.Fatalf("login_hint must not affect authorization: authorized=%v err=%v", authorized, err)
+	}
+}
+
+func TestTrustedPriorityConfigFailsClosedOnMalformedOrDuplicateEntries(t *testing.T) {
+	testCases := map[string]string{
+		"malformed json":        `{`,
+		"wrong root type":       `[]`,
+		"missing version":       `{"contributors":[]}`,
+		"wrong version":         `{"version":2,"contributors":[]}`,
+		"string version":        `{"version":"1","contributors":[]}`,
+		"extra root key":        `{"version":1,"contributors":[],"other":true}`,
+		"contributors null":     `{"version":1,"contributors":null}`,
+		"numeric id":            `{"version":1,"contributors":[{"github_id":101,"login_hint":"User"}]}`,
+		"zero id":               `{"version":1,"contributors":[{"github_id":"0","login_hint":"User"}]}`,
+		"non-decimal id":        `{"version":1,"contributors":[{"github_id":"10x","login_hint":"User"}]}`,
+		"empty login hint":      `{"version":1,"contributors":[{"github_id":"101","login_hint":""}]}`,
+		"missing login hint":    `{"version":1,"contributors":[{"github_id":"101"}]}`,
+		"extra contributor key": `{"version":1,"contributors":[{"github_id":"101","login_hint":"User","trusted":true}]}`,
+		"duplicate id":          `{"version":1,"contributors":[{"github_id":"101","login_hint":"First"},{"github_id":"101","login_hint":"Second"}]}`,
+	}
+	for name, raw := range testCases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := modeledTrustedPriorityConfig([]byte(raw)); err == nil {
+				t.Fatal("invalid trusted contributor config must fail closed")
+			}
+		})
+	}
+
+	actual := []byte(repositoryFile(t, ".github", "trusted-priority-contributors.json"))
+	contributors, err := modeledTrustedPriorityConfig(actual)
+	if err != nil {
+		t.Fatalf("repository trusted contributor config is invalid: %v", err)
+	}
+	if len(contributors) == 0 {
+		t.Fatal("repository trusted contributor config must contain the confirmed contributor")
+	}
 }
 
 type modeledTriagePriorityItem struct {

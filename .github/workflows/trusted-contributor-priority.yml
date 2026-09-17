@@ -6,24 +6,64 @@ on:
 
 # Declaring one permission makes every unspecified permission none.
 permissions:
+  contents: read
   issues: write
 
 jobs:
   prioritize:
-    if: github.repository == 'ivanarama/onebase' && github.event.issue.user.id == 330018641
+    if: github.repository == 'ivanarama/onebase'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Add the trusted contributor priority label
+      - name: Add priority for a repository-managed trusted contributor
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTHOR_ID: ${{ github.event.issue.user.id }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             exit 1
           fi
+          if [[ ! "$AUTHOR_ID" =~ ^[1-9][0-9]*$ ]]; then
+            exit 1
+          fi
+          if [[ ! "$ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            exit 1
+          fi
+
+          config_file="$(mktemp)"
+          trap 'rm -f "$config_file"' EXIT
+          gh api --method GET \
+            -H 'Accept: application/vnd.github.raw+json' \
+            "repos/ivanarama/onebase/contents/.github/trusted-priority-contributors.json?ref=${GITHUB_SHA}" \
+            >"$config_file"
+
+          jq -e '
+            type == "object"
+            and (keys == ["contributors", "version"])
+            and (.version | type == "number")
+            and (.version == 1)
+            and (.contributors | type == "array")
+            and all(.contributors[];
+              type == "object"
+              and (keys == ["github_id", "login_hint"])
+              and (.github_id | type == "string" and test("^[1-9][0-9]*$"))
+              and (.login_hint | type == "string" and length > 0)
+            )
+            and (
+              ([.contributors[].github_id] | length)
+              == ([.contributors[].github_id] | unique | length)
+            )
+          ' "$config_file" >/dev/null
+
+          if ! jq -e --arg author_id "$AUTHOR_ID" \
+            '.contributors | any(.github_id == $author_id)' \
+            "$config_file" >/dev/null; then
+            exit 0
+          fi
+
           gh api --method POST \
             "repos/ivanarama/onebase/issues/${ISSUE_NUMBER}/labels" \
             --input - <<'JSON'
