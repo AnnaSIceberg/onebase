@@ -517,6 +517,16 @@ func requireAllCompact(t *testing.T, text string, fragments ...string) {
 	}
 }
 
+func rejectAllCompact(t *testing.T, text string, fragments ...string) {
+	t.Helper()
+	compact := strings.Join(strings.Fields(text), " ")
+	for _, fragment := range fragments {
+		if strings.Contains(compact, strings.Join(strings.Fields(fragment), " ")) {
+			t.Errorf("pipeline contract still contains forbidden compact fragment %q", fragment)
+		}
+	}
+}
+
 func requireCompactInOrder(t *testing.T, text string, fragments ...string) {
 	t.Helper()
 	compact := strings.Join(strings.Fields(text), " ")
@@ -582,6 +592,73 @@ func TestIntegrationReviewReusesContentProofAndChecksOnlyBaseSyncDelta(t *testin
 		"разрешение конфликтов",
 		"обязательные проверки CI",
 		"Если между доказанным `from` и `to` есть что-либо кроме валидного base-sync либо собственный код PR изменён, carry недействителен",
+	)
+}
+
+func TestReviewDefaultsToTargetedTestsAndGatesFullSuite(t *testing.T) {
+	entry := repositoryFile(t, ".claude", "skills", "review-queue", "SKILL.md")
+	legacy := repositoryFile(t, ".claude", "skills", "review-queue", "references", "legacy-protocol.md")
+	for name, text := range map[string]string{
+		"pipelinectl": entry,
+		"fallback":    legacy,
+	} {
+		t.Run(name, func(t *testing.T) {
+			requireAllCompact(t, text,
+				"затрагивает Go или прикладной слой",
+				"`go build ./...` обязателен",
+				"`go test -count=1` и `go vet` для затронутых пакетов",
+				"`go run ./cmd/onebase check --project examples/trade`",
+				"Зелёный CI точного HEAD не заменяет эти локальные проверки",
+				"актуальный обязательный CI точного HEAD остаётся обязательным гейтом",
+				"Не запускай `go test -count=1 ./...` по умолчанию",
+				"после успешных целевых тестов",
+				"отсутствует успешный обязательный CI",
+				"`go.mod`/`go.sum`",
+				"нельзя надёжно ограничить круг потребителей",
+				"репозиторный рефакторинг нескольких независимых подсистем",
+				"полный список затронутых пакетов и потребителей нельзя обоснованно перечислить",
+				"Само число изменённых файлов или пакетов не является триггером",
+				"если точный список затронутых пакетов и потребителей можно назвать, запускай только его",
+				"дополнительной диагностикой, а не новым обязательным гейтом",
+				"классифицируй каждую его ошибку",
+				"Зелёных целевых тестов и обязательного CI для вывода о шуме окружения недостаточно",
+				"известной задокументированной сигнатурой со ссылкой на документ или issue",
+				"контрольным прогоном воспроизводится на неизменённом base в той же среде",
+				"повтори точный падающий пакет/тест, а не весь набор",
+				"не одобряй PR, пока причина не классифицирована",
+				"Связанное с diff падение блокирует ревью",
+				"Полный набор из-за этой ошибки повторно не запускай",
+			)
+			rejectAll(t, text,
+				"`./onebase check --project examples/trade`",
+				"которого нет в целевом прогоне при зелёном обязательном CI",
+			)
+		})
+	}
+
+	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
+	requireAllCompact(t, docs,
+		"затрагивает Go или прикладной слой",
+		"обязателен `go build ./...`",
+		"целевые `go test -count=1` и `go vet`",
+		"`go run ./cmd/onebase check --project examples/trade`",
+		"Полный `go test -count=1 ./...` не запускается «для уверенности»",
+		"репозиторный рефакторинг нескольких независимых подсистем",
+		"полным списком затронутых пакетов и потребителей, который нельзя обоснованно перечислить",
+		"Само число файлов или пакетов таким триггером не считается",
+		"Актуальный обязательный CI точного HEAD при этом остаётся обязательным гейтом",
+		"он остаётся дополнительной диагностикой",
+		"каждую его ошибку надо классифицировать до одобрения",
+		"Зелёные целевые тесты и обязательный CI сами по себе не доказывают шум окружения",
+		"известная задокументированная сигнатура со ссылкой на документ или issue",
+		"контрольное воспроизведение точного падающего пакета/теста на неизменённом base в той же среде",
+		"повторяется точный падающий пакет/тест, а не весь набор",
+		"REVIEW не одобряется до классификации причины",
+		"связанное с diff падение блокирует ревью",
+	)
+	rejectAll(t, docs,
+		"`./onebase check --project examples/trade`",
+		"блокирует REVIEW только при связи с diff",
 	)
 }
 
@@ -1064,6 +1141,49 @@ func TestTriageAndFixShareDeterministicCanonicalCommentRule(t *testing.T) {
 		"после удаления winner проигравший\n   sibling не должен воскреснуть",
 		"не считается одним из\n   пяти рабочих slots",
 		"<!-- pp:triage-author-reply claim=<canonical-root-id> fingerprint-sha256=<точный-root-fingerprint> -->",
+	)
+}
+
+func TestTriageKeepsManualSplitHumanOwnedAndFixReportsStoppedWork(t *testing.T) {
+	triage := skill(t, "triage-issues")
+	fixer := skill(t, "fix-approved")
+	docs := repositoryFile(t, "docs", "maintenance-pipeline.md")
+
+	requireAllCompact(t, triage,
+		"TRIAGE не создаёт вторую issue: такого действия нет в его полномочиях",
+		"Текущую заявку считай кодовой частью",
+		"`route=needs-decision` и `manual=false`",
+		"<!-- pp:triage-manual-split -->",
+		"человека создать отдельную manual-заявку со ссылкой на текущую",
+		"не разрешает TRIAGE вызывать `gh issue create`",
+		"Заявка принята в очередь автоматической починки",
+		"PR будет привязан к этой заявке; если автоматическая починка остановится",
+	)
+	rejectAll(t, triage,
+		"Заводи такую заявку как обычную (её кодовую часть)",
+		"Заявка ушла в автоматическую починку",
+	)
+
+	requireAllCompact(t, fixer,
+		"Новый вопрос не обещает PR или закрытие заявки",
+		"Автоматическая починка остановлена: <точная причина>.",
+		"Нужен ответ мейнтейнера: <конкретный вопрос>.",
+		"Если автор issue не `ivanarama` и не `ivantit66`, добавь отдельную строку `<!-- pp:reply -->`",
+		"На успешном пути его пишет триаж (`/triage-issues`) или человек; при остановке FIX-handoff его добавляет FIX в свой комментарий-вопрос по п. 9",
+		"эта информационная строка разрешена post-root gate и не является отдельным control marker",
+		"уже опубликованный доверенный question-marker остаётся достаточным",
+	)
+	rejectAllCompact(t, fixer,
+		"Ответ автору — отдельный комментарий с `<!-- pp:reply -->`, и пишет его триаж (`/triage-issues`) или человек",
+	)
+
+	requireAllCompact(t, docs,
+		"его полномочия — комментарии и метки, но не `gh issue create`",
+		"<!-- pp:triage-manual-split -->",
+		"человек должен создать отдельную manual-заявку со ссылкой на текущую",
+		"PR и закрытие не гарантируются заранее",
+		"Автоматическая починка остановлена",
+		"для внешнего автора он также содержит `<!-- pp:reply -->`",
 	)
 }
 
