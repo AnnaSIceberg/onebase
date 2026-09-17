@@ -54,18 +54,43 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
 
 ## Процедура
 
-Перед ручной очередью проверь, не вернул ли `pipelinectl next merge`
-`action=cleanup`: такой lease всегда заверши через `complete merge-cleanup`, не
-вызывая merge API повторно. Если быстрый путь вернул `fallback`, отдельно найди
-доверенные неизменённые пары
-`pp:merge-cleanup-intent`/`pp:merge-cleanup-done` во всём пагинированном потоке
-repository issue comments. Незавершённый intent старше обычной очереди: уже
-merged PR можно только передать обратно в `complete merge-cleanup`, а открытый
-PR с изменившимся HEAD/body/proof/ship или неоднозначной timeline требует
-человека. Не обходи такой intent выбором следующего PR. Intent содержит exact
-HEAD, SHA-256 review-proof и raw UTF-8 body, а также sorted same-repository
-closing issues; qualified-ссылка на другой repository локальной issue не
-считается. Done адресует exact intent, HEAD и подтверждённый merge commit.
+Перед ручной очередью определи, как именно был передан fallback:
+
+- **Доверенный PromptPilot-handoff.** Если запуск получил неизменённый envelope
+  формата `promptpilot-fallback-target-v1`, используй только его exact target:
+  не вызывай `next merge` повторно и не выбирай другой PR. Сначала выполни все
+  обязательные read-only проверки этой цели, предусмотренные процедурой до
+  первой мутации. Непосредственно перед первой внешней мутацией выполни
+  указанный в envelope `gate-fallback merge` ровно один раз. Сохрани stdout и
+  exit code раздельно и разбери stdout как JSON даже при ненулевом коде.
+  Продолжать разрешено только при
+  `action=validated` и точном совпадении `repository`, `stage` и `target` с
+  envelope. Такой успешно проверенный gate является queue-wide cleanup recovery
+  barrier: **не выполняй** отдельный полный скан repository issue comments для
+  повторного поиска `pp:merge-cleanup-intent`/`pp:merge-cleanup-done`; первой
+  следующей внешней операцией должна быть уже подготовленная мутация exact
+  target. Ошибка команды, невалидный JSON, иной action либо несовпадение цели —
+  остановка без мутаций, без повторного gate, `next`, без выбора другого PR и
+  без перехода к ручной ветке.
+- **Ручной/legacy fallback без такого envelope.** Здесь исключения нет. Проверь,
+  не вернул ли `pipelinectl next merge` `action=cleanup`: такой lease всегда
+  заверши через `complete merge-cleanup`, не вызывая merge API повторно. Если
+  быстрый путь вернул `fallback`, отдельно найди доверенные неизменённые пары
+  `pp:merge-cleanup-intent`/`pp:merge-cleanup-done` во всём пагинированном
+  потоке repository issue comments до выбора обычной очереди.
+
+Успешный scheduling gate заменяет только повторное глобальное discovery.
+Все GraphQL-, `ship`-, CI-, base-sync-, CAS- и exact-target-проверки этой
+процедуры остаются обязательными: проверки, разрешающие первую мутацию,
+заверши до вызова gate, а все последующие повторные проверки выполняй в
+указанных процедурой контрольных точках. В ручной ветке действует прежнее
+правило. Незавершённый intent старше обычной очереди. Уже merged PR можно только
+передать обратно в `complete merge-cleanup`, а открытый PR с изменившимся
+HEAD/body/proof/ship или неоднозначной timeline требует человека. Не обходи
+такой intent выбором следующего PR. Intent содержит exact HEAD, SHA-256
+review-proof и raw UTF-8 body, а также sorted same-repository closing issues;
+qualified-ссылка на другой repository локальной issue не считается. Done
+адресует exact intent, HEAD и подтверждённый merge commit.
 
 1. Очередь: получи **все** открытые PR пагинированным REST, затем локально
    оставь метку `ship`, исключи `hold` и `needs-decision`. После
@@ -102,6 +127,14 @@ closing issues; qualified-ссылка на другой repository локаль
    re-ship выбери только минимальный номер; остальные сохраняют `ship`, но ждут
    своей очереди. Нельзя заранее обновлять или мержить следующий PR: это изменит
    `main` и заставит повторно ревьюить владельца барьера.
+
+   Intent считается открытым для recovery только если текущий HEAD всё ещё
+   равен его `from` либо является непосредственным двухродительским merge-коммитом
+   с первым parent, равным этому `from`. Незавершённый intent от более старого
+   HEAD остаётся частью аудита, но не владеет single-flight и не перекрывает
+   более позднюю завершённую intent/done-цепочку. Если текущий HEAD уже является
+   `to` валидного done, другие unmatched intent с тем же первым parent считаются
+   параллельными stale-дубликатами этой завершённой транзакции.
 
    Фильтр списка не является достаточным гейтом: метки могут измениться, пока ты
    работаешь с PR или ждёшь CI. Перед **каждым внешним изменением PR**
