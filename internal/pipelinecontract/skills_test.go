@@ -603,6 +603,18 @@ func TestReviewDefaultsToTargetedTestsAndGatesFullSuite(t *testing.T) {
 	)
 }
 
+func TestReviewUsesSupportedGhDiffArguments(t *testing.T) {
+	entry := repositoryFile(t, ".claude", "skills", "review-queue", "SKILL.md")
+	requireAllCompact(t, entry,
+		"gh pr view <M> --json title,body,headRefName,files,statusCheckRollup",
+		"gh pr diff <M>",
+		"`--stat` не является флагом `gh pr diff`",
+		"возьми `additions`/`deletions` из элементов поля `files`",
+		"отдельная диагностическая команда для этого не нужна",
+	)
+	rejectAll(t, entry, "gh pr diff <M> --stat")
+}
+
 func TestReviewQueueUsesPriorityThenBreadthFirstAndAging(t *testing.T) {
 	review := skill(t, "review-queue")
 	requireAllCompact(t, review,
