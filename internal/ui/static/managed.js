@@ -431,6 +431,14 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // DOM отсутствует, якорь data-ob-el не находится, и hidden=false для него —
   // пустая операция. Снова показать такой элемент может только перезагрузка
   // страницы; скрыть уже отрисованный — можно.
+  //
+  // Клиент НИЧЕГО не выводит сам. Условие на контейнере каскадит на потомков,
+  // но считает каскад сервер: в карте лежит готовое состояние каждого
+  // затронутого элемента, а здесь оно только применяется к контролам этого
+  // элемента и никого больше (#1184). Разбирать дерево тут нельзя: клиент не
+  // знает ни статического readonly потомка, ни права на запись, и обход
+  // потомков скопом отпирал бы при ложном условии поле, которое сервер
+  // отрисовал нередактируемым навсегда.
   function applyElementStates(st) {
     if (!st) return;
     var byName = function (name) {
@@ -439,9 +447,27 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var hidden = st.hidden || {};
     Object.keys(hidden).forEach(function (name) {
       var el = byName(name);
-      if (el) el.style.display = hidden[name] ? 'none' : '';
+      if (!el) return;
+      // Some managed elements keep their layout only in an inline display
+      // declaration (checkbox and command bar use flex). Remember that value
+      // before the first state update instead of erasing it on hidden=false.
+      if (!Object.prototype.hasOwnProperty.call(el, '_obDisplay')) el._obDisplay = el.style.display || '';
+      el.style.display = hidden[name] ? 'none' : el._obDisplay;
     });
     var ro = st.readonly || {};
+    // Свой ли это редактирующий контрол: ближайший якорь элемента формы — сам
+    // el. У контрола вложенного элемента якорь ближе, и его состояние приедет
+    // отдельной строкой карты. Навигацию (переход к выбранной ссылке, вкладки)
+    // сервер намеренно оставляет доступной при readonly; шаблон помечает её,
+    // чтобы обработка события сохранила ту же классификацию. Содержимое
+    // табличной части (data-ob-tp) не трогаем вовсе: там состояние складывается
+    // ещё и из права на запись, которого в карте нет, а сама ТЧ каскад получает
+    // при отрисовке.
+    var ownControl = function (el, node) {
+      if (node.closest('[data-ob-tp]')) return false;
+      if (node.dataset && node.dataset.obReadonlyNavigation === '1') return false;
+      return node.closest('[data-ob-el]') === el;
+    };
     Object.keys(ro).forEach(function (name) {
       var el = byName(name);
       if (!el) return;
@@ -451,6 +477,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       // input/textarea оставляем видимыми и выделяемыми (readonly), select и
       // кнопку подбора гасим (disabled) — как это делает серверный рендер.
       el.querySelectorAll('input, textarea').forEach(function (inp) {
+        if (!ownControl(el, inp)) return;
         // Hidden presence-marker distinguishes an unchecked checkbox from a
         // checkbox absent from the submitted form. It must be successful only
         // while the checkbox itself is editable; otherwise marker-without-value
@@ -459,7 +486,10 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         if (inp.type === 'checkbox' || inp.type === 'radio' || checkboxPresence) inp.disabled = on;
         else inp.readOnly = on;
       });
-      el.querySelectorAll('select, button').forEach(function (n) { n.disabled = on; });
+      el.querySelectorAll('select, button').forEach(function (n) {
+        if (!ownControl(el, n)) return;
+        n.disabled = on;
+      });
     });
   }
   window.applyElementStates = applyElementStates;
@@ -953,7 +983,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         var idInput = document.querySelector('#main-form [name="_id"]');
         if (idInput) idInput.value = DOC_ID;
         if (window.history && history.replaceState) {
-          history.replaceState(null, '', location.pathname.replace(/\/new$/, '/' + DOC_ID));
+          var savedURL = location.pathname.replace(/\/new$/, '/' + DOC_ID);
+          history.replaceState(null, '', savedURL);
+          try {
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
+            }
+          } catch (_) {}
         }
         window._obFormDirty = false;
       }
