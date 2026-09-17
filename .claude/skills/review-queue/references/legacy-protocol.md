@@ -62,7 +62,9 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
 
 0. **Исполняемый preflight — единственный источник списка кандидатов.** До
    самостоятельного разбора очереди и до любой GitHub-мутации выполни из корня
-   этой рабочей копии:
+   этой рабочей копии ровно один блок для текущей ОС.
+
+   Windows (PowerShell):
 
    ```powershell
    $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
@@ -82,6 +84,43 @@ Windows-1251 и превратить `Триаж` в `РўСЂРёР°Р¶`. П�
      throw 'Go not found in PATH or the standard Windows location'
    }
    & $goExe run ./tools/pipelinehealth -json
+   ```
+
+   POSIX shell (Linux/macOS). Сначала ищи инструменты в `PATH`, затем в
+   стандартных каталогах Homebrew/MacPorts и официальной установки Go; найденные
+   пути обязаны быть абсолютными и исполняемыми:
+
+   ```sh
+   ghExe=$(command -v gh 2>/dev/null || true)
+   if [ -z "$ghExe" ]; then
+     for candidate in /opt/homebrew/bin/gh /usr/local/bin/gh /opt/local/bin/gh; do
+       if [ -x "$candidate" ]; then
+         ghExe=$candidate
+         break
+       fi
+     done
+   fi
+   case "$ghExe" in
+     /*) ;;
+     *) echo "GitHub CLI not found at an absolute executable path on POSIX" >&2; exit 1 ;;
+   esac
+   GH_EXE=$ghExe
+   export GH_EXE
+
+   goExe=$(command -v go 2>/dev/null || true)
+   if [ -z "$goExe" ]; then
+     for candidate in /opt/homebrew/bin/go /usr/local/bin/go /opt/local/bin/go /usr/local/go/bin/go; do
+       if [ -x "$candidate" ]; then
+         goExe=$candidate
+         break
+       fi
+     done
+   fi
+   case "$goExe" in
+     /*) ;;
+     *) echo "Go not found at an absolute executable path on POSIX" >&2; exit 1 ;;
+   esac
+   "$goExe" run ./tools/pipelinehealth -json
    ```
 
    Ошибка команды, stderr вместо JSON или неразбираемый JSON означают
