@@ -1,0 +1,31 @@
+name: Trusted contributor priority
+
+on:
+  issues:
+    types: [opened]
+
+# Declaring one permission makes every unspecified permission none.
+permissions:
+  issues: write
+
+jobs:
+  prioritize:
+    if: github.repository == 'ivanarama/onebase' && github.event.issue.user.id == 330018641
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Add the trusted contributor priority label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+            exit 1
+          fi
+          gh api --method POST \
+            "repos/ivanarama/onebase/issues/${ISSUE_NUMBER}/labels" \
+            --input - <<'JSON'
+          {"labels":["queue:p0"]}
+          JSON
