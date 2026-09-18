@@ -134,15 +134,14 @@ test('enter_submits_form возвращает прежнее поведение'
   assert.equal(second.focused, false);
 });
 
-test('textarea, кнопки и флажки оставляют Enter себе', () => {
+test('textarea и кнопки оставляют Enter себе', () => {
   const nav = api();
   const f = form();
   const area = f.appendChild(node('textarea'));
   const button = f.appendChild(node('button'));
-  const checkbox = f.appendChild(node('input', {type: 'checkbox'}));
   const submit = f.appendChild(node('input', {type: 'submit'}));
   f.appendChild(node('input', {type: 'text'}));
-  for (const el of [area, button, checkbox, submit]) {
+  for (const el of [area, button, submit]) {
     assert.equal(nav.navigate(el), false, el.tagName + '/' + el.type + ': Enter перехвачен');
   }
 });

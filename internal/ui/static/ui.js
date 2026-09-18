@@ -4052,8 +4052,7 @@ function obEnterOwnedByElement(el) {
   if (tag === 'textarea' || tag === 'button' || tag === 'a' || tag === 'summary') return true;
   if (tag === 'input') {
     var type = String(el.type || 'text').toLowerCase();
-    if (type === 'submit' || type === 'button' || type === 'reset' ||
-      type === 'file' || type === 'checkbox' || type === 'radio') return true;
+    if (type === 'submit' || type === 'button' || type === 'reset' || type === 'file') return true;
   }
   if (el.isContentEditable) return true;
   return false;
@@ -4073,14 +4072,19 @@ function obEnterFieldUsable(el) {
 // табличные части целиком. Грид — одна остановка, а не набор полей: его ячейки
 // рисует SlickGrid, отдельных input'ов в разметке у них нет, и внутри грида
 // Enter обслуживает он сам.
-function obEnterStops(form) {
+function obEnterStops(form, source) {
   var out = [];
   var nodes = form.querySelectorAll('input,select,textarea,.ob-grid[data-sg-tp]');
   for (var i = 0; i < nodes.length; i++) {
     var el = nodes[i];
-    if (el.classList && el.classList.contains('ob-grid')) { out.push(el); continue; }
+    if (el.classList && el.classList.contains('ob-grid')) {
+      if (obElementVisible(el)) out.push(el);
+      continue;
+    }
     if (el.closest && el.closest('.ob-grid[data-sg-tp]')) continue; // редактор ячейки грида
-    if (!obEnterFieldUsable(el)) continue;
+    // readonly/tabindex=-1 не являются остановками, но могут получить фокус
+    // мышью. Сохраняем позицию источника, чтобы Enter и оттуда не записывал форму.
+    if (el !== source && !obEnterFieldUsable(el)) continue;
     out.push(el);
   }
   return out;
@@ -4101,7 +4105,7 @@ function obEnterNavigateFrom(target) {
   // Внутри грида Enter обслуживает сам грид: коммит ячейки и переход вправо.
   if (target.closest && target.closest('.ob-grid[data-sg-tp]')) return false;
 
-  var stops = obEnterStops(form);
+  var stops = obEnterStops(form, target);
   var idx = -1;
   for (var i = 0; i < stops.length; i++) {
     if (stops[i] === target) { idx = i; break; }

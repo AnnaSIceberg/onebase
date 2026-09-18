@@ -1770,6 +1770,13 @@ obManagedReady(obManagedInitDelegates);
       window.openRefPicker(selEl);
     }
 
+    function ownsEnter(target) {
+      return target === input && isOpen && activeIdx >= 0 && !!shown[activeIdx];
+    }
+    // Document-capture навигации должен дать редактору выбрать подсказку
+    // раньше, чем коммитить ячейку. Состояние принадлежит этому редактору.
+    this.ownsEnter = ownsEnter;
+
     function onKeyDown(e) {
       var key = e.key || '';
       if (key === 'ArrowDown' && e.altKey) { e.preventDefault(); e.stopPropagation(); openPicker(); return; }
@@ -1788,7 +1795,7 @@ obManagedReady(obManagedInitDelegates);
         return;
       }
       if (key === 'Enter') {
-        if (isOpen && activeIdx >= 0 && shown[activeIdx]) {
+        if (ownsEnter(e.target)) {
           // Подставляем значение и ОСТАЁМСЯ в ячейке (ввод по строке в 1С);
           // следующий Enter/Tab уже коммитит правку средствами SlickGrid.
           e.preventDefault();
@@ -2565,12 +2572,18 @@ obManagedReady(obManagedInitDelegates);
   // остановкой маршрута Enter оказывается грид.
   window.obGridFocusFirstCell = function(host) {
     var tpName = host && host.getAttribute ? (host.getAttribute("data-sg-tp") || "") : "";
-    var g = (window._obGrids || {})[tpName];
-    if (!g || !g.grid || g.readOnly) return false;
+    // Одна ТЧ может иметь readonly и writable представления. Проверяем именно
+    // host маршрута, а не канонический writable grid с тем же именем.
+    var g = host && host._obGridState;
+    if (!g || !g.grid || g.div !== host || g.readOnly ||
+        !document.contains(host) || !managedElementVisible(host)) return false;
     var rows = (g.dataView && g.dataView.getLength) ? g.dataView.getLength() : 0;
     if (rows <= 0) return false;
-    g.grid.setActiveCell(0, gridFirstEditableCell(g, 0));
+    var cell = gridFirstEditableCell(g, 0);
+    g.grid.setActiveCell(0, cell);
     if (g.grid.focus) g.grid.focus();
+    var active = g.grid.getActiveCell();
+    if (!active || active.row !== 0 || active.cell !== cell || !host.contains(document.activeElement)) return false;
     rememberActiveGrid(tpName);
     return true;
   };
@@ -2691,6 +2704,16 @@ obManagedReady(obManagedInitDelegates);
       // Штатный Enter грида коммитит ячейку и остаётся в ней, поэтому берём
       // клавишу себе в фазе перехвата и делаем оба шага явно.
       if (e.key === "Enter" && !e.ctrlKey && direct) {
+        if (e.isComposing === true || e.keyCode === 229) {
+          // Оставляем браузеру подтверждение IME, но не передаём Enter
+          // SlickGrid: при keyCode=13 он тоже завершил бы редактор.
+          e.stopPropagation();
+          return;
+        }
+        var form = active.div && active.div.closest('form');
+        if (form && form.getAttribute('data-ob-enter-submits') === '1') return;
+        var editor = active.grid.getCellEditor();
+        if (editor && editor.ownsEnter && editor.ownsEnter(e.target)) return;
         take();
         gridEnterNavigate(active);
         return;
