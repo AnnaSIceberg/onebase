@@ -708,6 +708,7 @@ type sourceScope struct {
 	mainTable      string
 	mainColTypes   map[string]metadata.FieldType
 	entities       map[string]sourceEntity
+	unionFirst     int // SELECT, задающий имена результата всего UNION
 	sourceCount    int
 	qualifiers     map[string]sourceClass
 	derivedAliases map[string]int
@@ -3215,12 +3216,17 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 			if kw, ok := sqlKW(t.val); ok && kw == "SELECT" {
 				// UNION starts a sibling SELECT at the same depth; nested SELECT
 				// keeps every shallower parent frame active.
+				unionFirst := len(ctx.scopes)
+				if len(active) > 0 && active[len(active)-1].depth == depth {
+					unionFirst = ctx.scopes[active[len(active)-1].id].unionFirst
+				}
 				for len(active) > 0 && active[len(active)-1].depth >= depth {
 					active = active[:len(active)-1]
 				}
 				scopeID := len(ctx.scopes)
 				ctx.scopes = append(ctx.scopes, sourceScope{
 					entities:       map[string]sourceEntity{},
+					unionFirst:     unionFirst,
 					qualifiers:     map[string]sourceClass{},
 					derivedAliases: map[string]int{},
 					outputAliases:  map[string]struct{}{},
@@ -3468,6 +3474,14 @@ func (ctx sourceContext) scopeProjectsSystemColumn(tokens []tok, scopeID int, na
 	if scopeID < 0 || scopeID >= len(ctx.scopes) || seen[scopeID] {
 		return false
 	}
+	// Алиасы объектов после КАК сохраняются буквально, даже если в той же
+	// проекции есть не переименованная системная колонка или звёздочка.
+	// Системные алиасы регистра имеют прежнюю, отдельную семантику.
+	if _, _, objectAlias := entitySystemColAlias(name); objectAlias {
+		if _, explicit := ctx.scopes[scopeID].outputAliases[lowerFast(name)]; explicit {
+			return false
+		}
+	}
 	seen[scopeID] = true
 	defer delete(seen, scopeID)
 
@@ -3549,6 +3563,10 @@ func (ctx sourceContext) projectionIsSystemColumn(
 		if childID, derived := scope.derivedAliases[scope.mainTable]; derived {
 			return ctx.scopeProjectsSystemColumn(tokens, childID, name, seen)
 		}
+		if _, _, objectAlias := entitySystemColAlias(name); objectAlias {
+			_, resolved := scope.entitySystemColumn(scope.mainTable, name)
+			return resolved
+		}
 		return scope.main == sourceClassRegister
 	}
 	if end-start == 3 && tokens[start].kind == tIdent && tokens[start+1].kind == tDot &&
@@ -3556,6 +3574,10 @@ func (ctx sourceContext) projectionIsSystemColumn(
 		scope := ctx.scopes[scopeID]
 		qualifier := lowerFast(tokens[start].val)
 		if class, known := scope.qualifiers[qualifier]; known {
+			if _, _, objectAlias := entitySystemColAlias(name); objectAlias {
+				_, resolved := scope.entitySystemColumn(qualifier, name)
+				return resolved
+			}
 			return class == sourceClassRegister
 		}
 		if childID, derived := scope.derivedAliases[qualifier]; derived {
@@ -3749,26 +3771,43 @@ func copyGroupingAliasExpression(tokens []tok, ctx sourceContext, start, end int
 
 // entitySystemColumnAlias разрешает системную колонку документа или справочника.
 // Квалификатор берётся из текста запроса, а для неквалифицированного имени —
-// главный источник области. Когда источников в области больше одного, колонка
-// эмитится с префиксом: deletion_mark есть у каждой таблицы объекта, и голое
-// имя при соединении стало бы неоднозначным.
+// главный источник области. Производная таблица наследует физическое имя
+// только от не переименованной проекции. Явные и автоматические JOIN требуют
+// префикса: deletion_mark есть у каждой таблицы объекта.
 func (tr *translator) entitySystemColumnAlias(name string, prevDot bool) (string, bool) {
-	if _, _, ok := entitySystemColAlias(name); !ok {
+	col, _, ok := entitySystemColAlias(name)
+	if !ok {
 		return "", false
 	}
 	scope, hasScope := tr.sourceCtx.scopeAt(tr.pos - 1)
 	if !hasScope {
 		return "", false
 	}
-	if prevDot && tr.pos >= 3 {
-		return scope.entitySystemColumn(lowerFast(tr.tokens[tr.pos-3].val), name)
+	if !prevDot {
+		if tr.inUnionOrder() {
+			scope = tr.sourceCtx.scopes[scope.unionFirst]
+		}
+		section := tr.sourceCtx.sectionAt(tr.pos - 1)
+		if section == sectionOrderBy || section == sectionGroupBy {
+			if _, outputAlias := scope.outputAliases[lowerFast(name)]; outputAlias {
+				return "", false
+			}
+		}
 	}
-	col, ok := scope.entitySystemColumn(scope.mainTable, name)
+	qualifier := scope.mainTable
+	if prevDot && tr.pos >= 3 {
+		qualifier = lowerFast(tr.tokens[tr.pos-3].val)
+	}
+	if childID, derived := scope.derivedAliases[qualifier]; derived {
+		ok = tr.sourceCtx.scopeProjectsSystemColumn(tr.tokens, childID, name, map[int]bool{})
+	} else {
+		col, ok = scope.entitySystemColumn(qualifier, name)
+	}
 	if !ok {
 		return "", false
 	}
-	if scope.sourceCount > 1 && scope.mainTable != "" {
-		return scope.mainTable + "." + col, true
+	if !prevDot {
+		col = tr.qualifyReference(col)
 	}
 	return col, true
 }
@@ -4262,16 +4301,13 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			}
 			// Системные колонки самого объекта (Проведен, ПометкаУдаления):
 			// разрешаются по метаданным источника, см. entitySystemColumn.
-			// Позиция имени решает так же, как у булевых литералов ниже: после
-			// КАК это объявляемый алиас вывода, перед точкой — квалификатор, а
-			// ссылка на уже объявленный алиас остаётся ссылкой на него.
-			// Иначе `Пуб.posted КАК Проведен` превращался в `AS posted`.
+			// КАК объявляет алиас, GROUP/ORDER BY могут ссылаться на него
+			// только в своей SELECT-области. WHERE/HAVING и квалифицированные
+			// имена всегда разрешают поле источника, даже при коллизии алиаса.
 			if !prevAlias && !nextIsDot {
-				if _, isAlias := tr.aliases[lower]; !isAlias {
-					if col, ok := tr.entitySystemColumnAlias(t.val, prevDot); ok {
-						tr.emit(col)
-						continue
-					}
+				if col, ok := tr.entitySystemColumnAlias(t.val, prevDot); ok {
+					tr.emit(col)
+					continue
 				}
 			}
 			if agg, ok := sqlAgg(t.val); ok && tr.peek(0).kind == tLParen {
