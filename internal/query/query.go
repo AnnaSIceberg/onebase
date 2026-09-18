@@ -704,6 +704,7 @@ type sourceEntity struct {
 }
 
 type sourceScope struct {
+	parent         int // ближайший внешний SELECT, -1 у верхнего уровня; UNION — сосед
 	main           sourceClass
 	mainTable      string
 	mainColTypes   map[string]metadata.FieldType
@@ -733,6 +734,26 @@ func (ctx sourceContext) scopeIDAt(tokenPos int) (int, bool) {
 		return 0, false
 	}
 	return scopeID, true
+}
+
+// qualifierScopeAt ищет источник в текущем SELECT, затем во внешних.
+// Само наличие локального квалификатора останавливает поиск, даже если у
+// источника нет нужной системной колонки: внешняя таблица его не подменяет.
+func (ctx sourceContext) qualifierScopeAt(tokenPos int, qualifier string) (sourceScope, bool) {
+	scopeID, ok := ctx.scopeIDAt(tokenPos)
+	if !ok {
+		return sourceScope{}, false
+	}
+	for scopeID >= 0 {
+		scope := ctx.scopes[scopeID]
+		_, source := scope.qualifiers[qualifier]
+		_, derived := scope.derivedAliases[qualifier]
+		if source || derived {
+			return scope, true
+		}
+		scopeID = scope.parent
+	}
+	return sourceScope{}, false
 }
 
 func (ctx sourceContext) sectionAt(tokenPos int) querySection {
@@ -3223,8 +3244,13 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 				for len(active) > 0 && active[len(active)-1].depth >= depth {
 					active = active[:len(active)-1]
 				}
+				parent := -1
+				if len(active) > 0 {
+					parent = active[len(active)-1].id
+				}
 				scopeID := len(ctx.scopes)
 				ctx.scopes = append(ctx.scopes, sourceScope{
+					parent:         parent,
 					entities:       map[string]sourceEntity{},
 					unionFirst:     unionFirst,
 					qualifiers:     map[string]sourceClass{},
@@ -3637,6 +3663,13 @@ func (ctx sourceContext) systemColumnIdentifierAt(tokens []tok, tokenPos int, se
 	scope := ctx.scopes[scopeID]
 	if tokenPos >= 2 && tokens[tokenPos-1].kind == tDot {
 		qualifier := lowerFast(tokens[tokenPos-2].val)
+		if objectAlias {
+			var found bool
+			scope, found = ctx.qualifierScopeAt(tokenPos, qualifier)
+			if !found {
+				return false
+			}
+		}
 		if class, known := scope.qualifiers[qualifier]; known {
 			if class == sourceClassRegister {
 				return registerAlias
@@ -3797,6 +3830,20 @@ func (tr *translator) entitySystemColumnAlias(name string, prevDot bool) (string
 	qualifier := scope.mainTable
 	if prevDot && tr.pos >= 3 {
 		qualifier = lowerFast(tr.tokens[tr.pos-3].val)
+		// Навигация уже заменила исходный квалификатор на alias авто-JOIN.
+		// Метаданные цели относятся только к уже эмитированному alias JOIN.
+		if rd := tr.findRefDim(qualifier); rd != nil && len(tr.parts) >= 2 &&
+			tr.parts[len(tr.parts)-1] == "." && tr.parts[len(tr.parts)-2] == rd.joinAlias {
+			if target, found := scopeEntityInfo(rd.refEntity, tr.opts); found {
+				return target.systemColumn(name)
+			}
+			return "", false
+		}
+		var found bool
+		scope, found = tr.sourceCtx.qualifierScopeAt(tr.pos-1, qualifier)
+		if !found {
+			return "", false
+		}
 	}
 	if childID, derived := scope.derivedAliases[qualifier]; derived {
 		ok = tr.sourceCtx.scopeProjectsSystemColumn(tr.tokens, childID, name, map[int]bool{})
@@ -4771,12 +4818,16 @@ func scopeEntityInfo(name string, opts CompileOpts) (sourceEntity, bool) {
 // справочника. Собственный реквизит с тем же именем всегда важнее алиаса —
 // иначе правка молча поменяла бы смысл уже работающего запроса.
 func (s sourceScope) entitySystemColumn(qualifier, name string) (string, bool) {
-	col, documentOnly, ok := entitySystemColAlias(name)
-	if !ok {
-		return "", false
-	}
 	src, known := s.entities[lowerFast(qualifier)]
 	if !known {
+		return "", false
+	}
+	return src.systemColumn(name)
+}
+
+func (src sourceEntity) systemColumn(name string) (string, bool) {
+	col, documentOnly, ok := entitySystemColAlias(name)
+	if !ok {
 		return "", false
 	}
 	if _, own := src.fields[lowerFast(name)]; own {
