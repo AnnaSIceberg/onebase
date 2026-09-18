@@ -1464,6 +1464,7 @@ function makeTreeRow(row) {
     tr.style.textDecoration = 'line-through';
   }
   tr.dataset.treeId = row.id || '';
+  tr.dataset.obEntityId = row.id || '';
   tr.dataset.treeDepth = String(row.depth || 0);
   tr.dataset.treeParent = row.parent_id || '';
   tr.dataset.predefined = row.predefined ? '1' : '';
@@ -1537,6 +1538,22 @@ function makeTreeRow(row) {
   return tr;
 }
 
+function listBasedOnItems(tr, cfg) {
+  var sourceID = tr && tr.dataset ? (tr.dataset.obEntityId || '') : '';
+  var actions = cfg && Array.isArray(cfg.basedOn) ? cfg.basedOn : [];
+  if (!sourceID || !actions.length) return [];
+  return actions.reduce(function (items, action) {
+    var label = action && typeof action.label === 'string' ? action.label : '';
+    var baseURL = action && typeof action.url === 'string' ? action.url : '';
+    // The server emits same-origin create URLs. Keep the client fail-closed if
+    // malformed config somehow reaches the page.
+    if (!label || !/^\/ui\/[^/?#]+\/[^/?#]+\/new\?/.test(baseURL)) return items;
+    var url = baseURL + '&based_on_id=' + encodeURIComponent(sourceID);
+    items.push({ label: label, fn: function () { listOpen(url, label); } });
+    return items;
+  }, []);
+}
+
 function listMenuItems(tr) {
   var cfg = obListConfig();
   var labels = cfg.labels || {};
@@ -1553,6 +1570,10 @@ function listMenuItems(tr) {
   // Пустой data-copy-url = нет права записи, пункт не показываем.
   if (tr.dataset.copyUrl) {
     items.push({ label: labels.copy || 'Скопировать', fn: function () { listOpen(tr.dataset.copyUrl); } });
+  }
+  var basedOnItems = listBasedOnItems(tr, cfg);
+  if (basedOnItems.length) {
+    items.push({ label: labels.basedOn || 'Ввести на основании', items: basedOnItems });
   }
   if (cfg.canWrite && tr.dataset.activityEnabled === '1') {
     if (tr.dataset.activityInactive === '1') {
@@ -1595,6 +1616,27 @@ function showListMenu(items, x, y) {
       mi.style.cssText = 'padding:7px 14px;margin-bottom:4px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:12px;cursor:default';
     } else if (item.disabled) {
       mi.style.cssText = 'padding:8px 14px;color:#94a3b8;cursor:default;font-style:italic';
+    } else if (item.items && item.items.length) {
+      mi.style.cssText = 'padding:8px 28px 8px 14px;cursor:pointer;position:relative;white-space:nowrap';
+      mi.textContent = item.label + ' ▸';
+      var sub = document.createElement('div');
+      sub.style.cssText = 'display:none;position:absolute;left:100%;top:-4px;background:#fff;border:1px solid #c8d0de;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:4px 0;min-width:190px';
+      item.items.forEach(function (child) {
+        var childEl = document.createElement('div');
+        childEl.textContent = child.label;
+        childEl.style.cssText = 'padding:8px 14px;cursor:pointer;white-space:nowrap';
+        childEl.onmouseenter = function () { childEl.style.background = '#f8fafc'; };
+        childEl.onmouseleave = function () { childEl.style.background = ''; };
+        childEl.onclick = function (event) {
+          event.preventDefault();
+          m.remove();
+          child.fn();
+        };
+        sub.appendChild(childEl);
+      });
+      mi.onmouseenter = function () { mi.style.background = '#f8fafc'; sub.style.display = 'block'; };
+      mi.onmouseleave = function () { mi.style.background = ''; sub.style.display = 'none'; };
+      mi.appendChild(sub);
     } else {
       mi.style.cssText = 'padding:8px 14px;cursor:pointer' + (item.danger ? ';color:#dc2626' : '');
       mi.onmouseenter = function () { mi.style.background = '#f8fafc'; };
@@ -1627,6 +1669,9 @@ function listMenuNoSel() {
   var labels = cfg.labels || {};
   var items = [{ label: labels.selectRowFirst || 'Сначала выберите строку списка', hint: true }];
   items.push({ label: labels.open || 'Открыть', disabled: true });
+  if (Array.isArray(cfg.basedOn) && cfg.basedOn.length) {
+    items.push({ label: labels.basedOn || 'Ввести на основании', disabled: true });
+  }
   if (cfg.canDelete) items.push({ label: labels.markDelete || 'Пометить на удаление', disabled: true });
   if (cfg.canUnpost) items.push({ label: labels.unpost || 'Отменить проведение', disabled: true });
   return items;
@@ -2817,11 +2862,13 @@ function openItemPicker(payload, elementName, eventContext) {
   table.style.cssText = 'width:100%;font-size:13px;margin:0';
   var thead = document.createElement('thead');
   var htr = document.createElement('tr');
+  var single = !!cfg.single;
   var thCb = document.createElement('th');
   thCb.style.width = '34px';
   var cbAll = document.createElement('input');
   cbAll.type = 'checkbox';
-  thCb.appendChild(cbAll);
+  // «Выбрать всё» в режиме одного выбора отмечать нечего.
+  if (!single) thCb.appendChild(cbAll);
   htr.appendChild(thCb);
   cols.forEach(function (c) {
     var th = document.createElement('th');
@@ -2844,11 +2891,22 @@ function openItemPicker(payload, elementName, eventContext) {
     var tdCb = document.createElement('td');
     tdCb.style.textAlign = 'center';
     var cb = document.createElement('input');
-    cb.type = 'checkbox';
+    cb.type = single ? 'radio' : 'checkbox';
+    if (single) cb.name = '_ip-choice';
     cb.className = '_ip-cb';
-    if (cfg.checkAll) cb.checked = true;
+    if (cfg.checkAll && !single) cb.checked = true;
     cb.onchange = updateCounter;
     tdCb.appendChild(cb);
+    // В одиночном выборе строка целиком работает как переключатель: попадать
+    // мышью в кружок диаметром 13 px посреди разговора с клиентом незачем.
+    if (single) {
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', function (e) {
+        if (e.target === cb) return;
+        cb.checked = true;
+        updateCounter();
+      });
+    }
     tr.appendChild(tdCb);
     cols.forEach(function (c) {
       var td = document.createElement('td');
@@ -2908,7 +2966,9 @@ function openItemPicker(payload, elementName, eventContext) {
   basketBadge.style.cssText = 'font-size:12px;color:#64748b;font-weight:400';
   basketHead.appendChild(basketTitle);
   basketHead.appendChild(basketBadge);
-  box.appendChild(basketHead);
+  // Корзина — про «набрать позиций с количествами». Без колонки количества она
+  // всё равно всегда пуста, а в одиночном выборе не нужна по смыслу.
+  if (!single && cfg.qtyField) box.appendChild(basketHead);
   var basketScroll = document.createElement('div');
   basketScroll.style.cssText = 'overflow:auto;max-height:180px;margin-top:4px;border:1px solid #e2e8f0;border-radius:7px;display:none';
   var basketTable = document.createElement('table');
@@ -2928,7 +2988,7 @@ function openItemPicker(payload, elementName, eventContext) {
   var bTbody = document.createElement('tbody');
   basketTable.appendChild(bTbody);
   basketScroll.appendChild(basketTable);
-  box.appendChild(basketScroll);
+  if (!single && cfg.qtyField) box.appendChild(basketScroll);
   basketHead.addEventListener('click', function () {
     basketScroll.style.display = basketScroll.style.display === 'none' ? '' : 'none';
   });
@@ -2940,7 +3000,7 @@ function openItemPicker(payload, elementName, eventContext) {
   btnCancel.style.cssText = 'padding:7px 18px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px';
   var btnOk = document.createElement('button');
   btnOk.type = 'button';
-  btnOk.textContent = 'Перенести в документ';
+  btnOk.textContent = single ? 'Выбрать' : 'Перенести в документ';
   btnOk.style.cssText = 'padding:7px 18px;border:1px solid #2563eb;border-radius:7px;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600';
   foot.appendChild(btnCancel);
   foot.appendChild(btnOk);
@@ -2952,7 +3012,9 @@ function openItemPicker(payload, elementName, eventContext) {
       return cb.checked && cb.closest('tr').style.display !== 'none';
     });
   }
-  function updateCounter() { counter.textContent = 'Выбрано: ' + checkedRows().length; }
+  function updateCounter() {
+    counter.textContent = single ? '' : ('Выбрано: ' + checkedRows().length);
+  }
   function updateBasket() {
     bTbody.innerHTML = '';
     var cnt = 0;
@@ -2993,6 +3055,7 @@ function openItemPicker(payload, elementName, eventContext) {
     updateBasket();
   });
   cbAll.addEventListener('change', function () {
+    if (single) return;
     Array.prototype.forEach.call(tbody.rows, function (tr) {
       if (tr.style.display === 'none') return;
       var cb = tr.querySelector('._ip-cb');
@@ -3554,6 +3617,28 @@ window.onebaseDevice = {
     // через window.open — иначе WebView2 откроет внешнее окно/браузер с базой.
     window.location.assign(url);
   }
+  // Закрыть вкладку формы по той же ссылке {вид, сущность, id}, какой её
+  // открывают. АДРЕС, А НЕ «АКТИВНАЯ ВКЛАДКА»: событие приходит в верхнее окно,
+  // и какая вкладка активна в этот момент — вопрос порядка доставки (команда
+  // «открой заявку, закрой звонок» закрыла бы только что открытую заявку).
+  //
+  // Чистые совпавшие вкладки закрываются сразу. Для каждой вкладки с
+  // несохранёнными изменениями остаётся обычное подтверждение: серверная
+  // команда не доказывает, что независимый дубликат формы уже записан.
+  function closeFormTab(link) {
+    var url = formURL(link);
+    if (!url) return;
+    try {
+      // Вкладочная оболочка в этом окне.
+      if (typeof window.obCloseTabByURL === 'function') { window.obCloseTabByURL(url); return; }
+      // Мы во фрейме оболочки — просим родителя закрыть вкладку с этим адресом.
+      if (window.parent && window.parent !== window && typeof window.parent.obOpenTab === 'function') {
+        window.parent.postMessage({ source: 'obCloseTab', url: url }, window.location.origin);
+      }
+    } catch (_) {}
+    // Оболочки нет (нативное GUI-окно, отдельная вкладка браузера) — закрывать
+    // нечего: window.close() для не открытого скриптом окна браузер игнорирует.
+  }
   // Богатый тост (аналог ПоказатьОповещениеПользователя): заголовок/текст,
   // «важное» не исчезает само, клик по тосту со ссылкой открывает форму.
   function richToast(d) {
@@ -3595,6 +3680,7 @@ window.onebaseDevice = {
   if (!window.__obEmbedded) {
     window.addEventListener('onebase:ui.оповещение', function (ev) { richToast(ev.detail); });
     window.addEventListener('onebase:ui.открытьФорму', function (ev) { openFormTab(ev.detail); });
+    window.addEventListener('onebase:ui.закрытьФорму', function (ev) { closeFormTab(ev.detail); });
   }
   // BEGIN onebase-dev-system-handler (executed directly by the Node regression test)
   function obHandleDevSystem(msg, devEnabled, state, reload) {
