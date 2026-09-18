@@ -104,9 +104,9 @@ func TestJSONManagerRef_СовпадаетСКолонкойЗапроса(t *te
 	})
 }
 
-// Предопределённый элемент — второй путь, возвращающий ссылку от менеджера
-// (`catalogs_proxy.go`, ветка предопределённых). Закрепляем и его: правку
-// делали ради «любой ссылки», а не ради одного способа её получить.
+// НайтиПоРеквизиту получает ссылку от менеджера через CatalogProxy.CallMethod
+// и findByField. Проверяем, что ЗаписатьJSON сериализует найденную ссылку
+// в идентификатор.
 func TestJSONManagerRef_НайтиПоРеквизитуТожеИдентификатор(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ents := refQueryEntities()
