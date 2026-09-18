@@ -405,6 +405,7 @@ func isProcessorFileParam(typ string) bool {
 // Жизненный цикл ровно такой: создать до запуска, удалить после — вызывающий
 // обязан отложить Cleanup сразу после получения значений.
 type processorTempFiles struct {
+	// Only save appends paths returned by os.CreateTemp, never request paths.
 	paths []string
 }
 
@@ -413,7 +414,7 @@ func (t *processorTempFiles) Cleanup() {
 		return
 	}
 	for _, path := range t.paths {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) { //nolint:gosec // G703: paths contains only CreateTemp results; save rejects separators in the uploaded extension.
 			oblog.Component("processor").Warn("временный файл параметра не удалён", "path", path, "err", err)
 		}
 	}
@@ -453,7 +454,7 @@ func (t *processorTempFiles) save(paramName, fileName string, data []byte) (stri
 		writeErr = closeErr
 	}
 	if writeErr != nil {
-		if removeErr := os.Remove(path); removeErr != nil && !os.IsNotExist(removeErr) {
+		if removeErr := os.Remove(path); removeErr != nil && !os.IsNotExist(removeErr) { //nolint:gosec // G703: path is f.Name() from CreateTemp in our temp directory; the uploaded extension cannot contain separators.
 			oblog.Component("processor").Warn("временный файл параметра не удалён", "path", path, "err", removeErr)
 		}
 		return "", fmt.Errorf("временный файл параметра %s: %w", paramName, writeErr)
