@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -1135,7 +1136,8 @@ func (s *Scheduler) buildDSLVars(ctx context.Context, mc *runtime.MovementsColle
 type ConstantResolver func(name string) (any, error)
 
 // NewConstantResolver собирает резолвер поверх базы и реестра: имя сверяется с
-// объявленными константами конфигурации, значение читается из базы.
+// объявленными константами конфигурации, значение читается из базы и приводится
+// к объявленному типу: миграция default и форма сохраняют JSON-строки.
 //
 // Сверка с реестром нужна затем, чтобы опечатка в имени отказывала сразу и
 // называла причину, а не превращалась в пустое значение параметра отчёта.
@@ -1144,15 +1146,59 @@ func NewConstantResolver(ctx context.Context, db *storage.DB, reg *runtime.Regis
 		return nil
 	}
 	return func(name string) (any, error) {
-		if reg != nil && reg.GetConstantMeta(name) == nil {
-			return nil, fmt.Errorf("константа «%s» не объявлена в конфигурации", name)
+		var constant *metadata.Constant
+		if reg != nil {
+			constant = reg.GetConstantMeta(name)
+			if constant == nil {
+				return nil, fmt.Errorf("константа «%s» не объявлена в конфигурации", name)
+			}
 		}
 		v, err := db.GetConstant(ctx, name)
 		if err != nil {
 			return nil, fmt.Errorf("константа «%s»: %w", name, err)
 		}
-		return v, nil
+		return typedConstantValue(constant, v)
 	}
+}
+
+func typedConstantValue(constant *metadata.Constant, value any) (any, error) {
+	if constant == nil || value == nil {
+		return value, nil
+	}
+	switch constant.Type {
+	case metadata.FieldTypeBool, "boolean":
+		switch v := value.(type) {
+		case bool:
+			return v, nil
+		case string:
+			if b, ok := metadata.ParseBoolLiteral(v); ok {
+				return b, nil
+			}
+		}
+	case metadata.FieldTypeNumber:
+		switch v := value.(type) {
+		case float64:
+			return v, nil
+		case string:
+			n, err := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(v), ",", "."), 64)
+			if err == nil && !math.IsNaN(n) && !math.IsInf(n, 0) {
+				return n, nil
+			}
+		}
+	case metadata.FieldTypeDate:
+		switch v := value.(type) {
+		case time.Time:
+			return v, nil
+		case string:
+			if date, ok := storage.ParseRegPeriod(v); ok {
+				return date, nil
+			}
+		}
+	default:
+		// Строки, ссылки и значения перечислений сохраняют исходное значение.
+		return value, nil
+	}
+	return nil, fmt.Errorf("константа «%s»: значение не соответствует типу %s", constant.Name, constant.Type)
 }
 
 // resolveParamTemplates replaces template expressions like {{today}} with actual values.
