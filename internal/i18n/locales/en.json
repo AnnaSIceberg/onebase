@@ -1,4 +1,6 @@
 {
+  "Excel: превышен предел импорта (32 МиБ, 10000 строк, 256 колонок, 1000000 ячеек)": "Excel: import limit exceeded (32 MiB, 10000 rows, 256 columns, 1000000 cells)",
+  "Excel: повреждённая структура книги": "Excel: invalid workbook structure",
   "%-ширины не поддерживаются печатью (PDF). Используйте px или mm.": "% widths are not supported when printing (PDF). Use px or mm.",
   "+ Добавить": "+ Add",
   "+ Печатная форма (макет)": "+ Print form (layout)",
