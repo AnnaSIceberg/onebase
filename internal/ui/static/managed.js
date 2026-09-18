@@ -447,7 +447,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var hidden = st.hidden || {};
     Object.keys(hidden).forEach(function (name) {
       var el = byName(name);
-      if (el) el.style.display = hidden[name] ? 'none' : '';
+      if (!el) return;
+      // Some managed elements keep their layout only in an inline display
+      // declaration (checkbox and command bar use flex). Remember that value
+      // before the first state update instead of erasing it on hidden=false.
+      if (!Object.prototype.hasOwnProperty.call(el, '_obDisplay')) el._obDisplay = el.style.display || '';
+      el.style.display = hidden[name] ? 'none' : el._obDisplay;
     });
     var ro = st.readonly || {};
     // Свой ли это редактирующий контрол: ближайший якорь элемента формы — сам
@@ -481,7 +486,14 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         if (inp.type === 'checkbox' || inp.type === 'radio' || checkboxPresence) inp.disabled = on;
         else inp.readOnly = on;
       });
-      el.querySelectorAll('select, button').forEach(function (n) {
+      // Кнопка «Открыть карточку» из гашения исключена: сервер под $ro рисует её
+      // БЕЗ disabled намеренно (templates_managed.go:94) — посмотреть связанный
+      // объект не значит его править, и на нередактируемом поле переход нужен
+      // чаще всего. Гася её скопом, клиент расходился с той же страницей,
+      // отрисованной сервером. Предел тот же, что у скрытых элементов выше:
+      // при $ro и пустом значении сервер кнопку не рисует вовсе, и показать её
+      // клиент не может — вернуть её способна только перезагрузка страницы.
+      el.querySelectorAll('select, button:not([data-ob-ref-current])').forEach(function (n) {
         if (!ownControl(el, n)) return;
         n.disabled = on;
       });
@@ -978,7 +990,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         var idInput = document.querySelector('#main-form [name="_id"]');
         if (idInput) idInput.value = DOC_ID;
         if (window.history && history.replaceState) {
-          history.replaceState(null, '', location.pathname.replace(/\/new$/, '/' + DOC_ID));
+          var savedURL = location.pathname.replace(/\/new$/, '/' + DOC_ID);
+          history.replaceState(null, '', savedURL);
+          try {
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
+            }
+          } catch (_) {}
         }
         window._obFormDirty = false;
       }
