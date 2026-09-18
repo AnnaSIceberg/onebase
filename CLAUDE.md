@@ -222,14 +222,19 @@ onebase describe --project <dir>                # вся структура ко
   `review_candidates` исключительным allowlist **выбора новой цели**. После
   выбора обычного PR его HEAD/epoch snapshot становится lease запуска:
   перестановка чужих PR, новый приоритет или появление интеграционного владельца
-  не отменяют уже выполненный аудит. Перед мутацией обычная цель должна
-  оставаться в `content_review_candidates`, а её собственные HEAD/open/base,
-  routing labels и server epoch обязаны быть неизменны. При
+  не отменяют уже выполненный аудит. В pipelinectl-режиме
+  `review_completion_gate=target-v1` membership в `content_review_candidates`
+  доказывается один раз при health-election; перед мутацией повторяется только
+  локальный гейт точной цели: номер/HEAD, open/base/draft, routing labels,
+  review-depth и server epoch обязаны быть неизменны; target-v1 lease должен
+  иметь действующую HMAC-проверку целостности и срок `expires_at`. HMAC здесь не
+  является OS-песочницей: локальный процесс с доступом к ключу и GitHub-аккаунту
+  входит в доверенную границу. При
   `single_flight_barrier` следующий интеграционный PR запрещён, но stage
   `review` остаётся исполняемым, когда владелец ждёт MERGE/recovery. Отказ
   полного GraphQL gate интеграционного владельца не разрешает fallback к
-  обычной очереди в том же запуске; перед первой мутацией allowlist проверяется
-  повторно.
+  обычной очереди в том же запуске. Integration-stage и полный fallback перед
+  первой мутацией по-прежнему повторяют глобальный allowlist/owner gate.
   REVIEW получает полный пагинированный список PR и считает каждый завершённый
   `review-comment=<id>` только один раз; override между заключением и committed-
   маркером делает пару невалидной. Транзакция `заключение → review-claim →
