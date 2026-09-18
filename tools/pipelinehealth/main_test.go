@@ -16,6 +16,7 @@ const (
 	headA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	headB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	headC = "cccccccccccccccccccccccccccccccccccccccc"
+	headD = "dddddddddddddddddddddddddddddddddddddddd"
 	epoch = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 )
 
@@ -50,6 +51,10 @@ func syncIntent(from string, reviewID, claimID, completionID int64) string {
 func syncDone(intentID int64, from, to string) string {
 	return fmt.Sprintf("<!-- pp:base-sync-done intent=%d from=%s to=%s base=%s previous=none ship-event=LE_test -->",
 		intentID, from, to, headB)
+}
+
+func syncV1Abort(intentID int64, head string) string {
+	return fmt.Sprintf("<!-- pp:base-sync-v1-aborted intent=%d head=%s reason=commit-before-intent -->", intentID, head)
 }
 
 // withMergeHead gives the pull request the two-parent head commit every
@@ -152,6 +157,125 @@ func TestBaseSyncIntentWithoutDoneIsMergeRecoveryNotReview(t *testing.T) {
 		!hasFinding(got, "base_sync_recovery") ||
 		!hasFinding(got, "single_flight_barrier") {
 		t.Fatalf("MERGE recovery incorrectly blocked content review: %+v", got)
+	}
+}
+
+func TestBaseSyncV1AbortReturnsCurrentHeadToFullReview(t *testing.T) {
+	item := testPR(1464, headC, "reviewed")
+	item.HeadParents = []string{headA, headB}
+	item = addComment(item, 20, completion(headA, 10, 15))
+	item = addComment(item, 30, syncIntent(headA, 10, 15, 20))
+	item = addComment(item, 35, syncV1Abort(30, headC))
+
+	got := analyze([]apiPull{item}, "ivanarama")
+	if got.IntegrationOwner != nil || len(got.ContentReviewCandidates) != 1 ||
+		len(got.ReviewCandidates) != 1 || got.ReviewCandidates[0].Number != 1464 ||
+		got.ReviewCandidates[0].Stage != "review" || hasFinding(got, "base_sync_recovery") ||
+		!hasFinding(got, "base_sync_v1_abort_waiting_review") {
+		t.Fatalf("aborted v1 intent did not return the exact HEAD to full review: %+v", got)
+	}
+}
+
+func TestBaseSyncV1AbortUsesOrdinaryMergeAfterFreshReviewAndShip(t *testing.T) {
+	item := testPR(1464, headC, "reviewed", "ship")
+	item.HeadParents = []string{headA, headB}
+	item = addComment(item, 20, completion(headA, 10, 15))
+	item = addComment(item, 30, syncIntent(headA, 10, 15, 20))
+	item = addComment(item, 35, syncV1Abort(30, headC))
+	item = addComment(item, 45, completion(headC, 40, 42))
+
+	got := analyze([]apiPull{item}, "ivanarama")
+	if got.IntegrationOwner != nil || len(got.MergeCandidates) != 1 ||
+		got.MergeCandidates[0].Number != 1464 || got.MergeCandidates[0].Stage != "merge" ||
+		len(got.MergeExecutable) != 1 || got.MergeExecutable[0].Number != 1464 ||
+		hasFinding(got, "base_sync_recovery") || hasFinding(got, "legacy_ship_waiting_merge") ||
+		!hasFinding(got, "base_sync_v1_abort_reauthorized") {
+		t.Fatalf("fresh review and ship did not restore the ordinary merge path: %+v", got)
+	}
+}
+
+func TestBaseSyncV1AbortCannotStealAnotherIntegrationOwner(t *testing.T) {
+	aborted := testPR(1464, headC, "reviewed", "ship")
+	aborted.HeadParents = []string{headA, headB}
+	aborted = addComment(aborted, 20, completion(headA, 10, 15))
+	aborted = addComment(aborted, 30, syncIntent(headA, 10, 15, 20))
+	aborted = addComment(aborted, 35, syncV1Abort(30, headC))
+	aborted = addComment(aborted, 45, completion(headC, 40, 42))
+
+	owner := testPR(1500, headD, "reviewed", "ship")
+	owner.HeadParents = []string{headC, headB}
+	owner = addComment(owner, 50, syncIntent(headC, 46, 47, 48))
+	owner = addComment(owner, 51, syncDone(50, headC, headD))
+
+	got := analyze([]apiPull{aborted, owner}, "ivanarama")
+	if got.IntegrationOwner == nil || got.IntegrationOwner.Number != 1500 ||
+		got.IntegrationOwner.Stage != "integration-review" || len(got.ReviewCandidates) != 1 ||
+		got.ReviewCandidates[0].Number != 1500 || hasFinding(got, "base_sync_recovery") {
+		t.Fatalf("aborted v1 intent stole the live integration owner: %+v", got)
+	}
+}
+
+func TestInvalidBaseSyncV1AbortDoesNotCloseRecovery(t *testing.T) {
+	makeItem := func() apiPull {
+		item := testPR(1464, headC, "reviewed", "ship")
+		item.HeadParents = []string{headA, headB}
+		item = addComment(item, 20, completion(headA, 10, 15))
+		item = addComment(item, 30, syncIntent(headA, 10, 15, 20))
+		return addComment(item, 35, syncV1Abort(30, headC))
+	}
+	tests := []struct {
+		name   string
+		mutate func(*apiPull)
+	}{
+		{name: "wrong actor", mutate: func(item *apiPull) { item.Comments[2].User.Login = "app" }},
+		{name: "edited marker", mutate: func(item *apiPull) { item.Comments[2].UpdatedAt = "2026-09-01T00:00:00Z" }},
+		{name: "wrong head", mutate: func(item *apiPull) { item.Comments[2].Body = syncV1Abort(30, headB) }},
+		{name: "wrong intent", mutate: func(item *apiPull) { item.Comments[2].Body = syncV1Abort(29, headC) }},
+		{name: "wrong second parent", mutate: func(item *apiPull) { item.HeadParents = []string{headA, headC} }},
+		{name: "duplicate marker", mutate: func(item *apiPull) { *item = addComment(*item, 36, syncV1Abort(30, headC)) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			item := makeItem()
+			tt.mutate(&item)
+			got := analyze([]apiPull{item}, "ivanarama")
+			if got.IntegrationOwner == nil || got.IntegrationOwner.Stage != "integration-merge-recovery" ||
+				!hasFinding(got, "base_sync_recovery") || hasFinding(got, "base_sync_v1_abort_waiting_review") {
+				t.Fatalf("invalid abort marker closed recovery: %+v", got)
+			}
+		})
+	}
+}
+
+func TestBaseSyncV1AbortDoesNotHideAnotherOpenIntentOnSamePR(t *testing.T) {
+	item := testPR(1464, headC, "reviewed", "ship")
+	item.HeadParents = []string{headA, headB}
+	item = addComment(item, 20, completion(headA, 10, 15))
+	item = addComment(item, 30, syncIntent(headA, 10, 15, 20))
+	item = addComment(item, 35, syncV1Abort(30, headC))
+	item = addComment(item, 40, syncIntent(headA, 10, 15, 20))
+
+	got := analyze([]apiPull{item}, "ivanarama")
+	if got.IntegrationOwner == nil || got.IntegrationOwner.Stage != "integration-merge-recovery" ||
+		!hasFinding(got, "base_sync_recovery") || hasFinding(got, "base_sync_v1_abort_waiting_review") ||
+		hasFinding(got, "base_sync_v1_abort_reauthorized") {
+		t.Fatalf("one aborted intent hid another open transaction: %+v", got)
+	}
+}
+
+func TestBaseSyncV1AbortCannotOverrideCompletedIntent(t *testing.T) {
+	item := testPR(1464, headC, "reviewed", "ship")
+	item.HeadParents = []string{headA, headB}
+	item = addComment(item, 20, completion(headA, 10, 15))
+	item = addComment(item, 30, syncIntent(headA, 10, 15, 20))
+	item = addComment(item, 31, syncDone(30, headA, headC))
+	item = addComment(item, 35, syncV1Abort(30, headC))
+
+	got := analyze([]apiPull{item}, "ivanarama")
+	if got.IntegrationOwner == nil || got.IntegrationOwner.Stage != "integration-review" ||
+		!hasFinding(got, "base_sync_waiting_review") || hasFinding(got, "base_sync_v1_abort_waiting_review") ||
+		hasFinding(got, "base_sync_v1_abort_reauthorized") {
+		t.Fatalf("abort marker overrode a completed intent/done handoff: %+v", got)
 	}
 }
 
