@@ -1231,6 +1231,8 @@ func resolveParamTemplateTextAt(raw string, now time.Time, res ConstantResolver)
 		return "", err
 	}
 	switch v := v.(type) {
+	case nil:
+		return "", nil
 	case string:
 		return v, nil
 	case time.Time:

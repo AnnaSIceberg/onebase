@@ -226,7 +226,8 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 	}
 	comp := effectiveComposition(rep, settings)
 	settingsJSON := reportSettingsPanelJSON(rep, settings)
-	// Build query params: convert date strings to time.Time for proper PG type inference.
+	// Restore query parameter types after the form's text representation:
+	// SQLite compares text and numbers differently; PostgreSQL needs type hints.
 	// Keep paramValues unchanged so the form repopulates with the original strings.
 	queryValues := make(map[string]any, len(paramValues))
 	for k, v := range paramValues {
@@ -243,6 +244,10 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		case "bool":
 			str, _ := queryValues[p.Name].(string)
 			queryValues[p.Name] = parseParamValue(str, "bool")
+		case "number":
+			if str, ok := queryValues[p.Name].(string); ok {
+				queryValues[p.Name] = parseParamValue(str, "number")
+			}
 		}
 	}
 	compiled, err := s.compileQueryWithRowAccess(opCtx, rep.Query, queryValues)
@@ -662,8 +667,8 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 			}
 			val = d
 		}
-		if p.Type == "bool" {
-			paramValues[p.Name] = parseParamValue(val, "bool")
+		if p.Type == "bool" || p.Type == "number" {
+			paramValues[p.Name] = parseParamValue(val, p.Type)
 			continue
 		}
 		if val == "" {
