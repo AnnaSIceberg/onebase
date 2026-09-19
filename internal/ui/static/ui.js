@@ -4105,7 +4105,10 @@ function obEnterNavigateFrom(target) {
   // Внутри грида Enter обслуживает сам грид: коммит ячейки и переход вправо.
   if (target.closest && target.closest('.ob-grid[data-sg-tp]')) return false;
 
-  var stops = obEnterStops(form, target);
+  // В no_grid ячейки — обычные поля DOM, но маршрут из ячейки ограничен
+  // её табличной частью: конец последней строки не ведёт в следующее поле формы.
+  var table = target.closest ? target.closest('table[data-ob-dom-table]') : null;
+  var stops = obEnterStops(table || form, target);
   var idx = -1;
   for (var i = 0; i < stops.length; i++) {
     if (stops[i] === target) { idx = i; break; }
@@ -4124,8 +4127,8 @@ function obEnterNavigateFrom(target) {
     }
     return true;
   }
-  // Конец формы: фокус остаётся на месте. Неявной записи не происходит — для
-  // неё есть Ctrl+S, Ctrl+Enter и кнопки формы.
+  // Конец формы или табличной части: фокус остаётся на месте. Неявной записи
+  // не происходит — для неё есть Ctrl+S, Ctrl+Enter и кнопки формы.
   return true;
 }
 

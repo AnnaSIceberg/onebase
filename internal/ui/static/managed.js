@@ -2579,6 +2579,12 @@ obManagedReady(obManagedInitDelegates);
         !document.contains(host) || !managedElementVisible(host)) return false;
     var rows = (g.dataView && g.dataView.getLength) ? g.dataView.getLength() : 0;
     if (rows <= 0) return false;
+    var lock = g.grid.getEditorLock && g.grid.getEditorLock();
+    if (lock && lock.isActive() && !lock.commitCurrentEdit()) {
+      // setActiveCell уничтожает редактор без коммита. При отказе валидации
+      // редактор сохраняет ввод и фокус; нажатие обработано, маршрут не продолжаем.
+      return true;
+    }
     var cell = gridFirstEditableCell(g, 0);
     g.grid.setActiveCell(0, cell);
     if (g.grid.focus) g.grid.focus();
