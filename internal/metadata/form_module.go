@@ -194,7 +194,7 @@ type FormElement struct {
 	DataPath        string            `yaml:"data_path,omitempty"`      // "Объект.Контрагент", "Список.Цена"
 	Picture         string            `yaml:"picture,omitempty"`        // "_resources/.../Picture.png" или "stdpic:Post"
 	ValuesPicture   string            `yaml:"values_picture,omitempty"` // палитра выбора (для PictureField/InputField)
-	Width           int               `yaml:"width,omitempty"`          // ширина в условных единицах
+	Width           int               `yaml:"width,omitempty"`          // ширина в пикселях
 	Height          int               `yaml:"height,omitempty"`         // высота
 	HorizontalAlign string            `yaml:"halign,omitempty"`         // left|center|right|stretch
 	VerticalAlign   string            `yaml:"valign,omitempty"`         // top|center|bottom
@@ -205,6 +205,10 @@ type FormElement struct {
 	// либо вовсе не показывается, пока условие истинно. Нужны там, где запрет
 	// живёт в бизнес-логике: без них форма показывает поле активным, а отказ
 	// прилетает исключением уже при записи.
+	//
+	// Оба каскадят на потомков контейнера, как и постоянный ReadOnly (#1184).
+	// Складывается это по «ИЛИ»: ложное условие предка не отпирает потомка с
+	// собственным ReadOnly.
 	ReadOnlyWhen string `yaml:"readonly_when,omitempty"`
 	HiddenWhen   string `yaml:"hidden_when,omitempty"`
 	UseGrid      bool   `yaml:"use_grid,omitempty"` // (устар.) SlickGrid теперь включён по умолчанию
