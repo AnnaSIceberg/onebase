@@ -74,6 +74,21 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := r.URL.Query().Get("view")
+	if view != "list" && view != "tiles" {
+		view = "" // неизвестное значение трактуем как отсутствие выбора
+	}
+	// Явный выбор вида запоминается по пользователю и сущности (#1485);
+	// открытие без параметра восстанавливает сохранённый вид. Иерархический
+	// вид (tree) персистентно не сохраняется — это отдельный контракт.
+	viewUser := auth.UserFromContext(r.Context())
+	if viewUser != nil && viewUser.Login != "" && (view == "list" || view == "tiles") {
+		_ = s.store.SaveListViewUserSettings(r.Context(), entity.Name, viewUser.Login, view)
+	}
+	if view == "" && viewUser != nil && viewUser.Login != "" {
+		if saved, err := s.store.GetListViewUserSettings(r.Context(), entity.Name, viewUser.Login); err == nil {
+			view = saved
+		}
+	}
 	treeView := entity.Hierarchical && view == "tree"
 	tilesView := view == "tiles"
 	feed := !treeView && s.resolveListMode(w, r, entity)
