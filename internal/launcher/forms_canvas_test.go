@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ivantit66/onebase/internal/formdoc"
+	"github.com/ivantit66/onebase/internal/i18n"
 	"github.com/ivantit66/onebase/internal/metadata"
 )
 
@@ -586,7 +587,25 @@ elements:
 	}
 
 	editor := renderFormsEditorHTML(t)
-	if !strings.Contains(editor, `T("Фон (CSS-цвет)"), 'background', info.background`) {
+	if !strings.Contains(editor, `"Фон (CSS-цвет)", 'background', info.background`) {
 		t.Error("панель свойств ГруппаФормы не предлагает локализованный background")
+	}
+}
+
+func TestFormsEditor_GroupBackgroundLabelLocalized(t *testing.T) {
+	saved := launcherBundle
+	t.Cleanup(func() { launcherBundle = saved })
+	bundle, err := i18n.Load(i18n.EmbeddedLocales, "")
+	if err != nil {
+		t.Fatalf("load i18n bundle: %v", err)
+	}
+	launcherBundle = bundle
+
+	editor := renderFormsEditorHTMLWithLang(t, "en")
+	if !strings.Contains(editor, `"Background (CSS color)", 'background', info.background`) {
+		t.Error("панель свойств ГруппаФормы не получила английский перевод background")
+	}
+	if strings.Contains(editor, `T("Фон (CSS-цвет)")`) {
+		t.Error("standalone-редактор не должен вызывать отсутствующий JS-хелпер T")
 	}
 }

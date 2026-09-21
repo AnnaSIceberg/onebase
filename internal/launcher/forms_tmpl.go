@@ -21,6 +21,7 @@ import (
 //   - "forms-list"   — список managed-форм проекта (минимальный)
 var formsTmpl = template.Must(template.New("forms").Funcs(template.FuncMap{
 	"esc": func(s string) string { return html.EscapeString(s) },
+	"t":   tr,
 	// jsString — встраивание произвольной строки как JS-литерала через
 	// json.Marshal. Возвращает с обрамляющими кавычками: `"...escaped..."`.
 	// Корректно работает с кириллицей, переносами строк, кавычками,
@@ -1128,7 +1129,7 @@ function renderProps() {
     }
   }
   if (info.kind === 'ГруппаФормы') {
-    addTextProp(panel, T("Фон (CSS-цвет)"), 'background', info.background || '');
+    addTextProp(panel, {{jsString (t $.Lang "Фон (CSS-цвет)")}}, 'background', info.background || '');
     addSelectRaw(panel, 'Расположение реквизитов', info.orientation === 'horizontal' ? 'horizontal' : 'vertical', [
       { value: 'vertical', label: 'Вертикально' },
       { value: 'horizontal', label: 'Горизонтально' }
