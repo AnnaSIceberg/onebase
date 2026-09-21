@@ -490,7 +490,18 @@ func (db *DB) GetPredefinedID(ctx context.Context, entityName, predefinedName st
 		predefinedName,
 	).Scan(&idStr)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("predefined %s.%s not found: %w", entityName, predefinedName, err)
+		// DSL регистронезависим (#1622), а бинарное сравнение SQLite не
+		// сворачивает кириллицу: точное имя не нашлось — подбираем совпадение
+		// без учёта регистра среди предопределённых строк (их единицы),
+		// одинаково на обоих диалектах.
+		id, ferr := db.predefinedIDCaseFold(ctx, table, entityName, predefinedName, boolTrue)
+		if ferr != nil {
+			if errors.Is(ferr, errPredefinedAmbiguous) {
+				return uuid.Nil, ferr
+			}
+			return uuid.Nil, fmt.Errorf("predefined %s.%s not found: %w", entityName, predefinedName, err)
+		}
+		return id, nil
 	}
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -780,4 +791,43 @@ func (db *DB) matchCatalogByExpression(ctx context.Context, entity *metadata.Ent
 		return idStr, display, 1, nil
 	}
 	return "", "", cnt, nil // cnt > 1 — несколько; точное число, id не отдаём (неоднозначно)
+}
+
+// errPredefinedAmbiguous — у предопределённых строк, различающихся только
+// регистром, нельзя выбрать запись молча.
+var errPredefinedAmbiguous = errors.New("имя предопределённого элемента неоднозначно без учёта регистра")
+
+// predefinedIDCaseFold ищет предопределённую запись совпадением без учёта
+// регистра. Ноль кандидатов — исходная ошибка «not found»; больше одного —
+// неоднозначность, которую молча разрешать нельзя.
+func (db *DB) predefinedIDCaseFold(ctx context.Context, table, entityName, predefinedName, boolTrue string) (uuid.UUID, error) {
+	rows, err := db.Query(ctx,
+		fmt.Sprintf(`SELECT id, _predefined_name FROM %s WHERE _is_predefined = %s`, table, boolTrue))
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer rows.Close()
+	var found string
+	count := 0
+	for rows.Next() {
+		var idStr, nm string
+		if err := rows.Scan(&idStr, &nm); err != nil {
+			return uuid.Nil, err
+		}
+		if strings.EqualFold(nm, predefinedName) {
+			count++
+			found = idStr
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return uuid.Nil, err
+	}
+	switch count {
+	case 1:
+		return uuid.Parse(found)
+	case 0:
+		return uuid.Nil, fmt.Errorf("predefined %s.%s: not found", entityName, predefinedName)
+	default:
+		return uuid.Nil, fmt.Errorf("predefined %s.%s: неоднозначное имя без учёта регистра (%d совпадений): %w", entityName, predefinedName, count, errPredefinedAmbiguous)
+	}
 }
