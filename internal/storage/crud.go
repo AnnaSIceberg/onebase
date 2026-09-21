@@ -792,7 +792,6 @@ func (db *DB) listWhere(entity *metadata.Entity, params ListParams, includeKeyse
 		if params.ThroughID != nil {
 			whereParts = append(whereParts, fmt.Sprintf("id <= %s", d.Placeholder(argIdx)))
 			args = append(args, idArg(d, *params.ThroughID))
-			argIdx++
 		}
 	}
 

@@ -351,7 +351,8 @@ func TestFormChoiceConditionYAMLRoundTripKeepsFalseAndOrder(t *testing.T) {
 		ID: "fault", Kind: metadata.FormElementField, DataPath: "Объект.Неисправность",
 		ChoiceFilter: validChoiceConditions(),
 	}
-	raw, err := yaml.Marshal(original)
+	// FormElement.AccessKey is an HTML keyboard mnemonic, not a credential.
+	raw, err := yaml.Marshal(original) //nolint:gosec // G117 false positive on the accesskey YAML field.
 	if err != nil {
 		t.Fatal(err)
 	}

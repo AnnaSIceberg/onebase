@@ -18,13 +18,19 @@ import (
 // as well so they retain the stable form.choice-filter code even when the
 // typed project loader cannot decode the file.
 func CheckFormChoiceFilterYAML(dir string) []Issue {
-	root := filepath.Join(dir, "forms")
+	formsDir := filepath.Join(dir, "forms")
+	formsRoot, err := os.OpenRoot(formsDir)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = formsRoot.Close() }()
+
 	var issues []Issue
-	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	_ = fs.WalkDir(formsRoot.FS(), ".", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil || entry == nil || entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".form.yaml") {
 			return nil
 		}
-		data, err := os.ReadFile(path)
+		data, err := formsRoot.ReadFile(path)
 		if err != nil || len(strings.TrimSpace(string(data))) == 0 {
 			return nil
 		}
@@ -34,7 +40,8 @@ func CheckFormChoiceFilterYAML(dir string) []Issue {
 		}
 		rootNode := doc.Content[0]
 		elements := yamlMapValue(rootNode, "elements")
-		walkChoiceFilterYAML(elements, "elements", relLabel(dir, path), &issues)
+		fullPath := filepath.Join(formsDir, filepath.FromSlash(path))
+		walkChoiceFilterYAML(elements, "elements", relLabel(dir, fullPath), &issues)
 		return nil
 	})
 	return issues
