@@ -1128,7 +1128,7 @@ function renderProps() {
     }
   }
   if (info.kind === 'ГруппаФормы') {
-    addTextProp(panel, 'Фон (CSS-цвет)', 'background', info.background || '');
+    addTextProp(panel, T("Фон (CSS-цвет)"), 'background', info.background || '');
     addSelectRaw(panel, 'Расположение реквизитов', info.orientation === 'horizontal' ? 'horizontal' : 'vertical', [
       { value: 'vertical', label: 'Вертикально' },
       { value: 'horizontal', label: 'Горизонтально' }

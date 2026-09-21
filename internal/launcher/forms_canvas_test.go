@@ -586,7 +586,7 @@ elements:
 	}
 
 	editor := renderFormsEditorHTML(t)
-	if !strings.Contains(editor, "'Фон (CSS-цвет)', 'background', info.background") {
-		t.Error("панель свойств ГруппаФормы не предлагает background")
+	if !strings.Contains(editor, `T("Фон (CSS-цвет)"), 'background', info.background`) {
+		t.Error("панель свойств ГруппаФормы не предлагает локализованный background")
 	}
 }

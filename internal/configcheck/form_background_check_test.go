@@ -55,8 +55,9 @@ func TestCheckFormBackground_MalformedRGBWarns(t *testing.T) {
 	for _, color := range []string{
 		"rgb(,)",
 		"rgba(1)",
-		"rgb(256, 0, 0)",
-		"rgba(0, 0, 0, 1.1)",
+		"rgb(100%,0,50%)",
+		"rgb(1 %,0,0)",
+		"rgb(1.,0,0)",
 	} {
 		t.Run(color, func(t *testing.T) {
 			warns := CheckFormBackground(projWithElement(&metadata.FormElement{
@@ -66,6 +67,27 @@ func TestCheckFormBackground_MalformedRGBWarns(t *testing.T) {
 			}))
 			if len(warns) != 1 || warns[0].Code != "form.background-color" {
 				t.Fatalf("background %q должен дать form.background-color: %+v", color, warns)
+			}
+		})
+	}
+}
+
+func TestCheckFormBackground_CSSColor4RGBSilent(t *testing.T) {
+	for _, color := range []string{
+		"rgb(255 0 0)",
+		"rgb(0,0,0,.5)",
+		"rgba(0,0,0)",
+		"rgb(256,0,0)",
+		"rgba(0,0,0,1.01)",
+	} {
+		t.Run(color, func(t *testing.T) {
+			warns := CheckFormBackground(projWithElement(&metadata.FormElement{
+				Kind:       metadata.FormElementGroupBox,
+				Name:       "ГруппаДействия",
+				Background: color,
+			}))
+			if len(warns) != 0 {
+				t.Fatalf("валидный background %q не должен предупреждать: %+v", color, warns)
 			}
 		})
 	}
