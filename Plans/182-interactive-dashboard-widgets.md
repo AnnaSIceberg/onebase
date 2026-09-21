@@ -451,7 +451,9 @@ production path и RLS-addressing. Этот срез закрывает #1619.
 
 ## Совместимость, откат и пересечения
 
-- Старые widget YAML не меняются и не получают кнопки/подписки/фильтры.
+- Старые widget YAML остаются валидными: `kpi`/`list`/`chart`/`recent` получают
+  только общую кнопку ручного refresh без opt-in; подписка, навигация и фильтры
+  не появляются без новых `refresh_on`/`source`/`filters`. `actions` не меняется.
 - Каждый срез откатывается кодом; schema/data migration нет.
 - PR #1408 и Plan 170 не смешиваются с этим контрактом. Reference filter
   переиспользует их server-authoritative options/RLS, но не `choice_filter`.
