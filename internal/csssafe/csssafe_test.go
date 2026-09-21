@@ -3,12 +3,21 @@ package csssafe
 import "testing"
 
 func TestColor(t *testing.T) {
-	for _, c := range []string{"#c00", "#cc0000", "#cc0000ff", "rgb(255,0,0)", "rgba(255, 0, 0, .5)", "red", "transparent"} {
+	for _, c := range []string{
+		"#c00", "#cc0000", "#cc0000ff", "rgb(255,0,0)",
+		"rgba(255, 0, 0, .5)", "rgb(100%, 0%, 50%)", "rgba(0,0,0,100%)",
+		"red", "transparent",
+	} {
 		if got := Color(c); got != c {
 			t.Fatalf("Color(%q) = %q", c, got)
 		}
 	}
-	for _, c := range []string{"red;background:url(javascript:1)", "#c00;body{}", "url(x)", "expression(x)", "нечто"} {
+	for _, c := range []string{
+		"red;background:url(javascript:1)", "#c00;body{}", "url(x)", "expression(x)", "нечто",
+		"rgb(,)", "rgba(1)", "rgb(1,2)", "rgb(1,2,3,4)", "rgba(1,2,3)",
+		"rgb(256,0,0)", "rgb(0,101%,0)", "rgba(0,0,0,1.01)",
+		"rgba(0,0,0,101%)", "rgb(1..2,0,0)",
+	} {
 		if got := Color(c); got != "" {
 			t.Fatalf("Color(%q) = %q, want empty", c, got)
 		}

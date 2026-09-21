@@ -2,13 +2,15 @@ package csssafe
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
 var (
-	hexColorRe = regexp.MustCompile(`(?i)^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$`)
-	rgbColorRe = regexp.MustCompile(`^rgba?\(\s*[0-9.,%\s]+\)$`)
-	lengthRe   = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?(?:px|pt|mm|cm|in|em|rem|%)$`)
+	hexColorRe    = regexp.MustCompile(`(?i)^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$`)
+	rgbFunctionRe = regexp.MustCompile(`(?i)^(rgb|rgba)\((.*)\)$`)
+	cssNumberRe   = regexp.MustCompile(`^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$`)
+	lengthRe      = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?(?:px|pt|mm|cm|in|em|rem|%)$`)
 )
 
 var namedColors = map[string]bool{
@@ -62,12 +64,51 @@ func Color(v string) string {
 	switch {
 	case hexColorRe.MatchString(v):
 		return v
-	case rgbColorRe.MatchString(v):
+	case validLegacyRGBColor(v):
 		return v
 	case namedColors[strings.ToLower(v)]:
 		return v
 	}
 	return ""
+}
+
+// validLegacyRGBColor проверяет comma-separated синтаксис rgb()/rgba().
+// Одной проверки набора символов недостаточно: она принимала rgb(,), rgba(1)
+// и значения вне диапазона, которые браузер затем молча отбрасывал. Каналы
+// допускают числа 0..255 или проценты 0..100, alpha — 0..1 или 0..100%.
+func validLegacyRGBColor(v string) bool {
+	m := rgbFunctionRe.FindStringSubmatch(v)
+	if m == nil {
+		return false
+	}
+	parts := strings.Split(m[2], ",")
+	want := 3
+	if strings.EqualFold(m[1], "rgba") {
+		want = 4
+	}
+	if len(parts) != want {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		if !cssColorNumberInRange(parts[i], 255) {
+			return false
+		}
+	}
+	return want == 3 || cssColorNumberInRange(parts[3], 1)
+}
+
+func cssColorNumberInRange(raw string, max float64) bool {
+	s := strings.TrimSpace(raw)
+	percent := strings.HasSuffix(s, "%")
+	if percent {
+		s = strings.TrimSpace(strings.TrimSuffix(s, "%"))
+		max = 100
+	}
+	if !cssNumberRe.MatchString(s) {
+		return false
+	}
+	n, err := strconv.ParseFloat(s, 64)
+	return err == nil && n >= 0 && n <= max
 }
 
 // Length returns v only when it is a simple CSS length used by layout previews.

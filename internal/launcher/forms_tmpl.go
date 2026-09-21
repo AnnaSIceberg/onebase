@@ -1128,6 +1128,7 @@ function renderProps() {
     }
   }
   if (info.kind === 'ГруппаФормы') {
+    addTextProp(panel, 'Фон (CSS-цвет)', 'background', info.background || '');
     addSelectRaw(panel, 'Расположение реквизитов', info.orientation === 'horizontal' ? 'horizontal' : 'vertical', [
       { value: 'vertical', label: 'Вертикально' },
       { value: 'horizontal', label: 'Горизонтально' }
@@ -1676,7 +1677,7 @@ func renderPreviewElement(buf *bytes.Buffer, el *metadata.FormElement, tabsCount
 		if el.Orientation == "horizontal" {
 			cls = ` class="group-horizontal"`
 		}
-		fmt.Fprintf(buf, `<fieldset%s%s><legend>%s</legend><div class="group-body">`, cls, layoutStyleAttr(el), html.EscapeString(title))
+		fmt.Fprintf(buf, `<fieldset%s%s><legend>%s</legend><div class="group-body">`, cls, groupStyleAttr(el), html.EscapeString(title))
 		for _, c := range el.Children {
 			renderPreviewElement(buf, c, tabsCounter, tps)
 		}
