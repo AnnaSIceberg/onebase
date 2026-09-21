@@ -40,7 +40,7 @@ const tplManagedForm = `
        кнопки, ни содержимого, а нумерация оставшихся обязана быть сплошной —
        кнопка и содержимое связаны индексом, и активна всегда нулевая. */}}
   {{$pages := visibleFormPages $ctx $el}}
-  <div class="managed-tabs" data-tabs="{{$el.Name}}"{{with elLayout $el}} style="{{.}}"{{end}}>
+  <div class="managed-tabs" data-tabs="{{$el.Name}}" style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{elLayout $el}}">
     <div class="managed-tab-headers" style="display:flex;gap:2px;border-bottom:2px solid #e2e8f0;margin-bottom:12px">
       {{range $i, $page := $pages}}
         <button type="button" class="managed-tab-btn{{if eq $i 0}} active{{end}}" data-tab-idx="{{$i}}" data-ob-readonly-navigation="1">
