@@ -99,6 +99,9 @@ var maskHelperExempt = map[string]maskHelperExemption{
 	"Server.loadRuntimeObject": {reason: "строит Объект для DSL-обёрток (catWriter/docWriter маскируют в Get) и для " +
 		"серверных хуков формы, где действует контракт «this не маскируется»: значение принадлежит текущей операции, " +
 		"а не чужой записи (field_access.go, доккомментарий maskDSLValue)"},
+	"catFactory.LoadCatalogObject": {reason: "та же загрузка Объекта для DSL-обёрток со согласованными полями и " +
+		"_version в одном чтении (#1321): раздельные чтения оставляли окно удаления оформленной корзины; " +
+		"маскирует catWriter.Get", maskedBy: "catWriter.Get"},
 }
 
 // maskHelperFuncName — «Тип.Метод» для метода, «Имя» для функции. Квалификация

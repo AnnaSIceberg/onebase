@@ -114,14 +114,38 @@ func (f *catFactory) LoadCatalogObject(entity *metadata.Entity, uuidStr string) 
 	if err := f.s.checkDSLRowAccess(ctx, entity, "read", id, nil); err != nil {
 		return nil, err
 	}
-	obj, err := f.s.loadRuntimeObject(ctx, entity, id)
+	row, err := f.s.store.GetByID(ctx, entity.Name, id, entity)
 	if err != nil {
 		return nil, err
 	}
-	version, err := f.s.store.EntityVersion(ctx, entity.Name, id)
-	if err != nil {
-		return nil, err
+	if row == nil {
+		return nil, fmt.Errorf("объект %s/%s не найден", entity.Name, id)
 	}
+	// Поля и _version берутся из одной строки (#1321): раздельные чтения
+	// оставляли окно, в котором оформление корзины между чтениями давало
+	// CAS на свежей версии при устаревших полях — УдалитьЕслиНеИзменен
+	// удалял уже оформленную корзину.
+	var version int64
+	if raw, ok := row["_version"]; ok && raw != nil {
+		if v, ok := raw.(int64); ok {
+			version = v
+		}
+	} else {
+		v, err := f.s.store.EntityVersion(ctx, entity.Name, id)
+		if err != nil {
+			return nil, err
+		}
+		version = v
+	}
+	tpRows := make(map[string][]map[string]any, len(entity.TableParts))
+	for _, tp := range entity.TableParts {
+		rows, err := f.s.store.GetTablePartRows(ctx, entity.Name, tp.Name, id, tp)
+		if err != nil {
+			return nil, fmt.Errorf("табличная часть %s: %w", tp.Name, err)
+		}
+		tpRows[tp.Name] = rows
+	}
+	obj := f.s.runtimeObjectFromSnapshot(ctx, entity, id, row, tpRows)
 	return &catWriter{
 		s: f.s, ctxSrc: f.ctxSrc, entity: entity, obj: obj, loaded: true,
 		expectedVersion: &version,
