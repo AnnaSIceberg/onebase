@@ -199,6 +199,7 @@ type FormElement struct {
 	HorizontalAlign string            `yaml:"halign,omitempty"`         // left|center|right|stretch
 	VerticalAlign   string            `yaml:"valign,omitempty"`         // top|center|bottom
 	Orientation     string            `yaml:"orientation,omitempty"`    // vertical|horizontal для контейнеров
+	Background      string            `yaml:"background,omitempty"`     // фон контейнера; читается только у ГруппаФормы (#1547), цвет проверяет csssafe.Color
 	ReadOnly        bool              `yaml:"readonly,omitempty"`       // только чтение
 	// ReadOnlyWhen / HiddenWhen — условия по полям ЗАПИСИ (выражение того же
 	// языка, что `when` условного оформления): элемент становится нередактируемым

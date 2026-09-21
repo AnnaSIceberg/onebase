@@ -521,6 +521,9 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"elAlign": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementAlignCSS(el)) //nolint:gosec // G203: стиль собран только из нормализованных значений словаря выравнивания
 		},
+		"elBackground": func(el *metadata.FormElement) template.CSS {
+			return template.CSS(metadata.FormElementBackgroundCSS(el)) //nolint:gosec // G203: значение прошло csssafe.Color, иначе пустая строка
+		},
 		"elFill": func(el *metadata.FormElement) bool {
 			return metadata.FormElementFillsHeight(el)
 		},
