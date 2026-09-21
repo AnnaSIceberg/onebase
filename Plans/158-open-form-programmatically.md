@@ -258,8 +258,15 @@ langref/ai-guide; статический lint предупреждает об о
    Сервер атомарно гасит его, сверяет binding и только затем вызывает сохранённую
    процедуру.
 
-В браузер не возвращаются начальные значения, дополнительные параметры или
-результат: `postMessage` несёт только `{correlation, completionToken}`.
+Начальные значения целевой формы неизбежно приходят в браузер только
+в ответе на authenticated same-origin GET после погашения launch token и
+рендерятся в DOM target iframe. Изменённые значения возвращаются
+серверу в штатных form-event/POST request body. Прикладные значения не
+передаются через URL/query, SSE, `postMessage`, URL history или access-log;
+`postMessage` несёт только `{correlation, completionToken}`. Дополнительные
+параметры callback и канонический результат остаются в server store: в DOM и
+request body попадают только необходимые для показа и отправки значения
+целевой формы.
 Состояния operation: `issued → opened → completed|cancelled → consumed`; каждый
 переход под mutex/atomic API и терминальные состояния одноразовы. Launch token
 живёт 5 минут, активный диалог — до 2 часов, completion token — 1 минуту; тесты
@@ -489,8 +496,13 @@ SQLite и PostgreSQL CI, потому что именно write path доказ�
 
 - **Replay/cross-tab.** Single-use tokens + binding + correlation + exact
   `event.source`.
-- **Утечка параметров.** Значения только в server store; query, SSE,
-  `postMessage`, history и access-log их не содержат.
+- **Утечка параметров.** Межзапросное состояние, дополнительные параметры
+  callback и канонический результат остаются в server store. Начальные
+  значения выдаются только authenticated same-origin target-форме в HTML/DOM
+  после погашения launch token, а изменённые значения возвращаются в штатном
+  form-event/POST request body. URL/query, SSE, `postMessage`, URL history и
+  access-log прикладных значений не содержат; `postMessage` несёт только
+  `{correlation, completionToken}`.
 - **Обход прав.** Проверка при issue и consume, штатный write path при записи.
 - **Потеря формы.** Callback только в модале; navigation отдельно и через
   существующий dirty guard.
