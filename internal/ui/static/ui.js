@@ -3356,6 +3356,33 @@ function openItemPicker(payload, elementName, eventContext) {
   });
 }
 
+function obRefChoiceQuery(sel) {
+  if (!sel) return '';
+  var raw = sel.getAttribute('data-ref-choice-context') || '';
+  if (!raw) return '';
+  var ctx;
+  try { ctx = JSON.parse(raw); } catch (e) { return '&form_entity='; }
+  if (!ctx || !ctx.form_entity || !ctx.form || !ctx.element) return '&form_entity=';
+  var values = {};
+  var declared = ctx.sources || {};
+  Object.keys(declared).forEach(function (path) {
+    var name = declared[path];
+    var control = null;
+    if (sel.form && sel.form.elements && name) control = sel.form.elements.namedItem(name);
+    if (!control && name) {
+      var controls = document.getElementsByName(name);
+      if (controls && controls.length) control = controls[0];
+    }
+    values[path] = control && control.value != null ? String(control.value) : '';
+  });
+  var query = '&form_entity=' + encodeURIComponent(ctx.form_entity) +
+    '&form=' + encodeURIComponent(ctx.form) +
+    '&element=' + encodeURIComponent(ctx.element) +
+    '&sources=' + encodeURIComponent(JSON.stringify(values));
+  if (sel.value) query += '&selected_id=' + encodeURIComponent(sel.value);
+  return query;
+}
+
 function openRefPicker(selOrId) {
   var sel = (typeof selOrId === 'string') ? document.getElementById(selOrId) : selOrId;
   if (!sel) return;
@@ -3365,7 +3392,11 @@ function openRefPicker(selOrId) {
   var localOpts = [];
   for (var i = 0; i < sel.options.length; i++) {
     var o = sel.options[i];
-    if (o.value) localOpts.push({ id: o.value, label: o.text });
+    // A saved legacy value outside choice_filter stays visible in the field,
+    // but must not become a candidate merely because it is an <option>.
+    if (o.value && o.getAttribute('data-ob-choice-outside-filter') !== '1') {
+      localOpts.push({ id: o.value, label: o.text });
+    }
   }
   var old = document.getElementById('_ref-picker-modal');
   if (old) old.remove();
@@ -3477,7 +3508,8 @@ function openRefPicker(selOrId) {
     }
     var seq = ++requestSeq;
     if (status) status.textContent = 'Загрузка...';
-    var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + encodeURIComponent(q || '');
+    var choiceQuery = obRefChoiceQuery(sel);
+    var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + encodeURIComponent(q || '') + choiceQuery;
     fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then(function (resp) {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -3499,6 +3531,13 @@ function openRefPicker(selOrId) {
       })
       .catch(function () {
         if (seq !== requestSeq) return;
+        // A form-scoped picker is server-authoritative. Falling back to an
+        // untrusted or stale full list would bypass choice_filter; retain the
+        // already rendered filtered options and surface the failure instead.
+        if (sel.getAttribute('data-ref-choice-context')) {
+          if (status) status.textContent = 'Ошибка загрузки';
+          return;
+        }
         renderLocal(q);
       });
   }

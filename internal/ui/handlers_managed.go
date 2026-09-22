@@ -99,6 +99,11 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 		// Фикс B: реквизиты формы (save:false) ссылочного типа получают пикер —
 		// грузим их опции и домешиваем в RefOptions (у полей сущности пикер уже был).
 		s.mergeFormLocalRefOptions(r.Context(), managed, data)
+		// Plan 170/B: только для элементов с choice_filter заменяем
+		// общий список на серверно отфильтрованный и кладём в разметку
+		// только идентичность формы/элемента и имена источников. Field/Op
+		// остаются только в metadata на сервере.
+		s.applyManagedChoiceFilters(r.Context(), entity, managed, data)
 		// Списки значений (СписокВыбора) объявлены на элементах формы, а не на
 		// полях сущности, поэтому собираем их из самой managed-формы. Единая
 		// точка покрывает все пути рендера (new/edit/повторный показ с ошибкой).
