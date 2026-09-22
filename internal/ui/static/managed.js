@@ -427,10 +427,16 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // показывать их редактируемыми. В картах приходит и false — условие могло
   // перестать выполняться, и запрет нужно снять.
   //
+  // Ключ карты — путь размещения элемента в дереве формы, он же атрибут
+  // data-ob-el-path рядом с человекомочитаемым data-ob-el. Имя ключом быть
+  // не может: оно бывает пустым (Надписи) и повторяющимся (ТЧ размещена
+  // дважды), и безымянный потомок условного контейнера попадал в общий ключ,
+  // по которому находился первый попавшийся безымянный элемент (#1543).
+  //
   // Обратный ход есть не у всего: элемент, скрытый ещё серверной отрисовкой, в
-  // DOM отсутствует, якорь data-ob-el не находится, и hidden=false для него —
-  // пустая операция. Снова показать такой элемент может только перезагрузка
-  // страницы; скрыть уже отрисованный — можно.
+  // DOM отсутствует, якорь data-ob-el-path не находится, и hidden=false для
+  // него — пустая операция. Снова показать такой элемент может только
+  // перезагрузка страницы; скрыть уже отрисованный — можно.
   //
   // Клиент НИЧЕГО не выводит сам. Условие на контейнере каскадит на потомков,
   // но считает каскад сервер: в карте лежит готовое состояние каждого
@@ -441,18 +447,18 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // отрисовал нередактируемым навсегда.
   function applyElementStates(st) {
     if (!st) return;
-    var byName = function (name) {
-      return document.querySelector('[data-ob-el="' + (window.CSS && CSS.escape ? CSS.escape(name) : name) + '"]');
+    var byPath = function (path) {
+      return document.querySelector('[data-ob-el-path="' + (window.CSS && CSS.escape ? CSS.escape(path) : path) + '"]');
     };
     var hidden = st.hidden || {};
-    Object.keys(hidden).forEach(function (name) {
-      var el = byName(name);
+    Object.keys(hidden).forEach(function (path) {
+      var el = byPath(path);
       if (!el) return;
       // Some managed elements keep their layout only in an inline display
       // declaration (checkbox and command bar use flex). Remember that value
       // before the first state update instead of erasing it on hidden=false.
       if (!Object.prototype.hasOwnProperty.call(el, '_obDisplay')) el._obDisplay = el.style.display || '';
-      el.style.display = hidden[name] ? 'none' : el._obDisplay;
+      el.style.display = hidden[path] ? 'none' : el._obDisplay;
     });
     var ro = st.readonly || {};
     // Свой ли это редактирующий контрол: ближайший якорь элемента формы — сам
@@ -468,10 +474,10 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       if (node.dataset && node.dataset.obReadonlyNavigation === '1') return false;
       return node.closest('[data-ob-el]') === el;
     };
-    Object.keys(ro).forEach(function (name) {
-      var el = byName(name);
+    Object.keys(ro).forEach(function (path) {
+      var el = byPath(path);
       if (!el) return;
-      var on = !!ro[name];
+      var on = !!ro[path];
       // Сам элемент может быть кнопкой (kind: Кнопка) — тогда управляем им же.
       if (el.tagName === 'BUTTON') { el.disabled = on; return; }
       // input/textarea оставляем видимыми и выделяемыми (readonly), select и

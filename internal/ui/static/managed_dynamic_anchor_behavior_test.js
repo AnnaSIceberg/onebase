@@ -92,9 +92,13 @@ class Element {
   }
 
   querySelector(selector) {
-    const match = /^\[data-ob-el="([^"]+)"\]$/.exec(selector);
+    // Карты состояний ключуются путём размещения (data-ob-el-path), а якорь
+    // человекомочитаемого имени остаётся data-ob-el (#1543). Стаб понимает
+    // оба атрибута.
+    const match = /^\[data-ob-([a-z-]+)="([^"]+)"\]$/.exec(selector);
     if (!match) throw new Error('unsupported document selector: ' + selector);
-    return this.descendants().find((node) => node.getAttribute('data-ob-el') === match[1]) || null;
+    const attr = 'data-ob-' + match[1];
+    return this.descendants().find((node) => node.getAttribute(attr) === match[2]) || null;
   }
 }
 
@@ -116,10 +120,21 @@ function anchor(app, name) {
   return node;
 }
 
+// Ключ в картах ответа события — путь размещения, прочитанный с того же узла.
+function pathOf(app, name) {
+  const path = anchor(app, name).getAttribute('data-ob-el-path');
+  assert.ok(path, 'data-ob-el=' + name + ' has no data-ob-el-path');
+  return path;
+}
+
 test('event state hides decorations and locks the real command bar', () => {
   const app = boot();
   const decorations = ['НадписьСтатуса', 'КартинкаСФайлом', 'КартинкаБезФайла'];
   const dynamic = decorations.concat('ФлажокСрочно', 'ПанельКоманд');
+  const paths = Object.fromEntries(dynamic.map((name) => [name, pathOf(app, name)]));
+  // Пути уникальны и не пусты: безымянные и одноимённые размещения обязаны
+  // получать разные ключи, а не общий ключ имени (#1543).
+  assert.equal(new Set(Object.values(paths)).size, dynamic.length);
   const checkbox = anchor(app, 'ФлажокСрочно');
   const panel = anchor(app, 'ПанельКоманд');
   const buttons = panel.querySelectorAll('button');
@@ -130,15 +145,15 @@ test('event state hides decorations and locks the real command bar', () => {
   // The first event includes false values for every declared hidden_when.
   // Applying that response must not erase an inline layout declaration.
   app.applyElementStates({
-    hidden: Object.fromEntries(dynamic.map((name) => [name, false]))
+    hidden: Object.fromEntries(dynamic.map((name) => [paths[name], false]))
   });
   for (const name of decorations) assert.equal(anchor(app, name).style.display, '');
   assert.equal(checkbox.style.display, 'flex');
   assert.equal(panel.style.display, 'flex');
 
   app.applyElementStates({
-    hidden: Object.fromEntries(dynamic.map((name) => [name, true])),
-    readonly: {ПанельКоманд: true}
+    hidden: Object.fromEntries(dynamic.map((name) => [paths[name], true])),
+    readonly: {[paths['ПанельКоманд']]: true}
   });
   for (const name of decorations) assert.equal(anchor(app, name).style.display, 'none');
   assert.equal(checkbox.style.display, 'none');
@@ -146,8 +161,8 @@ test('event state hides decorations and locks the real command bar', () => {
   for (const button of buttons) assert.equal(button.disabled, true);
 
   app.applyElementStates({
-    hidden: Object.fromEntries(dynamic.map((name) => [name, false])),
-    readonly: {ПанельКоманд: false}
+    hidden: Object.fromEntries(dynamic.map((name) => [paths[name], false])),
+    readonly: {[paths['ПанельКоманд']]: false}
   });
   for (const name of decorations) assert.equal(anchor(app, name).style.display, '');
   assert.equal(checkbox.style.display, 'flex');

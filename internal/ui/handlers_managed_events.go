@@ -518,7 +518,7 @@ func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.E
 	if form == nil || s.interp == nil {
 		return nil
 	}
-	ro, hidden, _ := managedFormElementStates(form, managedFormHeaderValues(entity, values), newInterpEvaluator(s.interp))
+	ro, hidden, _, _ := managedFormElementStates(form, managedFormHeaderValues(entity, values), newInterpEvaluator(s.interp))
 	if len(ro) == 0 && len(hidden) == 0 {
 		return nil
 	}
