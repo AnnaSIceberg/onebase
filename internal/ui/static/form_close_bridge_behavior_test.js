@@ -65,11 +65,52 @@ function runtime(managed = false, readyState = 'complete') {
   };
 }
 
+function closeFrame() {
+  const sent = [];
+  const loadListeners = [];
+  let finalized = 0;
+  let document = {
+    readyState: 'complete',
+    getElementById(id) { return id === 'ob-managed-config' ? {} : null; },
+  };
+  const child = {
+    document,
+    obFrameCloseDocumentToken: 'child-document-1',
+    postMessage(data, origin) { sent.push({data, origin}); },
+    obRequestFormClose() {},
+    obFinalizeFormClose() { finalized++; return true; },
+  };
+  const frame = {
+    contentWindow: child,
+    contentDocument: document,
+    addEventListener(type, listener) { if (type === 'load') loadListeners.push(listener); },
+  };
+  return {
+    frame,
+    child,
+    sent,
+    finalized() { return finalized; },
+    loadSameDocument() { for (const listener of loadListeners.slice()) listener(); },
+    navigate() {
+      document = {
+        readyState: 'complete',
+        getElementById(id) { return id === 'ob-managed-config' ? {} : null; },
+      };
+      frame.contentDocument = document;
+      child.document = document;
+      child.obFrameCloseDocumentToken = 'child-document-2';
+      child.obFinalizeFormClose = function () { finalized++; return true; };
+      for (const listener of loadListeners.slice()) listener();
+    },
+  };
+}
+
 test('parent accepts a close decision only from the requested same-origin frame', async () => {
   const app = runtime();
   const sent = [];
-  const child = {postMessage(data, origin) { sent.push({data, origin}); }};
-  const frame = {contentWindow: child};
+  const childDocument = {readyState: 'complete', getElementById() { return null; }};
+  const child = {document: childDocument, postMessage(data, origin) { sent.push({data, origin}); }};
+  const frame = {contentWindow: child, contentDocument: childDocument};
   const decisionPromise = app.context.obRequestFrameClose(frame, 'escape');
   assert.equal(sent.length, 1);
   assert.equal(sent[0].origin, 'http://onebase.test');
@@ -94,6 +135,57 @@ test('parent accepts a close decision only from the requested same-origin frame'
   assert.equal(decision.allowed, false);
   assert.equal(decision.intentId, 'server-id');
   assert.equal(decision.error, 'cancelled');
+});
+
+test('same-document initial load keeps the pending frame decision valid', async () => {
+  const app = runtime();
+  const target = closeFrame();
+  const decisionPromise = app.context.obRequestFrameClose(target.frame, 'cross');
+  const correlation = target.sent[0].data.correlation;
+
+  target.loadSameDocument();
+  app.message({origin: 'http://onebase.test', source: target.child, data: {
+    source: 'obFormCloseDecision', correlation, allowed: true, intentId: 'same-document',
+  }});
+
+  const decision = await decisionPromise;
+  assert.equal(decision.allowed, true);
+  assert.equal(app.context.obFinalizeFrameClose(target.frame, decision), true);
+  assert.equal(target.finalized(), 1);
+});
+
+test('same WindowProxy response is rejected after the iframe Document changes', async () => {
+  const app = runtime();
+  const target = closeFrame();
+  const sourceWindowProxy = target.child;
+  const decisionPromise = app.context.obRequestFrameClose(target.frame, 'cross');
+  const correlation = target.sent[0].data.correlation;
+
+  target.navigate();
+  assert.equal(target.frame.contentWindow, sourceWindowProxy, 'test replaced WindowProxy');
+  app.message({origin: 'http://onebase.test', source: sourceWindowProxy, data: {
+    source: 'obFormCloseDecision', correlation, allowed: true, intentId: 'stale-intent',
+  }});
+
+  const decision = await decisionPromise;
+  assert.equal(decision.allowed, false);
+  assert.equal(decision.error, 'frame-navigated');
+  assert.equal(target.finalized(), 0);
+});
+
+test('an accepted decision cannot finalize a later Document in the same iframe', async () => {
+  const app = runtime();
+  const target = closeFrame();
+  const decisionPromise = app.context.obRequestFrameClose(target.frame, 'cross');
+  const correlation = target.sent[0].data.correlation;
+  app.message({origin: 'http://onebase.test', source: target.child, data: {
+    source: 'obFormCloseDecision', correlation, allowed: true, intentId: 'old-document',
+  }});
+  const decision = await decisionPromise;
+
+  target.navigate();
+  assert.equal(app.context.obFinalizeFrameClose(target.frame, decision), false);
+  assert.equal(target.finalized(), 0);
 });
 
 test('child delegates to the managed controller and replies to the exact requester origin', async () => {
@@ -184,20 +276,33 @@ test('parent finalizes the exact managed frame before removal is allowed', () =>
   let finalized = 0;
   const child = {
     document: {readyState: 'complete', getElementById(id) { return id === 'ob-managed-config' ? {} : null; }},
+    obFrameCloseDocumentToken: 'managed-document',
     obRequestFormClose() {},
     obFinalizeFormClose() { finalized++; return true; },
   };
-  const frame = {contentWindow: child};
+  const frame = {contentWindow: child, contentDocument: child.document};
   assert.equal(app.context.obFinalizeFrameClose(frame, {
     allowed: true,
-    intentId: 'managed-intent',
-  }), true);
-  assert.equal(finalized, 1);
-
-  assert.equal(app.context.obFinalizeFrameClose({contentWindow: {}}, {
+    intentId: 'unbound-managed-intent',
+  }), false, 'managed decision without a document binding was accepted');
+  assert.equal(finalized, 0);
+  const bound = app.context.obBindFrameCloseDecision(frame, {
     allowed: true,
     intentId: 'managed-intent',
-  }), false, 'managed decision without a finalizer was fail-open');
+  }, 'managed-document');
+  assert.ok(bound);
+  assert.equal(app.context.obFinalizeFrameClose(frame, bound), true);
+  assert.equal(finalized, 1);
+
+  const missingFinalizeDocument = {readyState: 'complete', getElementById() { return {}; }};
+  const missingFinalizeChild = {document: missingFinalizeDocument, obFrameCloseDocumentToken: 'missing-finalizer'};
+  const missingFinalizeFrame = {contentWindow: missingFinalizeChild, contentDocument: missingFinalizeDocument};
+  const missingFinalizeDecision = app.context.obBindFrameCloseDecision(missingFinalizeFrame, {
+    allowed: true,
+    intentId: 'managed-intent',
+  }, 'missing-finalizer');
+  assert.equal(app.context.obFinalizeFrameClose(missingFinalizeFrame, missingFinalizeDecision), false,
+    'managed decision without a finalizer was fail-open');
   assert.equal(app.context.obFinalizeFrameClose({contentWindow: {document: {
     readyState: 'complete', getElementById() { return null; },
   }}}, {

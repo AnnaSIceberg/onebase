@@ -11,6 +11,12 @@ const html = fs.readFileSync(htmlPath, 'utf8');
 const source = Array.from(html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi), match => match[1])
   .find(script => script.includes("var STORE='obTabs'"));
 assert.ok(source, 'rendered app shell must contain the tabs runtime');
+const uiSource = fs.readFileSync('static/ui.js', 'utf8');
+const bridgeMarker = '// Same-origin request/decision protocol shared by shell tabs and reference';
+const bridgeStart = uiSource.indexOf(bridgeMarker);
+const bridgeEnd = uiSource.indexOf('if (window.__obEmbedded)', bridgeStart);
+assert.ok(bridgeStart >= 0 && bridgeEnd > bridgeStart, 'form-close bridge slice not found');
+const bridgeSource = uiSource.slice(bridgeStart, bridgeEnd);
 
 class ClassList {
   constructor(element) {
@@ -50,10 +56,15 @@ class Element {
     this.title = '';
     this.src = '';
     if (this.tagName === 'IFRAME') {
-      this.contentWindow = {document: {
+      this._posted = [];
+      this.contentDocument = {
         readyState: 'complete',
         getElementById() { return null; },
-      }};
+      };
+      this.contentWindow = {
+        document: this.contentDocument,
+        postMessage: (data, origin) => { this._posted.push({data, origin}); },
+      };
     }
   }
 
@@ -129,7 +140,8 @@ class FakeStorage {
   }
 }
 
-function shell(storage, search = '', confirmClose = () => true, requestFrameClose = null, finalizeFrameClose = null) {
+function shell(storage, search = '', confirmClose = () => true, requestFrameClose = null, finalizeFrameClose = null,
+  actualBridge = false) {
   const elements = {};
   for (const id of ['ob-tabstrip', 'ob-tabbody', 'ob-tabempty', 'ob-tabhome']) {
     elements[id] = new Element('div', id);
@@ -138,6 +150,7 @@ function shell(storage, search = '', confirmClose = () => true, requestFrameClos
   const windowListeners = new Map();
   const document = {
     body: new Element('body'),
+    readyState: 'complete',
     getElementById(id) { return elements[id] || null; },
     createElement(tagName) { return new Element(tagName); },
     addEventListener(type, listener) {
@@ -161,16 +174,21 @@ function shell(storage, search = '', confirmClose = () => true, requestFrameClos
       }
     },
     setTimeout() { return 1; },
+    clearTimeout() {},
     confirm() { confirms++; return confirmClose(); },
     alert() { alerts++; },
+    obUIMessage(name, fallback) { return fallback; },
     addEventListener(type, listener) {
       if (!windowListeners.has(type)) windowListeners.set(type, []);
       windowListeners.get(type).push(listener);
     }
   };
   context.window = context;
-  if (requestFrameClose) context.obRequestFrameClose = requestFrameClose;
-  if (finalizeFrameClose) context.obFinalizeFrameClose = finalizeFrameClose;
+  if (actualBridge) vm.runInNewContext(bridgeSource, context, {filename: 'form-close-bridge.js'});
+  else {
+    if (requestFrameClose) context.obRequestFrameClose = requestFrameClose;
+    if (finalizeFrameClose) context.obFinalizeFrameClose = finalizeFrameClose;
+  }
   vm.runInNewContext(source, context, {filename: 'rendered-tabs-runtime.js'});
 
   const strip = elements['ob-tabstrip'];
@@ -193,17 +211,40 @@ function shell(storage, search = '', confirmClose = () => true, requestFrameClos
       }
     },
     markManaged(index) {
-      frames()[index].contentWindow.document = {
+      const frame = frames()[index];
+      frame.contentDocument = {
         readyState: 'complete',
         getElementById(id) { return id === 'ob-managed-config' ? {} : null; }
       };
+      frame.contentWindow.document = frame.contentDocument;
     },
     markLoading(index) {
-      frames()[index].contentWindow.document = {
+      const frame = frames()[index];
+      frame.contentDocument = {
         readyState: 'loading',
         getElementById() { return null; },
       };
+      frame.contentWindow.document = frame.contentDocument;
     },
+    installManagedDocument(index, token, onFinalize, dispatchLoad = false) {
+      const frame = frames()[index];
+      const child = frame.contentWindow;
+      frame.contentDocument = {
+        readyState: 'complete',
+        getElementById(id) { return id === 'ob-managed-config' ? {} : null; },
+      };
+      child.document = frame.contentDocument;
+      child.obFrameCloseDocumentToken = token;
+      child.obRequestFormClose = function () {};
+      child.obFinalizeFormClose = function () {
+        if (onFinalize) onFinalize();
+        return true;
+      };
+      if (dispatchLoad) frame.dispatch('load');
+      return child;
+    },
+    posted(index) { return frames()[index]._posted.slice(); },
+    frameWindow(index) { return frames()[index].contentWindow; },
     count() { return strip.children.length; },
     activeIndex() { return strip.children.findIndex(button => button.classList.contains('active')); },
     titles() { return strip.children.map(button => button.title); },
@@ -601,6 +642,29 @@ test('shell removes a form only after the correlated close decision allows it', 
   assert.equal(finalizations.length, 1, 'allowed close was not finalized');
   assert.equal(finalizations[0].decision.intentId, 'allowed');
   assert.equal(app.count(), 0, 'allowed close kept the tab');
+});
+
+test('shell keeps a new Document when an old decision uses the same WindowProxy', async () => {
+  const app = shell(new FakeStorage(), '', () => true, null, null, true);
+  app.open('/ui/document/обращение/old', 'Обращение');
+  let finalizedNewDocument = 0;
+  app.installManagedDocument(0, 'shell-old-document');
+  const sourceWindowProxy = app.frameWindow(0);
+
+  app.close(0);
+  const request = app.posted(0)[0];
+  assert.ok(request);
+  const correlation = request.data.correlation;
+
+  app.installManagedDocument(0, 'shell-new-document', () => { finalizedNewDocument++; }, true);
+  assert.equal(app.frameWindow(0), sourceWindowProxy, 'test replaced WindowProxy');
+  app.post({
+    source: 'obFormCloseDecision', correlation, allowed: true, intentId: 'stale-shell',
+  }, 0);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(app.count(), 1, 'stale decision removed the new iframe document');
+  assert.equal(finalizedNewDocument, 0, 'stale decision finalized the new iframe document');
 });
 
 test('managed tab without a bridge or finalizer remains open', async () => {

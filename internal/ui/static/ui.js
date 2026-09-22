@@ -27,8 +27,8 @@ window.obUIMessage = function (name, fallback) {
 
 // Same-origin request/decision protocol shared by shell tabs and reference
 // popups. The parent owns the final DOM removal; the child owns the server
-// close-intent. Correlation plus exact source/origin prevent a late response
-// from one iframe from closing another.
+// close-intent. Correlation plus exact source/origin/document generation prevent
+// a late response from one iframe document from closing another.
 (function () {
   var pending = Object.create(null);
   var seq = 0;
@@ -74,25 +74,125 @@ window.obUIMessage = function (name, fallback) {
     seq++;
     return 'close:' + Date.now().toString(36) + ':' + seq.toString(36) + ':' + Math.random().toString(36).slice(2);
   }
+  // Captured by managed.js once per Document. Unlike WindowProxy, this value
+  // changes on navigation and lets an unsolicited popup decision prove which
+  // document produced it.
+  window.obFrameCloseDocumentToken = correlationID();
+  function frameDocument(frame) {
+    try {
+      if (!frame || !frame.contentWindow) return null;
+      return frame.contentDocument || frame.contentWindow.document || null;
+    } catch (_) {
+      return null;
+    }
+  }
+  function settlePending(correlation, decision) {
+    var slot = pending[correlation];
+    if (!slot) return false;
+    clearTimeout(slot.timer);
+    delete pending[correlation];
+    slot.resolve(decision);
+    return true;
+  }
+  function invalidateFrame(frame) {
+    Object.keys(pending).forEach(function (correlation) {
+      var slot = pending[correlation];
+      if (slot && slot.frame === frame) {
+        settlePending(correlation, {allowed: false, error: 'frame-navigated'});
+      }
+    });
+  }
+  function ensureFrameTracker(frame) {
+    var currentDocument = frameDocument(frame);
+    var tracker = frame._obCloseTracker;
+    if (!tracker) {
+      tracker = {generation: 0, document: currentDocument};
+      frame._obCloseTracker = tracker;
+      if (typeof frame.addEventListener === 'function') {
+        frame.addEventListener('load', function () {
+          var loadedDocument = frameDocument(frame);
+          // The initial load of the already captured document is not a
+          // navigation. A real navigation replaces Document while retaining
+          // the same WindowProxy, which advances the generation and makes all
+          // decisions from the old document unusable.
+          if (loadedDocument === tracker.document) return;
+          tracker.generation++;
+          tracker.document = loadedDocument;
+          invalidateFrame(frame);
+        });
+      }
+    } else if (currentDocument !== tracker.document) {
+      // Navigation can replace Document before its load event. Detect that
+      // interval too, so an old response cannot win the race with `load`.
+      tracker.generation++;
+      tracker.document = currentDocument;
+      invalidateFrame(frame);
+    }
+    return tracker;
+  }
+  function frameBindingMatches(binding) {
+    if (!binding || !binding.frame || binding.frame.contentWindow !== binding.source) return false;
+    var tracker = ensureFrameTracker(binding.frame);
+    return tracker === binding.tracker &&
+      tracker.generation === binding.generation &&
+      tracker.document === binding.document &&
+      frameDocument(binding.frame) === binding.document;
+  }
+  function bindDecision(decision, binding) {
+    try {
+      Object.defineProperty(decision, '_obFrameCloseBinding', {
+        value: binding, enumerable: false, configurable: false, writable: false
+      });
+    } catch (_) {
+      // If metadata cannot be attached, the decision must remain fail-closed.
+      decision.allowed = false;
+      decision.error = 'frame-binding';
+    }
+    return decision;
+  }
+  window.obBindFrameCloseDecision = function (frame, decision, documentToken) {
+    if (!frame || !decision || !documentToken) return null;
+    var tracker = ensureFrameTracker(frame);
+    var currentToken = '';
+    try { currentToken = String(frame.contentWindow.obFrameCloseDocumentToken || ''); } catch (_) { return null; }
+    if (!tracker.document || String(documentToken) !== currentToken) return null;
+    return bindDecision(decision, {
+      frame: frame,
+      source: frame.contentWindow,
+      tracker: tracker,
+      generation: tracker.generation,
+      document: tracker.document
+    });
+  };
   window.obRequestFrameClose = function (frame, reason) {
     if (!frame || !frame.contentWindow) return Promise.resolve({allowed: false, error: 'frame-missing'});
     if (frame._obClosePromise) return frame._obClosePromise;
+    var tracker = ensureFrameTracker(frame);
+    if (!tracker.document) return Promise.resolve({allowed: false, error: 'frame-document-unavailable'});
+    var binding = {
+      frame: frame,
+      source: frame.contentWindow,
+      tracker: tracker,
+      generation: tracker.generation,
+      document: tracker.document
+    };
     var correlation = correlationID();
     var promise = new Promise(function (resolve) {
       var timer = setTimeout(function () {
-        delete pending[correlation];
-        resolve({allowed: false, error: 'timeout'});
+        settlePending(correlation, {allowed: false, error: 'timeout'});
       }, 135000);
-      pending[correlation] = {frame: frame, resolve: resolve, timer: timer};
+      pending[correlation] = {
+        frame: frame, source: binding.source, tracker: tracker,
+        generation: binding.generation, document: binding.document,
+        resolve: resolve, timer: timer
+      };
       try {
-        frame.contentWindow.postMessage({
+        binding.source.postMessage({
           source: 'obRequestFormClose', correlation: correlation,
           reason: reason || 'close'
         }, window.location.origin);
       } catch (_) {
-        clearTimeout(timer);
-        delete pending[correlation];
-        resolve({allowed: false, error: 'post-message'});
+        settlePending(correlation, {allowed: false, error: 'post-message'});
       }
     });
     frame._obClosePromise = promise.finally(function () { frame._obClosePromise = null; });
@@ -100,6 +200,9 @@ window.obUIMessage = function (name, fallback) {
   };
   window.obFinalizeFrameClose = function (frame, decision) {
     if (!decision || decision.allowed !== true) return false;
+    var binding = decision._obFrameCloseBinding;
+    if (decision.intentId && !binding) return false;
+    if (binding && (binding.frame !== frame || !frameBindingMatches(binding))) return false;
     // Non-managed pages answer without an intent id and have no dirty lifecycle
     // to finalize. A managed answer is not consumable unless its exact child can
     // clear dirty state immediately before the parent destroys the iframe.
@@ -140,11 +243,24 @@ window.obUIMessage = function (name, fallback) {
     var data = ev.data;
     if (!data || typeof data !== 'object') return;
     if (data.source === 'obFormCloseDecision') {
-      var slot = pending[String(data.correlation || '')];
-      if (!slot || ev.source !== slot.frame.contentWindow) return;
-      clearTimeout(slot.timer);
-      delete pending[String(data.correlation || '')];
-      slot.resolve({allowed: data.allowed === true, intentId: String(data.intentId || ''), error: data.error || ''});
+      var responseCorrelation = String(data.correlation || '');
+      var slot = pending[responseCorrelation];
+      if (!slot || ev.source !== slot.source) return;
+      if (!frameBindingMatches(slot)) {
+        settlePending(responseCorrelation, {allowed: false, error: 'frame-navigated'});
+        return;
+      }
+      settlePending(responseCorrelation, bindDecision({
+        allowed: data.allowed === true,
+        intentId: String(data.intentId || ''),
+        error: data.error || ''
+      }, {
+        frame: slot.frame,
+        source: slot.source,
+        tracker: slot.tracker,
+        generation: slot.generation,
+        document: slot.document
+      }));
       return;
     }
     if (data.source !== 'obRequestFormClose' || !data.correlation || !ev.source) return;
@@ -3532,7 +3648,10 @@ function openRefCreate(targetSelect, refEntity) {
         intentId: d.intentId ? String(d.intentId) : '',
         error: d.error ? String(d.error) : ''
       };
-      if (decision.allowed && decision.intentId &&
+      if (decision.allowed && decision.intentId && typeof window.obBindFrameCloseDecision === 'function') {
+        decision = window.obBindFrameCloseDecision(iframe, decision, d.documentToken);
+      }
+      if (decision && decision.allowed && decision.intentId &&
           typeof window.obFinalizeFrameClose === 'function' &&
           window.obFinalizeFrameClose(iframe, decision)) {
         cleanup();

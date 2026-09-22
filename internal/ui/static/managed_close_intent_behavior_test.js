@@ -125,8 +125,8 @@ function runtime(fetchImpl, cfgOverride = {}) {
   return {context, form, applied, listeners, document, cancelLink, assigned};
 }
 
-function response(data, ok = true) {
-  return {ok, async json() { return data; }};
+function response(data, ok = true, status = ok ? 200 : 500) {
+  return {ok, status, async json() { return data; }};
 }
 
 test('close controller is single-flight and returns only its exact decision', async () => {
@@ -179,12 +179,55 @@ test('stale response fails closed and identical retry reuses the intent id', asy
   assert.equal(calls[1], calls[0], 'retry changed the exactly-once intent id');
 });
 
-test('network failure is fail-closed', async () => {
-  const app = runtime(async () => { throw new Error('offline'); });
+test('network failure is fail-closed and its unknown result keeps the intent id', async () => {
+  const calls = [];
+  const app = runtime(async (url, options) => {
+    const intentId = options.body.get('_close_intent_id');
+    calls.push(intentId);
+    if (calls.length === 1) throw new Error('offline');
+    return response({ok: true, close: {intentId, allowed: true}});
+  });
+
   const result = await app.context.obRequestFormClose({reason: 'close'});
   assert.equal(result.allowed, false);
   assert.equal(result.error, 'network');
   assert.ok(app.applied.some((entry) => entry[0] === 'flash' && /Network error while closing/.test(entry[1])));
+  assert.equal((await app.context.obRequestFormClose({reason: 'close'})).allowed, true);
+  assert.equal(calls[1], calls[0]);
+});
+
+test('client timeout keeps the intent id because the result is unknown', async () => {
+  const calls = [];
+  const app = runtime(async (url, options) => {
+    const intentId = options.body.get('_close_intent_id');
+    calls.push(intentId);
+    if (calls.length === 1) {
+      const err = new Error('aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
+    return response({ok: true, close: {intentId, allowed: true}});
+  });
+
+  assert.equal((await app.context.obRequestFormClose({reason: 'close'})).error, 'timeout');
+  assert.equal((await app.context.obRequestFormClose({reason: 'close'})).allowed, true);
+  assert.equal(calls[1], calls[0]);
+});
+
+test('received invalid JSON releases the intent id', async () => {
+  const calls = [];
+  const app = runtime(async (url, options) => {
+    const intentId = options.body.get('_close_intent_id');
+    calls.push(intentId);
+    if (calls.length === 1) {
+      return {ok: false, status: 500, async json() { throw new SyntaxError('invalid JSON'); }};
+    }
+    return response({ok: true, close: {intentId, allowed: true}});
+  });
+
+  assert.equal((await app.context.obRequestFormClose({reason: 'close'})).allowed, false);
+  assert.equal((await app.context.obRequestFormClose({reason: 'close'})).allowed, true);
+  assert.notEqual(calls[1], calls[0], 'received terminal HTTP response kept the close intent id');
 });
 
 test('missing close endpoint is fail-closed', async () => {
@@ -218,20 +261,62 @@ test('editing after fetch starts rejects the stale decision without applying ser
   assert.ok(app.applied.some((entry) => entry[0] === 'flash' && /form changed/i.test(entry[1])));
 });
 
-test('server execution failure is retried with the same intent for the same snapshot', async () => {
+test('known terminal failure releases the intent under real replay semantics', async () => {
   const calls = [];
-  let attempt = 0;
+  const replay = new Map();
+  let executions = 0;
   const app = runtime(async (url, options) => {
     const intent = options.body.get('_close_intent_id');
     calls.push(intent);
-    attempt++;
-    if (attempt === 1) return response({ok: false, error: 'timeout', close: {intentId: intent, allowed: false}});
-    return response({ok: true, close: {intentId: intent, allowed: true}});
+    if (!replay.has(intent)) {
+      executions++;
+      replay.set(intent, executions === 1
+        ? {ok: false, error: 'handler failed', close: {intentId: intent, allowed: false}}
+        : {ok: true, close: {intentId: intent, allowed: true}});
+    }
+    return response(replay.get(intent));
   });
 
   assert.equal((await app.context.obRequestFormClose({reason: 'cross'})).allowed, false);
   assert.equal((await app.context.obRequestFormClose({reason: 'cross'})).allowed, true);
-  assert.equal(calls[1], calls[0]);
+  assert.notEqual(calls[1], calls[0], 'new click reused a terminal replay UUID');
+  assert.equal(executions, 2, 'new click did not execute a fresh close intent');
+});
+
+test('correlated terminal HTTP error releases the intent id', async () => {
+  const calls = [];
+  const app = runtime(async (url, options) => {
+    const intentId = options.body.get('_close_intent_id');
+    calls.push(intentId);
+    if (calls.length === 1) {
+      return response({ok: false, error: 'handler failed', close: {intentId, allowed: false}}, false, 500);
+    }
+    return response({ok: true, close: {intentId, allowed: true}});
+  });
+
+  assert.equal((await app.context.obRequestFormClose({reason: 'cross'})).allowed, false);
+  assert.equal((await app.context.obRequestFormClose({reason: 'cross'})).allowed, true);
+  assert.notEqual(calls[1], calls[0]);
+});
+
+test('pending-leader timeout keeps the intent because no terminal replay exists yet', async () => {
+  const calls = [];
+  const app = runtime(async (url, options) => {
+    const intentId = options.body.get('_close_intent_id');
+    calls.push(intentId);
+    if (calls.length === 1) {
+      return response({
+        ok: false,
+        error: 'waiting for the original close request was cancelled',
+        close: {intentId, allowed: false},
+      }, false, 408);
+    }
+    return response({ok: true, close: {intentId, allowed: true}});
+  });
+
+  assert.equal((await app.context.obRequestFormClose({reason: 'cross'})).allowed, false);
+  assert.equal((await app.context.obRequestFormClose({reason: 'cross'})).allowed, true);
+  assert.equal(calls[1], calls[0], 'pending replay wait changed the close intent id');
 });
 
 test('standalone bottom link and Escape use the close controller before navigation', async () => {

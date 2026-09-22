@@ -1033,7 +1033,10 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   var CLOSE_TIMEOUT_MS = Number(cfg.closeTimeoutMs || 30000);
   var CLOSE_MESSAGES = cfg.closeMessages || {};
   var closePending = null;
-  var lastFailedClose = null;
+  // Reuse an intent only while its terminal result is unknown. Once a
+  // correlated terminal response arrives, the server has recorded it in the
+  // replay ledger and another explicit close attempt needs a fresh UUID.
+  var retryableClose = null;
 
   function closeMessage(name, fallback){
     var value = CLOSE_MESSAGES && CLOSE_MESSAGES[name];
@@ -1135,12 +1138,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       var body = await closeSnapshotBody(reason);
       if (!body) return {allowed: false, intentId: '', error: 'form-state'};
       var snapshotKey = closeSnapshotKey(body);
-      var intentID = lastFailedClose && lastFailedClose.key === snapshotKey
-        ? lastFailedClose.intentId : freshCloseIntentID();
+      var intentID = retryableClose && retryableClose.key === snapshotKey
+        ? retryableClose.intentId : freshCloseIntentID();
       body.set(serviceField('_close_intent_id'), intentID);
 
       var controller = typeof AbortController === 'function' ? new AbortController() : null;
       var timer = setTimeout(function(){ if (controller) controller.abort(); }, Math.max(1000, CLOSE_TIMEOUT_MS));
+      var retryIntentAfterFailure = true;
       try {
         var response = await fetch(CLOSE_URL, {
           method: 'POST', body: body,
@@ -1149,31 +1153,41 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         });
         var data;
         try { data = await response.json(); }
-        catch (_) { throw new Error(closeMessage('invalidResponse', 'Сервер вернул некорректный ответ при проверке закрытия.')); }
-        if (!data.close || String(data.close.intentId || '') !== intentID) {
-          lastFailedClose = {key: snapshotKey, intentId: intentID};
+        catch (parseErr) {
+          // An interrupted body read is still a transport-unknown result. A
+          // fully received but invalid JSON response is terminal HTTP and must
+          // not pin the next explicit click to this UUID.
+          retryIntentAfterFailure = !!(parseErr && (parseErr.name === 'AbortError' || parseErr.name === 'TypeError'));
+          throw new Error(closeMessage('invalidResponse', 'Сервер вернул некорректный ответ при проверке закрытия.'));
+        }
+        if (!data || typeof data !== 'object' || !data.close || String(data.close.intentId || '') !== intentID) {
+          retryableClose = {key: snapshotKey, intentId: intentID};
           flash(closeMessage('correlationMismatch', 'Ответ закрытия не совпал с запросом. Форма оставлена открытой.'), 'err');
           return {allowed: false, intentId: intentID, error: 'stale-correlation'};
         }
+        retryIntentAfterFailure = response.status === 408;
+        retryableClose = retryIntentAfterFailure ? {key: snapshotKey, intentId: intentID} : null;
         // The user may keep editing while the server executes BeforeClose.
         // Re-snapshot before applying returned values: an answer for an older
         // form must neither overwrite newer input nor authorize its removal.
         var currentBody = await closeSnapshotBody(reason);
         if (!currentBody || closeSnapshotKey(currentBody) !== snapshotKey) {
-          lastFailedClose = null;
+          retryableClose = null;
           flash(closeMessage('formChanged', 'Форма изменилась во время проверки закрытия. Повторите закрытие.'), 'err');
           return {allowed: false, intentId: intentID, error: 'form-changed'};
         }
         applyCloseResponse(data);
-        if (!response.ok || data.ok !== true) lastFailedClose = {key: snapshotKey, intentId: intentID};
-        else lastFailedClose = null;
+        // A 408 is produced when this duplicate stopped waiting for an older
+        // still-running request. It is not stored as this intent's terminal
+        // replay result, so retry the same UUID. Every other correlated reply,
+        // including data.ok=false, is terminal and releases the UUID.
         return {
           allowed: response.ok && data.ok === true && data.close.allowed === true,
           intentId: intentID,
           error: data.error || ''
         };
       } catch (err) {
-        lastFailedClose = {key: snapshotKey, intentId: intentID};
+        retryableClose = retryIntentAfterFailure ? {key: snapshotKey, intentId: intentID} : null;
         var timeout = err && err.name === 'AbortError';
         flash((timeout
           ? closeMessage('timeout', 'Превышено время проверки закрытия')
@@ -1480,6 +1494,9 @@ function obManagedGridSubmitAllowed(form) {
   return true;
 }
 
+var obManagedFrameDocumentToken = typeof window.obFrameCloseDocumentToken === 'string'
+  ? window.obFrameCloseDocumentToken : '';
+
 function obManagedPostRefCancel(decision) {
   if (!decision || decision.allowed !== true || !decision.intentId) return false;
   try {
@@ -1487,6 +1504,7 @@ function obManagedPostRefCancel(decision) {
       source: 'obRefCancel',
       allowed: true,
       intentId: String(decision.intentId),
+      documentToken: obManagedFrameDocumentToken,
       error: decision.error ? String(decision.error) : ''
     }, window.location.origin);
     return true;

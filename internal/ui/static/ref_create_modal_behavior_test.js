@@ -8,6 +8,11 @@ const start = source.indexOf('function openRefCreate(');
 const end = source.indexOf('// onebaseDevice', start);
 if (start < 0 || end < 0) throw new Error('ref-create modal slice not found');
 const modalSource = source.slice(start, end);
+const bridgeMarker = '// Same-origin request/decision protocol shared by shell tabs and reference';
+const bridgeStart = source.indexOf(bridgeMarker);
+const bridgeEnd = source.indexOf('if (window.__obEmbedded)', bridgeStart);
+if (bridgeStart < 0 || bridgeEnd < 0) throw new Error('form-close bridge slice not found');
+const bridgeSource = source.slice(bridgeStart, bridgeEnd);
 const managedEscapeComment = managedSource.indexOf('// Esc — отмена незаконченного ввода');
 const managedEscapeStart = managedSource.indexOf('  function consumeManagedEscape', managedEscapeComment);
 const managedEscapeEnd = managedSource.indexOf('  }, true);', managedEscapeStart);
@@ -15,7 +20,7 @@ if (managedEscapeComment < 0 || managedEscapeStart < 0 || managedEscapeEnd < 0) 
   throw new Error('managed Escape handler slice not found');
 }
 const managedEscapeSource = managedSource.slice(managedEscapeStart, managedEscapeEnd + '  }, true);'.length);
-const managedCancelStart = managedSource.indexOf('function obManagedPostRefCancel(');
+const managedCancelStart = managedSource.indexOf('var obManagedFrameDocumentToken =');
 const managedCancelEnd = managedSource.indexOf('\nfunction obManagedInitDelegates(', managedCancelStart);
 if (managedCancelStart < 0 || managedCancelEnd < 0) throw new Error('managed popup cancel sender not found');
 const managedCancelSource = managedSource.slice(managedCancelStart, managedCancelEnd);
@@ -55,11 +60,15 @@ function element(tag) {
     remove() { if (this.parentElement) this.parentElement.removeChild(this); },
   });
   if (el.tagName === 'IFRAME') {
+    el._posted = [];
     el.contentDocument = eventTarget({
       readyState: 'complete',
       getElementById() { return null; },
     });
-    el.contentWindow = {document: el.contentDocument};
+    el.contentWindow = {
+      document: el.contentDocument,
+      postMessage(data, origin) { el._posted.push({data, origin}); },
+    };
   }
   return el;
 }
@@ -80,6 +89,7 @@ function setup(options) {
   const parentCancel = {clicks: 0, click() { this.clicks++; }};
   const document = eventTarget({
     body,
+    readyState: 'complete',
     createElement: element,
     getElementById(id) { return walk(body, (candidate) => candidate.id === id); },
     querySelector(selector) { return selector === 'a.btn-cancel' ? parentCancel : null; },
@@ -87,24 +97,28 @@ function setup(options) {
   let finalized = 0;
   let finalizedWhileOpen = false;
   let alerts = 0;
+  let uuid = 0;
   const window = eventTarget({
     location: {origin: 'http://onebase.test'},
+    crypto: {randomUUID() { uuid++; return `popup-${uuid}`; }},
     confirm() { throw new Error('window.confirm must not be used'); },
     alert() { alerts++; },
     obUIMessage(name, fallback) { return fallback; },
   });
-  if (!options.noBridge) {
+  global.document = document;
+  global.window = window;
+  if (options.actualBridge) {
+    new Function(bridgeSource)();
+  } else if (!options.noBridge) {
     window.obRequestFrameClose = async () => ({allowed: true, intentId: 'managed-intent'});
   }
-  if (!options.noFinalizer) {
+  if (!options.actualBridge && !options.noFinalizer) {
     window.obFinalizeFrameClose = () => {
       finalized++;
       finalizedWhileOpen = !!document.getElementById('_ref-create-modal');
       return true;
     };
   }
-  global.document = document;
-  global.window = window;
   if (options.managedEscape) new Function(managedEscapeSource)();
   const api = new Function(modalSource + '\nreturn {openRefCreate};')();
   return {
@@ -130,6 +144,22 @@ function closeConfirmation(document) {
 
 function confirmationButtons(confirm) {
   return confirm.children[0].children[1].children;
+}
+
+function installManagedDocument(iframe, token, onFinalize) {
+  const document = eventTarget({
+    readyState: 'complete',
+    getElementById(id) { return id === 'ob-managed-config' ? {} : null; },
+  });
+  iframe.contentDocument = document;
+  iframe.contentWindow.document = document;
+  iframe.contentWindow.obFrameCloseDocumentToken = token;
+  iframe.contentWindow.obRequestFormClose = function () {};
+  iframe.contentWindow.obFinalizeFormClose = function () {
+    if (onFinalize) onFinalize();
+    return true;
+  };
+  return document;
 }
 
 test('external Cancel and close button use an in-page confirmation', async () => {
@@ -254,13 +284,20 @@ test('popup remains open when the close bridge or finalizer is unavailable', asy
 test('managed child Cancel sends the allowed intent for parent-side finalization', () => {
   const posts = [];
   const parent = {postMessage(data, origin) { posts.push({data, origin}); }};
-  const childWindow = {location: {origin: 'http://onebase.test'}};
+  const childWindow = {
+    location: {origin: 'http://onebase.test'},
+    obFrameCloseDocumentToken: 'document-token-old',
+  };
   const send = new Function('parent', 'window', managedCancelSource + '\nreturn obManagedPostRefCancel;')(parent, childWindow);
+  childWindow.obFrameCloseDocumentToken = 'document-token-new';
   assert.equal(send({allowed: true, intentId: ''}), false);
   assert.equal(posts.length, 0);
   assert.equal(send({allowed: true, intentId: 'intent-popup'}), true);
   assert.deepEqual(posts, [{
-    data: {source: 'obRefCancel', allowed: true, intentId: 'intent-popup', error: ''},
+    data: {
+      source: 'obRefCancel', allowed: true, intentId: 'intent-popup',
+      documentToken: 'document-token-old', error: '',
+    },
     origin: 'http://onebase.test',
   }]);
 });
@@ -300,6 +337,70 @@ test('parent keeps a managed popup open for an uncorrelated Cancel or missing fi
     assert.equal(env.document.getElementById('_ref-create-modal'), modal);
     assert.equal(env.alerts(), 1);
   }
+});
+
+test('popup keeps the new Document when an old bridge response uses the same WindowProxy', async () => {
+  const env = setup({actualBridge: true});
+  const select = {options: [], value: '', appendChild() {}, dispatchEvent() {}};
+  env.openRefCreate(select, 'Город');
+  const modal = env.document.getElementById('_ref-create-modal');
+  const iframe = modal.children[0].children[1];
+  const sourceWindowProxy = iframe.contentWindow;
+  let finalizedNewDocument = 0;
+  installManagedDocument(iframe, 'popup-old-document');
+
+  modal.children[0].children[0].children[0].dispatch('click', {});
+  confirmationButtons(closeConfirmation(env.document))[0].dispatch('click', {});
+  assert.equal(iframe._posted.length, 1);
+  const correlation = iframe._posted[0].data.correlation;
+
+  installManagedDocument(iframe, 'popup-new-document', () => { finalizedNewDocument++; });
+  iframe.dispatch('load', {});
+  assert.equal(iframe.contentWindow, sourceWindowProxy, 'test replaced WindowProxy');
+  env.window.dispatch('message', {
+    origin: env.window.location.origin,
+    source: sourceWindowProxy,
+    data: {source: 'obFormCloseDecision', correlation, allowed: true, intentId: 'stale-popup'},
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(env.document.getElementById('_ref-create-modal'), modal);
+  assert.equal(finalizedNewDocument, 0);
+});
+
+test('popup rejects stale child Cancel after same-WindowProxy navigation', () => {
+  const env = setup({actualBridge: true});
+  const select = {options: [], value: '', appendChild() {}, dispatchEvent() {}};
+  env.openRefCreate(select, 'Город');
+  const modal = env.document.getElementById('_ref-create-modal');
+  const iframe = modal.children[0].children[1];
+  const sourceWindowProxy = iframe.contentWindow;
+  let finalizedNewDocument = 0;
+  installManagedDocument(iframe, 'popup-old-document');
+  installManagedDocument(iframe, 'popup-new-document', () => { finalizedNewDocument++; });
+  iframe.dispatch('load', {});
+
+  env.window.dispatch('message', {
+    origin: env.window.location.origin,
+    source: sourceWindowProxy,
+    data: {
+      source: 'obRefCancel', allowed: true, intentId: 'stale-popup',
+      documentToken: 'popup-old-document',
+    },
+  });
+  assert.equal(env.document.getElementById('_ref-create-modal'), modal);
+  assert.equal(finalizedNewDocument, 0);
+
+  env.window.dispatch('message', {
+    origin: env.window.location.origin,
+    source: sourceWindowProxy,
+    data: {
+      source: 'obRefCancel', allowed: true, intentId: 'current-popup',
+      documentToken: 'popup-new-document',
+    },
+  });
+  assert.equal(finalizedNewDocument, 1);
+  assert.equal(env.document.getElementById('_ref-create-modal'), null);
 });
 
 test('reopening keeps the existing popup instead of bypassing its close intent', () => {
