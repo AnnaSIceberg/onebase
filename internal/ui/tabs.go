@@ -113,9 +113,8 @@ const tplAppShell = `{{define "page-app-shell"}}
     if(active)persistActive(active);
     syncEmpty();
   }
-  function closeTab(t){
+  function removeTab(t){
     var i=tabs.indexOf(t); if(i<0)return;
-    if(t.dirty && !window.confirm('В этой вкладке есть несохранённые изменения. Закрыть вкладку?'))return; // фаза 3
     t.btn.remove(); t.frame.remove(); tabs.splice(i,1);
     if(active===t){
       var next=tabs[Math.min(i,tabs.length-1)]||null;
@@ -123,13 +122,37 @@ const tplAppShell = `{{define "page-app-shell"}}
       if(!next)clearPersistedActive();
     }
     persist();
+    return true;
+  }
+  function closeTab(t,reason){
+    var i=tabs.indexOf(t); if(i<0)return false;
+    if(t.closePromise)return t.closePromise;
+    if(t.dirty && !window.confirm('В этой вкладке есть несохранённые изменения. Закрыть вкладку?'))return false; // фаза 3
+    // Старые/автогенерируемые страницы не имеют lifecycle-controller; ui.js
+    // отвечает за них allow=true. Fallback оставлен только для совместимости с
+    // тестовым harness и страницами из кэша до загрузки ui.js.
+    if(typeof window.obRequestFrameClose!=='function')return removeTab(t);
+    t.closePromise=Promise.resolve(window.obRequestFrameClose(t.frame,reason||'close')).then(function(decision){
+      if(!decision||decision.allowed!==true){
+        if(decision&&(decision.error==='timeout'||decision.error==='post-message'))window.alert('Форма не закрыта: сервер не подтвердил закрытие.');
+        return false;
+      }
+      return removeTab(t);
+    }).catch(function(){ return false; }).finally(function(){ t.closePromise=null; });
+    return t.closePromise;
   }
   // Фаза 4: управление множеством вкладок — контекст-меню по правому клику.
-  function closeOthers(keep){ tabs.slice().forEach(function(t){ if(t!==keep) closeTab(t); }); }
+  function closeSequence(list,reason){
+    if(typeof window.obRequestFrameClose!=='function'){ list.forEach(function(t){closeTab(t,reason);}); return; }
+    var chain=Promise.resolve();
+    list.forEach(function(t){ chain=chain.then(function(){ return Promise.resolve(closeTab(t,reason)); }); });
+    return chain;
+  }
+  function closeOthers(keep){ return closeSequence(tabs.slice().filter(function(t){return t!==keep;}),'close'); }
   function tabMenu(t,x,y){
     var old=document.getElementById('ob-tabmenu'); if(old)old.remove();
     var m=document.createElement('div'); m.id='ob-tabmenu'; m.className='ob-tabmenu'; m.style.left=x+'px'; m.style.top=y+'px';
-    [['Закрыть',function(){closeTab(t);}],['Закрыть другие',function(){closeOthers(t);}],['Закрыть все',function(){tabs.slice().forEach(closeTab);}]].forEach(function(it){
+    [['Закрыть',function(){closeTab(t,'close');}],['Закрыть другие',function(){closeOthers(t);}],['Закрыть все',function(){closeSequence(tabs.slice(),'close');}]].forEach(function(it){
       var b=document.createElement('div'); b.className='ob-tabmenu-item'; b.textContent=it[0];
       b.addEventListener('click',function(){ m.remove(); it[1](); });
       m.appendChild(b);
@@ -160,8 +183,8 @@ const tplAppShell = `{{define "page-app-shell"}}
     var t={id:uniqueTabID(opts.id),url:url,title:title,btn:btn,frame:frame,label:lab};
     frame.addEventListener('load',function(){ syncFrameURL(t); });
     btn.addEventListener('click',function(e){ if(e.target===cl||e.target===dup)return; setActive(t); });
-    btn.addEventListener('mousedown',function(e){ if(e.button===1){ e.preventDefault(); closeTab(t); } });
-    cl.addEventListener('click',function(e){ e.stopPropagation(); closeTab(t); });
+    btn.addEventListener('mousedown',function(e){ if(e.button===1){ e.preventDefault(); closeTab(t,'cross'); } });
+    cl.addEventListener('click',function(e){ e.stopPropagation(); closeTab(t,'cross'); });
     dup.addEventListener('click',function(e){ e.stopPropagation(); openTab(t.url, t.title, {allowDup:true}); }); // #130
     btn.addEventListener('contextmenu',function(e){ e.preventDefault(); setActive(t); tabMenu(t,e.clientX,e.clientY); }); // фаза 4
     strip.appendChild(btn); body.appendChild(frame); tabs.push(t);
@@ -195,7 +218,7 @@ const tplAppShell = `{{define "page-app-shell"}}
     }
     return norm(a)===norm(b);
   }
-  function closeTabByURL(url){
+  function closeTabByURL(url,reason){
     var u=String(url||''); if(!u)return 0;
     var n=0;
     // syncFrameURL перед сверкой: форма, записавшая НОВЫЙ объект, меняет свой
@@ -210,11 +233,17 @@ const tplAppShell = `{{define "page-app-shell"}}
         matched.push(t);
       }
     });
+    if(typeof window.obRequestFrameClose!=='function'){
+      matched.forEach(function(t){ closeTab(t,reason||'programmatic'); if(!tabs.includes(t))n++; });
+      return n;
+    }
+    var chain=Promise.resolve();
     matched.forEach(function(t){
-      closeTab(t);
-      if(!tabs.includes(t))n++;
+      chain=chain.then(function(){
+        return Promise.resolve(closeTab(t,reason||'programmatic')).then(function(closed){if(closed)n++;});
+      });
     });
-    return n;
+    return chain.then(function(){return n;});
   }
   window.obCloseTabByURL=closeTabByURL;
 
@@ -227,7 +256,7 @@ const tplAppShell = `{{define "page-app-shell"}}
     if(ev.origin!==location.origin)return;
     var d=ev.data; if(!d||typeof d!=='object')return;
     if(d.source==='obOpenTab' && d.url){ var ou=String(d.url); if(!openable(ou))return; openTab(ou, d.title?String(d.title):'Форма', {allowDup:!!d.allowDup}); }
-    else if(d.source==='obCloseTab'){ if(d.url){ closeTabByURL(String(d.url)); } else { var ct=tabByWindow(ev.source); if(ct)closeTab(ct); } }
+    else if(d.source==='obCloseTab'){ if(d.url){ closeTabByURL(String(d.url),d.reason||'programmatic'); } else { var ct=tabByWindow(ev.source); if(ct)closeTab(ct,d.reason||'cross'); } }
     else if(d.source==='obFrameURLChanged' && d.url){ var ut=tabByWindow(ev.source); if(ut)syncFrameURL(ut,String(d.url)); }
     else if(d.source==='obSetTitle' && active && d.title){ active.title=String(d.title); active.label.textContent=active.title; active.btn.title=active.title; persist(); }
     else if(d.source==='obDirty'){ var dt=tabByWindow(ev.source); if(dt){ dt.dirty=!!d.dirty; dt.btn.classList.toggle('dirty',dt.dirty); } } // фаза 3

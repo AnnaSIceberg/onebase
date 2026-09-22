@@ -14,6 +14,77 @@ try {
 // Вкладочная оболочка (issue #129/#130): когда страница открыта во фрейме
 // оболочки /ui/app, прячем хром (топбар/подсистемы) — навигация идёт из оболочки.
 window.__obEmbedded = window.self !== window.top;
+
+// Same-origin request/decision protocol shared by shell tabs and reference
+// popups. The parent owns the final DOM removal; the child owns the server
+// close-intent. Correlation plus exact source/origin prevent a late response
+// from one iframe from closing another.
+(function () {
+  var pending = Object.create(null);
+  var seq = 0;
+  function correlationID() {
+    try { if (window.crypto && typeof window.crypto.randomUUID === 'function') return 'close:' + window.crypto.randomUUID(); } catch (_) {}
+    seq++;
+    return 'close:' + Date.now().toString(36) + ':' + seq.toString(36) + ':' + Math.random().toString(36).slice(2);
+  }
+  window.obRequestFrameClose = function (frame, reason) {
+    if (!frame || !frame.contentWindow) return Promise.resolve({allowed: false, error: 'frame-missing'});
+    if (frame._obClosePromise) return frame._obClosePromise;
+    var correlation = correlationID();
+    var promise = new Promise(function (resolve) {
+      var timer = setTimeout(function () {
+        delete pending[correlation];
+        resolve({allowed: false, error: 'timeout'});
+      }, 135000);
+      pending[correlation] = {frame: frame, resolve: resolve, timer: timer};
+      try {
+        frame.contentWindow.postMessage({
+          source: 'obRequestFormClose', correlation: correlation,
+          reason: reason || 'close'
+        }, window.location.origin);
+      } catch (_) {
+        clearTimeout(timer);
+        delete pending[correlation];
+        resolve({allowed: false, error: 'post-message'});
+      }
+    });
+    frame._obClosePromise = promise.finally(function () { frame._obClosePromise = null; });
+    return frame._obClosePromise;
+  };
+  window.addEventListener('message', function (ev) {
+    if (ev.origin !== window.location.origin) return;
+    var data = ev.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.source === 'obFormCloseDecision') {
+      var slot = pending[String(data.correlation || '')];
+      if (!slot || ev.source !== slot.frame.contentWindow) return;
+      clearTimeout(slot.timer);
+      delete pending[String(data.correlation || '')];
+      slot.resolve({allowed: data.allowed === true, intentId: String(data.intentId || ''), error: data.error || ''});
+      return;
+    }
+    if (data.source !== 'obRequestFormClose' || !data.correlation || !ev.source) return;
+    var requester = ev.source;
+    var fn = window.obRequestFormClose;
+    var result;
+    if (typeof fn === 'function') result = fn({reason: String(data.reason || 'close')});
+    else if (document.getElementById('ob-managed-config')) result = {allowed: false, error: 'controller-not-ready'};
+    else result = {allowed: true, intentId: ''};
+    Promise.resolve(result).catch(function (err) {
+      return {allowed: false, error: err && err.message ? err.message : String(err)};
+    }).then(function (decision) {
+      try {
+        requester.postMessage({
+          source: 'obFormCloseDecision', correlation: String(data.correlation),
+          allowed: !!(decision && decision.allowed),
+          intentId: decision && decision.intentId ? String(decision.intentId) : '',
+          error: decision && decision.error ? String(decision.error) : ''
+        }, ev.origin);
+      } catch (_) {}
+    });
+  });
+})();
+
 if (window.__obEmbedded) {
   document.documentElement.className += ' ob-embedded';
   // #481: заголовок вкладки = представление записи. Сервер рендерит на карточке
@@ -56,14 +127,14 @@ if (window.__obEmbedded) {
     } catch (_) {}
     return true;
   };
-  window.obCloseInShell = function () {
+  window.obCloseInShell = function (reason) {
     var shell = null;
     try {
       if (window.parent && window.parent.obOpenTab) shell = window.parent;
     } catch (_) {}
     if (!shell) return false;
     try {
-      shell.postMessage({ source: 'obCloseTab' }, window.location.origin);
+      shell.postMessage({ source: 'obCloseTab', reason: reason || 'cross' }, window.location.origin);
     } catch (_) {
       return false;
     }
@@ -73,7 +144,7 @@ if (window.__obEmbedded) {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     var a = e.target.closest ? e.target.closest('a[href]') : null;
     if (!a || a.target === '_blank') return;
-    if (a.hasAttribute('data-ob-close-tab') && window.obCloseInShell()) {
+    if (a.hasAttribute('data-ob-close-tab') && window.obCloseInShell((a.dataset && a.dataset.obCloseReason) || 'cross')) {
       e.preventDefault();
       return;
     }
@@ -296,14 +367,16 @@ function obInitFormDirty() {
     if (e.defaultPrevented || (e.key !== 'Escape' && e.keyCode !== 27) || obHasBlockingModal()) return;
     var cancel = document.querySelector('[data-ob-popup-cancel], [data-ob-close-tab], a.btn-cancel');
     if (!cancel) return;
-    if (window._obFormDirty && !confirm('Данные были изменены и не записаны. Закрыть форму?')) {
+    if (!window.__obEmbedded && window._obFormDirty && !confirm('Данные были изменены и не записаны. Закрыть форму?')) {
       e.preventDefault();
       e.stopPropagation();
       return;
     }
     e.preventDefault();
     e.stopPropagation();
+    if (cancel.dataset) cancel.dataset.obCloseReason = 'escape';
     cancel.click();
+    if (cancel.dataset) delete cancel.dataset.obCloseReason;
   }, true);
 }
 obReady(obInitFormDirty);
@@ -3336,6 +3409,7 @@ function openRefCreate(targetSelect, refEntity) {
 
   var frameDocument = null;
   function handler(ev) {
+    if (ev.origin !== window.location.origin || ev.source !== iframe.contentWindow) return;
     var d = ev.data;
     if (!d || typeof d !== 'object') return;
     if (d.source === 'obRefCreate' && d.id) {
@@ -3393,7 +3467,18 @@ function openRefCreate(targetSelect, refEntity) {
     stay.style.cssText = 'background:#e2e8f0;color:#333;border:none;padding:5px 12px;border-radius:4px;cursor:pointer';
     closeWithoutSave.addEventListener('click', function () {
       dismissCloseConfirm();
-      cleanup();
+      // Совместимость со страницей из старого кэша и минимальными встраиваниями,
+      // где общий close-controller ещё не загружен.
+      if (typeof window.obRequestFrameClose !== 'function') {
+        cleanup();
+        return;
+      }
+      closeWithoutSave.disabled = true;
+      var request = window.obRequestFrameClose(iframe, 'popup_cancel');
+      Promise.resolve(request).then(function(decision){
+        if (decision && decision.allowed) cleanup();
+        else closeWithoutSave.disabled = false;
+      }, function(){ closeWithoutSave.disabled = false; });
     });
     stay.addEventListener('click', dismissCloseConfirm);
     overlay.addEventListener('keydown', function (ev) {
@@ -3671,9 +3756,10 @@ window.onebaseDevice = {
   // и какая вкладка активна в этот момент — вопрос порядка доставки (команда
   // «открой заявку, закрой звонок» закрыла бы только что открытую заявку).
   //
-  // Чистые совпавшие вкладки закрываются сразу. Для каждой вкладки с
-  // несохранёнными изменениями остаётся обычное подтверждение: серверная
-  // команда не доказывает, что независимый дубликат формы уже записан.
+  // Для каждой совпавшей вкладки оболочка сначала запрашивает её lifecycle-
+  // решение. Для несохранённых изменений перед ним остаётся обычное
+  // подтверждение: серверная команда не доказывает, что независимый дубликат
+  // формы уже записан.
   function closeFormTab(link) {
     var url = formURL(link);
     if (!url) return;

@@ -787,6 +787,8 @@ main>.card{max-width:none}
   "kind" "processor"
   "entity" .Processor.Name
   "url" (printf "/ui/processor/%s/form-event" (lower .Processor.Name))
+  "closeUrl" (printf "/ui/processor/%s/form-close-intent" (lower .Processor.Name))
+  "closeTimeoutMs" .FormCloseTimeoutMS
   "docId" ""
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "serviceFields" (processorServiceFieldNames .Processor)
@@ -796,6 +798,8 @@ main>.card{max-width:none}
   "kind" (lower (str .Entity.Kind))
   "entity" .Entity.Name
   "url" (printf "/ui/%s/%s/form-event" (lower (str .Entity.Kind)) .Entity.Name)
+  "closeUrl" (printf "/ui/%s/%s/form-close-intent" (lower (str .Entity.Kind)) .Entity.Name)
+  "closeTimeoutMs" .FormCloseTimeoutMS
   "docId" .ID
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "formAttrs" (formAttrNames .Form .Entity)

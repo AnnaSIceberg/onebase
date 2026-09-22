@@ -1025,6 +1025,164 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
    }
   };
 
+  // One close controller for every managed-form adapter. It snapshots the
+  // current form exactly like obFire, calls the dedicated lifecycle endpoint,
+  // applies returned state/messages first and only then returns a decision.
+  // Shell/popup/standalone code decides how to destroy its own UI.
+  var CLOSE_URL = String(cfg.closeUrl || '');
+  var CLOSE_TIMEOUT_MS = Number(cfg.closeTimeoutMs || 30000);
+  var closePending = null;
+  var lastFailedClose = null;
+
+  function freshCloseIntentID(){
+    try { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); } catch (_) {}
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(ch){
+      var n = Math.floor(Math.random() * 16);
+      return (ch === 'x' ? n : ((n & 3) | 8)).toString(16);
+    });
+  }
+
+  async function closeSnapshotBody(reason){
+    if (window.obGridSync && window.obGridSync() === false) return null;
+    var form = document.getElementById('main-form');
+    if (!form) return new URLSearchParams();
+    var fileHelpers = Array.prototype.slice.call(form.querySelectorAll('[data-ob-file-content-for]'));
+    if (!await awaitCurrentFileReads(fileHelpers)) return null;
+    if (window.obGridSync && window.obGridSync() === false) return null;
+    var disabled = fileHelpers.map(function(el){ return el.disabled; });
+    var fd;
+    try {
+      fileHelpers.forEach(function(el){ el.disabled = true; });
+      fd = new FormData(form);
+    } finally {
+      fileHelpers.forEach(function(el, i){ el.disabled = disabled[i]; });
+    }
+    fd.set(serviceField('_kind'), cfg.kind === 'processor' ? 'processor' : 'object');
+    if (DOC_ID) fd.set(serviceField('_id'), DOC_ID);
+    var body = new URLSearchParams();
+    fd.forEach(function(v, k){
+      if (typeof v !== 'string') { body.append(k, ''); return; }
+      var helper = form.querySelector('[data-ob-file-content-for="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
+      if (helper && (helper.value || helper.dataset.obFileContentReady === '1')) body.append(k, helper.value);
+      else body.append(k, v);
+    });
+    body.set(serviceField('_close_reason'), reason);
+    body.set(serviceField('_close_mode'), 'discard');
+    return body;
+  }
+
+  function applyCloseResponse(data){
+    if (!data || typeof data !== 'object') return;
+    if (Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
+    applyElementStates(data.elementStates);
+    window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
+    window.applyTableParts(data.tableparts);
+    applyValues(data.values, data.refOptions);
+    applyFormTables(data.formTables);
+    var form = document.getElementById('main-form');
+    if (data.savedId && !DOC_ID) {
+      DOC_ID = String(data.savedId);
+      var idInput = form && form.querySelector('[name="_id"]');
+      if (idInput) idInput.value = DOC_ID;
+      if (window.history && history.replaceState) {
+        var savedURL = location.pathname.replace(/\/new$/, '/' + DOC_ID);
+        history.replaceState(null, '', savedURL);
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
+          }
+        } catch (_) {}
+      }
+      window._obFormDirty = false;
+    }
+    if (data.version && form) {
+      var verInput = form.querySelector('[name="_version"]');
+      if (!verInput) {
+        verInput = document.createElement('input');
+        verInput.type = 'hidden';
+        verInput.name = '_version';
+        form.appendChild(verInput);
+      }
+      verInput.value = String(data.version);
+    }
+    (data.messages || []).forEach(function(message){ flash(message, 'ok'); });
+    if (data.error) flash(data.error, 'err');
+  }
+
+  window.obRequestFormClose = function(options){
+    options = options || {};
+    if (closePending) return closePending;
+    var reason = String(options.reason || 'close');
+    closePending = (async function(){
+      if (!CLOSE_URL) return {allowed: true, intentId: ''};
+      var body = await closeSnapshotBody(reason);
+      if (!body) return {allowed: false, intentId: '', error: 'form-state'};
+      var keyBody = new URLSearchParams(body.toString());
+      if (keyBody.sort) keyBody.sort();
+      var snapshotKey = keyBody.toString();
+      var intentID = lastFailedClose && lastFailedClose.key === snapshotKey
+        ? lastFailedClose.intentId : freshCloseIntentID();
+      body.set(serviceField('_close_intent_id'), intentID);
+
+      var controller = typeof AbortController === 'function' ? new AbortController() : null;
+      var timer = setTimeout(function(){ if (controller) controller.abort(); }, Math.max(1000, CLOSE_TIMEOUT_MS));
+      try {
+        var response = await fetch(CLOSE_URL, {
+          method: 'POST', body: body,
+          headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'},
+          credentials: 'same-origin', signal: controller ? controller.signal : undefined
+        });
+        var data;
+        try { data = await response.json(); }
+        catch (_) { throw new Error('сервер вернул не JSON'); }
+        applyCloseResponse(data);
+        if (!data.close || String(data.close.intentId || '') !== intentID) {
+          lastFailedClose = {key: snapshotKey, intentId: intentID};
+          flash('Ответ закрытия не совпал с запросом. Форма оставлена открытой.', 'err');
+          return {allowed: false, intentId: intentID, error: 'stale-correlation'};
+        }
+        if (!response.ok || data.ok !== true) lastFailedClose = {key: snapshotKey, intentId: intentID};
+        else lastFailedClose = null;
+        return {
+          allowed: response.ok && data.ok === true && data.close.allowed === true,
+          intentId: intentID,
+          error: data.error || ''
+        };
+      } catch (err) {
+        lastFailedClose = {key: snapshotKey, intentId: intentID};
+        var timeout = err && err.name === 'AbortError';
+        flash((timeout ? 'Превышено время проверки закрытия' : 'Сетевая ошибка при закрытии') +
+          ': ' + (err && err.message ? err.message : err), 'err');
+        return {allowed: false, intentId: intentID, error: timeout ? 'timeout' : 'network'};
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    closePending = closePending.finally(function(){ closePending = null; });
+    return closePending;
+  };
+
+  window.obFinalizeFormClose = function(){
+    window._obFormDirty = false;
+  };
+
+  // Standalone managed form: shell/popup adapters handle their own final step.
+  // Here the allowed decision permits a same-origin navigation back to the list.
+  document.addEventListener('click', function(e){
+    if (e.defaultPrevented || window.__obEmbedded || !e.target || !e.target.closest) return;
+    var link = e.target.closest('[data-ob-close-tab]');
+    if (!link) return;
+    e.preventDefault();
+    var reason = (link.dataset && link.dataset.obCloseReason) || 'cross';
+    if (window._obFormDirty && !window.confirm('Данные были изменены и не записаны. Закрыть форму?')) return;
+    Promise.resolve(window.obRequestFormClose({reason: reason})).then(function(decision){
+      if (!decision || !decision.allowed) return;
+      window.obFinalizeFormClose();
+      var href = link.getAttribute('href') || '/ui/';
+      window.location.assign(href);
+    });
+  });
+
   // Отслеживание «грязной» формы — чтобы Esc/закрытие спрашивало подтверждение
   // только при наличии несохранённых изменений. Плюс пометка несохранённого
   // документа звёздочкой в заголовке вкладки браузера (аналог «*» в 1С) и
@@ -1162,10 +1320,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     }
     var cancel = document.querySelector('a.btn-cancel');
     if (cancel) {
-      if (window._obFormDirty && !confirm('Данные были изменены и не записаны. Закрыть форму?')) {
+      if (!window.__obEmbedded && window._obFormDirty && !confirm('Данные были изменены и не записаны. Закрыть форму?')) {
         e.preventDefault(); e.stopPropagation(); return;
       }
+      if (cancel.dataset) cancel.dataset.obCloseReason = 'escape';
       e.preventDefault(); e.stopPropagation(); cancel.click();
+      if (cancel.dataset) delete cancel.dataset.obCloseReason;
     }
   }, true);
 })();
@@ -1294,7 +1454,13 @@ function obManagedInitDelegates() {
 
     if (btn.hasAttribute('data-ob-ref-cancel')) {
       e.preventDefault();
-      try { parent.postMessage({ source: 'obRefCancel' }, '*'); } catch (_) {}
+      if (window._obFormDirty && !window.confirm('Данные были изменены и не записаны. Закрыть форму?')) return;
+      var requestClose = window.obRequestFormClose || function(){ return Promise.resolve({allowed: true}); };
+      Promise.resolve(requestClose({reason: 'popup_cancel'})).then(function(decision){
+        if (!decision || !decision.allowed) return;
+        if (window.obFinalizeFormClose) window.obFinalizeFormClose();
+        try { parent.postMessage({ source: 'obRefCancel' }, window.location.origin); } catch (_) {}
+      });
       return;
     }
     if (btn.hasAttribute('data-ob-ref-picker')) {

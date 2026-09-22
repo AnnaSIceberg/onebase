@@ -124,7 +124,7 @@ class FakeStorage {
   }
 }
 
-function shell(storage, search = '', confirmClose = () => true) {
+function shell(storage, search = '', confirmClose = () => true, requestFrameClose = null) {
   const elements = {};
   for (const id of ['ob-tabstrip', 'ob-tabbody', 'ob-tabempty', 'ob-tabhome']) {
     elements[id] = new Element('div', id);
@@ -162,6 +162,7 @@ function shell(storage, search = '', confirmClose = () => true) {
     }
   };
   context.window = context;
+  if (requestFrameClose) context.obRequestFrameClose = requestFrameClose;
   vm.runInNewContext(source, context, {filename: 'rendered-tabs-runtime.js'});
 
   const strip = elements['ob-tabstrip'];
@@ -545,4 +546,35 @@ test('repeated server-driven close cannot bypass a rejected dirty confirmation',
   assert.equal(app.closeByURL('/ui/document/обращение/1'), 0);
   assert.equal(app.count(), 1);
   assert.equal(app.confirms(), 2);
+});
+
+test('shell removes a form only after the correlated close decision allows it', async () => {
+  const storage = new FakeStorage();
+  const requests = [];
+  let finish;
+  const app = shell(storage, '', () => true, (frame, reason) => {
+    requests.push({frame, reason});
+    return new Promise((resolve) => { finish = resolve; });
+  });
+  app.open('/ui/document/обращение/1', 'Обращение');
+  app.markDirty(0);
+
+  app.close(0);
+  app.close(0);
+  assert.equal(app.count(), 1, 'tab was destroyed before the server decision');
+  assert.equal(requests.length, 1, 'double click started a second close intent');
+  assert.equal(app.confirms(), 1, 'double click repeated the dirty confirmation');
+  assert.equal(requests[0].reason, 'cross');
+
+  finish({allowed: false, intentId: 'denied'});
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.count(), 1, 'denied close removed the tab');
+
+  app.post({source: 'obCloseTab', reason: 'escape'}, 0);
+  assert.equal(requests.length, 2);
+  assert.equal(app.confirms(), 2);
+  assert.equal(requests[1].reason, 'escape');
+  finish({allowed: true, intentId: 'allowed'});
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.count(), 0, 'allowed close kept the tab');
 });

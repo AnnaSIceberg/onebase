@@ -106,15 +106,16 @@ func TestPageManagedForm_Renders(t *testing.T) {
 	}
 
 	data := map[string]any{
-		"Entity":       ent,
-		"Form":         form,
-		"IsNew":        true,
-		"Values":       map[string]string{"Наименование": "", "Активен": "false", "Дата": "2026-07-08T12:00"},
-		"RefOptions":   map[string]any{},
-		"EnumOptions":  map[string]any{},
-		"TPRefOptions": map[string]any{},
-		"User":         nil,
-		"Lang":         "ru",
+		"Entity":             ent,
+		"Form":               form,
+		"IsNew":              true,
+		"Values":             map[string]string{"Наименование": "", "Активен": "false", "Дата": "2026-07-08T12:00"},
+		"RefOptions":         map[string]any{},
+		"EnumOptions":        map[string]any{},
+		"TPRefOptions":       map[string]any{},
+		"FormCloseTimeoutMS": int64(31500),
+		"User":               nil,
+		"Lang":               "ru",
 	}
 
 	var buf bytes.Buffer
@@ -143,6 +144,8 @@ func TestPageManagedForm_Renders(t *testing.T) {
 		`aria-keyshortcuts="F7"`,
 		`data-ob-close-tab`,
 		`id="ob-managed-config"`,
+		`"closeUrl":"/ui/catalog/Контрагент/form-close-intent"`,
+		`"closeTimeoutMs":31500`,
 		`id="ob-managed-tp-ref-opts"`,
 		`src="/static/managed.js"`,
 		`src="/static/ui.js"`, // managed-форма грузит и ui.js (из "head"): делегат data-ob-toggle-next живёт только там (issue #309)
