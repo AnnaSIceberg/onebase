@@ -573,8 +573,8 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 	ledger := s.formCloseLedger()
 	captured := newCapturedCloseResponse(ledger.maxEntryBytes)
 	// Never leave an exact retry waiting forever if an unexpected panic escapes
-	// the normal DSL/HTTP error conversion. Preserve the panic for the server's
-	// recovery middleware, but publish a fail-closed terminal replay first.
+	// the normal DSL/HTTP error conversion. Convert it into the same fail-closed
+	// correlated response that is stored for an exact replay.
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			body := marshalFormCloseFailure(inv, inv.version, "внутренняя ошибка проверки закрытия формы")

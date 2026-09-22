@@ -1536,7 +1536,6 @@ func (s *Server) submitEdit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.mergeFormAttrValues(r.Context(), r, managedForm, entity, obj)
-		tpRows = obj.TablePartRows
 		hookMsgs, _, saveErr := s.saveManagedObject(r, entity, managedForm, obj, false, action, nil)
 		if saveErr != nil {
 			s.renderManagedObjectSaveFailure(w, r, entity, false, obj, hookMsgs, saveErr)

@@ -358,7 +358,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if closeInv != nil && closeInv.mode != "discard" &&
-		!(strings.EqualFold(form.Kind, "object") || form.Kind == "" && formKind == "object") {
+		!strings.EqualFold(form.Kind, "object") && (form.Kind != "" || formKind != "object") {
 		w.WriteHeader(http.StatusBadRequest)
 		respondJSON(enc, formEventResponse{Error: "сохранение при закрытии разрешено только для формы объекта"})
 		return
