@@ -546,6 +546,104 @@ function obInitMappedCharts(jsonID, selector, attrName, errorText, formatValueAx
   }
 }
 
+// BEGIN onebase-widget-refresh
+function obDisposeWidgetChart(card) {
+  if (!card || !window.echarts || !window.echarts.getInstanceByDom) return;
+  var node = card.querySelector('.w-chart-canvas[data-widget]');
+  if (!node) return;
+  var previous = window.echarts.getInstanceByDom(node);
+  if (previous && previous.dispose) previous.dispose();
+}
+
+function obInitWidgetChart(card, option) {
+  if (!card || !option || !window.echarts) return;
+  var node = card.querySelector('.w-chart-canvas[data-widget]');
+  if (!node) return;
+  try {
+    var previous = window.echarts.getInstanceByDom ? window.echarts.getInstanceByDom(node) : null;
+    if (previous && previous.dispose) previous.dispose();
+    var chart = window.echarts.init(node);
+    option.animation = false;
+    obApplyValueAxisFormatter(option);
+    chart.setOption(option);
+    node.setAttribute('data-ob-init', '1');
+    window.addEventListener('resize', function () {
+      if (!chart.isDisposed || !chart.isDisposed()) chart.resize();
+    });
+  } catch (e) {
+    console.error('chart init failed', e);
+  }
+}
+
+function obWidgetController(card) {
+  if (!card || card._obWidgetController) return card && card._obWidgetController;
+  var body = card.querySelector('[data-ob-widget-body]');
+  var button = card.querySelector('[data-ob-widget-refresh]');
+  var status = card.querySelector('[data-ob-widget-status]');
+  if (!body || !button) return null;
+
+  var state = { sequence: 0, abort: null, fingerprint: '' };
+  var controller = {
+    refresh: function () {
+      var endpoint = card.getAttribute('data-widget-url') || '';
+      if (!endpoint) return Promise.resolve(false);
+      state.sequence += 1;
+      var sequence = state.sequence;
+      state.fingerprint = endpoint;
+      if (state.abort) state.abort.abort();
+      state.abort = window.AbortController ? new AbortController() : null;
+      var options = { credentials: 'same-origin', headers: { Accept: 'application/json' } };
+      if (state.abort) options.signal = state.abort.signal;
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      card.classList.add('ob-widget-loading');
+      if (status) status.textContent = '';
+
+      return fetch(endpoint, options).then(function (response) {
+        var contentType = response.headers && response.headers.get ? response.headers.get('Content-Type') || '' : '';
+        if (!response.ok || contentType.toLowerCase().indexOf('application/json') !== 0) {
+          throw new Error('widget refresh failed');
+        }
+        return response.json();
+      }).then(function (payload) {
+        if (sequence !== state.sequence || endpoint !== state.fingerprint) return false;
+        if (!payload || typeof payload.html !== 'string') throw new Error('invalid widget response');
+        obDisposeWidgetChart(card);
+        body.innerHTML = payload.html;
+        if (payload.chart) obInitWidgetChart(card, payload.chart);
+        return true;
+      }).catch(function (error) {
+        if (error && error.name === 'AbortError') return false;
+        if (sequence === state.sequence && status) {
+          status.textContent = card.getAttribute('data-refresh-error') || 'Не удалось обновить виджет';
+        }
+        return false;
+      }).finally(function () {
+        if (sequence !== state.sequence) return;
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+        card.classList.remove('ob-widget-loading');
+        state.abort = null;
+      });
+    },
+    state: state
+  };
+  button.addEventListener('click', function () { controller.refresh(); });
+  card._obWidgetController = controller;
+  return controller;
+}
+
+function obInitWidgetControllers() {
+  var cards = document.querySelectorAll('[data-ob-widget-card]');
+  for (var i = 0; i < cards.length; i++) obWidgetController(cards[i]);
+}
+
+window.obRefreshWidgetCard = function (card) {
+  var controller = obWidgetController(card);
+  return controller ? controller.refresh() : Promise.resolve(false);
+};
+// END onebase-widget-refresh
+
 function obInitReportChart() {
   if (!window.echarts) return;
   var node = document.getElementById('ob-chart');
@@ -568,6 +666,7 @@ obReady(function () {
   obInitMappedCharts('ob-widget-charts', '.w-chart-canvas[data-widget]', 'data-widget', 'chart init failed', true);
   obInitMappedCharts('ob-page-charts', '.w-chart-canvas[data-pagechart]', 'data-pagechart', 'page chart init failed', false);
   obInitReportChart();
+  obInitWidgetControllers();
 });
 
 function obInitFormDirty() {
@@ -4221,6 +4320,7 @@ window.onebaseDevice = {
   }
 })();
 
+// BEGIN onebase-live-list
 /* План 87, ступень A — «Живой список». Контейнер списка помечается
    data-ob-refresh-on="имя1 имя2" (+ data-ob-live="ключ" для сопоставления при
    перечитывании). Универсальный слушатель ловит window-событие onebase:<имя>,
@@ -4251,6 +4351,13 @@ window.onebaseDevice = {
   }
 
   function doRefresh(el, key) {
+    // Карточка виджета (план 182B) перечитывается своим partial-endpoint'ом
+    // через контроллер карточки: debounce/склейка/hidden-tab здесь, свежие
+    // данные и нетронутые фильтры — там. Атрибуты контейнера не меняются.
+    if (el.hasAttribute && el.hasAttribute('data-ob-widget-card')) {
+      if (window.obRefreshWidgetCard) window.obRefreshWidgetCard(el);
+      return;
+    }
     var src = el.getAttribute('data-ob-refresh-src') || window.location.href;
     fetch(src, { credentials: 'same-origin', headers: { 'X-Requested-With': 'obLiveList' } })
       .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
@@ -4346,6 +4453,7 @@ window.onebaseDevice = {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
+// END onebase-live-list
 
 /* ===== Боковая панель деталей активной записи (план 118B, issue #670) =====
 

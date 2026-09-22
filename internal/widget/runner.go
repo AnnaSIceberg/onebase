@@ -29,6 +29,16 @@ type Result struct {
 	Title string
 	Span  int
 	Error string
+	// PartialURL and refresh labels belong to the HTTP presentation layer. They
+	// are filled after Run returns, so user/subsystem-specific routes never
+	// become part of a cached query result.
+	PartialURL   string
+	RefreshLabel string
+	RefreshError string
+	// RefreshOn — имена событий для клиентской подписки карточки (план 182B),
+	// пробелом разделённые для атрибута data-ob-refresh-on. Заполняется вместе
+	// с остальными презентационными полями после Run.
+	RefreshOn string
 	// AccessDenied — у пользователя нет прав на источник данных виджета (или на
 	// все его кнопки-действия). Дашборд такие карточки не рендерит вовсе, в
 	// отличие от настоящих ошибок (compile/SQL), которые остаются видимыми.
@@ -149,6 +159,15 @@ type Runner struct {
 	Cache       *Cache // optional — key includes widget, user and authorization fingerprint
 }
 
+// RunOptions describes the effective dynamic part of a widget execution.
+// Params are already validated and typed by the caller; static widget params
+// are resolved and merged here. Fresh bypasses the exact cache entry and
+// replaces it after a successful run.
+type RunOptions struct {
+	Params map[string]any
+	Fresh  bool
+}
+
 // New creates a Runner. The Resolve hook is optional — when non-nil it is
 // invoked on every row of list/chart widgets to map raw UUIDs back to display
 // names, similar to what reports do.
@@ -161,16 +180,36 @@ func New(reg *runtime.Registry, store *storage.DB) *Runner {
 // When a Cache is configured, results are reused inside its TTL window. The
 // "actions" widget type is purely declarative so it skips the cache.
 func (r *Runner) Run(ctx context.Context, w *metadata.Widget) Result {
+	return r.RunWithOptions(ctx, w, RunOptions{})
+}
+
+// RunWithOptions executes a widget with explicit effective options.
+func (r *Runner) RunWithOptions(ctx context.Context, w *metadata.Widget, opts RunOptions) Result {
+	params := make(map[string]any, len(w.Params)+len(opts.Params))
+	for k, v := range w.Params {
+		params[k] = v
+	}
+	params = scheduler.ResolveParamTemplates(params)
+	for k, v := range opts.Params {
+		params[k] = v
+	}
+
 	if r.Cache != nil && w.Type != metadata.WidgetTypeActions {
 		security, cacheable := securityFingerprint(r.User)
 		if !cacheable {
-			return r.runOnce(ctx, w)
+			return r.runOnce(ctx, w, params)
 		}
-		key := cacheKey(w.Name, r.CurrentUser, security)
-		if cached, ok := r.Cache.get(key); ok {
-			return cached
+		paramsKey, cacheable := paramsFingerprint(params)
+		if !cacheable {
+			return r.runOnce(ctx, w, params)
 		}
-		res := r.runOnce(ctx, w)
+		key := cacheKey(w.Name, r.CurrentUser, security, paramsKey)
+		if !opts.Fresh {
+			if cached, ok := r.Cache.get(key); ok {
+				return cached
+			}
+		}
+		res := r.runOnce(ctx, w, params)
 		// Don't cache transient errors — they're often "compile" errors during
 		// the editing loop, and a stale failure looks worse than a fresh retry.
 		if res.Error == "" {
@@ -178,18 +217,18 @@ func (r *Runner) Run(ctx context.Context, w *metadata.Widget) Result {
 		}
 		return res
 	}
-	return r.runOnce(ctx, w)
+	return r.runOnce(ctx, w, params)
 }
 
-func (r *Runner) runOnce(ctx context.Context, w *metadata.Widget) Result {
+func (r *Runner) runOnce(ctx context.Context, w *metadata.Widget, params map[string]any) Result {
 	res := Result{Name: w.Name, Type: string(w.Type), Title: w.Title, Link: safeWidgetLink(w.Link)}
 	switch w.Type {
 	case metadata.WidgetTypeKPI:
-		r.runKPI(ctx, w, &res)
+		r.runKPI(ctx, w, params, &res)
 	case metadata.WidgetTypeList:
-		r.runList(ctx, w, &res)
+		r.runList(ctx, w, params, &res)
 	case metadata.WidgetTypeChart:
-		r.runChart(ctx, w, &res)
+		r.runChart(ctx, w, params, &res)
 	case metadata.WidgetTypeActions:
 		r.runActions(w, &res)
 	case metadata.WidgetTypeRecent:
@@ -200,8 +239,8 @@ func (r *Runner) runOnce(ctx context.Context, w *metadata.Widget) Result {
 	return res
 }
 
-func (r *Runner) runKPI(ctx context.Context, w *metadata.Widget, res *Result) {
-	rows, _, err := r.runQuery(ctx, w)
+func (r *Runner) runKPI(ctx context.Context, w *metadata.Widget, params map[string]any, res *Result) {
+	rows, _, err := r.runQuery(ctx, w, params)
 	if err != nil {
 		setResultError(res, err)
 		return
@@ -214,8 +253,8 @@ func (r *Runner) runKPI(ctx context.Context, w *metadata.Widget, res *Result) {
 	res.KPI = &KPIResult{Value: val, Display: formatKPI(val, w.Format)}
 }
 
-func (r *Runner) runList(ctx context.Context, w *metadata.Widget, res *Result) {
-	rows, cols, err := r.runQuery(ctx, w)
+func (r *Runner) runList(ctx context.Context, w *metadata.Widget, params map[string]any, res *Result) {
+	rows, cols, err := r.runQuery(ctx, w, params)
 	if err != nil {
 		setResultError(res, err)
 		return
@@ -228,8 +267,8 @@ func (r *Runner) runList(ctx context.Context, w *metadata.Widget, res *Result) {
 	res.Columns = columnsForList(w, cols)
 }
 
-func (r *Runner) runChart(ctx context.Context, w *metadata.Widget, res *Result) {
-	rows, cols, err := r.runQuery(ctx, w)
+func (r *Runner) runChart(ctx context.Context, w *metadata.Widget, params map[string]any, res *Result) {
+	rows, cols, err := r.runQuery(ctx, w, params)
 	if err != nil {
 		setResultError(res, err)
 		return
@@ -475,13 +514,7 @@ func (r *Runner) resolveUUIDs(ctx context.Context, rows []map[string]any) {
 }
 
 // runQuery is the shared back-end for kpi/list/chart widgets.
-func (r *Runner) runQuery(ctx context.Context, w *metadata.Widget) ([]map[string]any, []string, error) {
-	params := make(map[string]any, len(w.Params))
-	for k, v := range w.Params {
-		params[k] = v
-	}
-	params = scheduler.ResolveParamTemplates(params)
-
+func (r *Runner) runQuery(ctx context.Context, w *metadata.Widget, params map[string]any) ([]map[string]any, []string, error) {
 	rowFilters, err := access.QueryRowFiltersWithLookup(r.User, r.Reg.Entities(), r.Reg.Registers(), r.Reg.InfoRegisters(), r.Reg.AccountRegisters(), r.Reg)
 	if err != nil {
 		return nil, nil, err
