@@ -649,10 +649,6 @@ func (l *formCloseReplayLedger) reserveWithAdmission(ctx context.Context, identi
 	return l.reserveWithActorAdmission(ctx, identity, identity, key, hash, allowNew)
 }
 
-func (l *formCloseReplayLedger) reserveWithoutPayloadAdmission(ctx context.Context, identity, key string, hash [sha256.Size]byte, allowNew bool) (*formCloseReservation, *formCloseReplayResult, error) {
-	return l.reserveWithoutPayloadActorAdmission(ctx, identity, identity, key, hash, allowNew)
-}
-
 func (l *formCloseReplayLedger) reserveWithActorAdmission(ctx context.Context, identity, admissionIdentity, key string, hash [sha256.Size]byte, allowNew bool) (*formCloseReservation, *formCloseReplayResult, error) {
 	return l.reserveWithAdmissionPolicy(ctx, identity, admissionIdentity, key, hash, allowNew, true)
 }
