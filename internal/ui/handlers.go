@@ -175,10 +175,6 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	return rows, nil
 }
 
-func (s *Server) referenceOptionsPage(ctx context.Context, refEntity *metadata.Entity, search string, limit, offset int) ([]map[string]any, int, error) {
-	return s.referenceOptionsPageWithParams(ctx, refEntity, search, limit, offset, storage.ListParams{})
-}
-
 func (s *Server) referenceOptionsPageWithParams(ctx context.Context, refEntity *metadata.Entity, search string, limit, offset int, extra storage.ListParams) ([]map[string]any, int, error) {
 	if refEntity == nil {
 		return nil, 0, nil
