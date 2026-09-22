@@ -4,12 +4,14 @@ package ui
 // Выделено из handlers.go (план 55, этап 1) — перенос as-is.
 
 import (
+	"bytes"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/ivantit66/onebase/internal/auth"
 	oblog "github.com/ivantit66/onebase/internal/logging"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -170,12 +172,7 @@ func (s *Server) hiddenHomeRedirect(r *http.Request, base string) (string, bool)
 }
 
 func (s *Server) homeDashboardData(r *http.Request) map[string]any {
-	hp := s.reg.HomePage()
-	if sub := r.URL.Query().Get("subsystem"); sub != "" {
-		if ss := s.reg.GetSubsystem(sub); ss != nil && ss.HomePage != nil {
-			hp = ss.HomePage
-		}
-	}
+	hp := s.effectiveHomePage(r.URL.Query().Get("subsystem"))
 	// Соблюдение настроенных рядов (WYSIWYG) включается явно через layout: rows.
 	honor := hp != nil && hp.Layout == "rows"
 	groups, defaulted := homePageWidgetGroups(hp, s.reg, honor)
@@ -203,6 +200,7 @@ func (s *Server) homeDashboardData(r *http.Request) map[string]any {
 		}
 		res := runner.Run(r.Context(), wMeta)
 		res.Title = wMeta.DisplayTitle(lang)
+		s.decorateRefreshResult(r, &res)
 		return res
 	}
 	for _, group := range groups {
@@ -237,6 +235,121 @@ func (s *Server) homeDashboardData(r *http.Request) map[string]any {
 		"WidgetResults": flat,
 		"DefaultedHome": defaulted,
 	}
+}
+
+func (s *Server) effectiveHomePage(subsystem string) *metadata.HomePage {
+	hp := s.reg.HomePage()
+	if subsystem != "" {
+		if ss := s.reg.GetSubsystem(subsystem); ss != nil && ss.HomePage != nil {
+			hp = ss.HomePage
+		}
+	}
+	return hp
+}
+
+func refreshableWidgetType(t metadata.WidgetType) bool {
+	switch t {
+	case metadata.WidgetTypeKPI, metadata.WidgetTypeList, metadata.WidgetTypeChart, metadata.WidgetTypeRecent:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) decorateRefreshResult(r *http.Request, res *widget.Result) {
+	if res == nil || !refreshableWidgetType(metadata.WidgetType(res.Type)) {
+		return
+	}
+	q := make(url.Values)
+	if sub := r.URL.Query().Get("subsystem"); sub != "" {
+		q.Set("subsystem", sub)
+	}
+	res.PartialURL = "/ui/_widget/" + url.PathEscape(res.Name)
+	if encoded := q.Encode(); encoded != "" {
+		res.PartialURL += "?" + encoded
+	}
+	lang := s.resolveLang(r)
+	res.RefreshLabel = s.tr(lang, "Обновить")
+	res.RefreshError = s.tr(lang, "Не удалось обновить виджет")
+}
+
+func (s *Server) dashboardWidget(r *http.Request, name string) *metadata.Widget {
+	subsystem := r.URL.Query().Get("subsystem")
+	if subsystem != "" && s.reg.GetSubsystem(subsystem) == nil {
+		return nil
+	}
+	hp := s.effectiveHomePage(subsystem)
+	honorRows := hp != nil && hp.Layout == "rows"
+	groups, _ := homePageWidgetGroups(hp, s.reg, honorRows)
+	for _, group := range groups {
+		for _, candidate := range group {
+			if strings.EqualFold(candidate.Name, name) {
+				return candidate
+			}
+		}
+	}
+	return nil
+}
+
+type widgetPartialResponse struct {
+	HTML  string         `json:"html"`
+	Chart map[string]any `json:"chart"`
+}
+
+// widgetPartial re-renders one card body through the same Runner and named
+// templates as the full dashboard. The route accepts only server-resolved
+// widget/layout identity; later filter slices may add their own validated
+// namespaced values, but arbitrary query parameters are rejected here.
+func (s *Server) widgetPartial(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	for key := range r.URL.Query() {
+		if key != "subsystem" {
+			http.Error(w, "unsupported widget parameter", http.StatusBadRequest)
+			return
+		}
+	}
+	if !s.requireSubsystemVisible(w, r) {
+		return
+	}
+	wMeta := s.dashboardWidget(r, chi.URLParam(r, "name"))
+	if wMeta == nil || !refreshableWidgetType(wMeta.Type) {
+		http.NotFound(w, r)
+		return
+	}
+
+	user := auth.UserFromContext(r.Context())
+	runner := widget.New(s.reg, s.store)
+	if user != nil {
+		runner.CurrentUser = user.Login
+	}
+	runner.User = user
+	runner.Cache = s.widgetCache
+	res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Fresh: true})
+	res.Title = wMeta.DisplayTitle(s.resolveLang(r))
+	if res.AccessDenied {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	if res.Error != "" {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	t := s.tmpl
+	if t == nil {
+		t = tmpl
+	}
+	var body bytes.Buffer
+	if err := t.ExecuteTemplate(&body, "widget-body", res); err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	response := widgetPartialResponse{HTML: body.String()}
+	if res.Chart != nil {
+		response.Chart = widget.EChartsOption(res.Chart)
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	respondJSONTo(w, response)
 }
 
 // homePageWidgetGroups resolves the dashboard layout into ordered groups of
