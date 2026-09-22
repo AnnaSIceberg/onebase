@@ -200,7 +200,7 @@ func (s *Server) homeDashboardData(r *http.Request) map[string]any {
 		}
 		res := runner.Run(r.Context(), wMeta)
 		res.Title = wMeta.DisplayTitle(lang)
-		s.decorateRefreshResult(r, &res)
+		s.decorateRefreshResult(r, wMeta, &res)
 		return res
 	}
 	for _, group := range groups {
@@ -256,7 +256,7 @@ func refreshableWidgetType(t metadata.WidgetType) bool {
 	}
 }
 
-func (s *Server) decorateRefreshResult(r *http.Request, res *widget.Result) {
+func (s *Server) decorateRefreshResult(r *http.Request, wMeta *metadata.Widget, res *widget.Result) {
 	if res == nil || !refreshableWidgetType(metadata.WidgetType(res.Type)) {
 		return
 	}
@@ -271,6 +271,9 @@ func (s *Server) decorateRefreshResult(r *http.Request, res *widget.Result) {
 	lang := s.resolveLang(r)
 	res.RefreshLabel = s.tr(lang, "Обновить")
 	res.RefreshError = s.tr(lang, "Не удалось обновить виджет")
+	if wMeta != nil && len(wMeta.RefreshOn) > 0 {
+		res.RefreshOn = strings.Join(wMeta.RefreshOn, " ")
+	}
 }
 
 func (s *Server) dashboardWidget(r *http.Request, name string) *metadata.Widget {
