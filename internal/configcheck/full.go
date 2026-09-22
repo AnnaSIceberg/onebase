@@ -46,6 +46,7 @@ func RunFullWithOptions(dir string, opts Options) Result {
 		strictLexicalScope := appCfgErr == nil && appCfg != nil && appCfg.DSL != nil && appCfg.DSL.StrictLexicalScope
 		issues = append(issues, CheckQueries(proj)...)
 		issues = append(issues, CheckWidgetRefreshOn(proj)...)
+		issues = append(issues, CheckWidgetSource(proj)...)
 		issues = append(issues, CheckReportComposition(proj)...)
 		issues = append(issues, CheckJournalConditional(proj)...)
 		issues = append(issues, CheckFormConditional(proj)...)

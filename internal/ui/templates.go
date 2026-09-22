@@ -1719,7 +1719,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
     <tbody>
     {{range .Rows}}
       {{$row := .}}
-      <tr>
+      {{with index $row "_row_url"}}<tr class="ob-row-link" tabindex="0" data-ob-row-url="{{.}}">{{else}}<tr>{{end}}
         {{range $.Columns}}
         <td{{if eq .Align "right"}} class="right"{{end}}>{{wcell $row .Field .Format}}</td>
         {{end}}
