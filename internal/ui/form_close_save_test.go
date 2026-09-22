@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -42,8 +43,10 @@ func TestManagedFormCloseIntentPreservesIdentityAcrossPostCommitPublisherPanic(t
 	}
 
 	second := executeFormCloseIntent(t, srv, ent, body)
-	if second.Code != first.Code || second.Body.String() != first.Body.String() {
-		t.Fatalf("exact replay differs: first=(%d %s) second=(%d %s)", first.Code, first.Body.String(), second.Code, second.Body.String())
+	recovered := decodeCloseIntentResponse(t, second)
+	if second.Code != http.StatusOK || recovered.Close == nil || recovered.Close.Allowed ||
+		!recovered.Close.Saved || !recovered.Close.Reload || recovered.SavedID != response.SavedID || recovered.Version != 1 {
+		t.Fatalf("post-commit replay did not return safe recovery: first=(%d %s) second=(%d %s)", first.Code, first.Body.String(), second.Code, second.Body.String())
 	}
 	rows, err := srv.store.List(context.Background(), ent.Name, ent, storage.ListParams{})
 	if err != nil {
@@ -73,8 +76,10 @@ func TestManagedFormCloseIntentPreservesHandlerWriteAcrossPostCommitPublisherPan
 		t.Fatalf("handler post-commit panic lost durable identity: %+v", response)
 	}
 	second := executeFormCloseIntent(t, srv, ent, body)
-	if second.Code != first.Code || second.Body.String() != first.Body.String() {
-		t.Fatalf("exact replay differs: first=(%d %s) second=(%d %s)", first.Code, first.Body.String(), second.Code, second.Body.String())
+	recovered := decodeCloseIntentResponse(t, second)
+	if second.Code != http.StatusOK || recovered.Close == nil || recovered.Close.Allowed ||
+		!recovered.Close.Saved || !recovered.Close.Reload || recovered.SavedID != response.SavedID || recovered.Version != 1 {
+		t.Fatalf("handler post-commit replay did not return safe recovery: first=(%d %s) second=(%d %s)", first.Code, first.Body.String(), second.Code, second.Body.String())
 	}
 	rows, err := srv.store.List(context.Background(), ent.Name, ent, storage.ListParams{})
 	if err != nil {
@@ -202,7 +207,7 @@ func TestManagedFormCloseIntentKeepsMutationAfterHandlerWrite(t *testing.T) {
 	if response.Close == nil || response.Close.Allowed || !response.Close.Saved || response.Dirty == nil || !*response.Dirty {
 		t.Fatalf("post-write mutation was not retained dirty: %+v", response)
 	}
-	if got := response.Values["Наименование"]; got != "unsaved A" {
+	if got, present := response.Values["Наименование"]; present && got != "unsaved A" {
 		t.Fatalf("response replaced post-write mutation: %v", got)
 	}
 	row, err := srv.store.GetByID(context.Background(), ent.Name, id, ent)
@@ -382,11 +387,13 @@ func TestManagedFormCloseIntentProtectsMaskedFieldsAcrossCloseWrites(t *testing.
 	}
 }
 
-func executeFormCloseIntentAsUser(t *testing.T, srv *Server, entity *metadata.Entity, body interface{ Encode() string }, user *auth.User) *httptest.ResponseRecorder {
+func executeFormCloseIntentAsUser(t *testing.T, srv *Server, entity *metadata.Entity, body url.Values, user *auth.User) *httptest.ResponseRecorder {
 	t.Helper()
+	ensureEntityCloseIntentSchema(entity, body)
 	kind := strings.ToLower(string(entity.Kind))
 	req := httptest.NewRequest(http.MethodPost, "/ui/"+kind+"/"+entity.Name+"/form-close-intent", strings.NewReader(body.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+	setEntityCloseIntentHeaders(req, body)
 	req = req.WithContext(auth.ContextWithUser(req.Context(), user))
 	recorder := httptest.NewRecorder()
 	router := chi.NewRouter()

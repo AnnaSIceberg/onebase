@@ -419,22 +419,12 @@ func boolCanon(b bool) string {
 // открытием и «Записать» пользователь жмёт любую кнопку — ответ отдаёт свежую
 // версию из БД, клиент кладёт её в _version, и последующая проверка версии всегда
 // совпадает, молча затирая правки того, кто сохранил запись параллельно.
-func (s *Server) versionWrittenByHandler(ctx context.Context, entity *metadata.Entity, obj *runtime.Object, this *formObjectThis) int64 {
-	if this == nil || !this.saved {
+func versionWrittenByHandler(this *formObjectThis) int64 {
+	if this == nil || !this.saved || this.expectedVersion == nil {
 		return 0
 	}
-	return s.currentEntityVersion(ctx, entity, obj)
-}
-
-// currentEntityVersion возвращает версию записи после обработчика. Ноль — если
-// записи ещё нет или версию не прочитать: тогда клиент оставляет прежнюю.
-func (s *Server) currentEntityVersion(ctx context.Context, entity *metadata.Entity, obj *runtime.Object) int64 {
-	if s == nil || s.store == nil || entity == nil || obj == nil || obj.ID == uuid.Nil {
-		return 0
-	}
-	version, exists, err := s.store.EntityVersionExists(ctx, entity.Name, obj.ID)
-	if err != nil || !exists {
-		return 0
-	}
-	return version
+	// expectedVersion is advanced from entityservice.SaveResult at the exact
+	// successful write boundary. Re-reading here could observe a later
+	// concurrent writer and hand its token to stale form state.
+	return *this.expectedVersion
 }

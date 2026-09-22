@@ -96,9 +96,11 @@ type managedCloseSaveError struct {
 	kind     string
 	message  string
 	messages []string
+	cause    error
 }
 
 func (e *managedCloseSaveError) Error() string { return e.message }
+func (e *managedCloseSaveError) Unwrap() error { return e.cause }
 
 const (
 	managedSaveForbidden  = "forbidden"
@@ -111,7 +113,7 @@ const (
 // HTML submit and close-intent. Callers parse/render their transport, while all
 // permission, row-filter, required, optimistic-version, form-hook and
 // entityservice semantics live here exactly once.
-func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, obj *runtime.Object, isNew bool, action string, onCommitted func(uuid.UUID, int64)) ([]string, int64, error) {
+func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, obj *runtime.Object, isNew bool, action string, requireReadableResult bool, onCommitted func(uuid.UUID, int64)) ([]string, int64, error) {
 	if !s.can(r, string(entity.Kind), entity.Name, "write") {
 		return nil, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён"}
 	}
@@ -194,6 +196,29 @@ func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, for
 			}
 			return nil
 		},
+		FinalPreflight: func(txCtx context.Context, saveObj *runtime.Object) error {
+			if !requireReadableResult {
+				return nil
+			}
+			// Read the authoritative row after every persistence/service-field
+			// mutation. Checking saveObj alone would miss RLS predicates on posted
+			// and similar fields maintained by storage rather than by the form.
+			persisted, loadErr := s.store.GetByID(txCtx, entity.Name, saveObj.ID, entity)
+			if loadErr != nil {
+				if storage.IsNotFound(loadErr) {
+					return errCloseResultUnreadable
+				}
+				return loadErr
+			}
+			readable, accessErr := s.rowAllowedContextResult(txCtx, entity, "read", persisted)
+			if accessErr != nil {
+				return accessErr
+			}
+			if !s.canCtx(txCtx, string(entity.Kind), entity.Name, "read") || !readable {
+				return errCloseResultUnreadable
+			}
+			return nil
+		},
 		OnCommitted: func(result entityservice.SaveResult) {
 			obj.ID = result.ID
 			if onCommitted != nil {
@@ -205,6 +230,8 @@ func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, for
 		switch {
 		case errors.Is(err, storage.ErrVersionConflict):
 			return hookMessages, 0, &managedCloseSaveError{status: http.StatusConflict, kind: managedSaveConflict, message: "объект был изменён другим пользователем; форма оставлена открытой", messages: hookMessages}
+		case errors.Is(err, errCloseResultUnreadable):
+			return hookMessages, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён", messages: hookMessages, cause: errCloseResultUnreadable}
 		case errors.Is(err, errSubmitRowAccessDenied):
 			return hookMessages, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён", messages: hookMessages}
 		case errors.Is(err, errSubmitFormHook):
@@ -229,7 +256,7 @@ func (s *Server) saveManagedCloseObject(r *http.Request, entity *metadata.Entity
 	if mode == "save_and_select" && r.FormValue("_popup") != "1" {
 		return nil, 0, &managedCloseSaveError{status: http.StatusBadRequest, kind: managedSaveValidation, message: "save_and_select разрешён только для popup-формы"}
 	}
-	return s.saveManagedObject(r, entity, form, obj, isNew, action, func(id uuid.UUID, version int64) {
+	return s.saveManagedObject(r, entity, form, obj, isNew, action, true, func(id uuid.UUID, version int64) {
 		if inv == nil {
 			return
 		}
@@ -243,6 +270,49 @@ func (s *Server) saveManagedCloseObject(r *http.Request, entity *metadata.Entity
 // handleManagedFormEvent — единая точка обработки событий managed-форм.
 func (s *Server) handleManagedFormEvent(w http.ResponseWriter, r *http.Request) {
 	s.handleManagedFormEventMode(w, r, nil)
+}
+
+func (s *Server) installFormCloseAccessRecheck(
+	ctx context.Context,
+	inv *formCloseInvocation,
+	entity *metadata.Entity,
+	id func() uuid.UUID,
+	shouldCheck func() bool,
+	canRead bool,
+) {
+	if inv == nil || entity == nil || id == nil || shouldCheck == nil {
+		return
+	}
+	checkBase := context.WithoutCancel(ctx)
+	inv.recheckAccess = func() {
+		checkCtx, cancel := context.WithTimeout(checkBase, 2*time.Second)
+		defer cancel()
+		if !shouldCheck() {
+			return
+		}
+		rowID := id()
+		if rowID == uuid.Nil {
+			return
+		}
+		persisted, err := s.store.GetByID(checkCtx, entity.Name, rowID, entity)
+		switch {
+		case storage.IsNotFound(err):
+			inv.suppressState = true
+			inv.terminal = true
+		case err != nil:
+			inv.suppressState = true
+			inv.accessCheckFailed = true
+		default:
+			readable, accessErr := s.rowAllowedContextResult(checkCtx, entity, "read", persisted)
+			if accessErr != nil {
+				inv.suppressState = true
+				inv.accessCheckFailed = true
+			} else if !canRead || !readable {
+				inv.suppressState = true
+				inv.terminal = true
+			}
+		}
+	}
 }
 
 func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Request, closeInv *formCloseInvocation) {
@@ -260,13 +330,17 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	}
 	entity := s.reg.GetEntity(entityName)
 	if entity == nil {
+		if closeInv != nil {
+			s.handleMissingEntityFormClose(w, r, closeInv, entityName)
+			return
+		}
 		respondJSON(enc, formEventResponse{Error: "entity not found: " + entityName})
 		return
 	}
 	entityKind := string(entity.Kind)
 	canRead := s.can(r, entityKind, entity.Name, "read")
 	canWrite := s.can(r, entityKind, entity.Name, "write")
-	if !canRead && !canWrite {
+	if closeInv == nil && !canRead && !canWrite {
 		w.WriteHeader(http.StatusForbidden)
 		respondJSON(enc, formEventResponse{Error: "доступ запрещён"})
 		return
@@ -276,6 +350,74 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		var cancel context.CancelFunc
 		r, cancel = s.withFormCloseOperationDeadline(r, opFormEvent)
 		defer cancel()
+		value := func(name string) string { return missingFormCloseValue(r, name) }
+		envelopeFormKind := strings.ToLower(value("_kind"))
+		if envelopeFormKind == "" {
+			envelopeFormKind = "object"
+		}
+		envelopeRawID := value("_id")
+		routeKind := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "kind")))
+		routeKey := "entity|" + routeKind + "|" + strings.ToLower(entity.Name) + "|" + envelopeFormKind + "|" + envelopeRawID
+		currentForm := pickManagedForm(entity, envelopeFormKind)
+		renderedSchema := value("_close_schema")
+		currentSchema := entityFormCloseSchema(entity, currentForm)
+		if renderedSchema == "" || renderedSchema != currentSchema {
+			recovered, recoverErr := s.recoverExistingFormCloseInvocation(r, closeInv, routeKey, value)
+			if recoverErr != nil {
+				status := http.StatusBadRequest
+				var closeErr *formCloseHTTPError
+				if errors.As(recoverErr, &closeErr) {
+					status = closeErr.status
+				}
+				w.WriteHeader(status)
+				respondJSON(enc, formEventResponse{
+					Error: recoverErr.Error(), Dirty: boolPtr(true),
+					Close: &formCloseDecision{IntentID: closeInv.intentID, Reconcile: errors.Is(recoverErr, errFormCloseReplayExpired)},
+				})
+				return
+			}
+			if recovered {
+				if parsedID, parseErr := uuid.Parse(envelopeRawID); parseErr == nil {
+					s.installFormCloseAccessRecheck(r.Context(), closeInv, entity,
+						func() uuid.UUID { return parsedID }, func() bool { return true }, canRead)
+				} else if closeInv.replay != nil {
+					var replayResponse formEventResponse
+					if json.Unmarshal(closeInv.replay.body, &replayResponse) == nil {
+						if savedID, parseErr := uuid.Parse(replayResponse.SavedID); parseErr == nil {
+							s.installFormCloseAccessRecheck(r.Context(), closeInv, entity,
+								func() uuid.UUID { return savedID }, func() bool { return true }, canRead)
+						}
+					}
+				}
+				return
+			}
+			if err := s.prepareMissingFormCloseInvocation(r, closeInv, routeKey, value); err != nil {
+				status := http.StatusBadRequest
+				var closeErr *formCloseHTTPError
+				if errors.As(err, &closeErr) {
+					status = closeErr.status
+				}
+				w.WriteHeader(status)
+				respondJSON(enc, formEventResponse{
+					Error: err.Error(), Dirty: boolPtr(true),
+					Close: &formCloseDecision{IntentID: closeInv.intentID, Reconcile: errors.Is(err, errFormCloseReplayExpired)},
+				})
+				return
+			}
+			if closeInv.mode == "discard" {
+				closeInv.suppressState = true
+				closeInv.terminal = true
+				respondJSON(enc, formEventResponse{OK: true, Dirty: boolPtr(false)})
+			} else {
+				closeInv.reconcile = true
+				w.WriteHeader(http.StatusConflict)
+				respondJSON(enc, formEventResponse{
+					Error: "форма была изменена на сервере; проверьте данные и перезагрузите форму перед сохранением",
+					Dirty: boolPtr(true),
+				})
+			}
+			return
+		}
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, s.entityFormBodyLimit(r, entity))
 	var rawID, formKind string
@@ -306,18 +448,67 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			respondJSON(enc, formEventResponse{Error: s.errText(r, formBodyError(err, entity))})
 			return
 		}
-		if form == nil {
-			respondJSON(enc, formEventResponse{Error: "managed form not found for " + entityName})
+		envelopeFormKind := strings.ToLower(missingFormCloseValue(r, "_kind"))
+		if envelopeFormKind == "" {
+			envelopeFormKind = "object"
+		}
+		envelopeRawID := missingFormCloseValue(r, "_id")
+		if formKind != envelopeFormKind || rawID != envelopeRawID {
+			w.WriteHeader(http.StatusBadRequest)
+			respondJSON(enc, formEventResponse{
+				Error: "состояние формы не совпало со служебным конвертом закрытия", Dirty: boolPtr(true),
+				Close: &formCloseDecision{IntentID: closeInv.intentID},
+			})
 			return
 		}
-		routeKey := "entity|" + entityKind + "|" + strings.ToLower(entity.Name) + "|" + strings.ToLower(form.Name) + "|" + rawID
-		if err := s.prepareFormCloseInvocation(r, closeInv, routeKey, r.FormValue); err != nil {
+		routeKind := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "kind")))
+		routeKey := "entity|" + routeKind + "|" + strings.ToLower(entity.Name) + "|" + envelopeFormKind + "|" + envelopeRawID
+		if err := s.prepareFormCloseInvocation(r, closeInv, routeKey,
+			func(name string) string { return missingFormCloseValue(r, name) }); err != nil {
 			var closeErr *formCloseHTTPError
+			reconcile := false
 			if errors.As(err, &closeErr) {
 				w.WriteHeader(closeErr.status)
 			}
-			respondJSON(enc, formEventResponse{Error: err.Error()})
+			reconcile = errors.Is(err, errFormCloseReplayExpired)
+			respondJSON(enc, formEventResponse{
+				Error: err.Error(), Dirty: boolPtr(true),
+				Close: &formCloseDecision{IntentID: closeInv.intentID, Reconcile: reconcile},
+			})
 			return
+		}
+		if form == nil {
+			// The already-open form disappeared during a hot reload. There is no
+			// trusted lifecycle code or durable schema left to execute, but the
+			// shell still needs a correlated decision to destroy the stale UI.
+			closeInv.suppressState = true
+			closeInv.terminal = true
+			if closeInv.replay == nil {
+				respondJSON(enc, formEventResponse{OK: true, Dirty: boolPtr(false)})
+			}
+			return
+		}
+		if parsedID, parseErr := uuid.Parse(rawID); parseErr == nil {
+			s.installFormCloseAccessRecheck(r.Context(), closeInv, entity,
+				func() uuid.UUID { return parsedID }, func() bool { return true }, canRead)
+		}
+		if closeInv.replay != nil && rawID == "" {
+			var replayResponse formEventResponse
+			hasSavedIdentity := false
+			if json.Unmarshal(closeInv.replay.body, &replayResponse) == nil {
+				if savedID, parseErr := uuid.Parse(replayResponse.SavedID); parseErr == nil {
+					hasSavedIdentity = true
+					s.installFormCloseAccessRecheck(r.Context(), closeInv, entity,
+						func() uuid.UUID { return savedID }, func() bool { return true }, canRead)
+				}
+			}
+			if !hasSavedIdentity && !canWrite {
+				// The cached result belongs to a still-unsaved form. If write access
+				// disappeared, replay must have the same terminal semantics as a fresh
+				// discard and must not disclose old handler deltas/messages.
+				closeInv.suppressState = true
+				closeInv.terminal = true
+			}
 		}
 		if closeInv.replay != nil {
 			return
@@ -345,6 +536,15 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	}()
 	dslCtx, cancelDSL := context.WithCancel(opCtx)
 	defer cancelDSL()
+	finishTerminalClose := func() {
+		if closeInv == nil {
+			return
+		}
+		closeInv.suppressState = true
+		closeInv.terminal = true
+		opStatus = "ok"
+		respondJSON(enc, formEventResponse{OK: true, Dirty: boolPtr(false)})
+	}
 
 	if closeInv == nil {
 		if err := parseFormState(); err != nil {
@@ -371,11 +571,25 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	isNewObject := rawID == "" && (strings.EqualFold(form.Kind, "object") || form.Kind == "" && formKind == "object")
 	if isNewObject {
 		if !canWrite {
+			if closeInv != nil && closeInv.mode == "discard" {
+				// There is no durable identity to protect and no authorized write to
+				// perform. Let the owner destroy its unsaved client-only form without
+				// invoking trusted lifecycle code under revoked permissions.
+				finishTerminalClose()
+				return
+			}
 			w.WriteHeader(http.StatusForbidden)
 			respondJSON(enc, formEventResponse{Error: "доступ запрещён"})
 			return
 		}
 	} else if !canRead {
+		if closeInv != nil && rawID != "" {
+			// The browser already owns a form for this id, but no longer has even
+			// coarse read permission. Close it without revealing whether the row
+			// still exists or returning an identity usable by another request.
+			finishTerminalClose()
+			return
+		}
 		w.WriteHeader(http.StatusForbidden)
 		respondJSON(enc, formEventResponse{Error: "доступ запрещён"})
 		return
@@ -394,13 +608,28 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if !exists {
+			if closeInv != nil {
+				finishTerminalClose()
+				return
+			}
 			w.WriteHeader(http.StatusNotFound)
 			respondJSON(enc, formEventResponse{Error: "запись не найдена"})
 			return
 		}
-		if !s.rowAllowsID(dslCtx, entity, "read", id) {
+		rowReadable, rowReadErr := s.rowAllowsIDResult(dslCtx, entity, "read", id)
+		if rowReadErr != nil {
+			opStatus = operationStatus(opCtx, rowReadErr)
+			w.WriteHeader(http.StatusInternalServerError)
+			respondJSON(enc, formEventResponse{Error: "не удалось проверить доступ к записи"})
+			return
+		}
+		if !rowReadable {
 			if err := dslCtx.Err(); err != nil {
 				opStatus = operationStatus(opCtx, err)
+			}
+			if closeInv != nil && dslCtx.Err() == nil {
+				finishTerminalClose()
+				return
 			}
 			w.WriteHeader(http.StatusForbidden)
 			respondJSON(enc, formEventResponse{Error: "доступ запрещён"})
@@ -550,6 +779,25 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			submittedVersion = &parsedVersion
 		}
 	}
+	if closeInv != nil {
+		// Observe the entire close lifecycle, not only BeforeClose. In
+		// particular ПослеЗаписи may obtain another wrapper through a common
+		// module and perform another durable write before the canonical reload.
+		observeSave := func(savedEntity *metadata.Entity, result entityservice.SaveResult) {
+			if savedEntity == nil || !strings.EqualFold(savedEntity.Name, entity.Name) || result.ID != obj.ID {
+				return
+			}
+			closeInv.saved = true
+			closeInv.savedID = result.ID.String()
+			closeInv.version = result.Version
+			closeInv.formURL = "/ui/" + strings.ToLower(string(entity.Kind)) + "/" + entity.Name + "/" + result.ID.String()
+		}
+		r = r.WithContext(entityservice.ContextWithSaveObserver(r.Context(), observeSave))
+		dslCtx = entityservice.ContextWithSaveObserver(dslCtx, observeSave)
+		s.installFormCloseAccessRecheck(r.Context(), closeInv, entity,
+			func() uuid.UUID { return obj.ID },
+			func() bool { return existingFormID != "" || closeInv.saved }, canRead)
+	}
 	copyStateRestored := false
 	if existingFormID != "" {
 		if restoreErr := s.restoreUnsubmittedFields(dslCtx, r, entity, form, obj.ID, obj.Fields); restoreErr != nil && closeInv != nil {
@@ -563,8 +811,22 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		if closeInv != nil {
 			persisted, loadErr := s.store.GetByID(dslCtx, entity.Name, obj.ID, entity)
 			if loadErr != nil {
+				if storage.IsNotFound(loadErr) {
+					finishTerminalClose()
+					return
+				}
 				w.WriteHeader(http.StatusInternalServerError)
 				respondJSON(enc, formEventResponse{Error: s.errText(r, loadErr)})
+				return
+			}
+			rowReadable, rowReadErr := s.rowAllowedContextResult(dslCtx, entity, "read", persisted)
+			if rowReadErr != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				respondJSON(enc, formEventResponse{Error: "не удалось проверить доступ к записи"})
+				return
+			}
+			if !rowReadable {
+				finishTerminalClose()
 				return
 			}
 			// Service fields are not regular form fields and therefore are not
@@ -640,6 +902,12 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			obj.TablePartRows[k] = v
 		}
 	}
+	if closeInv != nil {
+		baseline := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, nil).response(false)
+		closeInv.baselineValues = baseline.Values
+		closeInv.baselineTableParts = baseline.TableParts
+		closeInv.baselineFormTables = baseline.FormTables
+	}
 	var msgs []string
 	if closeInv != nil && closeInv.mode != "discard" {
 		saveMessages, savedVersion, saveErr := s.saveManagedCloseObject(r, entity, form, obj, existingFormID == "", closeInv.mode, closeInv)
@@ -655,6 +923,40 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			w.WriteHeader(status)
 			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(false)
 			resp.Error = message
+			// Hooks mutate the live object map even when the save transaction rolls
+			// back. If that final candidate is unreadable, neither its fields nor its
+			// messages may be reflected to a write-only/RLS-restricted caller.
+			closeInv.suppressState = errors.Is(saveErr, errCloseResultUnreadable) || !canRead ||
+				!s.rowAllowedContext(r.Context(), entity, "read", obj.Fields)
+			// A conflict can be caused by a concurrent change that also removed
+			// this caller's read access (or deleted the row). Without a durable
+			// recheck the open form would be trapped: every retry is rejected by
+			// the initial read gate. Return an identity-free terminal close instead.
+			if existingFormID != "" && obj.ID != uuid.Nil {
+				persisted, durableErr := s.store.GetByID(r.Context(), entity.Name, obj.ID, entity)
+				switch {
+				case storage.IsNotFound(durableErr):
+					closeInv.suppressState = true
+					closeInv.terminal = true
+				case durableErr != nil:
+					// Unknown durable state is not proof that closing is safe, but it
+					// also is not authority to serialize a hook-mutated candidate.
+					closeInv.suppressState = true
+				default:
+					readable, accessErr := s.rowAllowedContextResult(r.Context(), entity, "read", persisted)
+					if accessErr != nil {
+						closeInv.suppressState = true
+					} else if !canRead || !readable {
+						closeInv.suppressState = true
+						closeInv.terminal = true
+					}
+				}
+			}
+			// The failed save can leave caller-visible state changed by
+			// BeforeWrite/validation hooks. Keep the still-open form fail-safe:
+			// a later Close must offer Save/Discard instead of dropping it.
+			resp.Dirty = boolPtr(true)
+			compactFormCloseDelta(&resp, closeInv)
 			respondJSON(enc, resp)
 			return
 		}
@@ -667,54 +969,109 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		// Capture the committed optimistic version before any fallible reload.
 		// Even a fail-closed response must let the still-open form update this
 		// exact record instead of retrying an unversioned write.
-		closeInv.version = savedVersion
-		if version := s.currentEntityVersion(r.Context(), entity, obj); version > closeInv.version {
-			closeInv.version = version
+		if closeInv.version < savedVersion {
+			closeInv.version = savedVersion
 		}
+		canonicalVersion := closeInv.version
 		// ПередЗакрытием must observe the canonical persisted object, including
 		// assigned number/id/version. Preserve form-only attributes and ValueTable
 		// rows while replacing persisted entity state from the database.
 		persisted, loadErr := s.store.GetByID(r.Context(), entity.Name, obj.ID, entity)
 		if loadErr != nil {
+			if storage.IsNotFound(loadErr) {
+				closeInv.suppressState = true
+				closeInv.terminal = true
+			}
 			w.WriteHeader(http.StatusInternalServerError)
-			respondJSON(enc, formEventResponse{Error: s.errText(r, loadErr)})
+			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(false)
+			resp.Error = s.errText(r, loadErr)
+			resp.Dirty = boolPtr(false)
+			compactFormCloseDelta(&resp, closeInv)
+			respondJSON(enc, resp)
 			return
 		}
+		rowReadable, rowReadErr := s.rowAllowedContextResult(r.Context(), entity, "read", persisted)
+		if rowReadErr != nil {
+			closeInv.suppressState = true
+			w.WriteHeader(http.StatusInternalServerError)
+			resp := formEventResponse{Error: "не удалось проверить доступ к записанной форме", Dirty: boolPtr(false)}
+			compactFormCloseDelta(&resp, closeInv)
+			respondJSON(enc, resp)
+			return
+		}
+		if !canRead || !rowReadable {
+			closeInv.suppressState = true
+			closeInv.terminal = true
+		}
+		if persistedEntityVersion(persisted) != canonicalVersion {
+			w.WriteHeader(http.StatusConflict)
+			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(false)
+			resp.Error = "объект изменён другим пользователем после записи"
+			resp.Dirty = boolPtr(false)
+			compactFormCloseDelta(&resp, closeInv)
+			respondJSON(enc, resp)
+			return
+		}
+		canonicalFields := cloneRecord(obj.Fields)
+		canonicalTableParts := cloneTablePartRowMap(obj.TablePartRows)
 		for _, field := range entity.Fields {
-			for key := range obj.Fields {
+			for key := range canonicalFields {
 				if strings.EqualFold(key, field.Name) {
-					delete(obj.Fields, key)
+					delete(canonicalFields, key)
 				}
 			}
 			if value, ok := maskCIKeyValue(persisted, field.Name); ok {
-				obj.Fields[field.Name] = value
+				canonicalFields[field.Name] = value
 			}
 		}
-		mergePersistedEntityServiceFields(entity, persisted, obj.Fields)
+		mergePersistedEntityServiceFields(entity, persisted, canonicalFields)
 		if version := persistedEntityVersion(persisted); version > 0 {
-			obj.Fields["_version"] = version
+			canonicalFields["_version"] = version
 		}
 		for _, tp := range entity.TableParts {
 			rows, rowsErr := s.store.GetTablePartRows(r.Context(), entity.Name, tp.Name, obj.ID, tp)
 			if rowsErr != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				respondJSON(enc, formEventResponse{Error: s.errText(r, rowsErr)})
+				resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(false)
+				resp.Error = s.errText(r, rowsErr)
+				resp.Dirty = boolPtr(false)
+				compactFormCloseDelta(&resp, closeInv)
+				respondJSON(enc, resp)
 				return
 			}
-			obj.TablePartRows[tp.Name] = rows
+			canonicalTableParts[tp.Name] = rows
 		}
+		verifiedVersion, exists, versionErr := s.store.EntityVersionExists(r.Context(), entity.Name, obj.ID)
+		if versionErr != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(false)
+			resp.Error = s.errText(r, versionErr)
+			resp.Dirty = boolPtr(false)
+			compactFormCloseDelta(&resp, closeInv)
+			respondJSON(enc, resp)
+			return
+		}
+		if !exists || verifiedVersion != canonicalVersion {
+			w.WriteHeader(http.StatusConflict)
+			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(false)
+			resp.Error = "объект изменён другим пользователем после записи"
+			resp.Dirty = boolPtr(false)
+			compactFormCloseDelta(&resp, closeInv)
+			respondJSON(enc, resp)
+			return
+		}
+		obj.Fields = canonicalFields
+		obj.TablePartRows = canonicalTableParts
 		// A newly saved form now has a real reference. BeforeClose must be
 		// able to pass it to a common module just like an originally existing
 		// form; the pseudo-field is filtered from the browser response.
 		setPersistedFormSelfRef(entity, obj)
 		closeInv.savedLabel = s.maskedRecordLabel(r.Context(), entity, persisted)
-		if version := persistedEntityVersion(persisted); version > closeInv.version {
-			closeInv.version = version
-		}
 		if decl == nil {
 			opStatus = "ok"
 			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(true)
 			resp.Dirty = boolPtr(false)
+			compactFormCloseDelta(&resp, closeInv)
 			respondJSON(enc, resp)
 			return
 		}
@@ -741,6 +1098,25 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	isNewForHandler := strings.TrimSpace(r.FormValue("_id")) == "" && (closeInv == nil || !closeInv.saved)
 	thisObj := s.newFormObjectThisLive(dslCtx, txState, obj, entity, form, isNewForHandler)
 	if closeInv != nil {
+		thisObj.finalPreflight = func(txCtx context.Context, saveObj *runtime.Object) error {
+			persisted, loadErr := s.store.GetByID(txCtx, entity.Name, saveObj.ID, entity)
+			if loadErr != nil {
+				if storage.IsNotFound(loadErr) {
+					closeInv.suppressState = true
+					return errCloseResultUnreadable
+				}
+				return loadErr
+			}
+			readable, accessErr := s.rowAllowedContextResult(txCtx, entity, "read", persisted)
+			if accessErr != nil {
+				return accessErr
+			}
+			if !s.canCtx(txCtx, string(entity.Kind), entity.Name, "read") || !readable {
+				closeInv.suppressState = true
+				return errCloseResultUnreadable
+			}
+			return nil
+		}
 		thisObj.onCommitted = func(result entityservice.SaveResult) {
 			closeInv.saved = true
 			closeInv.savedID = result.ID.String()
@@ -860,9 +1236,6 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		if thisObj.expectedVersion != nil && *thisObj.expectedVersion > closeInv.version {
 			closeInv.version = *thisObj.expectedVersion
 		}
-		if version := s.currentEntityVersion(liveCtx, entity, obj); version > closeInv.version {
-			closeInv.version = version
-		}
 	}
 	// Перечитывать из базы имеет смысл только для записи, которая там есть:
 	// либо форма открыта по _id, либо обработчик записал новую (тогда нужен и он —
@@ -877,25 +1250,66 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	if existingRecord && tpDBBefore != nil && !thisObj.saved {
 		s.refreshTablePartsWrittenByHandler(liveCtx, entity, obj, tpBefore, tpDBBefore)
 	}
+	var closePersisted map[string]any
+	var closePersistedErr error
+	if closeInv != nil && obj.ID != uuid.Nil && (existingFormID != "" || closeInv.saved) {
+		closePersisted, closePersistedErr = s.store.GetByID(liveCtx, entity.Name, obj.ID, entity)
+		switch {
+		case storage.IsNotFound(closePersistedErr):
+			// A trusted handler may delete or replace the row through another
+			// wrapper. The old form has no valid next request and must terminate.
+			closeInv.suppressState = true
+			closeInv.terminal = true
+		case closePersistedErr != nil:
+			// Unknown durable state is not authority to close or serialize a
+			// potentially stale row. Preserve the browser DOM, redact the response,
+			// and let a later request retry the read.
+			closeInv.suppressState = true
+			if runErr == nil {
+				runErr = fmt.Errorf("не удалось проверить итоговое состояние формы: %w", closePersistedErr)
+			}
+		default:
+			readable, accessErr := s.rowAllowedContextResult(liveCtx, entity, "read", closePersisted)
+			if accessErr != nil {
+				closeInv.suppressState = true
+				if runErr == nil {
+					runErr = fmt.Errorf("не удалось проверить доступ к итоговому состоянию формы: %w", accessErr)
+				}
+			} else if !canRead || !readable {
+				closeInv.suppressState = true
+				closeInv.terminal = true
+			}
+		}
+	}
 	if closeInv != nil && closeInv.saved {
 		// BeforeClose may persist a new display value after the initial save.
 		// Popup save-and-select must publish the final canonical, field-masked
 		// label—not the snapshot captured before the handler ran.
-		if finalPersisted, finalErr := s.store.GetByID(liveCtx, entity.Name, obj.ID, entity); finalErr == nil {
-			closeInv.savedLabel = s.maskedRecordLabel(liveCtx, entity, cloneRecord(finalPersisted))
-			if version := persistedEntityVersion(finalPersisted); version > closeInv.version {
-				closeInv.version = version
-			}
-			if version := persistedEntityVersion(finalPersisted); version > 0 {
-				obj.Fields["_version"] = version
-			}
-			mergeBaselineFields := fieldsBefore
-			if thisObj.saved && thisObj.lastSavedFields != nil {
-				mergeBaselineFields = thisObj.lastSavedFields
-			}
-			mergePersistedFieldsUnchanged(entity, finalPersisted, obj.Fields, mergeBaselineFields)
-			if thisObj.saved && thisObj.lastSavedTableParts != nil {
-				s.mergePersistedTablePartsUnchanged(liveCtx, entity, obj, thisObj.lastSavedTableParts)
+		if finalPersisted, finalErr := closePersisted, closePersistedErr; finalErr == nil {
+			// Only state carrying the exact token written by this lifecycle may be
+			// adopted. A newer row belongs to a concurrent writer; publishing its
+			// token with our stale/unsaved form state would launder the conflict.
+			if persistedEntityVersion(finalPersisted) == closeInv.version {
+				previousFields := cloneRecord(obj.Fields)
+				previousTableParts := cloneTablePartRowMap(obj.TablePartRows)
+				obj.Fields["_version"] = closeInv.version
+				mergeBaselineFields := fieldsBefore
+				if thisObj.saved && thisObj.lastSavedFields != nil {
+					mergeBaselineFields = thisObj.lastSavedFields
+				}
+				mergePersistedFieldsUnchanged(entity, finalPersisted, obj.Fields, mergeBaselineFields)
+				mergeBaselineTableParts := tpBefore
+				if thisObj.saved && thisObj.lastSavedTableParts != nil {
+					mergeBaselineTableParts = thisObj.lastSavedTableParts
+				}
+				s.mergePersistedTablePartsUnchanged(liveCtx, entity, obj, mergeBaselineTableParts)
+				stableVersion, stableExists, stableErr := s.store.EntityVersionExists(liveCtx, entity.Name, obj.ID)
+				if stableErr == nil && stableExists && stableVersion == closeInv.version {
+					closeInv.savedLabel = s.maskedRecordLabel(liveCtx, entity, cloneRecord(finalPersisted))
+				} else {
+					obj.Fields = previousFields
+					obj.TablePartRows = previousTableParts
+				}
 			}
 		} else if runErr == nil {
 			runErr = fmt.Errorf("не удалось прочитать итоговое состояние записанной формы: %w", finalErr)
@@ -918,8 +1332,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		// Обработчик мог записать форму и упасть уже после этого: id всё равно
 		// нужен клиенту, иначе повтор действия создаст второй документ.
 		resp.SavedID = savedFormID(thisObj)
-		resp.Version = s.versionWrittenByHandler(liveCtx, entity, obj, thisObj)
+		resp.Version = versionWrittenByHandler(thisObj)
 		resp.Dirty = eventDirty
+		compactFormCloseDelta(&resp, closeInv)
 		respondJSON(enc, resp)
 		return
 	}
@@ -929,9 +1344,75 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	resp.PickerData = picker
 	resp.ChoiceList = choiceItems
 	resp.SavedID = savedFormID(thisObj)
-	resp.Version = s.versionWrittenByHandler(liveCtx, entity, obj, thisObj)
+	resp.Version = versionWrittenByHandler(thisObj)
 	resp.Dirty = eventDirty
+	compactFormCloseDelta(&resp, closeInv)
 	respondJSON(enc, resp)
+}
+
+func (s *Server) handleMissingEntityFormClose(w http.ResponseWriter, r *http.Request, inv *formCloseInvocation, entityName string) {
+	var cancel context.CancelFunc
+	r, cancel = s.withFormCloseOperationDeadline(r, opFormEvent)
+	defer cancel()
+	enc := json.NewEncoder(w)
+	// Metadata may disappear after the browser rendered a form. In that case we
+	// cannot reconstruct the old metadata-derived body limit: a formerly valid
+	// request may contain any number of rich-text fields. The fixed lifecycle
+	// headers are deliberately independent of the body, so reserve/correlate the
+	// intent without reading a potentially large stale form at all.
+	value := func(name string) string { return missingFormCloseValue(r, name) }
+	formKind := strings.ToLower(value("_kind"))
+	if formKind == "" {
+		formKind = "object"
+	}
+	rawID := value("_id")
+	kind := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "kind")))
+	routeKey := "entity|" + kind + "|" + strings.ToLower(entityName) + "|" + formKind + "|" + rawID
+	if err := s.prepareMissingFormCloseInvocation(r, inv, routeKey, value); err != nil {
+		status := http.StatusBadRequest
+		var closeErr *formCloseHTTPError
+		if errors.As(err, &closeErr) {
+			status = closeErr.status
+		}
+		w.WriteHeader(status)
+		respondJSON(enc, formEventResponse{
+			Error: err.Error(), Dirty: boolPtr(true),
+			Close: &formCloseDecision{IntentID: inv.intentID, Reconcile: errors.Is(err, errFormCloseReplayExpired)},
+		})
+		return
+	}
+	// With the entity definition gone there is no current field policy/RLS
+	// evaluator to authorize a recovered saved id. An existing replay must stay
+	// open for identity-free reconciliation: terminal success would conceal an
+	// uncertain durable result while SavedID/version cannot be disclosed safely.
+	inv.suppressState = true
+	if inv.replay != nil {
+		var replayResponse formEventResponse
+		if json.Unmarshal(inv.replay.body, &replayResponse) == nil && replayResponse.Close != nil && replayResponse.Close.Terminal {
+			// A fresh discard performed after metadata removal already proved that
+			// no write was attempted. Preserve that retained terminal outcome for a
+			// lost-response retry; only saved/nonterminal cached results are
+			// uncertain without current metadata and require reconciliation.
+			inv.terminal = true
+			return
+		}
+		inv.reconcile = true
+		return
+	}
+	// A fresh discard performs no write and may close terminally. Fresh write
+	// modes cannot be executed without metadata (body limits, field policy and
+	// persistence schema are all unknown), so keep the form open and dirty.
+	if inv.mode == "discard" {
+		inv.terminal = true
+		respondJSON(enc, formEventResponse{OK: true, Dirty: boolPtr(false)})
+		return
+	}
+	inv.reconcile = true
+	w.WriteHeader(http.StatusConflict)
+	respondJSON(enc, formEventResponse{
+		Error: "описание объекта удалено с сервера; обновите форму перед повтором сохранения",
+		Dirty: boolPtr(true),
+	})
 }
 
 // mergePersistedTablePartsUnchanged mirrors mergePersistedFieldsUnchanged for
@@ -1675,10 +2156,16 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 	}
 	proc := s.reg.GetProcessor(procName)
 	if proc == nil {
+		if closeInv != nil {
+			s.handleMissingProcessorFormClose(w, r, closeInv, procName)
+			return
+		}
 		respondJSON(enc, formEventResponse{Error: "processor not found: " + procName})
 		return
 	}
-	if !s.can(r, "processor", proc.Name, "run") {
+	canRun := s.can(r, "processor", proc.Name, "run")
+	canRunExternal := s.canRunExternalProc(r, proc)
+	if closeInv == nil && !canRun {
 		respondJSON(enc, formEventResponse{Error: "доступ запрещён"})
 		return
 	}
@@ -1686,33 +2173,82 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 	// обработки (form-обработчики и кнопка «Выполнить»), поэтому недоверенную
 	// внешнюю обработку здесь тоже может запускать только администратор —
 	// иначе неадмин обходил бы проверку через /form-event.
-	if !s.canRunExternalProc(r, proc) {
+	if closeInv == nil && !canRunExternal {
 		respondJSON(enc, formEventResponse{Error: "доступ запрещён"})
 		return
 	}
 
 	form := proc.ManagedForm()
-	if form == nil {
+	if form == nil && closeInv == nil {
 		respondJSON(enc, formEventResponse{Error: "managed form not found for " + procName})
 		return
+	}
+	maxSize := s.effectiveUploadLimit()
+	requestControls := processorRequestControlsForForm(proc, form)
+	currentBodyLimit := processorFormBodyLimit(r, maxSize, requestControls)
+	if closeInv != nil {
+		var cancel context.CancelFunc
+		r, cancel = s.withFormCloseOperationDeadline(r, opProcessorRun)
+		defer cancel()
+		value := func(name string) string { return missingFormCloseValue(r, name) }
+		routeKey := "processor|" + strings.ToLower(proc.Name)
+		renderedSchema := value("_close_schema")
+		currentSchema := processorFormCloseSchema(proc, form)
+		if renderedSchema == "" || renderedSchema != currentSchema {
+			recovered, recoverErr := s.recoverExistingFormCloseInvocation(r, closeInv, routeKey, value)
+			if recoverErr != nil {
+				status := http.StatusBadRequest
+				var closeErr *formCloseHTTPError
+				if errors.As(recoverErr, &closeErr) {
+					status = closeErr.status
+				}
+				w.WriteHeader(status)
+				respondJSON(enc, formEventResponse{
+					Error: recoverErr.Error(), Dirty: boolPtr(true),
+					Close: &formCloseDecision{IntentID: closeInv.intentID, Reconcile: errors.Is(recoverErr, errFormCloseReplayExpired)},
+				})
+				return
+			}
+			if recovered {
+				if form == nil || !canRun || !canRunExternal {
+					closeInv.suppressState = true
+					closeInv.terminal = true
+				}
+				return
+			}
+		}
+		if renderedSchema == "" || renderedSchema != currentSchema {
+			if err := s.prepareMissingFormCloseInvocation(r, closeInv, routeKey, value); err != nil {
+				status := http.StatusBadRequest
+				var closeErr *formCloseHTTPError
+				if errors.As(err, &closeErr) {
+					status = closeErr.status
+				}
+				w.WriteHeader(status)
+				respondJSON(enc, formEventResponse{
+					Error: err.Error(), Dirty: boolPtr(true),
+					Close: &formCloseDecision{IntentID: closeInv.intentID, Reconcile: errors.Is(err, errFormCloseReplayExpired)},
+				})
+				return
+			}
+			closeInv.suppressState = true
+			closeInv.terminal = true
+			if closeInv.replay == nil {
+				respondJSON(enc, formEventResponse{OK: true, Dirty: boolPtr(false)})
+			}
+			return
+		}
 	}
 
 	// Один предел, а не два вложенных: пределы не композируются, и прежний
 	// MaxBytesReader на defaultFormMemoryBytes связывал раньше, обрезая
 	// файл-параметр обработки мегабайтом (issue #674). Авторизация и trust-гейт
 	// выше выполняются до разбора потенциально большого multipart-тела.
-	maxSize := s.effectiveUploadLimit()
-	requestControls := processorRequestControlsForForm(proc, form)
 	if requestControls.formTablesErr != nil {
 		respondJSON(enc, formEventResponse{Error: requestControls.formTablesErr.Error()})
 		return
 	}
-	if closeInv != nil {
-		var cancel context.CancelFunc
-		r, cancel = s.withFormCloseOperationDeadline(r, opProcessorRun)
-		defer cancel()
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, processorFormBodyLimit(r, maxSize, requestControls))
+	r.Body = http.MaxBytesReader(w, r.Body, currentBodyLimit)
 	if closeInv != nil {
 		// Parse and reserve before the processor semaphore so an exact duplicate
 		// joins the in-flight close instead of being rejected by its occupied slot.
@@ -1721,17 +2257,39 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			respondJSON(enc, formEventResponse{Error: s.errText(r, formBodyError(err, nil))})
 			return
 		}
-		value := func(name string) string {
-			v, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, name))
-			return v
-		}
-		routeKey := "processor|" + strings.ToLower(proc.Name) + "|" + strings.ToLower(form.Name)
+		value := func(name string) string { return missingFormCloseValue(r, name) }
+		routeKey := "processor|" + strings.ToLower(proc.Name)
 		if err := s.prepareFormCloseInvocation(r, closeInv, routeKey, value); err != nil {
 			var closeErr *formCloseHTTPError
+			reconcile := false
 			if errors.As(err, &closeErr) {
 				w.WriteHeader(closeErr.status)
 			}
-			respondJSON(enc, formEventResponse{Error: err.Error()})
+			reconcile = errors.Is(err, errFormCloseReplayExpired)
+			respondJSON(enc, formEventResponse{
+				Error: err.Error(), Dirty: boolPtr(true),
+				Close: &formCloseDecision{IntentID: closeInv.intentID, Reconcile: reconcile},
+			})
+			return
+		}
+		if form == nil {
+			closeInv.suppressState = true
+			closeInv.terminal = true
+			if closeInv.replay == nil {
+				respondJSON(enc, formEventResponse{OK: true, Dirty: boolPtr(false)})
+			}
+			return
+		}
+		if !canRun || !canRunExternal {
+			// An already-open processor form must remain closable after run/trust
+			// permission is revoked. Reserve/recover the intent first so the answer
+			// stays correlated, then terminate without executing trusted form code.
+			closeInv.suppressState = true
+			closeInv.terminal = true
+			if closeInv.replay != nil {
+				return
+			}
+			respondJSON(enc, formEventResponse{OK: true, Dirty: boolPtr(false)})
 			return
 		}
 		if closeInv.replay != nil {
@@ -1847,6 +2405,12 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			respondJSON(enc, formEventResponse{Error: err.Error()})
 			return
 		}
+		if closeInv != nil {
+			baseline := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, nil, nil).response(false)
+			closeInv.baselineValues = baseline.Values
+			closeInv.baselineTableParts = baseline.TableParts
+			closeInv.baselineFormTables = baseline.FormTables
+		}
 		fieldsBefore := snapshotFieldValues(obj.Fields)
 		tablesBefore := tablePartRowsSnapshot(obj.TablePartRows)
 		mc := runtime.NewMovementsCollector("processor", uuid.Nil)
@@ -1915,6 +2479,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			resp.Error = interpreter.FormatUserError(runErr)
 			resp.PickerData = picker
 			resp.Dirty = boolPtr(transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
+			compactFormCloseDelta(&resp, closeInv)
 			respondJSON(enc, resp)
 			return
 		}
@@ -1922,6 +2487,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(true)
 		resp.PickerData = picker
 		resp.Dirty = boolPtr(transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
+		compactFormCloseDelta(&resp, closeInv)
 		respondJSON(enc, resp)
 		return
 	}
@@ -1979,6 +2545,52 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 	}
 
 	respondJSON(enc, formEventResponse{Error: "недоступное событие формы"})
+}
+
+func (s *Server) handleMissingProcessorFormClose(w http.ResponseWriter, r *http.Request, inv *formCloseInvocation, procName string) {
+	var cancel context.CancelFunc
+	r, cancel = s.withFormCloseOperationDeadline(r, opProcessorRun)
+	defer cancel()
+	enc := json.NewEncoder(w)
+	// See handleMissingEntityFormClose: after hot removal the old request body
+	// can be larger than any limit derivable from the remaining registry.
+	value := func(name string) string { return missingFormCloseValue(r, name) }
+	if err := s.prepareMissingFormCloseInvocation(r, inv, "processor|"+strings.ToLower(procName), value); err != nil {
+		status := http.StatusBadRequest
+		var closeErr *formCloseHTTPError
+		if errors.As(err, &closeErr) {
+			status = closeErr.status
+		}
+		w.WriteHeader(status)
+		respondJSON(enc, formEventResponse{
+			Error: err.Error(), Dirty: boolPtr(true),
+			Close: &formCloseDecision{IntentID: inv.intentID, Reconcile: errors.Is(err, errFormCloseReplayExpired)},
+		})
+		return
+	}
+	inv.suppressState = true
+	inv.terminal = true
+	if inv.replay == nil {
+		respondJSON(enc, formEventResponse{OK: true, Dirty: boolPtr(false)})
+	}
+}
+
+func missingFormCloseValue(r *http.Request, name string) string {
+	if r == nil {
+		return ""
+	}
+	headers := map[string]string{
+		"_close_intent_id": "X-OneBase-Close-Intent",
+		"_close_epoch":     "X-OneBase-Close-Epoch",
+		"_close_issued_at": "X-OneBase-Close-Issued-At",
+		"_close_reason":    "X-OneBase-Close-Reason",
+		"_close_mode":      "X-OneBase-Close-Mode",
+		"_close_client":    "X-OneBase-Close-Client",
+		"_close_schema":    "X-OneBase-Close-Schema",
+		"_kind":            "X-OneBase-Form-Kind",
+		"_id":              "X-OneBase-Record-ID",
+	}
+	return strings.TrimSpace(r.Header.Get(headers[name]))
 }
 
 func formTablesFromRows(rows map[string][]map[string]any, form *metadata.FormModule) map[string][]map[string]any {

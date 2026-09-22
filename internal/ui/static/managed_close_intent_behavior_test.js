@@ -9,6 +9,9 @@ const managed = fs.readFileSync('static/managed.js', 'utf8');
 const start = managed.indexOf('  // One close controller for every managed-form adapter.');
 const end = managed.indexOf('  // Отслеживание «грязной» формы', start);
 assert.ok(start >= 0 && end > start, 'managed close-controller slice not found');
+const eventStart = managed.indexOf('  // obFire(elementName');
+assert.ok(eventStart >= 0 && eventStart < start, 'managed form-event slice not found');
+const eventController = managed.slice(eventStart, start);
 const controller = managed.slice(start, end);
 const escapeComment = managed.indexOf('// Esc — отмена незаконченного ввода');
 const escapeStart = managed.indexOf('  function consumeManagedEscape', escapeComment);
@@ -37,6 +40,7 @@ function runtime(fetchImpl, cfgOverride = {}) {
 	let embeddedDirty = false;
   const listeners = new Map();
   let uuid = 0;
+	let monotonicNow = 100;
   const idInput = {value: ''};
   const versionInput = {value: ''};
   const form = {
@@ -112,8 +116,13 @@ function runtime(fetchImpl, cfgOverride = {}) {
   const context = {
     __cfg: Object.assign({
       kind: 'catalog',
+	  url: '/ui/catalog/Тест/form-event',
       closeUrl: '/ui/catalog/Тест/form-close-intent',
       closeTimeoutMs: 5000,
+	  closeEpoch: 'epoch-test',
+	  closeClientId: 'client-test',
+	  closeSchema: 'schema-test',
+	  closeServerNowMs: 1700000000000,
       closeMessages: {
         controllerUnavailable: 'Close check is unavailable. The form remains open.',
         invalidResponse: 'The server returned an invalid close response.',
@@ -133,6 +142,7 @@ function runtime(fetchImpl, cfgOverride = {}) {
     Math,
     setTimeout,
     clearTimeout,
+	performance: {now() { return monotonicNow; }},
     fetch: fetchImpl,
     location: {
       pathname: '/ui/catalog/Тест/new', origin: 'http://onebase.test',
@@ -158,22 +168,60 @@ function runtime(fetchImpl, cfgOverride = {}) {
   const prefix = `
     (function(){
       var cfg = globalThis.__cfg;
-      var DOC_ID = '';
-      function serviceField(name){ return name; }
+	  var URL = String(cfg.url || '');
+      var DOC_ID = cfg.docId == null ? '' : String(cfg.docId);
+	  var SERVICE_FIELDS = cfg.serviceFields && typeof cfg.serviceFields === 'object' ? cfg.serviceFields : {};
+	  function serviceField(name){
+		var mapped = SERVICE_FIELDS[name];
+		return typeof mapped === 'string' && mapped ? mapped : name;
+	  }
       async function awaitCurrentFileReads(){ return true; }
+	  function obManagedWritableTableBody(){ return null; }
       function applyFormConditionalCSS(value){ globalThis.__applied.push(['css', value]); }
       function applyElementStates(value){ globalThis.__applied.push(['states', value]); }
-      function applyValues(value){ globalThis.__applied.push(['values', value]); }
+      function applyValues(value){
+		globalThis.__applied.push(['values', value]);
+		if (value && typeof value === 'object') {
+		  Object.keys(value).forEach(function(name){ globalThis.__form.values.set(name, String(value[name])); });
+		}
+	  }
+	  function applyChoiceList(name, value){ globalThis.__applied.push(['choice', name, value]); }
       function applyFormTables(value){ globalThis.__applied.push(['tables', value]); }
+	  function openItemPicker(value, name, extra){ globalThis.__applied.push(['picker', value, name, extra]); }
       function flash(value, kind){ globalThis.__applied.push(['flash', value, kind]); }
   `;
-  vm.runInNewContext(prefix + controller + '\n})();', context, {filename: 'managed-close-controller.js'});
+  vm.runInNewContext(prefix + eventController + controller + '\n})();', context, {filename: 'managed-close-controller.js'});
   vm.runInNewContext(escapeHandler, context, {filename: 'managed-close-escape.js'});
-	return {context, form, idInput, versionInput, applied, listeners, document, closeButton, assigned, dirtyReports};
+	return {
+	  context, form, idInput, versionInput, applied, listeners, document, closeButton, assigned, dirtyReports,
+	  advanceClock(ms) { monotonicNow += ms; },
+	};
 }
 
 function response(data, ok = true, status = ok ? 200 : 500) {
   return {ok, status, async json() { return data; }};
+}
+
+function closeIntent(options) { return options.headers['X-OneBase-Close-Intent']; }
+function closeMode(options) { return options.headers['X-OneBase-Close-Mode']; }
+function closeReason(options) { return options.headers['X-OneBase-Close-Reason']; }
+function capturedCloseBody(options) {
+  const body = new URLSearchParams(options.body.toString());
+  body.closeIntent = closeIntent(options);
+  body.closeMode = closeMode(options);
+  body.closeReason = closeReason(options);
+  return body;
+}
+
+function dispatchSubmit(app) {
+  const event = {
+    target: app.form, defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() { this.propagationStopped = true; },
+    stopImmediatePropagation() { this.immediatePropagationStopped = true; },
+  };
+  app.document.dispatch('submit', event);
+  return event;
 }
 
 test('close controller is single-flight and returns only its exact decision', async () => {
@@ -183,6 +231,7 @@ test('close controller is single-flight and returns only its exact decision', as
     calls.push({url, options});
     return new Promise((resolve) => { complete = resolve; });
   });
+	app.advanceClock(250);
 
   const first = app.context.obRequestFormClose({reason: 'cross', mode: 'discard'});
   const second = app.context.obRequestFormClose({reason: 'escape'});
@@ -191,8 +240,21 @@ test('close controller is single-flight and returns only its exact decision', as
   await Promise.resolve();
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, '/ui/catalog/Тест/form-close-intent');
-  const intent = calls[0].options.body.get('_close_intent_id');
-  assert.equal(calls[0].options.body.get('_close_reason'), 'cross');
+  const intent = closeIntent(calls[0].options);
+  assert.equal(calls[0].options.body.get('_close_intent_id'), null);
+  assert.equal(calls[0].options.body.get('_close_reason'), null);
+  assert.equal(calls[0].options.body.get('_close_epoch'), null);
+	assert.equal(calls[0].options.body.get('_close_issued_at'), null);
+	assert.equal(calls[0].options.body.get('_close_schema'), null);
+	assert.equal(calls[0].options.headers['X-OneBase-Close-Intent'], intent);
+	assert.equal(calls[0].options.headers['X-OneBase-Close-Epoch'], 'epoch-test');
+	assert.equal(calls[0].options.headers['X-OneBase-Close-Issued-At'], '1700000000250');
+	assert.equal(calls[0].options.headers['X-OneBase-Close-Reason'], 'cross');
+	assert.equal(calls[0].options.headers['X-OneBase-Close-Mode'], 'discard');
+	assert.equal(calls[0].options.headers['X-OneBase-Form-Kind'], 'object');
+	assert.equal(calls[0].options.headers['X-OneBase-Record-ID'], '');
+	assert.equal(calls[0].options.headers['X-OneBase-Close-Client'], 'client-test');
+	assert.equal(calls[0].options.headers['X-OneBase-Close-Schema'], 'schema-test');
   assert.equal(calls[0].options.body.get('Наименование'), 'Черновик');
 
   complete(response({ok: true, values: {Наименование: 'Проверено'}, messages: ['готово'], close: {
@@ -206,11 +268,46 @@ test('close controller is single-flight and returns only its exact decision', as
   assert.ok(app.applied.some((entry) => entry[0] === 'flash' && entry[1] === 'готово'));
 });
 
+test('fixed recovery headers survive collision mappings without overwriting user close fields', async () => {
+  let captured;
+  const fields = {
+    _close_intent_id: '__svc_intent',
+    _close_epoch: '__svc_epoch',
+    _close_issued_at: '__svc_issued',
+    _close_reason: '__svc_reason',
+    _close_mode: '__svc_mode',
+  };
+  const app = runtime(async (url, options) => {
+    captured = options;
+    return response({
+      ok: true,
+      close: {intentId: options.headers['X-OneBase-Close-Intent'], allowed: true, saved: false},
+    });
+  }, {kind: 'document', docId: 'record-42', serviceFields: fields});
+  app.form.values.set('_close_intent_id', 'editable-intent-value');
+  app.form.values.set('_close_mode', 'editable-mode-value');
+  app.advanceClock(75);
+
+  assert.equal((await app.context.obRequestFormClose({reason: 'escape', mode: 'discard'})).allowed, true);
+  assert.equal(captured.body.get('_close_intent_id'), 'editable-intent-value');
+  assert.equal(captured.body.get('_close_mode'), 'editable-mode-value');
+  for (const mappedName of Object.values(fields)) assert.equal(captured.body.get(mappedName), null);
+  assert.match(captured.headers['X-OneBase-Close-Intent'], /^[0-9a-f-]{36}$/);
+  assert.equal(captured.headers['X-OneBase-Close-Epoch'], 'epoch-test');
+  assert.equal(captured.headers['X-OneBase-Close-Issued-At'], '1700000000075');
+  assert.equal(captured.headers['X-OneBase-Close-Reason'], 'escape');
+  assert.equal(captured.headers['X-OneBase-Close-Mode'], 'discard');
+  assert.equal(captured.headers['X-OneBase-Form-Kind'], 'object');
+  assert.equal(captured.headers['X-OneBase-Record-ID'], 'record-42');
+  assert.equal(captured.headers['X-OneBase-Close-Client'], 'client-test');
+  assert.equal(captured.headers['X-OneBase-Close-Schema'], 'schema-test');
+});
+
 test('dirty close modal maps Cancel/No/Yes to zero HTTP, discard and save', async () => {
   const modes = [];
   const app = runtime(async (url, options) => {
-    const intentId = options.body.get('_close_intent_id');
-    modes.push(options.body.get('_close_mode'));
+    const intentId = closeIntent(options);
+    modes.push(closeMode(options));
     return response({ok: true, close: {intentId, allowed: true, saved: modes.at(-1) === 'save'}});
   });
   app.context._obFormDirty = true;
@@ -256,8 +353,9 @@ test('dirty close modal maps Cancel/No/Yes to zero HTTP, discard and save', asyn
 test('dirty processor offers an explicit close-without-saving choice and never sends save', async () => {
 	const modes = [];
 	const app = runtime(async (url, options) => {
-	  const intentId = options.body.get('_close_intent_id');
-	  modes.push(options.body.get('_close_mode'));
+	  assert.equal(options.headers['X-OneBase-Form-Kind'], 'processor');
+	  const intentId = closeIntent(options);
+	  modes.push(closeMode(options));
 	  return response({ok: true, close: {intentId, allowed: true, saved: false}});
 	}, {kind: 'processor', closeMessages: {
 	  processorQuestion: 'Close without saving?',
@@ -279,7 +377,7 @@ test('dirty processor offers an explicit close-without-saving choice and never s
 
 test('clean discard becomes dirty when denied BeforeClose returns unsaved state', async () => {
   const app = runtime(async (url, options) => {
-    const intentId = options.body.get('_close_intent_id');
+    const intentId = closeIntent(options);
     return response({
       ok: true,
       values: {Наименование: 'Изменено обработчиком'},
@@ -304,7 +402,7 @@ test('clean discard becomes dirty when denied BeforeClose returns unsaved state'
 
 test('unsaved dirty=false response cannot clear pre-existing dirty state', async () => {
   const app = runtime(async (url, options) => {
-    const intentId = options.body.get('_close_intent_id');
+    const intentId = closeIntent(options);
     return response({ok: true, dirty: false, close: {intentId, allowed: false, saved: false}});
   });
   app.context._obFormDirty = true;
@@ -324,7 +422,7 @@ test('stale response fails closed and identical retry reuses the intent id', asy
     (intent) => response({ok: true, close: {intentId: intent, allowed: true}}),
   ];
   const app = runtime(async (url, options) => {
-    const intent = options.body.get('_close_intent_id');
+    const intent = closeIntent(options);
     calls.push(intent);
     return answers.shift()(intent);
   });
@@ -340,49 +438,63 @@ test('stale response fails closed and identical retry reuses the intent id', asy
 test('network failure is fail-closed and its unknown result keeps the intent id', async () => {
   const calls = [];
   const app = runtime(async (url, options) => {
-    const intentId = options.body.get('_close_intent_id');
-    calls.push(intentId);
+    const intentId = closeIntent(options);
+	calls.push({
+	  body: new URLSearchParams(options.body.toString()),
+	  headers: Object.assign({}, options.headers),
+	});
     if (calls.length === 1) throw new Error('offline');
     return response({ok: true, close: {intentId, allowed: true}});
-  });
+  }, {kind: 'catalog', docId: 'record-before-retry'});
 
   const result = await app.context.obRequestFormClose({reason: 'close'});
   assert.equal(result.allowed, false);
   assert.equal(result.error, 'network');
   assert.ok(app.applied.some((entry) => entry[0] === 'flash' && /Network error while closing/.test(entry[1])));
+	app.advanceClock(5000);
   assert.equal((await app.context.obRequestFormClose({reason: 'close'})).allowed, true);
-  assert.equal(calls[1], calls[0]);
+	assert.equal(calls[1].headers['X-OneBase-Close-Intent'], calls[0].headers['X-OneBase-Close-Intent']);
+	assert.equal(calls[1].body.toString(), calls[0].body.toString(), 'exact retry changed epoch/issued-at/body');
+	assert.equal(calls[0].headers['X-OneBase-Form-Kind'], 'object');
+	assert.equal(calls[0].headers['X-OneBase-Record-ID'], 'record-before-retry');
+	for (const name of [
+	  'X-OneBase-Close-Intent', 'X-OneBase-Close-Epoch', 'X-OneBase-Close-Issued-At',
+	  'X-OneBase-Close-Reason', 'X-OneBase-Close-Mode', 'X-OneBase-Form-Kind',
+	  'X-OneBase-Record-ID', 'X-OneBase-Close-Client', 'X-OneBase-Close-Schema',
+	]) {
+	  assert.equal(calls[1].headers[name], calls[0].headers[name], `exact retry changed ${name}`);
+	}
 });
 
 test('unknown discard cannot authorize a later explicit save request', async () => {
   const calls = [];
   const app = runtime(async (url, options) => {
-    const body = new URLSearchParams(options.body.toString());
+    const body = capturedCloseBody(options);
     calls.push(body);
     if (calls.length === 1) throw new Error('response lost');
-    return response({ok: true, close: {intentId: body.get('_close_intent_id'), allowed: true, saved: body.get('_close_mode') === 'save'}});
+    return response({ok: true, close: {intentId: body.closeIntent, allowed: true, saved: body.closeMode === 'save'}});
   });
   assert.equal((await app.context.obRequestFormClose({reason: 'close', mode: 'discard'})).allowed, false);
   const recovered = await app.context.obRequestFormClose({reason: 'ok', mode: 'save'});
   assert.equal(recovered.allowed, false, 'old discard decision authorized the new save adapter');
   assert.equal(recovered.error, 'form-changed');
-  assert.deepEqual(calls.slice(0, 2).map((body) => body.get('_close_mode')), ['discard', 'discard']);
-  assert.equal(calls[1].get('_close_intent_id'), calls[0].get('_close_intent_id'));
+  assert.deepEqual(calls.slice(0, 2).map((body) => body.closeMode), ['discard', 'discard']);
+  assert.equal(calls[1].closeIntent, calls[0].closeIntent);
   await app.context.obRequestFormClose({reason: 'ok', mode: 'save'});
-  assert.equal(calls[2].get('_close_mode'), 'save');
-  assert.notEqual(calls[2].get('_close_intent_id'), calls[1].get('_close_intent_id'));
+  assert.equal(calls[2].closeMode, 'save');
+  assert.notEqual(calls[2].closeIntent, calls[1].closeIntent);
 });
 
 test('unknown new close-save blocks native submit until exact replay adopts identity', async () => {
   const calls = [];
   const savedId = '11111111-1111-4111-8111-111111111111';
   const app = runtime(async (url, options) => {
-    const body = new URLSearchParams(options.body.toString());
+    const body = capturedCloseBody(options);
     calls.push(body);
     if (calls.length === 1) throw new Error('response lost after commit');
     return response({
       ok: true, savedId, version: 1, dirty: false,
-      close: {intentId: body.get('_close_intent_id'), allowed: true, saved: true},
+      close: {intentId: body.closeIntent, allowed: true, saved: true},
     });
   });
   assert.equal((await app.context.obRequestFormClose({reason: 'ok', mode: 'save'})).allowed, false);
@@ -398,7 +510,7 @@ test('unknown new close-save blocks native submit until exact replay adopts iden
   for (let i = 0; i < 8 && calls.length < 2; i++) await Promise.resolve();
   assert.equal(calls.length, 2, 'unknown close intent was not replayed');
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(calls[1].get('_close_intent_id'), calls[0].get('_close_intent_id'));
+  assert.equal(calls[1].closeIntent, calls[0].closeIntent);
   assert.equal(app.idInput.value, savedId);
   assert.equal(app.versionInput.value, '1');
 
@@ -415,12 +527,12 @@ test('unknown discard blocks native submit until handler-written identity is rec
   const calls = [];
   const savedId = '22222222-2222-4222-8222-222222222222';
   const app = runtime(async (url, options) => {
-    const body = new URLSearchParams(options.body.toString());
+    const body = capturedCloseBody(options);
     calls.push(body);
     if (calls.length === 1) throw new Error('discard response lost after BeforeClose write');
     return response({
       ok: true, savedId, version: 1, dirty: false,
-      close: {intentId: body.get('_close_intent_id'), allowed: false, saved: true},
+      close: {intentId: body.closeIntent, allowed: false, saved: true},
     });
   });
   assert.equal((await app.context.obRequestFormClose({reason: 'close', mode: 'discard'})).allowed, false);
@@ -435,8 +547,8 @@ test('unknown discard blocks native submit until handler-written identity is rec
   for (let i = 0; i < 8 && calls.length < 2; i++) await Promise.resolve();
   assert.equal(calls.length, 2, 'unknown discard intent was not replayed');
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(calls[1].get('_close_mode'), 'discard');
-  assert.equal(calls[1].get('_close_intent_id'), calls[0].get('_close_intent_id'));
+  assert.equal(calls[1].closeMode, 'discard');
+  assert.equal(calls[1].closeIntent, calls[0].closeIntent);
   assert.equal(calls[1].toString(), calls[0].toString(), 'discard replay body changed');
   assert.equal(app.idInput.value, savedId);
   assert.equal(app.versionInput.value, '1');
@@ -455,11 +567,11 @@ test('native submit cannot race an in-flight close save', async () => {
   let closeBody;
   const savedId = '33333333-3333-4333-8333-333333333333';
   const app = runtime(async (url, options) => {
-    closeBody = new URLSearchParams(options.body.toString());
+    closeBody = capturedCloseBody(options);
     return new Promise((resolve) => {
       finishRequest = () => resolve(response({
         ok: true, savedId, version: 1, dirty: false,
-        close: {intentId: closeBody.get('_close_intent_id'), allowed: false, saved: true},
+        close: {intentId: closeBody.closeIntent, allowed: false, saved: true},
       }));
     });
   });
@@ -494,7 +606,7 @@ test('native submit cannot race the embedded parent handoff window', async () =>
   let resolveFetch;
   let body;
   const app = runtime(async (_url, options) => {
-    body = new URLSearchParams(options.body.toString());
+    body = capturedCloseBody(options);
     return new Promise((resolve) => { resolveFetch = resolve; });
   });
   app.context.obBeginManagedCloseHandoff();
@@ -511,7 +623,7 @@ test('native submit cannot race the embedded parent handoff window', async () =>
   assert.equal(typeof resolveFetch, 'function');
   resolveFetch(response({
     ok: true, dirty: false, savedId: 'handoff-saved', version: 1,
-    close: {intentId: body.get('_close_intent_id'), allowed: false, saved: true},
+    close: {intentId: body.closeIntent, allowed: false, saved: true},
   }));
   await request;
 
@@ -528,11 +640,11 @@ test('managed popup implicit submit uses the exact save-and-select controller', 
   const calls = [];
   const posted = [];
   const app = runtime(async (_url, options) => {
-    const body = new URLSearchParams(options.body.toString());
+    const body = capturedCloseBody(options);
     calls.push(body);
     return response({
       ok: true, savedId: 'popup-created', savedLabel: 'Created', version: 1, dirty: false,
-      close: {intentId: body.get('_close_intent_id'), allowed: true, saved: true},
+      close: {intentId: body.closeIntent, allowed: true, saved: true},
     });
   });
   app.context.location.search = '?_popup=1';
@@ -547,16 +659,16 @@ test('managed popup implicit submit uses the exact save-and-select controller', 
   for (let i = 0; i < 8 && !posted.length; i++) await Promise.resolve();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].get('_close_mode'), 'save_and_select');
-  assert.equal(calls[0].get('_close_reason'), 'ok');
+  assert.equal(calls[0].closeMode, 'save_and_select');
+  assert.equal(calls[0].closeReason, 'ok');
   assert.equal(posted.length, 1);
-  assert.equal(posted[0].intentId, calls[0].get('_close_intent_id'));
+  assert.equal(posted[0].intentId, calls[0].closeIntent);
   assert.equal(posted[0].savedId, 'popup-created');
 
   const deniedPosts = [];
   const denied = runtime(async (_url, options) => response({
     ok: true, dirty: true,
-    close: {intentId: options.body.get('_close_intent_id'), allowed: false, saved: false},
+    close: {intentId: closeIntent(options), allowed: false, saved: false},
   }));
   denied.context.location.search = '?_popup=1';
   denied.context.obManagedPostRefSaved = decision => { deniedPosts.push(decision); return true; };
@@ -575,12 +687,12 @@ test('popup implicit submit publishes an exact recovered save-and-select result'
   const calls = [];
   const posted = [];
   const app = runtime(async (_url, options) => {
-    const body = new URLSearchParams(options.body.toString());
+    const body = capturedCloseBody(options);
     calls.push(body);
     if (calls.length === 1) throw new Error('popup response lost after commit');
     return response({
       ok: true, savedId: 'popup-recovered', savedLabel: 'Recovered', version: 1, dirty: false,
-      close: {intentId: body.get('_close_intent_id'), allowed: true, saved: true},
+      close: {intentId: body.closeIntent, allowed: true, saved: true},
     });
   });
   app.context.location.search = '?_popup=1';
@@ -611,14 +723,14 @@ test('save modes require a confirmed saved result before allowing destruction', 
   for (const mode of ['save', 'post', 'save_and_select']) {
     const app = runtime(async (url, options) => response({
       ok: true,
-      close: {intentId: options.body.get('_close_intent_id'), allowed: true, saved: false},
+      close: {intentId: closeIntent(options), allowed: true, saved: false},
     }));
     const decision = await app.context.obRequestFormClose({reason: 'ok', mode});
     assert.equal(decision.allowed, false, `${mode} accepted allowed=true without saved=true`);
   }
   const discard = runtime(async (url, options) => response({
     ok: true,
-    close: {intentId: options.body.get('_close_intent_id'), allowed: true, saved: false},
+    close: {intentId: closeIntent(options), allowed: true, saved: false},
   }));
   assert.equal((await discard.context.obRequestFormClose({reason: 'close', mode: 'discard'})).allowed, true);
 });
@@ -626,28 +738,28 @@ test('save modes require a confirmed saved result before allowing destruction', 
 test('unknown new save is recovered before edited snapshot and retry updates its identity', async () => {
   const calls = [];
   const app = runtime(async (url, options) => {
-    const body = new URLSearchParams(options.body.toString());
+    const body = capturedCloseBody(options);
     calls.push(body);
     if (calls.length === 1) throw new Error('response lost after commit');
     return response({
       ok: true, dirty: false, savedId: 'saved-after-loss', version: calls.length,
-      close: {intentId: body.get('_close_intent_id'), allowed: true, saved: true}
+      close: {intentId: body.closeIntent, allowed: true, saved: true}
     });
   });
   assert.equal((await app.context.obRequestFormClose({reason: 'ok', mode: 'save'})).allowed, false);
   app.form.values.set('Наименование', 'edited after unknown');
   const recovered = await app.context.obRequestFormClose({reason: 'ok', mode: 'save'});
   assert.equal(recovered.allowed, false);
-  assert.equal(calls[1].get('_close_intent_id'), calls[0].get('_close_intent_id'));
+  assert.equal(calls[1].closeIntent, calls[0].closeIntent);
   await app.context.obRequestFormClose({reason: 'ok', mode: 'save'});
   assert.equal(calls[2].get('_id'), 'saved-after-loss');
-  assert.notEqual(calls[2].get('_close_intent_id'), calls[1].get('_close_intent_id'));
+  assert.notEqual(calls[2].closeIntent, calls[1].closeIntent);
 });
 
 test('client timeout keeps the intent id because the result is unknown', async () => {
   const calls = [];
   const app = runtime(async (url, options) => {
-    const intentId = options.body.get('_close_intent_id');
+    const intentId = closeIntent(options);
     calls.push(intentId);
     if (calls.length === 1) {
       const err = new Error('aborted');
@@ -665,7 +777,7 @@ test('client timeout keeps the intent id because the result is unknown', async (
 test('received invalid JSON keeps the unknown intent id', async () => {
   const calls = [];
   const app = runtime(async (url, options) => {
-    const intentId = options.body.get('_close_intent_id');
+    const intentId = closeIntent(options);
     calls.push(intentId);
     if (calls.length === 1) {
       return {ok: false, status: 500, async json() { throw new SyntaxError('invalid JSON'); }};
@@ -713,9 +825,9 @@ test('editing during save keeps the edited field, merges untouched server fields
   let complete;
   const calls = [];
   const app = runtime((url, options) => {
-    calls.push(options.body);
+    calls.push(capturedCloseBody(options));
     if (calls.length === 1) return new Promise((resolve) => { complete = resolve; });
-    const intentId = options.body.get('_close_intent_id');
+    const intentId = closeIntent(options);
     return Promise.resolve(response({ok: true, close: {intentId, allowed: true, saved: true}, savedId: 'saved-42', version: 2}));
   });
 	app.form.values.set('Статус', 'Исходный');
@@ -724,7 +836,7 @@ test('editing during save keeps the edited field, merges untouched server fields
   await Promise.resolve(); await Promise.resolve();
   app.form.values.set('Наименование', 'Ввод после клика');
 	app.form.values.set('tp_json.ЛокальноИзменённая', '[{"Значение":"после"}]');
-  const firstIntent = calls[0].get('_close_intent_id');
+  const firstIntent = calls[0].closeIntent;
   complete(response({
 	ok: true,
 	values: {Наименование: 'Сохранённый снимок', Статус: 'Изменён сервером'},
@@ -750,7 +862,7 @@ test('editing during save keeps the edited field, merges untouched server fields
 
 test('saved denied close clears shell dirty only for durable state and next edit reports dirty again', async () => {
 	const app = runtime(async (url, options) => {
-	  const intentId = options.body.get('_close_intent_id');
+	  const intentId = closeIntent(options);
 	  return response({ok: true, dirty: false, close: {intentId, allowed: false, saved: true}, savedId: 'saved-1', version: 1});
 	});
 	app.context._obFormDirty = true;
@@ -764,7 +876,7 @@ test('saved denied close clears shell dirty only for durable state and next edit
 
 test('saved close keeps returned unsaved BeforeClose mutations dirty', async () => {
 	const app = runtime(async (url, options) => {
-	  const intentId = options.body.get('_close_intent_id');
+	  const intentId = closeIntent(options);
 	  return response({ok: false, dirty: true, values: {Статус: 'Не записан'}, error: 'boom', close: {intentId, allowed: false, saved: true}, savedId: 'saved-1', version: 1}, false, 500);
 	});
 	app.context._obFormDirty = true;
@@ -777,8 +889,8 @@ test('denied popup save keeps popup marker when adopting the created identity', 
   let replaced = '';
   const bodies = [];
   const app = runtime(async (_url, options) => {
-    bodies.push(options.body);
-    const intentId = options.body.get('_close_intent_id');
+    bodies.push(capturedCloseBody(options));
+    const intentId = closeIntent(options);
     return response({
       ok: true, dirty: false, savedId: 'saved-popup', version: 1,
       close: {intentId, allowed: false, saved: true},
@@ -794,7 +906,7 @@ test('denied popup save keeps popup marker when adopting the created identity', 
   assert.equal(app.versionInput.value, '1');
 
   await app.context.obRequestFormClose({reason: 'ok', mode: 'save_and_select'});
-  assert.equal(bodies[1].get('_close_mode'), 'save_and_select');
+  assert.equal(bodies[1].closeMode, 'save_and_select');
   assert.equal(bodies[1].get('_id'), 'saved-popup');
 });
 
@@ -802,8 +914,8 @@ test('terminal saved identity survives a throwing response renderer', async () =
   const bodies = [];
   let replaced = '';
   const app = runtime(async (_url, options) => {
-    bodies.push(options.body);
-    const intentId = options.body.get('_close_intent_id');
+    bodies.push(capturedCloseBody(options));
+    const intentId = closeIntent(options);
     return response({
       ok: true, tableparts: {Rows: []}, dirty: false,
       savedId: 'saved-before-render', version: 7,
@@ -828,7 +940,7 @@ test('terminal saved identity survives a throwing response renderer', async () =
 test('authoritative dirty survives a throwing close response renderer', async () => {
   const app = runtime(async (_url, options) => response({
     ok: false, dirty: true, tableparts: {Rows: []}, error: 'denied',
-    close: {intentId: options.body.get('_close_intent_id'), allowed: false, saved: false},
+    close: {intentId: closeIntent(options), allowed: false, saved: false},
   }, false, 500));
   app.context._obFormDirty = false;
   app.context.applyTableParts = () => { throw new Error('renderer failed after unsaved mutation'); };
@@ -845,7 +957,7 @@ test('known terminal failure releases the intent under real replay semantics', a
   const replay = new Map();
   let executions = 0;
   const app = runtime(async (url, options) => {
-    const intent = options.body.get('_close_intent_id');
+    const intent = closeIntent(options);
     calls.push(intent);
     if (!replay.has(intent)) {
       executions++;
@@ -865,7 +977,7 @@ test('known terminal failure releases the intent under real replay semantics', a
 test('correlated terminal HTTP error releases the intent id', async () => {
   const calls = [];
   const app = runtime(async (url, options) => {
-    const intentId = options.body.get('_close_intent_id');
+    const intentId = closeIntent(options);
     calls.push(intentId);
     if (calls.length === 1) {
       return response({ok: false, error: 'handler failed', close: {intentId, allowed: false}}, false, 500);
@@ -881,7 +993,7 @@ test('correlated terminal HTTP error releases the intent id', async () => {
 test('pending-leader timeout keeps the intent because no terminal replay exists yet', async () => {
   const calls = [];
   const app = runtime(async (url, options) => {
-    const intentId = options.body.get('_close_intent_id');
+    const intentId = closeIntent(options);
     calls.push(intentId);
     if (calls.length === 1) {
       return response({
@@ -902,22 +1014,22 @@ test('408 plus concurrent edit retains the original intent until terminal replay
   const calls = [];
   let complete;
   const app = runtime(async (url, options) => {
-    const body = new URLSearchParams(options.body.toString());
+    const body = capturedCloseBody(options);
     calls.push(body);
     if (calls.length === 1) return new Promise((resolve) => { complete = resolve; });
-    return response({ok: true, close: {intentId: body.get('_close_intent_id'), allowed: true, saved: false}});
+    return response({ok: true, close: {intentId: body.closeIntent, allowed: true, saved: false}});
   });
   const first = app.context.obRequestFormClose({reason: 'cross', mode: 'discard'});
   await Promise.resolve(); await Promise.resolve();
   app.form.values.set('Наименование', 'edited while waiting');
-  const intent = calls[0].get('_close_intent_id');
+  const intent = calls[0].closeIntent;
   complete(response({ok: false, error: 'still pending', close: {intentId: intent, allowed: false, saved: false}}, false, 408));
   assert.equal((await first).allowed, false);
   const recovered = await app.context.obRequestFormClose({reason: 'cross', mode: 'discard'});
   assert.equal(recovered.allowed, false, 'terminal replay authorized a changed snapshot');
-  assert.equal(calls[1].get('_close_intent_id'), intent, '408 lost the original UUID after edit');
+  assert.equal(calls[1].closeIntent, intent, '408 lost the original UUID after edit');
   await app.context.obRequestFormClose({reason: 'cross', mode: 'discard'});
-  assert.notEqual(calls[2].get('_close_intent_id'), intent, 'terminal replay did not release the UUID');
+  assert.notEqual(calls[2].closeIntent, intent, 'terminal replay did not release the UUID');
 });
 
 test('failed current re-snapshot adopts saved identity without applying stale mutable state', async () => {
@@ -939,11 +1051,237 @@ test('failed current re-snapshot adopts saved identity without applying stale mu
   assert.equal(app.context._obFormDirty, true);
 });
 
+test('form events retain trigger context, execute in order and fence close/native submit while queued', async () => {
+  const eventCalls = [];
+  let completeFirst;
+  const app = runtime((url, options) => {
+    assert.equal(url, '/ui/catalog/Тест/form-event');
+    const body = new URLSearchParams(options.body.toString());
+    eventCalls.push(body);
+    if (eventCalls.length === 1) return new Promise((resolve) => { completeFirst = resolve; });
+    return Promise.resolve(response({ok: true}));
+  });
+
+  app.form.values.set('Value', 'first snapshot');
+  const first = app.context.obFire('First', 'Click', {_tp: 'Rows'});
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(eventCalls.length, 1);
+
+  app.form.values.set('Value', 'second snapshot');
+  const second = app.context.obFire('Second', 'Change');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(eventCalls.length, 1, 'second form event raced the first HTTP request');
+
+  app.context.obBeginManagedCloseHandoff();
+  const refusedClose = await app.context.obRequestFormClose({reason: 'ok', mode: 'save'});
+  assert.equal(refusedClose.error, 'form-event-pending');
+  assert.equal(dispatchSubmit(app).defaultPrevented, true, 'native submit raced a form event');
+
+  completeFirst(response({ok: true, savedId: 'queued-saved', version: 2}));
+  await first;
+  await second;
+  assert.equal(eventCalls.length, 2);
+  assert.equal(eventCalls[0].get('Value'), 'first snapshot');
+  assert.equal(eventCalls[1].get('Value'), 'second snapshot');
+	assert.equal(eventCalls[1].get('_id'), 'queued-saved', 'queued /new event was not rebased onto the created row');
+	assert.equal(eventCalls[1].get('_version'), '2', 'queued event kept the pre-save optimistic version');
+  assert.deepEqual(eventCalls.map((body) => body.get('_event')), ['Click', 'Change']);
+
+  app.form.values.set('Value', 'after handoff refusal');
+  await app.context.obFire('Third', 'Click');
+  assert.equal(eventCalls.length, 3, 'refused embedded close left closeHandoffPending stuck');
+});
+
+test('queued event snapshots form after the previous handler response is applied', async () => {
+  const bodies = [];
+  let completeFirst;
+  const app = runtime((url, options) => {
+    const body = new URLSearchParams(options.body.toString());
+    bodies.push(body);
+    if (bodies.length === 1) return new Promise((resolve) => { completeFirst = resolve; });
+    return Promise.resolve(response({ok: true}));
+  }, {docId: 'existing-row'});
+  app.form.values.set('Status', 'Draft');
+  app.versionInput.value = '1';
+
+  const first = app.context.obFire('Approve', 'Click');
+  await new Promise((resolve) => setImmediate(resolve));
+  const second = app.context.obFire('Continue', 'Click');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(bodies.length, 1);
+
+  completeFirst(response({ok: true, version: 2, values: {Status: 'Approved'}}));
+  await first;
+  await second;
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[1].get('Status'), 'Approved', 'queued event resent the pre-handler Draft value');
+  assert.equal(bodies[1].get('_version'), '2', 'queued event did not use the handler write version');
+  assert.equal(bodies[1].get('_id'), 'existing-row');
+});
+
+test('queued picker event preserves its cloned table-part context', async () => {
+  let completeFirst;
+  const bodies = [];
+  const app = runtime((url, options) => {
+    const body = new URLSearchParams(options.body.toString());
+    bodies.push(body);
+    if (bodies.length === 1) return new Promise((resolve) => { completeFirst = resolve; });
+    return Promise.resolve(response({ok: true, pickerData: {items: []}}));
+  });
+  const first = app.context.obFire('First', 'Click');
+  await new Promise((resolve) => setImmediate(resolve));
+  const extra = {_tp: 'Lines', marker: 'original'};
+  const second = app.context.obFire('Picker', 'StartChoice', extra);
+  extra._tp = 'mutated';
+  extra.marker = 'mutated';
+  completeFirst(response({ok: true}));
+  await first;
+  await second;
+
+  const picker = app.applied.find((entry) => entry[0] === 'picker');
+  assert.ok(picker, 'pickerData did not reach openItemPicker');
+  assert.equal(picker[2], 'Picker');
+  assert.equal(picker[3]._tp, 'Lines');
+  assert.equal(picker[3].marker, 'original');
+  assert.equal(bodies[1].get('_tp'), 'Lines');
+});
+
+test('queued table-part event keeps trigger-time canonical selection', async () => {
+  let completeFirst;
+  let selectedRows = [0];
+  const items = [{id: 'x', _ord: 0}, {id: 'y', _ord: 1}];
+  const bodies = [];
+  const app = runtime((url, options) => {
+    bodies.push(new URLSearchParams(options.body.toString()));
+    if (bodies.length === 1) return new Promise((resolve) => { completeFirst = resolve; });
+    return Promise.resolve(response({ok: true}));
+  });
+  app.context._obGrids.Lines = {
+    readOnly: false,
+    grid: {getSelectedRows() { return selectedRows.slice(); }},
+    dataView: {
+      getItems() { return items.slice(); },
+      getItem(index) { return items[index]; },
+    },
+  };
+
+  const first = app.context.obFire('First', 'Click');
+  await new Promise((resolve) => setImmediate(resolve));
+  const second = app.context.obFire('RowsCommand', 'Click', {_tp: 'Lines'});
+  selectedRows = [1];
+  completeFirst(response({ok: true}));
+  await first;
+  await second;
+
+  assert.equal(bodies[1].get('_tp_selected'), '0', 'queued event used the later Y selection instead of trigger-time X');
+});
+
+test('unknown ordinary new-form event permanently fences every later write path', async (t) => {
+  const cases = [
+    ['lost fetch', async () => { throw new Error('response lost after commit'); }],
+    ['invalid JSON', async () => ({ok: true, status: 200, async json() { throw new SyntaxError('truncated'); }})],
+	['JSON 502', async () => response({ok: false, error: 'proxy failure'}, false, 502)],
+	['untrusted 200 JSON', async () => response({message: 'proxy envelope'}, true, 200)],
+  ];
+  for (const [name, firstAnswer] of cases) {
+    await t.test(name, async () => {
+      let calls = 0;
+      const app = runtime(async () => {
+        calls++;
+        if (calls === 1) return firstAnswer();
+        return response({ok: true});
+      });
+      await app.context.obFire('Create', 'Click');
+      assert.equal(app.context._obFormDirty, true);
+
+      await app.context.obFire('CreateAgain', 'Click');
+      assert.equal(calls, 1, 'a second form event retried an unknown insert');
+      assert.equal(dispatchSubmit(app).defaultPrevented, true, 'native submit bypassed the unknown-insert fence');
+      const close = await app.context.obRequestFormClose({reason: 'ok', mode: 'save'});
+      assert.equal(close.error, 'form-event-unknown');
+      assert.equal(calls, 1, 'close controller bypassed the unknown-insert fence');
+    });
+  }
+});
+
+test('ordinary form event adopts saved identity before a throwing renderer', async () => {
+  const bodies = [];
+  const app = runtime(async (url, options) => {
+    bodies.push(new URLSearchParams(options.body.toString()));
+    if (bodies.length === 1) {
+      return response({ok: true, savedId: 'event-saved', version: 7, tableparts: {Rows: []}});
+    }
+    return response({ok: true});
+  });
+  app.context.applyTableParts = () => { throw new Error('renderer failed'); };
+  await app.context.obFire('SaveInsideHandler', 'Click');
+  assert.equal(app.idInput.value, 'event-saved');
+  assert.equal(app.versionInput.value, '7');
+
+  app.context.applyTableParts = (value) => app.applied.push(['parts-after', value]);
+  await app.context.obFire('Next', 'Click');
+  assert.equal(bodies.length, 2, 'renderer failure incorrectly activated the unknown-result fence');
+  assert.equal(bodies[1].get('_id'), 'event-saved');
+  assert.equal(bodies[1].get('_version'), '7');
+});
+
+test('server reconcile response keeps the unknown close body and permanently fences writes', async () => {
+  const bodies = [];
+  const app = runtime(async (url, options) => {
+    const body = capturedCloseBody(options);
+    bodies.push(body);
+    if (bodies.length === 1) throw new Error('lost after possible insert');
+    if (bodies.length === 2) {
+      return response({
+        ok: false,
+        error: 'manual reconciliation required',
+        close: {intentId: body.closeIntent, allowed: false, saved: false, reconcile: true},
+      }, false, 409);
+    }
+    return response({ok: true, close: {intentId: body.closeIntent, allowed: true, saved: true}});
+  });
+
+  assert.equal((await app.context.obRequestFormClose({reason: 'ok', mode: 'save'})).error, 'network');
+  app.advanceClock(5000);
+  const reconcile = await app.context.obRequestFormClose({reason: 'ok', mode: 'save'});
+  assert.equal(reconcile.reconcile, true);
+  assert.equal(reconcile.allowed, false);
+  assert.equal(bodies[1].toString(), bodies[0].toString(), 'reconcile retry changed the unknown UUID/body');
+
+  assert.equal((await app.context.obRequestFormClose({reason: 'ok', mode: 'save'})).error, 'manual-reconciliation-required');
+  await app.context.obFire('Unsafe', 'Click');
+  assert.equal(dispatchSubmit(app).defaultPrevented, true);
+  assert.equal(bodies.length, 2, 'manual reconciliation fence allowed another write request');
+  assert.ok(app.applied.some((entry) => entry[0] === 'flash' && /manual reconciliation required/.test(entry[1])));
+});
+
+test('terminal decision dominates a stale reconcile flag and releases the form', async () => {
+  const intents = [];
+  const app = runtime(async (_url, options) => {
+    const intentId = closeIntent(options);
+    intents.push(intentId);
+    return response({
+      ok: true,
+      close: {intentId, allowed: true, saved: false, terminal: true, reconcile: true},
+    });
+  });
+
+  const first = await app.context.obRequestFormClose({reason: 'close', mode: 'discard'});
+  assert.equal(first.allowed, true);
+  assert.equal(first.terminal, true);
+  assert.equal(first.reconcile, undefined);
+
+  const second = await app.context.obRequestFormClose({reason: 'close', mode: 'discard'});
+  assert.equal(second.allowed, true, 'stale reconcile flag activated the permanent fence');
+  assert.equal(intents.length, 2);
+  assert.notEqual(intents[1], intents[0], 'terminal response retained the old intent id');
+});
+
 test('standalone bottom link and Escape use the close controller before navigation', async () => {
   const reasons = [];
   const app = runtime(async (url, options) => {
-    const intentId = options.body.get('_close_intent_id');
-    reasons.push(options.body.get('_close_reason'));
+    const intentId = closeIntent(options);
+    reasons.push(closeReason(options));
     return response({ok: true, close: {intentId, allowed: true}});
   });
   app.context.__obEmbedded = false;

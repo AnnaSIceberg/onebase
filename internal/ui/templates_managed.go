@@ -788,6 +788,10 @@ main>.card{max-width:none}
   "formChanged" (t $.Lang "Форма изменилась во время проверки закрытия. Повторите закрытие.")
   "timeout" (t $.Lang "Превышено время проверки закрытия")
   "network" (t $.Lang "Сетевая ошибка при закрытии")
+  "operationPending" (t $.Lang "Команда формы ещё выполняется. Дождитесь её завершения.")
+  "closePending" (t $.Lang "Сначала завершите или восстановите проверку закрытия формы.")
+  "reloadRequired" (t $.Lang "Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.")
+  "unknownResult" (t $.Lang "Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.")
   "dirtyTitle" (t $.Lang "Данные были изменены.")
   "dirtyQuestion" (t $.Lang "Сохранить изменения?")
   "processorQuestion" (t $.Lang "Закрыть без сохранения?")
@@ -803,7 +807,12 @@ main>.card{max-width:none}
   "url" (printf "/ui/processor/%s/form-event" (lower .Processor.Name))
   "closeUrl" (printf "/ui/processor/%s/form-close-intent" (lower .Processor.Name))
   "closeTimeoutMs" .FormCloseTimeoutMS
+  "closeEpoch" .FormCloseEpoch
+  "closeClientId" .FormCloseClientID
+  "closeSchema" .FormCloseSchema
+  "closeServerNowMs" .FormCloseServerNowMS
   "closeMessages" $closeMessages
+  "initialDirty" .InitialDirty
   "docId" ""
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "serviceFields" (processorServiceFieldNames .Processor)
@@ -815,7 +824,12 @@ main>.card{max-width:none}
   "url" (printf "/ui/%s/%s/form-event" (lower (str .Entity.Kind)) .Entity.Name)
   "closeUrl" (printf "/ui/%s/%s/form-close-intent" (lower (str .Entity.Kind)) .Entity.Name)
   "closeTimeoutMs" .FormCloseTimeoutMS
+  "closeEpoch" .FormCloseEpoch
+  "closeClientId" .FormCloseClientID
+  "closeSchema" .FormCloseSchema
+  "closeServerNowMs" .FormCloseServerNowMS
   "closeMessages" $closeMessages
+  "initialDirty" .InitialDirty
   "docId" .ID
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "formAttrs" (formAttrNames .Form .Entity)

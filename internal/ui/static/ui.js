@@ -248,6 +248,7 @@ window.obUIMessage = function (name, fallback) {
           allowed: !!(decision && decision.allowed),
           intentId: decision && decision.intentId ? String(decision.intentId) : '',
 		  mode: decision && decision.mode ? String(decision.mode) : '',
+		  terminal: !!(decision && decision.terminal),
           error: decision && decision.error ? String(decision.error) : ''
         }, requesterOrigin);
       } catch (_) {}
@@ -269,6 +270,7 @@ window.obUIMessage = function (name, fallback) {
         allowed: data.allowed === true,
         intentId: String(data.intentId || ''),
 		mode: String(data.mode || ''),
+		terminal: data.terminal === true,
         error: data.error || ''
       }, {
         frame: slot.frame,
@@ -3811,7 +3813,7 @@ function openRefCreate(targetSelect, refEntity) {
 	  // A child Save-and-select may already own the shared single-flight
 	  // promise. Its own adapter must publish obRefCreate; Cancel must not
 	  // consume the same allowed intent and remove the popup first.
-	  if (decision.mode === 'save_and_select') {
+	  if (decision.mode === 'save_and_select' && decision.terminal !== true) {
 	    popupAwaitingSaveResult = true;
 	    return false;
 	  }

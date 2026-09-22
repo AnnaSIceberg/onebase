@@ -56,12 +56,13 @@ var maskHelperExempt = map[string]maskHelperExemption{
 	// ── Проверки строкового доступа (RLS): наружу идёт bool, 403 или
 	// ErrRowAccessDenied, значения реквизитов никуда не отдаются. Маскировать
 	// строку здесь означало бы решать доступ по маске вместо данных.
-	"Server.matchRowPredicate": {reason: "RLS: строка нужна для вычисления предиката, наружу идёт bool"},
-	"Server.rowAllowedID":      {reason: "RLS: наружу идёт bool"},
-	"Server.rowAllowedUpdate":  {reason: "RLS: наружу идёт bool"},
-	"Server.rowAllowsID":       {reason: "RLS: наружу идёт bool"},
-	"Server.checkDSLRowAccess": {reason: "RLS для DSL: наружу идёт ошибка ErrRowAccessDenied"},
-	"changePublisher.canSee":   {reason: "RLS-адресация живого списка: наружу идёт bool"},
+	"Server.matchRowPredicateResult":       {reason: "RLS: строка нужна для вычисления предиката, наружу идут bool/error"},
+	"Server.rowAllowedID":                  {reason: "RLS: наружу идёт bool"},
+	"Server.rowAllowedUpdate":              {reason: "RLS: наружу идёт bool"},
+	"Server.rowAllowsIDResult":             {reason: "RLS: наружу идут bool/error"},
+	"Server.installFormCloseAccessRecheck": {reason: "финальный RLS-гейт close-intent: строка только решает terminal/redaction и клиенту не отдаётся"},
+	"Server.checkDSLRowAccess":             {reason: "RLS для DSL: наружу идёт ошибка ErrRowAccessDenied"},
+	"changePublisher.canSee":               {reason: "RLS-адресация живого списка: наружу идёт bool"},
 	"Server.publishDocChange": {reason: "живой список (план 87): читает after для адресации по правам, " +
 		"само событие несёт только действие, строки клиенту не отдаются"},
 	"Server.blobReferencedWithPolicy": {reason: "проверка, ссылается ли видимая строка на блоб: наружу идёт bool"},

@@ -882,15 +882,43 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // obFire(elementName, eventName[, extraParams]) — extraParams (объект)
   // добавляются к телу запроса. Используется подбором (план 46): фаза 2
   // шлёт {_pick_result}, команды ТЧ — {_tp, _tp_selected}.
-  window.obFire = async function(elementName, eventName, extraParams){
-   try {
+  function captureFormEventSelection(extraParams){
+	if (!extraParams || !extraParams._tp) return undefined;
+	var obg = (window._obGrids || {})[extraParams._tp];
+	if (obg && !obg.readOnly) {
+	  var selected = [];
+	  try { selected = obg.grid.getSelectedRows() || []; } catch (e) { selected = []; }
+	  var canonicalItems = obg.dataView.getItems().slice().sort(function(a, b) {
+		return (a._ord || 0) - (b._ord || 0);
+	  });
+	  selected = selected.map(function(displayIndex) {
+		var item = obg.dataView.getItem(displayIndex);
+		if (!item) return -1;
+		for (var i = 0; i < canonicalItems.length; i++) {
+		  if (canonicalItems[i] && canonicalItems[i].id === item.id) return i;
+		}
+		return -1;
+	  }).filter(function(index) { return index >= 0; });
+	  return selected.join(',');
+	}
+	var tbody = obManagedWritableTableBody('tp-body-' + extraParams._tp, 'data-tp-fields');
+	if (!tbody) return undefined;
+	var legacySelected = [];
+	Array.prototype.forEach.call(tbody.rows, function(tr, i){
+	  var cb = tr.querySelector('._tp-sel');
+	  if (cb && cb.checked) legacySelected.push(i);
+	});
+	return legacySelected.join(',');
+  }
+
+  async function snapshotFormEvent(elementName, eventName, extraParams, triggerSelection){
     // Зафиксировать активную правку и синхронизировать ТЧ. При невалидной
     // ссылке или исключении editor-lock отправлять старое tp_json нельзя.
     if (window.obGridSync && window.obGridSync() === false) return;
     const form = document.getElementById('main-form');
     if (!form) return;
     const fileHelpers = Array.prototype.slice.call(form.querySelectorAll('[data-ob-file-content-for]'));
-    if (!await awaitCurrentFileReads(fileHelpers)) return;
+    if (fileHelpers.length && !await awaitCurrentFileReads(fileHelpers)) return;
     // FileReader может работать долго; за это время активная grid-ячейка могла
     // измениться уже после первого snapshot. Непосредственно перед FormData
     // повторяем commit/sync и при любом veto оставляем событие неотправленным.
@@ -919,46 +947,37 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     });
     // Команда над ТЧ: подмешать индексы выделенных строк (_tp_selected) по
     // имени ТЧ из extraParams._tp.
-    if (extraParams && extraParams._tp) {
-      // Plan 48: check if SlickGrid exists for this TP
-      var obg = (window._obGrids || {})[extraParams._tp];
-      if (obg && !obg.readOnly) {
-        // getSelectedRows бросает «Selection model is not set», если модель
-        // выделения не установлена (плагин не завендорен). Командам подбора/
-        // пересчёта/очистки выделение не нужно — гасим ошибку и шлём пусто.
-        var sel = [];
-        try { sel = obg.grid.getSelectedRows() || []; } catch (e) { sel = []; }
-        // tp_json is serialized in canonical _ord order, while SlickGrid
-        // selection indices follow the current visual sort. Translate selected
-        // rows to the exact array indices sent to the server.
-        var canonicalItems = obg.dataView.getItems().slice().sort(function(a, b) {
-          return (a._ord || 0) - (b._ord || 0);
-        });
-        sel = sel.map(function(displayIndex) {
-          var item = obg.dataView.getItem(displayIndex);
-          if (!item) return -1;
-          for (var i = 0; i < canonicalItems.length; i++) {
-            if (canonicalItems[i] && canonicalItems[i].id === item.id) return i;
-          }
-          return -1;
-        }).filter(function(index) { return index >= 0; });
-        body.append(serviceField('_tp_selected'), sel.join(','));
-      } else {
-        // Legacy: read from DOM checkboxes
-        const tbody = obManagedWritableTableBody('tp-body-' + extraParams._tp, 'data-tp-fields');
-        if (tbody) {
-          const sel = [];
-          Array.prototype.forEach.call(tbody.rows, (tr, i) => {
-            const cb = tr.querySelector('._tp-sel');
-            if (cb && cb.checked) sel.push(i);
-          });
-          body.append(serviceField('_tp_selected'), sel.join(','));
-        }
-      }
-    }
+    if (triggerSelection !== undefined) body.append(serviceField('_tp_selected'), triggerSelection);
     if (extraParams) {
       Object.keys(extraParams).forEach(k => body.append(serviceField(k), extraParams[k]));
     }
+    return {
+	  body: body, form: form, elementName: elementName,
+	  extraParams: extraParams, wasNew: !DOC_ID
+	};
+  }
+
+  function refreshQueuedFormEventIdentity(snapshot){
+    if (!snapshot || !snapshot.body) return;
+    if (DOC_ID) snapshot.body.set(serviceField('_id'), DOC_ID);
+    var form = snapshot.form || document.getElementById('main-form');
+    var versionName = serviceField('_version');
+    var versionInput = form && form.querySelector('[name="' + versionName + '"]');
+    if (versionInput && versionInput.value) snapshot.body.set(versionName, String(versionInput.value));
+  }
+
+  async function dispatchFormEvent(snapshot){
+    if (!snapshot || reloadRequired || formEventWriteUnknown || manualReconcileRequired) return;
+    refreshQueuedFormEventIdentity(snapshot);
+    var body = snapshot.body;
+    var form = snapshot.form;
+    var elementName = snapshot.elementName;
+	var extraParams = snapshot.extraParams;
+    var responseKnown = false;
+	function fenceUnknownResult(){
+	  formEventWriteUnknown = true;
+	  setManagedFormDirty(true);
+	}
     try {
       const res = await fetch(URL, {
         method: 'POST',
@@ -967,6 +986,19 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         credentials: 'same-origin'
       });
       const data = await res.json();
+	  // A JSON proxy/error page is not a trusted application envelope. `ok` is
+	  // mandatory in every formEventResponse, including server-side failures.
+      if (!data || typeof data !== 'object' || typeof data.ok !== 'boolean') {
+		throw new Error('invalid form-event response');
+	  }
+      responseKnown = true;
+	  // Even parseable JSON on non-2xx may come from an intermediary after the
+	  // application committed. No subsequent write is safe on this document.
+	  if (!res.ok) fenceUnknownResult();
+      // A handler may have durably created this object. Adopt its identity and
+      // optimistic version before any renderer, picker or message callback can
+      // throw, so a later queued action updates the row instead of inserting it.
+      applySavedIdentity(data);
       // Подбор фазы 1: сервер вернул pickerData — открыть диалог, не трогая
       // ТЧ (её обновит фаза 2 после «Перенести»).
       if (data.pickerData) {
@@ -986,36 +1018,6 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       applyValues(data.values, data.refOptions);
       applyChoiceList(elementName, data.choiceList);
       applyFormTables(data.formTables);
-      // Обработчик записал новую форму (Объект.Записать()): дальше она работает
-      // с этой записью. Без подмены _id второе действие подряд ушло бы как
-      // «новый документ» и создало дубль, а адрес страницы остался бы /new.
-      if (data.savedId && !DOC_ID) {
-        DOC_ID = String(data.savedId);
-        var idInput = document.querySelector('#main-form [name="_id"]');
-        if (idInput) idInput.value = DOC_ID;
-        if (window.history && history.replaceState) {
-          var savedURL = location.pathname.replace(/\/new$/, '/' + DOC_ID);
-          history.replaceState(null, '', savedURL);
-          try {
-            if (window.parent && window.parent !== window) {
-              window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
-            }
-          } catch (_) {}
-        }
-      }
-      // Обработчик, записавший объект, поднял его версию. Форма держит версию,
-      // прочитанную при отрисовке, — без обновления следующая «Записать»
-      // упирается в «объект изменён другим пользователем».
-      if (data.version) {
-        var verInput = form.querySelector('[name="_version"]');
-        if (!verInput) {
-          verInput = document.createElement('input');
-          verInput.type = 'hidden';
-          verInput.name = '_version';
-          form.appendChild(verInput);
-        }
-        verInput.value = String(data.version);
-      }
 	  // Server events repaint controls programmatically and therefore do not
 	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
 	  // it only when this response proves a successful Object.Write.
@@ -1023,13 +1025,76 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       (data.messages || []).forEach(m => flash(m, 'ok'));
       if (data.error) flash(data.error, 'err');
     } catch (e) {
+      // A lost/unparseable response for /new may hide a committed insert and
+      // there is no identity with which to issue another safe write. Fence all
+      // write-capable actions for this document; the user can leave the form,
+      // but this page must never guess and create a duplicate.
+      if (!responseKnown && snapshot.wasNew && !DOC_ID) fenceUnknownResult();
       flash('Сетевая ошибка: ' + (e && e.message ? e.message : e), 'err');
     }
-   } catch (e) {
-      // Синхронные ошибки (obGridSync, сборка формы) больше не «глотаются»
-      // как unhandled rejection — показываем баннер, чтобы причина была видна.
-      flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
-   }
+  }
+
+  window.obFire = function(elementName, eventName, extraParams){
+	if (formEventWriteUnknown || manualReconcileRequired) {
+	  flash(closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
+	  return Promise.resolve();
+	}
+	if (reloadRequired) {
+	  flash(closeMessage('reloadRequired', 'Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.'), 'err');
+	  return Promise.resolve();
+	}
+	if (closePending || closeHandoffPending || retryableClose) {
+	  flash(closeMessage('closePending', 'Сначала завершите или восстановите проверку закрытия формы.'), 'err');
+	  return Promise.resolve();
+	}
+	var capturedExtra = null;
+	if (extraParams && typeof extraParams === 'object') {
+	  capturedExtra = {};
+	  Object.keys(extraParams).forEach(function(key){ capturedExtra[key] = extraParams[key]; });
+	}
+	var capturedElement = String(elementName || '');
+	var capturedEvent = String(eventName || '');
+	var capturedSelection;
+	try { capturedSelection = captureFormEventSelection(capturedExtra); }
+	catch (e) {
+	  flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
+	  return Promise.resolve();
+	}
+	// The leading event snapshots synchronously (until a possible FileReader
+	// wait). A queued event keeps its immutable trigger context but snapshots the
+	// form only after the previous response was applied. Otherwise a fresh
+	// optimistic version combined with pre-response fields could undo handler A.
+	var snapshotPromise = null;
+	var deferSnapshot = formEventPendingCount > 0;
+	if (!deferSnapshot) {
+	  try { snapshotPromise = snapshotFormEvent(capturedElement, capturedEvent, capturedExtra, capturedSelection); }
+	  catch (e) {
+		flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
+		return Promise.resolve();
+	  }
+	}
+	formEventPendingCount++;
+	formEventPending = true;
+	var queued = formEventQueue.catch(function(){}).then(async function(){
+	  var snapshot;
+	  if (reloadRequired || formEventWriteUnknown || manualReconcileRequired) return;
+	  try {
+		snapshot = snapshotPromise
+		  ? await snapshotPromise
+		  : await snapshotFormEvent(capturedElement, capturedEvent, capturedExtra, capturedSelection);
+	  }
+	  catch (e) {
+		flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
+		return;
+	  }
+	  if (!snapshot || reloadRequired || formEventWriteUnknown || manualReconcileRequired) return;
+	  return dispatchFormEvent(snapshot);
+	});
+	formEventQueue = queued.catch(function(){});
+	return queued.finally(function(){
+	  formEventPendingCount = Math.max(0, formEventPendingCount - 1);
+	  formEventPending = formEventPendingCount > 0;
+	});
   };
 
   // One close controller for every managed-form adapter. It snapshots the
@@ -1039,6 +1104,14 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   var CLOSE_URL = String(cfg.closeUrl || '');
   var CLOSE_TIMEOUT_MS = Number(cfg.closeTimeoutMs || 30000);
   var CLOSE_MESSAGES = cfg.closeMessages || {};
+  // Declared with the close controller because browser behavior tests extract
+  // this whole concurrency domain. obFire is defined above but only invoked
+  // after this IIFE has initialized every shared state variable.
+  var formEventQueue = Promise.resolve();
+  var formEventPendingCount = 0;
+  var formEventPending = false;
+  var formEventWriteUnknown = false;
+	var manualReconcileRequired = false;
   var closePending = null;
   // Embedded OK/post first crosses a postMessage boundary before the parent
   // asks this child for its close decision. Keep native submit fail-closed in
@@ -1050,6 +1123,16 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // correlated terminal response arrives, the server has recorded it in the
   // replay ledger and another explicit close attempt needs a fresh UUID.
   var retryableClose = null;
+	var reloadRequired = false;
+	var CLOSE_EPOCH = cfg.closeEpoch == null ? '' : String(cfg.closeEpoch);
+	var closeClockServerBase = Number(cfg.closeServerNowMs);
+	if (!Number.isFinite(closeClockServerBase)) closeClockServerBase = Date.now();
+	var closeClockUsesPerformance = !!(window.performance && typeof window.performance.now === 'function');
+	var closeClockClientBase = closeClockUsesPerformance ? window.performance.now() : Date.now();
+	function closeIssuedAtNow(){
+	  var now = closeClockUsesPerformance ? window.performance.now() : Date.now();
+	  return Math.round(closeClockServerBase + Math.max(0, now - closeClockClientBase));
+	}
 
   function closeMessage(name, fallback){
     var value = CLOSE_MESSAGES && CLOSE_MESSAGES[name];
@@ -1063,6 +1146,10 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       var n = Math.floor(Math.random() * 16);
       return (ch === 'x' ? n : ((n & 3) | 8)).toString(16);
     });
+  }
+
+  function closeFormKind(){
+    return cfg.kind === 'processor' ? 'processor' : 'object';
   }
 
   async function closeSnapshotBody(reason, mode){
@@ -1080,7 +1167,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     } finally {
       fileHelpers.forEach(function(el, i){ el.disabled = disabled[i]; });
     }
-    fd.set(serviceField('_kind'), cfg.kind === 'processor' ? 'processor' : 'object');
+    fd.set(serviceField('_kind'), closeFormKind());
     if (DOC_ID) fd.set(serviceField('_id'), DOC_ID);
     var body = new URLSearchParams();
     fd.forEach(function(v, k){
@@ -1089,8 +1176,6 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       if (helper && (helper.value || helper.dataset.obFileContentReady === '1')) body.append(k, helper.value);
       else body.append(k, v);
     });
-    body.set(serviceField('_close_reason'), reason);
-    body.set(serviceField('_close_mode'), mode || 'discard');
     return body;
   }
 
@@ -1164,7 +1249,6 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
   function closeSnapshotKey(body){
     var keyBody = new URLSearchParams(body.toString());
-    keyBody.delete(serviceField('_close_intent_id'));
     if (keyBody.sort) keyBody.sort();
     return keyBody.toString();
   }
@@ -1221,36 +1305,43 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   function applySavedIdentity(data){
     if (!data || typeof data !== 'object') return;
     var form = document.getElementById('main-form');
+	var savedURL = '';
     if (data.savedId && !DOC_ID) {
       DOC_ID = String(data.savedId);
-      var idInput = form && form.querySelector('[name="_id"]');
+	  var idName = serviceField('_id');
+	  var idInput = form && form.querySelector('[name="' + idName + '"]');
       if (idInput) idInput.value = DOC_ID;
-      if (window.history && history.replaceState) {
-        var savedURL = location.pathname.replace(/\/new$/, '/' + DOC_ID);
-		// A denied/failed save-and-select keeps the iframe open. Preserve its
-		// popup identity so a refresh still renders the specialized
-		// Save-and-select/Cancel controls instead of turning it into a normal card.
-		if (location.search && new URLSearchParams(location.search).get('_popup') === '1') {
-		  savedURL += '?_popup=1';
-		}
-        history.replaceState(null, '', savedURL);
-        try {
-          if (window.parent && window.parent !== window) {
-            window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
-          }
-        } catch (_) {}
-      }
+	  savedURL = location.pathname.replace(/\/new$/, '/' + DOC_ID);
+	  // A denied/failed save-and-select keeps the iframe open. Preserve its
+	  // popup identity so a refresh still renders the specialized
+	  // Save-and-select/Cancel controls instead of turning it into a normal card.
+	  if (location.search && new URLSearchParams(location.search).get('_popup') === '1') {
+		savedURL += '?_popup=1';
+	  }
     }
     if (data.version && form) {
-      var verInput = form.querySelector('[name="_version"]');
+	  var versionName = serviceField('_version');
+	  var verInput = form.querySelector('[name="' + versionName + '"]');
       if (!verInput) {
         verInput = document.createElement('input');
         verInput.type = 'hidden';
-        verInput.name = '_version';
+		verInput.name = versionName;
         form.appendChild(verInput);
       }
       verInput.value = String(data.version);
     }
+	// URL/shell synchronization is deliberately last and guarded: even a host
+	// history shim that throws cannot prevent adoption of the durable id/version.
+	if (savedURL) {
+	  try {
+		if (window.history && history.replaceState) history.replaceState(null, '', savedURL);
+	  } catch (_) {}
+	  try {
+		if (window.parent && window.parent !== window) {
+		  window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
+		}
+	  } catch (_) {}
+	}
   }
 
   function applyCloseResponse(data, before, current){
@@ -1287,6 +1378,29 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
   window.obRequestFormClose = function(options){
     options = options || {};
+	if (formEventPending) {
+	  // An embedded adapter may already have raised the handoff flag before its
+	  // parent asks for this decision. This early refusal completes that handoff;
+	  // leaving it set would permanently block later form events and submits.
+	  closeHandoffPending = false;
+	  flash(closeMessage('operationPending', 'Команда формы ещё выполняется. Дождитесь её завершения и повторите закрытие.'), 'err');
+	  return Promise.resolve({allowed: false, intentId: '', error: 'form-event-pending'});
+	}
+	if (formEventWriteUnknown) {
+	  closeHandoffPending = false;
+	  flash(closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
+	  return Promise.resolve({allowed: false, intentId: '', reload: true, error: 'form-event-unknown'});
+	}
+	if (manualReconcileRequired) {
+	  closeHandoffPending = false;
+	  flash(closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
+	  return Promise.resolve({allowed: false, intentId: '', reconcile: true, error: 'manual-reconciliation-required'});
+	}
+	if (reloadRequired) {
+	  closeHandoffPending = false;
+	  flash(closeMessage('reloadRequired', 'Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.'), 'err');
+	  return Promise.resolve({allowed: false, intentId: '', reload: true, error: 'reload-required'});
+	}
     if (closePending) {
       closeHandoffPending = false;
       return closePending;
@@ -1310,23 +1424,33 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       // otherwise a new-form retry could insert a duplicate.
       var pendingRetry = retryableClose;
 	  var replayingPrior = !!(pendingRetry && pendingRetry.body &&
-		(pendingRetry.key !== requestedSnapshotKey || pendingRetry.mode !== requestedMode));
-      var intentID;
+		(pendingRetry.key !== requestedSnapshotKey || pendingRetry.mode !== requestedMode ||
+		  pendingRetry.reason !== requestedReason));
+	  var envelope;
       if (pendingRetry && pendingRetry.body) {
         body = new URLSearchParams(pendingRetry.body);
         snapshotKey = pendingRetry.key;
-        intentID = pendingRetry.intentId;
-        mode = pendingRetry.mode;
-        reason = pendingRetry.reason;
+		envelope = Object.assign({}, pendingRetry.envelope);
       } else {
-        intentID = pendingRetry && pendingRetry.key === snapshotKey
-          ? pendingRetry.intentId : freshCloseIntentID();
+		envelope = {
+		  intentId: freshCloseIntentID(),
+		  epoch: CLOSE_EPOCH,
+		  issuedAt: String(closeIssuedAtNow()),
+		  reason: reason,
+		  mode: mode,
+		  formKind: closeFormKind(),
+		  recordId: DOC_ID == null ? '' : String(DOC_ID),
+		  clientId: cfg.closeClientId == null ? '' : String(cfg.closeClientId),
+		  schema: cfg.closeSchema == null ? '' : String(cfg.closeSchema)
+		};
       }
-      body.set(serviceField('_close_intent_id'), intentID);
+	  var intentID = String(envelope.intentId || '');
+	  mode = String(envelope.mode || 'discard');
+	  reason = String(envelope.reason || 'close');
 	  function rememberRetry(){
 		retryableClose = {
 		  key: snapshotKey, intentId: intentID, body: body.toString(),
-		  mode: mode, reason: reason
+		  mode: mode, reason: reason, envelope: Object.assign({}, envelope)
 		};
 	  }
 
@@ -1336,7 +1460,21 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       try {
         var response = await fetch(CLOSE_URL, {
           method: 'POST', body: body,
-          headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'},
+		  // Lifecycle metadata never enters the form body: `_close_*` are legal
+		  // user field names. Fixed headers form a collision-free recovery envelope
+		  // and the exact envelope is retained with an unknown intent for replay.
+          headers: {
+			'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+			'X-OneBase-Close-Intent': intentID,
+			'X-OneBase-Close-Epoch': String(envelope.epoch || ''),
+			'X-OneBase-Close-Issued-At': String(envelope.issuedAt || ''),
+			'X-OneBase-Close-Reason': reason,
+			'X-OneBase-Close-Mode': mode,
+			'X-OneBase-Form-Kind': String(envelope.formKind || ''),
+			'X-OneBase-Record-ID': String(envelope.recordId || ''),
+			'X-OneBase-Close-Client': String(envelope.clientId || ''),
+			'X-OneBase-Close-Schema': String(envelope.schema || '')
+		  },
           credentials: 'same-origin', signal: controller ? controller.signal : undefined
         });
         var data;
@@ -1353,6 +1491,51 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
           flash(closeMessage('correlationMismatch', 'Ответ закрытия не совпал с запросом. Форма оставлена открытой.'), 'err');
           return {allowed: false, intentId: intentID, error: 'stale-correlation'};
         }
+		if (data.close.reconcile === true && data.close.terminal !== true) {
+		  // The server restarted or expired its ledger while this exact result was
+		  // unknown. Retain the old UUID/body for diagnostics and permanently fence
+		  // every write-capable action in this document; a fresh UUID could repeat a
+		  // save whose durable outcome cannot be established automatically.
+		  rememberRetry();
+		  manualReconcileRequired = true;
+		  setManagedFormDirty(true);
+		  flash(data.error || closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
+		  return {
+			allowed: false, intentId: intentID, mode: mode, reconcile: true,
+			error: data.error || 'manual-reconciliation-required', saved: false,
+			savedId: '', savedLabel: '', formUrl: ''
+		  };
+		}
+		if (data.close.terminal === true) {
+		  // The durable row is no longer readable by this caller. There is no
+		  // safe retry or merge target, so this explicit server decision wins over
+		  // an in-flight local edit and lets the owning shell destroy the form.
+		  retryIntentAfterFailure = false;
+		  retryableClose = null;
+		  setManagedFormDirty(false);
+		  return {
+			allowed: true, intentId: intentID, mode: mode, terminal: true,
+			error: '', saved: false, savedId: '', savedLabel: '', formUrl: ''
+		  };
+		}
+		if (data.close.reload === true) {
+		  // A transport retry recovered a durable result whose full merge state
+		  // was intentionally not retained in the bounded replay ledger. Preserve
+		  // edits made while the first response was lost, but block every further
+		  // write until the user has copied them and reloaded explicitly.
+		  retryIntentAfterFailure = false;
+		  retryableClose = null;
+		  applySavedIdentity(data);
+		  setManagedFormDirty(true);
+		  reloadRequired = true;
+		  var reloadURL = String(data.close.formUrl || '');
+		  flash(closeMessage('reloadRequired', 'Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.'), 'err');
+		  return {
+			allowed: false, intentId: intentID, mode: mode, reload: true,
+			error: data.error || 'reload-required', saved: true,
+			savedId: data.savedId || '', savedLabel: data.savedLabel || '', formUrl: reloadURL
+		  };
+		}
         // Preserve the server's fail-safe dirty signal even if re-snapshot or
         // a later response renderer throws. Clearing dirty is deferred until a
         // confirmed save response has been applied completely.
@@ -1463,6 +1646,22 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var pending = retryableClose;
     var recoveryMode = pending && String(pending.mode || '');
     if (!form || form.id !== 'main-form') return;
+	if (formEventPending || formEventWriteUnknown || manualReconcileRequired) {
+	  e.preventDefault();
+	  if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+	  else if (e.stopPropagation) e.stopPropagation();
+	  flash((formEventWriteUnknown || manualReconcileRequired)
+		? closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.')
+		: closeMessage('operationPending', 'Команда формы ещё выполняется. Дождитесь её завершения.'), 'err');
+	  return;
+	}
+	if (reloadRequired) {
+	  e.preventDefault();
+	  if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+	  else if (e.stopPropagation) e.stopPropagation();
+	  flash(closeMessage('reloadRequired', 'Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.'), 'err');
+	  return;
+	}
     var popupSubmit = false;
     try {
       popupSubmit = !!(form.querySelector && form.querySelector('[name="_popup"]')) ||
@@ -1480,9 +1679,9 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         // An implicit popup submit is itself the save-and-select adapter. If
         // this exact retry recovers a lost terminal result, publish it now;
         // requiring a third Enter would start a fresh intent unnecessarily.
-        if (popupSubmit && recoveryMode === 'save_and_select' && decision && decision.allowed &&
-            typeof window.obManagedPostRefSaved === 'function') {
-          window.obManagedPostRefSaved(decision);
+        if (popupSubmit && recoveryMode === 'save_and_select' && decision && decision.allowed) {
+		  if (decision.terminal && typeof window.obManagedPostRefCancel === 'function') window.obManagedPostRefCancel(decision);
+		  else if (typeof window.obManagedPostRefSaved === 'function') window.obManagedPostRefSaved(decision);
         }
       });
       return;
@@ -1492,7 +1691,8 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     // would bypass BeforeClose and return the legacy uncorrelated result page.
     Promise.resolve(window.obRequestFormClose({reason: 'ok', mode: 'save_and_select'})).then(function(decision){
       if (!decision || !decision.allowed) return;
-      if (typeof window.obManagedPostRefSaved === 'function') window.obManagedPostRefSaved(decision);
+		  if (decision.terminal && typeof window.obManagedPostRefCancel === 'function') window.obManagedPostRefCancel(decision);
+		  else if (typeof window.obManagedPostRefSaved === 'function') window.obManagedPostRefSaved(decision);
     });
   }, true);
 
@@ -1600,6 +1800,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
   window._obFormDirty = false;
   var _obBaseTitle = document.title;
+  setManagedFormDirty(cfg.initialDirty === true);
   function _obMarkDirty(){
 	setManagedFormDirty(true);
   }
@@ -1796,7 +1997,8 @@ var obManagedFrameDocumentToken = typeof window.obFrameCloseDocumentToken === 's
   ? window.obFrameCloseDocumentToken : '';
 
 function obManagedPostRefCancel(decision) {
-	if (!decision || decision.allowed !== true || !decision.intentId || decision.mode === 'save_and_select') return false;
+	if (!decision || decision.allowed !== true || !decision.intentId ||
+		(decision.mode === 'save_and_select' && decision.terminal !== true)) return false;
   try {
     parent.postMessage({
       source: 'obRefCancel',
@@ -1859,7 +2061,8 @@ function obManagedInitDelegates() {
       Promise.resolve(request({reason: reason, mode: mode || undefined})).then(function(decision){
         if (!decision || !decision.allowed) return;
         if (mode === 'save_and_select') {
-          obManagedPostRefSaved(decision);
+		  if (decision.terminal) obManagedPostRefCancel(decision);
+		  else obManagedPostRefSaved(decision);
           return;
         }
         window.obFinalizeFormClose();

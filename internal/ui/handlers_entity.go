@@ -773,6 +773,10 @@ func (s *Server) renderObjectFormError(w http.ResponseWriter, r *http.Request, e
 		"TPRefMeta":     tpRefMeta(entity),
 		"TablePartRows": tablePartRows,
 		"CopySourceID":  copySourceIDForRender(r),
+		// A failed native submit renders a new document, but its values are still
+		// unsaved. Bootstrap the managed dirty guard so Close cannot discard them
+		// silently merely because the browser navigation reset JS state.
+		"InitialDirty": true,
 	}
 	if entity.Hierarchical {
 		data["FolderOptions"] = s.loadFolderOptions(r.Context(), entity, values["parent_id"])
@@ -841,7 +845,7 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 		}
 		// Managed HTML submit and close-intent share one result-returning save
 		// layer. Transport differs (redirect/render vs JSON), write semantics do not.
-		hookMsgs, _, saveErr := s.saveManagedObject(r, entity, managedForm, obj, true, action, nil)
+		hookMsgs, _, saveErr := s.saveManagedObject(r, entity, managedForm, obj, true, action, false, nil)
 		if saveErr != nil {
 			s.renderManagedObjectSaveFailure(w, r, entity, true, obj, hookMsgs, saveErr)
 			return
@@ -1536,7 +1540,7 @@ func (s *Server) submitEdit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.mergeFormAttrValues(r.Context(), r, managedForm, entity, obj)
-		hookMsgs, _, saveErr := s.saveManagedObject(r, entity, managedForm, obj, false, action, nil)
+		hookMsgs, _, saveErr := s.saveManagedObject(r, entity, managedForm, obj, false, action, false, nil)
 		if saveErr != nil {
 			s.renderManagedObjectSaveFailure(w, r, entity, false, obj, hookMsgs, saveErr)
 			return
@@ -1817,35 +1821,46 @@ func (s *Server) clearMovements(ctx context.Context, entityName string, id uuid.
 // markForDeletion помечает/снимает пометку на удаление. При пометке проведённого
 // документа сперва отменяет проведение (чистит движения по всем регистрам и
 // снимает posted) — пометка и проведённость взаимоисключающи (как в 1С). Снятие
-// пометки проведение НЕ возвращает. Транзакцию метод не открывает: HTTP-вызовы
-// оборачивают его в store.WithTx, DSL-путь использует живой ctx (как DeleteRef).
+// пометки проведение НЕ возвращает. Весь переход, точный version token и
+// отложенные уведомления объединены WithTxScope: открытая DSL-транзакция
+// переиспользуется, а автономный HTTP/DSL-вызов получает собственную.
 func (s *Server) markForDeletion(ctx context.Context, entity *metadata.Entity, id uuid.UUID, mark bool) error {
-	if mark && entity.Posting {
-		row, err := s.store.GetByID(ctx, entity.Name, id, entity)
+	return s.store.WithTxScope(ctx, func(txCtx context.Context) error {
+		if mark && entity.Posting {
+			row, err := s.store.GetByID(txCtx, entity.Name, id, entity)
+			if err != nil {
+				return err
+			}
+			if asBool(row["posted"]) {
+				if err := s.clearMovements(txCtx, entity.Name, id); err != nil {
+					return err
+				}
+				if err := s.store.SetPosted(txCtx, entity.Name, id, false); err != nil {
+					return err
+				}
+			}
+		}
+		if err := s.store.MarkForDeletion(txCtx, entity.Name, id, mark); err != nil {
+			return err
+		}
+		// Read and publish the token in the same transaction as the mutation.
+		// A post-commit SELECT could observe an unrelated writer and turn its
+		// version into authority for this stale lifecycle.
+		version, err := s.store.EntityVersion(txCtx, entity.Name, id)
 		if err != nil {
 			return err
 		}
-		if asBool(row["posted"]) {
-			if err := s.clearMovements(ctx, entity.Name, id); err != nil {
-				return err
-			}
-			if err := s.store.SetPosted(ctx, entity.Name, id, false); err != nil {
-				return err
-			}
+		entityservice.NotifySaveObserver(txCtx, entity, entityservice.SaveResult{ID: id, Version: version})
+		// Регистрация изменения для планов обмена (план 86): пометка/снятие пометки
+		// на удаление — изменение объекта, распространяем его узлам-получателям.
+		if err := exchange.RegisterOnSave(txCtx, s.store, s.reg.ExchangePlans(), entity, id, mark); err != nil {
+			return err
 		}
-	}
-	if err := s.store.MarkForDeletion(ctx, entity.Name, id, mark); err != nil {
-		return err
-	}
-	// Регистрация изменения для планов обмена (план 86): пометка/снятие пометки
-	// на удаление — изменение объекта, распространяем его узлам-получателям.
-	if err := exchange.RegisterOnSave(ctx, s.store, s.reg.ExchangePlans(), entity, id, mark); err != nil {
-		return err
-	}
-	// Живой список (план 87): пометка меняет вид строки (зачёркивание) → список
-	// перечитывается. Смены владельца нет, before не нужен.
-	s.publishDocChange(ctx, entity, id, "записан", nil)
-	return nil
+		// Живой список (план 87): пометка меняет вид строки (зачёркивание) → список
+		// перечитывается. Смены владельца нет, before не нужен.
+		s.publishDocChange(txCtx, entity, id, "записан", nil)
+		return nil
+	})
 }
 
 // unpostDocument clears movements, sets posted=false and runs

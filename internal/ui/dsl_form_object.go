@@ -56,6 +56,10 @@ type formObjectThis struct {
 	// onCommitted propagates a handler-initiated write to the close-intent
 	// ledger at the true durable boundary, before fallible notifications.
 	onCommitted func(entityservice.SaveResult)
+	// finalPreflight is installed by close-intent so an Object.Write performed
+	// by BeforeClose cannot commit a row which the same caller may no longer
+	// read. It runs against the authoritative row inside the save transaction.
+	finalPreflight func(context.Context, *runtime.Object) error
 	// writeBlocked prevents a form write lifecycle handler from recursively
 	// saving the same object and then letting the outer Save persist it again.
 	writeBlocked bool
@@ -203,7 +207,8 @@ func (f *formObjectThis) write() error {
 			}
 			return f.srv.checkDSLRowAccess(txCtx, f.entity, "write", uuid.Nil, obj.Fields)
 		},
-		OnPersisted: markCommitted,
+		FinalPreflight: f.finalPreflight,
+		OnPersisted:    markCommitted,
 		OnCommitted: func(result entityservice.SaveResult) {
 			if f.onCommitted != nil {
 				f.onCommitted(result)
