@@ -1677,7 +1677,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 {{end}}
 
 {{define "widget-card"}}
-<div class="w-card w-card-{{.Type}}"{{if .PartialURL}} data-ob-widget-card data-widget-name="{{.Name}}" data-widget-url="{{.PartialURL}}" data-refresh-error="{{.RefreshError}}"{{end}}>
+<div class="w-card w-card-{{.Type}}"{{if .PartialURL}} data-ob-widget-card data-widget-name="{{.Name}}" data-widget-url="{{.PartialURL}}" data-refresh-error="{{.RefreshError}}"{{if .RefreshOn}} data-ob-refresh-on="{{.RefreshOn}}" data-ob-live="widget/{{.Name}}"{{end}}{{end}}>
   {{if or .Title .PartialURL}}
   <div class="w-head">
     {{if .Title}}<div class="w-title">{{.Title}}</div>{{end}}

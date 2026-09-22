@@ -4249,6 +4249,7 @@ window.onebaseDevice = {
   }
 })();
 
+// BEGIN onebase-live-list
 /* План 87, ступень A — «Живой список». Контейнер списка помечается
    data-ob-refresh-on="имя1 имя2" (+ data-ob-live="ключ" для сопоставления при
    перечитывании). Универсальный слушатель ловит window-событие onebase:<имя>,
@@ -4279,6 +4280,13 @@ window.onebaseDevice = {
   }
 
   function doRefresh(el, key) {
+    // Карточка виджета (план 182B) перечитывается своим partial-endpoint'ом
+    // через контроллер карточки: debounce/склейка/hidden-tab здесь, свежие
+    // данные и нетронутые фильтры — там. Атрибуты контейнера не меняются.
+    if (el.hasAttribute && el.hasAttribute('data-ob-widget-card')) {
+      if (window.obRefreshWidgetCard) window.obRefreshWidgetCard(el);
+      return;
+    }
     var src = el.getAttribute('data-ob-refresh-src') || window.location.href;
     fetch(src, { credentials: 'same-origin', headers: { 'X-Requested-With': 'obLiveList' } })
       .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
@@ -4374,6 +4382,7 @@ window.onebaseDevice = {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
+// END onebase-live-list
 
 /* ===== Боковая панель деталей активной записи (план 118B, issue #670) =====
 
