@@ -967,6 +967,11 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	choice, err := s.resolveChoiceRequest(r, ent)
+	if err != nil {
+		http.Error(w, "invalid choice context: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 	limit := refPickerDefaultLimit
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -988,18 +993,38 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		offset = n
 	}
-	items, total, err := s.referenceOptionsPage(r.Context(), ent, r.URL.Query().Get("q"), limit, offset)
-	if err != nil {
-		s.serverError(w, r, err)
-		return
+	items := make([]map[string]any, 0)
+	total := 0
+	if choice == nil || !choice.Empty {
+		extra := storage.ListParams{}
+		if choice != nil {
+			extra.ChoicePredicates = choice.Predicates
+		}
+		items, total, err = s.referenceOptionsPageWithParams(r.Context(), ent, r.URL.Query().Get("q"), limit, offset, extra)
+		if err != nil {
+			s.serverError(w, r, err)
+			return
+		}
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	response := map[string]any{
 		"items":  items,
 		"total":  total,
 		"limit":  limit,
 		"offset": offset,
-	})
+	}
+	if choice != nil && choice.Selected != nil {
+		allowed := false
+		if !choice.Empty {
+			allowed, err = s.choiceSelectedAllowed(r.Context(), ent, *choice.Selected, choice.Predicates)
+			if err != nil {
+				s.serverError(w, r, err)
+				return
+			}
+		}
+		response["selected_allowed"] = allowed
+	}
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 type treeChildrenResponse struct {

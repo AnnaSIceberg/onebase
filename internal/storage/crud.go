@@ -922,6 +922,36 @@ func (db *DB) CountList(ctx context.Context, entityName string, entity *metadata
 	return count, nil
 }
 
+// ListContainsID reports whether id belongs to the same filtered set as List
+// and CountList. It deliberately ignores search and pagination at the caller's
+// discretion; the method itself applies every predicate present in params,
+// including choice_filter and row-level access, through the shared WHERE
+// builder. Reference pickers use it to validate a selected value without
+// inferring membership from the current page.
+func (db *DB) ListContainsID(ctx context.Context, entityName string, entity *metadata.Entity, id uuid.UUID, params ListParams) (bool, error) {
+	if db.rlsGuard != nil && !params.RowFilterEvaluated && db.rlsGuard(strings.ToLower(entityName)) {
+		return false, fmt.Errorf("strict RLS: membership of %q requested without row access evaluation (fail-closed, plan 79F)", entityName)
+	}
+	table := metadata.TableName(entityName)
+	whereClause, args, err := db.listWhere(entity, params, false)
+	if err != nil {
+		return false, fmt.Errorf("list contains %s: %w", entityName, err)
+	}
+	idCondition := fmt.Sprintf("id = %s", db.dialect.Placeholder(len(args)+1))
+	if whereClause == "" {
+		whereClause = " WHERE " + idCondition
+	} else {
+		whereClause += " AND " + idCondition
+	}
+	args = append(args, idArg(db.dialect, id))
+	var exists bool
+	query := fmt.Sprintf("SELECT EXISTS(SELECT 1 FROM %s%s)", table, whereClause)
+	if err := db.QueryRow(ctx, query, args...).Scan(&exists); err != nil {
+		return false, fmt.Errorf("list contains %s: %w", entityName, err)
+	}
+	return exists, nil
+}
+
 // GetTablePartRows returns rows of a tablepart for a given parent id, ordered by строка.
 func (db *DB) GetTablePartRows(ctx context.Context, entityName, tpName string, parentID uuid.UUID, tp metadata.TablePart) ([]map[string]any, error) {
 	d := db.dialect
