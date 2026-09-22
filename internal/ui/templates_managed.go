@@ -770,12 +770,12 @@ main>.card{max-width:none}
   <a href="#" data-ob-ref-cancel class="btn btn-cancel">Отмена</a>
   {{else if .IsProcessor}}
   {{/* Кнопка «Выполнить» скрыта: managed-форма использует свои кнопки */}}
-  <a href="/ui/" class="btn btn-cancel">Отмена</a>
+  <a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">Отмена</a>
   {{else}}
   {{/* «Записать» здесь НЕ дублируем: она уже есть в командной панели формы, и
        две одинаковые кнопки на одном экране заставляют гадать, чем они
        отличаются. Внизу остаётся только выход из формы. */}}
-  <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}" class="btn btn-cancel">Отмена</a>
+  <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">Отмена</a>
   {{end}}
 </div>
 </form>
@@ -783,11 +783,22 @@ main>.card{max-width:none}
 
 {{/* ── Рантайм событий managed-формы (план 37, этап 8) ──────────────────
      Статический код живёт в /static/managed.js; ниже только JSON bootstrap. */}}
+{{$closeMessages := (dict
+  "controllerUnavailable" (t $.Lang "Проверка закрытия недоступна. Форма оставлена открытой.")
+  "invalidResponse" (t $.Lang "Сервер вернул некорректный ответ при проверке закрытия.")
+  "correlationMismatch" (t $.Lang "Ответ закрытия не совпал с запросом. Форма оставлена открытой.")
+  "formChanged" (t $.Lang "Форма изменилась во время проверки закрытия. Повторите закрытие.")
+  "timeout" (t $.Lang "Превышено время проверки закрытия")
+  "network" (t $.Lang "Сетевая ошибка при закрытии")
+)}}
 {{if .IsProcessor}}
 <script type="application/json" id="ob-managed-config">{{jsJSON (dict
   "kind" "processor"
   "entity" .Processor.Name
   "url" (printf "/ui/processor/%s/form-event" (lower .Processor.Name))
+  "closeUrl" (printf "/ui/processor/%s/form-close-intent" (lower .Processor.Name))
+  "closeTimeoutMs" .FormCloseTimeoutMS
+  "closeMessages" $closeMessages
   "docId" ""
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "serviceFields" (processorServiceFieldNames .Processor)
@@ -797,6 +808,9 @@ main>.card{max-width:none}
   "kind" (lower (str .Entity.Kind))
   "entity" .Entity.Name
   "url" (printf "/ui/%s/%s/form-event" (lower (str .Entity.Kind)) .Entity.Name)
+  "closeUrl" (printf "/ui/%s/%s/form-close-intent" (lower (str .Entity.Kind)) .Entity.Name)
+  "closeTimeoutMs" .FormCloseTimeoutMS
+  "closeMessages" $closeMessages
   "docId" .ID
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "formAttrs" (formAttrNames .Form .Entity)

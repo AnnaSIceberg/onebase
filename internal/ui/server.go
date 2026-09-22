@@ -106,6 +106,8 @@ type Server struct {
 	// поэтому новый запуск снова сообщает оператору о причине обхода кэша.
 	svcCacheCookieWarned sync.Map
 	widgetCache          *widget.Cache
+	closeIntentMu        sync.Mutex
+	closeIntents         *formCloseReplayLedger
 	lockMgr              *runtime.LockManager   // #2 managed locks
 	entitySvc            *entityservice.Service // упсёрт + ТЧ + движения + проведение + удаление, разделяется с api
 	entitySvcOnce        sync.Once              // ленивая сборка для серверов, собранных напрямую (тесты, offline)
@@ -398,6 +400,10 @@ func (s *Server) Mount(r chi.Router) {
 	// кнопок (Нажатие) и полей (ПриИзменении). Возвращает JSON с
 	// обновлёнными values и сообщениями от Сообщить().
 	r.Post("/ui/{kind}/{entity}/form-event", s.handleManagedFormEvent)
+	// Lifecycle close-intent is deliberately separate from /form-event:
+	// the browser cannot choose an arbitrary lifecycle event name, and the
+	// response carries a one-shot decision tied to an intent UUID.
+	r.Post("/ui/{kind}/{entity}/form-close-intent", s.handleManagedFormCloseIntent)
 	r.Get("/ui/register/{name}", s.registerMovements)
 	r.Get("/ui/register/{name}/balances", s.registerBalances)
 	r.Get("/ui/inforeg/{name}", s.infoRegList)
@@ -417,6 +423,7 @@ func (s *Server) Mount(r chi.Router) {
 	r.Get("/ui/processor/{name}", s.processorForm)
 	r.Post("/ui/processor/{name}", s.processorRun)
 	r.Post("/ui/processor/{name}/form-event", s.handleProcessorFormEvent)
+	r.Post("/ui/processor/{name}/form-close-intent", s.handleProcessorFormCloseIntent)
 
 	// Document posting
 	r.Post("/ui/{kind}/{entity}/{id}/post", s.postDocument)

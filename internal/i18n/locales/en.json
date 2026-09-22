@@ -1432,5 +1432,12 @@
   "Файл Excel": "Excel file",
   "Файл больше 5 МБ — слишком большой для импорта.": "The file is larger than 5 MB — too large to import.",
   "первый лист книги": "first sheet of the workbook",
-  "создан из Excel — черновик открыт в редакторе. Перезапустите базу, чтобы форма появилась в списке печати.": "created from Excel — the draft is open in the editor. Restart the base for the form to appear in the print list."
+  "создан из Excel — черновик открыт в редакторе. Перезапустите базу, чтобы форма появилась в списке печати.": "created from Excel — the draft is open in the editor. Restart the base for the form to appear in the print list.",
+  "Проверка закрытия недоступна. Форма оставлена открытой.": "The close check is unavailable. The form remains open.",
+  "Сервер вернул некорректный ответ при проверке закрытия.": "The server returned an invalid response while checking whether the form can close.",
+  "Ответ закрытия не совпал с запросом. Форма оставлена открытой.": "The close response did not match the request. The form remains open.",
+  "Форма изменилась во время проверки закрытия. Повторите закрытие.": "The form changed while its close request was being checked. Try closing it again.",
+  "Превышено время проверки закрытия": "The close check timed out",
+  "Сетевая ошибка при закрытии": "Network error while closing the form",
+  "Форма не закрыта: сервер не подтвердил закрытие.": "The form was not closed because the server did not confirm it."
 }
