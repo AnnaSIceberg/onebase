@@ -141,3 +141,38 @@ func TestLoadWidgetDir_MissingDir(t *testing.T) {
 		t.Errorf("missing dir = %v, want nil", widgets)
 	}
 }
+
+func TestLoadWidgetFile_RefreshOn(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tasks.yaml")
+	writeFile(t, path, `name: ЗадачиКоллЦентра
+type: list
+title: Задачи
+limit: 30
+refresh_on:
+  - данные.а_задача
+  - задача.переназначена
+query: |
+  ВЫБРАТЬ Ссылка, Тема ИЗ Документ.А_Задача
+`)
+	w, err := LoadWidgetFile(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(w.RefreshOn) != 2 || w.RefreshOn[0] != "данные.а_задача" || w.RefreshOn[1] != "задача.переназначена" {
+		t.Fatalf("RefreshOn = %v", w.RefreshOn)
+	}
+}
+
+func TestLoadWidgetFile_NoRefreshOn(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plain.yaml")
+	writeFile(t, path, "name: Выручка\ntype: kpi\nformat: money\nquery: |\n  ВЫБРАТЬ 0 КАК Значение\n")
+	w, err := LoadWidgetFile(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(w.RefreshOn) != 0 {
+		t.Fatalf("RefreshOn = %v, want empty", w.RefreshOn)
+	}
+}
