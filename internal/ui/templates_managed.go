@@ -582,6 +582,10 @@ main>.card{max-width:none}
    получает остаток высоты правилом выше; это правило доводит его до самого
    select/input, не растягивая соседние кнопки выбора. */
 .form-group.ob-el-fill>.managed-control-row>.managed-fill-control{height:100%;min-height:0}
+/* Сетевой сбой зависимого подбора виден прямо на поле, но не раскрывает
+   локальный полный список: ui.js оставляет прежние варианты и значение. */
+select[data-ref-choice-context][data-ob-choice-loading="1"]{cursor:progress}
+select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;background:#fef2f2;box-shadow:0 0 0 1px #fecaca}
 </style>
 {{if hasGridTP .Form}}
 <link rel="stylesheet" href="/vendor/slickgrid/slick.grid.css">

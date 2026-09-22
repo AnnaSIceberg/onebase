@@ -363,6 +363,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         }
       }
     });
+    // A form handler may change a choice_filter source without dispatching a
+    // native change event. Re-scan fingerprints after the whole response has
+    // been applied, so dependants see the final source and selected values.
+    if (typeof window.obRefreshChoiceFilters === 'function') {
+      window.obRefreshChoiceFilters();
+    }
   }
   // applyChoiceList — заполняет <select> элемента ПолеСписка динамическим списком
   // значений из ответа НачалоВыбора (choiceList). Текущее значение сохраняется,

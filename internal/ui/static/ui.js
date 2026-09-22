@@ -3356,16 +3356,20 @@ function openItemPicker(payload, elementName, eventContext) {
   });
 }
 
-function obRefChoiceQuery(sel) {
-  if (!sel) return '';
+/* Live refresh for managed-form choice_filter controls (plan 170/C).
+   The server remains authoritative: the browser only snapshots declared
+   source values and never reconstructs field/operator predicates. */
+function obRefChoiceSnapshot(sel) {
+  if (!sel) return null;
   var raw = sel.getAttribute('data-ref-choice-context') || '';
-  if (!raw) return '';
+  if (!raw) return null;
   var ctx;
-  try { ctx = JSON.parse(raw); } catch (e) { return '&form_entity='; }
-  if (!ctx || !ctx.form_entity || !ctx.form || !ctx.element) return '&form_entity=';
+  try { ctx = JSON.parse(raw); } catch (e) { return null; }
+  if (!ctx || !ctx.form_entity || !ctx.form || !ctx.element) return null;
   var values = {};
   var declared = ctx.sources || {};
-  Object.keys(declared).forEach(function (path) {
+  var paths = Object.keys(declared).sort();
+  paths.forEach(function (path) {
     var name = declared[path];
     var control = null;
     if (sel.form && sel.form.elements && name) control = sel.form.elements.namedItem(name);
@@ -3380,8 +3384,204 @@ function obRefChoiceQuery(sel) {
     '&element=' + encodeURIComponent(ctx.element) +
     '&sources=' + encodeURIComponent(JSON.stringify(values));
   if (sel.value) query += '&selected_id=' + encodeURIComponent(sel.value);
-  return query;
+  var fingerprintParts = paths.map(function (path) { return [path, values[path]]; });
+  return {
+    query: query,
+    fingerprint: JSON.stringify([ctx.form_entity, ctx.form, ctx.element, fingerprintParts]),
+    selected: sel.value == null ? '' : String(sel.value)
+  };
 }
+
+function obRefChoiceQuery(sel) {
+  if (!sel || !sel.getAttribute || !sel.getAttribute('data-ref-choice-context')) return '';
+  var snapshot = obRefChoiceSnapshot(sel);
+  // A malformed opt-in context must fail closed at the endpoint, not silently
+  // turn into the legacy unfiltered request.
+  return snapshot ? snapshot.query : '&form_entity=';
+}
+
+function obChoiceSelectIsLive(sel) {
+  if (!sel) return false;
+  if (typeof sel.isConnected === 'boolean') return sel.isConnected;
+  return !document.documentElement || !document.documentElement.contains || document.documentElement.contains(sel);
+}
+
+function obChoiceDispatchChange(sel) {
+  try {
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  } catch (e) {
+    try {
+      var ev = document.createEvent('Event');
+      ev.initEvent('change', true, false);
+      sel.dispatchEvent(ev);
+    } catch (_) {}
+  }
+}
+
+function obChoiceApplyResponse(sel, data, selectedAtRequest) {
+  var rows = data && Array.isArray(data.items) ? data.items : [];
+  var selectedAllowed = null;
+  if (selectedAtRequest) {
+    if (!data || typeof data.selected_allowed !== 'boolean') {
+      throw new Error('choice_filter response has no selected_allowed');
+    }
+    selectedAllowed = data.selected_allowed;
+  }
+
+  var blankLabel = '— выбрать —';
+  var selectedLabel = selectedAtRequest;
+  for (var i = 0; i < sel.options.length; i++) {
+    var current = sel.options[i];
+    if (!current.value && current.textContent) blankLabel = current.textContent;
+    if (String(current.value) === selectedAtRequest) selectedLabel = current.textContent || selectedAtRequest;
+  }
+  while (sel.options.length) sel.remove(0);
+  var blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = blankLabel;
+  sel.appendChild(blank);
+
+  var selectedPresent = false;
+  rows.forEach(function (row) {
+    var id = row && row.id != null ? String(row.id) : '';
+    if (!id) return;
+    var opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = String((row && row._label) || id);
+    if (id === selectedAtRequest) selectedPresent = true;
+    sel.appendChild(opt);
+  });
+  if (selectedAtRequest && selectedAllowed === true && !selectedPresent) {
+    // The exact server-side EXISTS is independent of the first page. Keep the
+    // current value even when its row is not present in items.
+    var selected = document.createElement('option');
+    selected.value = selectedAtRequest;
+    selected.textContent = selectedLabel || selectedAtRequest;
+    sel.appendChild(selected);
+  }
+
+  var cleared = !!selectedAtRequest && selectedAllowed === false;
+  sel.value = cleared ? '' : selectedAtRequest;
+  sel.removeAttribute('data-ob-choice-error');
+  sel.removeAttribute('data-ob-choice-loading');
+  sel.removeAttribute('aria-busy');
+  if (cleared) obChoiceDispatchChange(sel);
+}
+
+function obChoiceRefreshState(sel) {
+  if (!sel._obChoiceRefreshState) {
+    sel._obChoiceRefreshState = {
+      seq: 0,
+      appliedFingerprint: '',
+      pendingFingerprint: '',
+      pendingSelected: '',
+      controller: null,
+      promise: null
+    };
+  }
+  return sel._obChoiceRefreshState;
+}
+
+function obRefreshChoiceSelect(sel, force) {
+  if (!sel || !sel.getAttribute || !sel.getAttribute('data-ref-choice-context') || !window.fetch) {
+    return Promise.resolve();
+  }
+  var snapshot = obRefChoiceSnapshot(sel);
+  if (!snapshot) return Promise.resolve();
+  var state = obChoiceRefreshState(sel);
+
+  if (state.pendingFingerprint &&
+      (state.pendingFingerprint !== snapshot.fingerprint || state.pendingSelected !== snapshot.selected || force)) {
+    if (state.controller) state.controller.abort();
+    state.seq++;
+    state.pendingFingerprint = '';
+    state.pendingSelected = '';
+    state.controller = null;
+    state.promise = null;
+  }
+  if (!force && state.appliedFingerprint === snapshot.fingerprint) return Promise.resolve();
+  if (!force && state.pendingFingerprint === snapshot.fingerprint && state.pendingSelected === snapshot.selected) {
+    return state.promise || Promise.resolve();
+  }
+
+  var seq = ++state.seq;
+  var controller = window.AbortController ? new window.AbortController() : null;
+  state.controller = controller;
+  state.pendingFingerprint = snapshot.fingerprint;
+  state.pendingSelected = snapshot.selected;
+  sel.setAttribute('data-ob-choice-loading', '1');
+  sel.setAttribute('aria-busy', 'true');
+  sel.removeAttribute('data-ob-choice-error');
+
+  var refEntity = sel.getAttribute('data-ref-entity') || '';
+  var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + snapshot.query;
+  var options = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+  if (controller) options.signal = controller.signal;
+  state.promise = window.fetch(url, options)
+    .then(function (resp) {
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      return resp.json();
+    })
+    .then(function (data) {
+      if (seq !== state.seq || !obChoiceSelectIsLive(sel)) return;
+      var current = obRefChoiceSnapshot(sel);
+      if (!current || current.fingerprint !== snapshot.fingerprint || current.selected !== snapshot.selected) {
+        state.pendingFingerprint = '';
+        state.pendingSelected = '';
+        state.controller = null;
+        state.promise = null;
+        return obRefreshChoiceSelect(sel, false);
+      }
+      state.appliedFingerprint = snapshot.fingerprint;
+      state.pendingFingerprint = '';
+      state.pendingSelected = '';
+      state.controller = null;
+      state.promise = null;
+      obChoiceApplyResponse(sel, data, snapshot.selected);
+    })
+    .catch(function (err) {
+      if (seq !== state.seq) return;
+      state.pendingFingerprint = '';
+      state.pendingSelected = '';
+      state.controller = null;
+      state.promise = null;
+      var current = obRefChoiceSnapshot(sel);
+      if (!current || current.fingerprint !== snapshot.fingerprint) {
+        return obRefreshChoiceSelect(sel, false);
+      }
+      if (err && err.name === 'AbortError') return;
+      // Fail closed: keep the previously rendered options and current value.
+      // The red state is visible, while no local full-list fallback is used.
+      sel.removeAttribute('data-ob-choice-loading');
+      sel.removeAttribute('aria-busy');
+      sel.setAttribute('data-ob-choice-error', '1');
+    });
+
+  var picker = document.getElementById('_ref-picker-modal');
+  if (picker && window._rpTarget === sel && typeof picker._obChoiceReload === 'function') {
+    picker._obChoiceReload();
+  }
+  return state.promise;
+}
+
+window.obRefreshChoiceFilters = function () {
+  if (!document.querySelectorAll) return Promise.resolve([]);
+  var selects = document.querySelectorAll('select[data-ref-choice-context]');
+  var pending = [];
+  for (var i = 0; i < selects.length; i++) pending.push(obRefreshChoiceSelect(selects[i], false));
+  return Promise.all(pending);
+};
+
+function obInitChoiceFilterRefresh() {
+  if (!document.querySelectorAll) return;
+  var selects = document.querySelectorAll('select[data-ref-choice-context]');
+  for (var i = 0; i < selects.length; i++) {
+    var snapshot = obRefChoiceSnapshot(selects[i]);
+    if (snapshot) obChoiceRefreshState(selects[i]).appliedFingerprint = snapshot.fingerprint;
+  }
+  document.addEventListener('change', function () { window.obRefreshChoiceFilters(); });
+}
+obReady(obInitChoiceFilterRefresh);
 
 function openRefPicker(selOrId) {
   var sel = (typeof selOrId === 'string') ? document.getElementById(selOrId) : selOrId;
@@ -3399,7 +3599,10 @@ function openRefPicker(selOrId) {
     }
   }
   var old = document.getElementById('_ref-picker-modal');
-  if (old) old.remove();
+  if (old) {
+    if (typeof old._obClose === 'function') old._obClose();
+    else old.remove();
+  }
   var modal = document.createElement('div');
   modal.id = '_ref-picker-modal';
   modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
@@ -3500,6 +3703,7 @@ function openRefPicker(selOrId) {
     } catch (e) {}
   }
   var requestSeq = 0;
+  var requestController = null;
   var searchTimer = null;
   function loadServer(q) {
     if (!refEntity || refEntity === '_users' || !window.fetch) {
@@ -3507,16 +3711,26 @@ function openRefPicker(selOrId) {
       return;
     }
     var seq = ++requestSeq;
+    if (requestController) requestController.abort();
+    requestController = window.AbortController ? new window.AbortController() : null;
     if (status) status.textContent = 'Загрузка...';
-    var choiceQuery = obRefChoiceQuery(sel);
+    var choiceSnapshot = obRefChoiceSnapshot(sel);
+    var choiceQuery = choiceSnapshot ? choiceSnapshot.query : obRefChoiceQuery(sel);
+    var choiceFingerprint = choiceSnapshot ? choiceSnapshot.fingerprint : '';
+    var choiceSelected = sel.value == null ? '' : String(sel.value);
     var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + encodeURIComponent(q || '') + choiceQuery;
-    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+    var fetchOptions = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+    if (requestController) fetchOptions.signal = requestController.signal;
+    fetch(url, fetchOptions)
       .then(function (resp) {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         return resp.json();
       })
       .then(function (data) {
-        if (seq !== requestSeq) return;
+        var currentSnapshot = obRefChoiceSnapshot(sel);
+        if (seq !== requestSeq || !obChoiceSelectIsLive(sel) || !obChoiceSelectIsLive(modal)) return;
+        if (choiceSnapshot && (!currentSnapshot || currentSnapshot.fingerprint !== choiceFingerprint ||
+            (sel.value == null ? '' : String(sel.value)) !== choiceSelected)) return;
         var keep = rpActiveId();
         var rows = (data && data.items) || [];
         var opts = rows.map(function (row) {
@@ -3529,8 +3743,9 @@ function openRefPicker(selOrId) {
           status.textContent = total > opts.length ? 'Показано ' + opts.length + ' из ' + total : '';
         }
       })
-      .catch(function () {
+      .catch(function (err) {
         if (seq !== requestSeq) return;
+        if (err && err.name === 'AbortError') return;
         // A form-scoped picker is server-authoritative. Falling back to an
         // untrusted or stale full list would bypass choice_filter; retain the
         // already rendered filtered options and surface the failure instead.
@@ -3543,6 +3758,14 @@ function openRefPicker(selOrId) {
   }
   window._rpTarget = sel;
   var search = document.getElementById('_rp-search');
+  function closePicker() {
+    requestSeq++;
+    if (requestController) requestController.abort();
+    if (window._rpTarget === sel) window._rpTarget = null;
+    modal.remove();
+  }
+  modal._obClose = closePicker;
+  modal._obChoiceReload = function () { loadServer(search ? search.value : ''); };
   search.focus();
   search.addEventListener('input', function () {
     var q = this.value;
@@ -3563,12 +3786,12 @@ function openRefPicker(selOrId) {
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (rpActive >= 0 && items[rpActive]) { selectItem(items[rpActive]); modal.remove(); }
+      if (rpActive >= 0 && items[rpActive]) { selectItem(items[rpActive]); closePicker(); }
       return;
     }
     // Esc закрываем здесь же: глобальный обработчик живёт в managed.js, а форма
     // выбора открывается и на автогенерируемых страницах, где его нет.
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); modal.remove(); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePicker(); }
   });
   renderItems(localOpts);
   loadServer('');
@@ -3576,16 +3799,16 @@ function openRefPicker(selOrId) {
     var item = e.target.closest('._rp-item');
     if (!item) return;
     selectItem(item);
-    modal.remove();
+    closePicker();
   });
   var createBtn = document.getElementById('_rp-create');
   if (createBtn) {
     createBtn.addEventListener('click', function () {
-      modal.remove();
+      closePicker();
       openRefCreate(sel, refEntity);
     });
   }
-  document.getElementById('_rp-cancel').addEventListener('click', function () { modal.remove(); });
+  document.getElementById('_rp-cancel').addEventListener('click', closePicker);
 }
 
 function openRefCurrent(selOrId) {
