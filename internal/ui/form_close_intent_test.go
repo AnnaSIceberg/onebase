@@ -34,7 +34,8 @@ func closeIntentBody(intentID, reason, name string) url.Values {
 
 func executeFormCloseIntent(t *testing.T, s *Server, ent *metadata.Entity, body url.Values) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/ui/catalog/"+ent.Name+"/form-close-intent", strings.NewReader(body.Encode()))
+	kind := strings.ToLower(string(ent.Kind))
+	req := httptest.NewRequest(http.MethodPost, "/ui/"+kind+"/"+ent.Name+"/form-close-intent", strings.NewReader(body.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
 	rec := httptest.NewRecorder()
 	router := chi.NewRouter()
@@ -186,6 +187,7 @@ func TestManagedFormCloseIntentReplayAndConflict(t *testing.T) {
 	body := closeIntentBody(intentID, "programmatic", "A")
 	body.Set("_id", id.String())
 	body.Set("_version", "1")
+	body.Set("_close_mode", "save")
 	first := executeFormCloseIntent(t, srv, ent, body)
 	second := executeFormCloseIntent(t, srv, ent, body)
 	if first.Code != http.StatusOK || second.Code != http.StatusOK || first.Body.String() != second.Body.String() {
@@ -195,13 +197,15 @@ func TestManagedFormCloseIntentReplayAndConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := row["_version"]; got != int64(2) {
-		t.Fatalf("replayed handler executed more than once: version=%v row=%v", got, row)
+	if got := row["_version"]; got != int64(3) {
+		t.Fatalf("replayed canonical save/BeforeClose executed more than once: version=%v row=%v", got, row)
 	}
 
-	changed := closeIntentBody(intentID, "programmatic", "B")
+	// The only changed payload field is the mode. It is part of the replay
+	// fingerprint and must conflict before either save or BeforeClose runs.
+	changed := closeIntentBody(intentID, "programmatic", "A")
 	changed.Set("_id", id.String())
-	changed.Set("_version", "2")
+	changed.Set("_version", "1")
 	conflict := executeFormCloseIntent(t, srv, ent, changed)
 	resp := decodeCloseIntentResponse(t, conflict)
 	if conflict.Code != http.StatusConflict || resp.OK || resp.Close == nil || resp.Close.Allowed {
@@ -485,6 +489,56 @@ func TestManagedFormCloseIntentReplayBodyLimits(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestFormCloseFailureBoundsLabelAndPreservesSavedIdentity(t *testing.T) {
+	inv := &formCloseInvocation{
+		intentID: uuid.NewString(), saved: true, savedID: uuid.NewString(),
+		savedLabel: strings.Repeat("очень длинная подпись", 1000), version: 7,
+		formURL: "/ui/catalog/Test/" + uuid.NewString(),
+	}
+	body := marshalFormCloseFailure(inv, 0, "failure")
+	if len(body) > 2048 {
+		t.Fatalf("minimal failure is not bounded: %d bytes", len(body))
+	}
+	var response formEventResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Close == nil || response.Close.IntentID != inv.intentID || !response.Close.Saved ||
+		response.Close.Allowed || response.SavedID != inv.savedID || response.Version != 7 {
+		t.Fatalf("bounded failure lost durable identity: %+v", response)
+	}
+}
+
+func TestCaptureFormClosePanicReturnsExactStoredReplay(t *testing.T) {
+	srv := &Server{closeIntents: newFormCloseReplayLedgerWithLimits(4096, 8192)}
+	var hash [sha256.Size]byte
+	hash[0] = 1
+	reservation, _, err := srv.closeIntents.reserve(context.Background(), "user", "key", hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := &formCloseInvocation{
+		intentID: uuid.NewString(), saved: true, savedID: uuid.NewString(), version: 3,
+		reservation: reservation,
+	}
+	first := httptest.NewRecorder()
+	srv.captureFormCloseResponse(first, httptest.NewRequest(http.MethodPost, "/close", nil), inv, func(http.ResponseWriter) {
+		panic("boom")
+	})
+	_, replay, err := srv.closeIntents.reserve(context.Background(), "user", "key", hash)
+	if err != nil || replay == nil {
+		t.Fatalf("panic result missing from replay ledger: replay=%v err=%v", replay, err)
+	}
+	if first.Code != replay.status || first.Body.String() != string(replay.body) {
+		t.Fatalf("panic first response differs from exact replay: first=%d/%s replay=%d/%s",
+			first.Code, first.Body.String(), replay.status, replay.body)
+	}
+	resp := decodeCloseIntentResponse(t, first)
+	if resp.Close == nil || !resp.Close.Saved || resp.SavedID != inv.savedID || resp.Version != 3 {
+		t.Fatalf("panic response lost saved identity: %+v", resp)
+	}
 }
 
 func TestFormCloseReplayLedgerWaitsForConcurrentExactRequest(t *testing.T) {

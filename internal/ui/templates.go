@@ -635,6 +635,15 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return !*a.Visible
 		},
+		// formActionVisible — видимость стандартного действия managed-формы.
+		// Отсутствующий ключ и visible:nil сохраняют платформенное умолчание.
+		"formActionVisible": func(form *metadata.FormModule, name string) bool {
+			if form == nil || form.Actions == nil {
+				return true
+			}
+			a, ok := form.Actions[name]
+			return !ok || a == nil || a.Visible == nil || *a.Visible
+		},
 		// tablePartByName ищет metadata.TablePart в Entity по имени.
 		// Возвращает указатель на копию (или nil) — нужно managed-шаблону
 		// для рендера ТабличнойЧасти с реальными колонками.
@@ -1247,6 +1256,7 @@ const tplHead = `
 <title>{{if .Cfg.AppName}}{{.Cfg.AppName}}{{else}}onebase{{end}}</title>
 <script type="application/json" id="ob-ui-messages">{{jsJSON (dict
   "closeNotConfirmed" (t (or $.Lang "ru") "Форма не закрыта: сервер не подтвердил закрытие.")
+  "unsavedClose" (t (or $.Lang "ru") "Данные были изменены и не записаны. Закрыть форму?")
 )}}</script>
 <script src="/static/ui.js"></script>
 <style>

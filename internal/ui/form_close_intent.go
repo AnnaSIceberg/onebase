@@ -55,11 +55,16 @@ type formCloseDecision struct {
 }
 
 type formCloseInvocation struct {
-	processor bool
-	intentID  string
-	reason    string
-	mode      string
-	cancelled bool
+	processor  bool
+	intentID   string
+	reason     string
+	mode       string
+	cancelled  bool
+	saved      bool
+	savedID    string
+	savedLabel string
+	version    int64
+	formURL    string
 
 	reservation *formCloseReservation
 	replay      *formCloseReplayResult
@@ -163,11 +168,12 @@ func (s *Server) prepareFormCloseInvocation(r *http.Request, inv *formCloseInvoc
 		return &formCloseHTTPError{status: http.StatusBadRequest, msg: "некорректная _close_reason"}
 	}
 	inv.mode = strings.TrimSpace(value("_close_mode"))
-	// Slice A closes without saving. Save/post modes are introduced by the next
-	// Plan 181 slice together with the three-way dirty dialog and shared save
-	// service; accepting them early would silently discard data.
-	if inv.mode != "discard" {
-		return &formCloseHTTPError{status: http.StatusBadRequest, msg: "режим закрытия пока поддерживает только discard"}
+	allowedMode := inv.mode == "discard"
+	if !inv.processor {
+		allowedMode = allowedMode || inv.mode == "save" || inv.mode == "post" || inv.mode == "save_and_select"
+	}
+	if !allowedMode {
+		return &formCloseHTTPError{status: http.StatusBadRequest, msg: "некорректная _close_mode"}
 	}
 
 	payloadHash, err := formCloseRequestFingerprint(r)
@@ -571,15 +577,19 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 	// recovery middleware, but publish a fail-closed terminal replay first.
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			if inv.reservation != nil {
-				body := []byte(`{"ok":false,"error":"внутренняя ошибка проверки закрытия формы","close":{"intentId":"` + inv.intentID + `","allowed":false,"saved":false}}` + "\n")
-				inv.reservation.complete(formCloseReplayResult{
-					status: http.StatusInternalServerError,
-					header: http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
-					body:   body,
-				})
+			body := marshalFormCloseFailure(inv, inv.version, "внутренняя ошибка проверки закрытия формы")
+			result := formCloseReplayResult{
+				status: http.StatusInternalServerError,
+				header: http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
+				body:   body,
 			}
-			panic(recovered)
+			if inv.reservation != nil {
+				inv.reservation.complete(result)
+			}
+			// The captured writer has not reached the real client yet. Return the
+			// same correlated failure that was stored for an exact retry instead
+			// of re-panicking into an outer plain-text recovery response.
+			writeFormCloseReplay(w, result)
 		}
 	}()
 	run(captured)
@@ -597,25 +607,42 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 		status = http.StatusInternalServerError
 		response = formEventResponse{Error: "внутренняя ошибка ответа закрытия формы"}
 	}
+	// BeforeClose may persist a previously-new object even in discard mode.
+	// Treat the handler's canonical identity as a saved result so a concurrent
+	// client edit adopts it and a retry updates that row rather than inserting
+	// a duplicate.
+	if !inv.saved && response.SavedID != "" {
+		inv.saved = true
+		inv.savedID = response.SavedID
+		inv.version = response.Version
+	}
 	response.Close = &formCloseDecision{
 		IntentID: inv.intentID,
 		Allowed:  response.OK && !inv.cancelled,
-		Saved:    false,
+		Saved:    inv.saved,
+		FormURL:  inv.formURL,
+	}
+	if inv.saved {
+		response.SavedID = inv.savedID
+		response.SavedLabel = inv.savedLabel
+		// BeforeClose runs after the canonical save and may itself call
+		// Объект.Записать(), advancing the optimistic version again. Preserve the
+		// handler's final version; inv.version is only the lower-bound captured
+		// immediately after the first save.
+		if response.Version < inv.version {
+			response.Version = inv.version
+		}
 	}
 	body, err := json.Marshal(response)
 	if err != nil {
 		status = http.StatusInternalServerError
-		body = []byte(`{"ok":false,"error":"внутренняя ошибка ответа закрытия формы"}`)
+		body = marshalFormCloseFailure(inv, response.Version, "внутренняя ошибка ответа закрытия формы")
+	} else {
+		body = append(body, '\n')
 	}
-	body = append(body, '\n')
 	if int64(len(body)) > ledger.maxEntryBytes {
 		status = http.StatusInternalServerError
-		response = formEventResponse{
-			Error: "ответ проверки закрытия формы превысил допустимый размер",
-			Close: &formCloseDecision{IntentID: inv.intentID, Allowed: false, Saved: false},
-		}
-		body, _ = json.Marshal(response)
-		body = append(body, '\n')
+		body = marshalFormCloseFailure(inv, response.Version, "ответ проверки закрытия формы превысил допустимый размер")
 	}
 	header := captured.header.Clone()
 	header.Set("Content-Type", "application/json; charset=utf-8")
@@ -624,6 +651,37 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 		inv.reservation.complete(result)
 	}
 	writeFormCloseReplay(w, result)
+}
+
+func marshalFormCloseFailure(inv *formCloseInvocation, version int64, message string) []byte {
+	response := formEventResponse{Error: message}
+	decision := &formCloseDecision{Allowed: false}
+	if inv != nil {
+		decision.IntentID = inv.intentID
+		decision.Saved = inv.saved
+		decision.FormURL = inv.formURL
+		if inv.saved {
+			response.SavedID = inv.savedID
+			// A failure never selects the popup value. Keep the durable identity
+			// bounded even when the display field itself is enormous.
+			if len(inv.savedLabel) <= 1024 {
+				response.SavedLabel = inv.savedLabel
+			}
+			if version < inv.version {
+				version = inv.version
+			}
+			response.Version = version
+			response.Dirty = boolPtr(true)
+		}
+	}
+	response.Close = decision
+	body, err := json.Marshal(response)
+	if err != nil {
+		// The response above contains only scalar values and cannot normally
+		// fail. Keep a correlated last resort for defensive completeness.
+		body = []byte(`{"ok":false,"error":"internal close response error","close":{"intentId":"` + decision.IntentID + `","allowed":false,"saved":false}}`)
+	}
+	return append(body, '\n')
 }
 
 func writeFormCloseReplay(w http.ResponseWriter, result formCloseReplayResult) {

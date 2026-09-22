@@ -754,7 +754,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         var btn = document.createElement('button');
         btn.type = 'button'; btn.className = 'del-btn'; btn.textContent = '×';
         btn.disabled = readOnly;
-        if (!readOnly) btn.onclick = function(){ tr.remove(); };
+        if (!readOnly) btn.setAttribute('data-ob-remove-row', '');
         tdDel.appendChild(btn);
         tr.appendChild(tdDel);
         tbody.appendChild(tr);
@@ -975,6 +975,10 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         openItemPicker(data.pickerData, elementName, extraParams || null);
         return;
       }
+      // dirty=true is an authoritative safety signal and must survive a
+      // partially failing renderer. Programmatic response application does
+      // not emit input/change, so raise it before touching mutable DOM state.
+      if (data.dirty === true) window.obSetManagedFormDirty(true);
       if (Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
       applyElementStates(data.elementStates);
       window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
@@ -998,7 +1002,6 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
             }
           } catch (_) {}
         }
-        window._obFormDirty = false;
       }
       // Обработчик, записавший объект, поднял его версию. Форма держит версию,
       // прочитанную при отрисовке, — без обновления следующая «Записать»
@@ -1013,6 +1016,10 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         }
         verInput.value = String(data.version);
       }
+	  // Server events repaint controls programmatically and therefore do not
+	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
+	  // it only when this response proves a successful Object.Write.
+	  if (data.dirty === false && (data.savedId || data.version)) window.obSetManagedFormDirty(false);
       (data.messages || []).forEach(m => flash(m, 'ok'));
       if (data.error) flash(data.error, 'err');
     } catch (e) {
@@ -1033,6 +1040,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   var CLOSE_TIMEOUT_MS = Number(cfg.closeTimeoutMs || 30000);
   var CLOSE_MESSAGES = cfg.closeMessages || {};
   var closePending = null;
+  // Embedded OK/post first crosses a postMessage boundary before the parent
+  // asks this child for its close decision. Keep native submit fail-closed in
+  // that handoff window as well as while the actual controller is running.
+  var closeHandoffPending = false;
+  window.obBeginManagedCloseHandoff = function(){ closeHandoffPending = true; };
+  window.obCancelManagedCloseHandoff = function(){ closeHandoffPending = false; };
   // Reuse an intent only while its terminal result is unknown. Once a
   // correlated terminal response arrives, the server has recorded it in the
   // replay ledger and another explicit close attempt needs a fresh UUID.
@@ -1052,7 +1065,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     });
   }
 
-  async function closeSnapshotBody(reason){
+  async function closeSnapshotBody(reason, mode){
     if (window.obGridSync && window.obGridSync() === false) return null;
     var form = document.getElementById('main-form');
     if (!form) return new URLSearchParams();
@@ -1077,9 +1090,77 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       else body.append(k, v);
     });
     body.set(serviceField('_close_reason'), reason);
-    body.set(serviceField('_close_mode'), 'discard');
+    body.set(serviceField('_close_mode'), mode || 'discard');
     return body;
   }
+
+  function closeChoice(){
+    if (!window._obFormDirty) return Promise.resolve('discard');
+    var existing = document.getElementById('ob-managed-close-confirm');
+    if (existing && existing._obChoicePromise) return existing._obChoicePromise;
+    var overlay = document.createElement('div');
+    overlay.id = 'ob-managed-close-confirm';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'ob-managed-close-confirm-title');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:12000;display:flex;align-items:center;justify-content:center;padding:16px';
+    var box = document.createElement('div');
+    box.style.cssText = 'width:min(420px,100%);background:#fff;border-radius:12px;box-shadow:0 18px 50px rgba(15,23,42,.28);padding:22px';
+    var title = document.createElement('div');
+    title.id = 'ob-managed-close-confirm-title';
+    title.textContent = closeMessage('dirtyTitle', 'Данные были изменены.');
+    title.style.cssText = 'font-size:16px;font-weight:650;color:#0f172a;margin-bottom:6px';
+    var question = document.createElement('div');
+    var processorForm = cfg.kind === 'processor';
+    question.textContent = processorForm
+      ? closeMessage('processorQuestion', 'Закрыть без сохранения?')
+      : closeMessage('dirtyQuestion', 'Сохранить изменения?');
+    question.style.cssText = 'font-size:14px;color:#475569;margin-bottom:20px';
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap';
+    function button(label, value, primary){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.setAttribute('data-ob-close-choice', value);
+      btn.style.cssText = primary
+        ? 'border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:7px;padding:7px 16px;cursor:pointer'
+        : 'border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:7px;padding:7px 16px;cursor:pointer';
+      return btn;
+    }
+	var yes = processorForm ? null : button(closeMessage('yes', 'Да'), 'save', true);
+    var no = button(processorForm ? closeMessage('processorDiscard', 'Закрыть') : closeMessage('no', 'Нет'), 'discard', processorForm);
+    var cancel = button(closeMessage('cancel', 'Отмена'), 'cancel', false);
+	if (yes) row.appendChild(yes);
+	row.appendChild(no); row.appendChild(cancel);
+    box.appendChild(title); box.appendChild(question); box.appendChild(row);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+    overlay._obChoicePromise = new Promise(function(resolve){
+      var done = false;
+      function finish(value){
+        if (done) return;
+        done = true;
+        overlay.remove();
+        resolve(value);
+      }
+      // The document-level Escape handler runs in capture phase, before this
+      // dialog can see the key itself. Expose the same cancel operation so a
+      // single Escape only dismisses the prompt and never starts another
+      // close request.
+      overlay._obClose = function(){ finish('cancel'); };
+      row.addEventListener('click', function(e){
+        var target = e.target && e.target.closest ? e.target.closest('[data-ob-close-choice]') : null;
+        if (target) finish(target.getAttribute('data-ob-close-choice') || 'cancel');
+      });
+      overlay.addEventListener('keydown', function(e){
+        if (e.key !== 'Escape' && e.keyCode !== 27) return;
+        e.preventDefault(); e.stopPropagation(); finish('cancel');
+      });
+      cancel.focus();
+    });
+    return overlay._obChoicePromise;
+  }
+  window.obManagedCloseChoice = closeChoice;
 
   function closeSnapshotKey(body){
     var keyBody = new URLSearchParams(body.toString());
@@ -1088,14 +1169,57 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     return keyBody.toString();
   }
 
-  function applyCloseResponse(data){
+  function closeBodyEntries(body, predicate){
+    var values = [];
+    if (!body || typeof body.forEach !== 'function') return values;
+    body.forEach(function(value, key){
+      if (predicate(String(key).toLowerCase())) values.push(String(key).toLowerCase() + '=' + String(value));
+    });
+    values.sort();
+    return values.join('\n');
+  }
+
+  function closeFieldUnchanged(before, current, name){
+    var want = String(name || '').toLowerCase();
+    return closeBodyEntries(before, function(key){ return key === want; }) ===
+      closeBodyEntries(current, function(key){ return key === want; });
+  }
+
+  function closeTableUnchanged(before, current, kind, name){
+    var prefix = String(kind || '').toLowerCase() + '.' + String(name || '').toLowerCase();
+    var rowPrefix = prefix + '.';
+    var jsonName = kind === 'tp' ? 'tp_json.' + String(name || '').toLowerCase() : '';
+    var matches = function(key){ return key === jsonName || key.indexOf(rowPrefix) === 0; };
+    return closeBodyEntries(before, matches) === closeBodyEntries(current, matches);
+  }
+
+  function filterCloseMap(values, keep){
+    if (!values || typeof values !== 'object') return values;
+    var filtered = {};
+    Object.keys(values).forEach(function(name){ if (keep(name)) filtered[name] = values[name]; });
+    return filtered;
+  }
+
+  function setManagedFormDirty(dirty){
+    dirty = !!dirty;
+    window._obFormDirty = dirty;
+    if (typeof _obBaseTitle === 'string' && _obBaseTitle) {
+      document.title = dirty ? ('● ' + _obBaseTitle) : _obBaseTitle;
+    }
+    if (typeof window.obSetEmbeddedDirty === 'function') {
+      window.obSetEmbeddedDirty(dirty);
+      return;
+    }
+    try {
+      if (window.__obEmbedded && window.parent && window.parent !== window) {
+        window.parent.postMessage({source: 'obDirty', dirty: dirty}, window.location.origin);
+      }
+    } catch (_) {}
+  }
+  window.obSetManagedFormDirty = setManagedFormDirty;
+
+  function applySavedIdentity(data){
     if (!data || typeof data !== 'object') return;
-    if (Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
-    applyElementStates(data.elementStates);
-    window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
-    window.applyTableParts(data.tableparts);
-    applyValues(data.values, data.refOptions);
-    applyFormTables(data.formTables);
     var form = document.getElementById('main-form');
     if (data.savedId && !DOC_ID) {
       DOC_ID = String(data.savedId);
@@ -1103,6 +1227,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       if (idInput) idInput.value = DOC_ID;
       if (window.history && history.replaceState) {
         var savedURL = location.pathname.replace(/\/new$/, '/' + DOC_ID);
+		// A denied/failed save-and-select keeps the iframe open. Preserve its
+		// popup identity so a refresh still renders the specialized
+		// Save-and-select/Cancel controls instead of turning it into a normal card.
+		if (location.search && new URLSearchParams(location.search).get('_popup') === '1') {
+		  savedURL += '?_popup=1';
+		}
         history.replaceState(null, '', savedURL);
         try {
           if (window.parent && window.parent !== window) {
@@ -1110,7 +1240,6 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
           }
         } catch (_) {}
       }
-      window._obFormDirty = false;
     }
     if (data.version && form) {
       var verInput = form.querySelector('[name="_version"]');
@@ -1122,25 +1251,84 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       }
       verInput.value = String(data.version);
     }
+  }
+
+  function applyCloseResponse(data, before, current){
+    if (!data || typeof data !== 'object') return;
+	var merging = !!(before && current);
+	var values = merging ? filterCloseMap(data.values, function(name){
+	  return closeFieldUnchanged(before, current, name);
+	}) : data.values;
+	var tableparts = merging ? filterCloseMap(data.tableparts, function(name){
+	  return closeTableUnchanged(before, current, 'tp', name);
+	}) : data.tableparts;
+	var formTables = merging ? filterCloseMap(data.formTables, function(name){
+	  return closeTableUnchanged(before, current, 'vt', name);
+	}) : data.formTables;
+	var refOptions = merging ? filterCloseMap(data.refOptions, function(name){
+	  return closeFieldUnchanged(before, current, name);
+	}) : data.refOptions;
+	var tpRefOptions = merging ? filterCloseMap(data.tpRefOptions, function(name){
+	  return closeTableUnchanged(before, current, 'tp', name);
+	}) : data.tpRefOptions;
+	// Derived visibility/readonly/CSS was calculated for the old snapshot and
+	// cannot be merged safely after concurrent input. Data and reference
+	// options are merged per unchanged field/table below; derived state waits
+	// for the retry based on the current snapshot.
+	if (!merging && Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
+	if (!merging) applyElementStates(data.elementStates);
+	window.obManagedApplyTablePartRefOptions(tpRefOptions);
+	window.applyTableParts(tableparts);
+	applyValues(values, refOptions);
+	applyFormTables(formTables);
     (data.messages || []).forEach(function(message){ flash(message, 'ok'); });
     if (data.error) flash(data.error, 'err');
   }
 
   window.obRequestFormClose = function(options){
     options = options || {};
-    if (closePending) return closePending;
+    if (closePending) {
+      closeHandoffPending = false;
+      return closePending;
+    }
     var reason = String(options.reason || 'close');
     closePending = (async function(){
       if (!CLOSE_URL) {
         flash(closeMessage('controllerUnavailable', 'Проверка закрытия недоступна. Форма оставлена открытой.'), 'err');
         return {allowed: false, intentId: '', error: 'controller-not-ready'};
       }
-      var body = await closeSnapshotBody(reason);
+      var mode = options.mode ? String(options.mode) : await closeChoice();
+      if (mode === 'cancel') return {allowed: false, intentId: '', error: 'user-cancelled'};
+      var body = await closeSnapshotBody(reason, mode);
       if (!body) return {allowed: false, intentId: '', error: 'form-state'};
       var snapshotKey = closeSnapshotKey(body);
-      var intentID = retryableClose && retryableClose.key === snapshotKey
-        ? retryableClose.intentId : freshCloseIntentID();
+	  var requestedReason = reason;
+	  var requestedMode = mode;
+	  var requestedSnapshotKey = snapshotKey;
+      // A transport-unknown save may already have committed. Recover that
+      // exact old payload/UUID before processing a newer edited snapshot;
+      // otherwise a new-form retry could insert a duplicate.
+      var pendingRetry = retryableClose;
+	  var replayingPrior = !!(pendingRetry && pendingRetry.body &&
+		(pendingRetry.key !== requestedSnapshotKey || pendingRetry.mode !== requestedMode));
+      var intentID;
+      if (pendingRetry && pendingRetry.body) {
+        body = new URLSearchParams(pendingRetry.body);
+        snapshotKey = pendingRetry.key;
+        intentID = pendingRetry.intentId;
+        mode = pendingRetry.mode;
+        reason = pendingRetry.reason;
+      } else {
+        intentID = pendingRetry && pendingRetry.key === snapshotKey
+          ? pendingRetry.intentId : freshCloseIntentID();
+      }
       body.set(serviceField('_close_intent_id'), intentID);
+	  function rememberRetry(){
+		retryableClose = {
+		  key: snapshotKey, intentId: intentID, body: body.toString(),
+		  mode: mode, reason: reason
+		};
+	  }
 
       var controller = typeof AbortController === 'function' ? new AbortController() : null;
       var timer = setTimeout(function(){ if (controller) controller.abort(); }, Math.max(1000, CLOSE_TIMEOUT_MS));
@@ -1154,40 +1342,96 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         var data;
         try { data = await response.json(); }
         catch (parseErr) {
-          // An interrupted body read is still a transport-unknown result. A
-          // fully received but invalid JSON response is terminal HTTP and must
-          // not pin the next explicit click to this UUID.
-          retryIntentAfterFailure = !!(parseErr && (parseErr.name === 'AbortError' || parseErr.name === 'TypeError'));
+		  // Without a valid correlated JSON envelope the client cannot know
+		  // whether a save committed. Preserve the UUID for exact replay even
+		  // when a proxy returned truncated HTML/SyntaxError.
+		  retryIntentAfterFailure = true;
           throw new Error(closeMessage('invalidResponse', 'Сервер вернул некорректный ответ при проверке закрытия.'));
         }
         if (!data || typeof data !== 'object' || !data.close || String(data.close.intentId || '') !== intentID) {
-          retryableClose = {key: snapshotKey, intentId: intentID};
+		  rememberRetry();
           flash(closeMessage('correlationMismatch', 'Ответ закрытия не совпал с запросом. Форма оставлена открытой.'), 'err');
           return {allowed: false, intentId: intentID, error: 'stale-correlation'};
         }
+        // Preserve the server's fail-safe dirty signal even if re-snapshot or
+        // a later response renderer throws. Clearing dirty is deferred until a
+        // confirmed save response has been applied completely.
+        if (data.dirty === true) setManagedFormDirty(true);
         retryIntentAfterFailure = response.status === 408;
-        retryableClose = retryIntentAfterFailure ? {key: snapshotKey, intentId: intentID} : null;
+		if (retryIntentAfterFailure) rememberRetry();
+		else retryableClose = null;
         // The user may keep editing while the server executes BeforeClose.
         // Re-snapshot before applying returned values: an answer for an older
         // form must neither overwrite newer input nor authorize its removal.
-        var currentBody = await closeSnapshotBody(reason);
-        if (!currentBody || closeSnapshotKey(currentBody) !== snapshotKey) {
-          retryableClose = null;
+        var currentBody;
+		try {
+		  currentBody = await closeSnapshotBody(requestedReason, requestedMode);
+		} catch (snapshotErr) {
+		  // A terminal save result is already durable even if the live form can
+		  // no longer be serialized. Adopt it before leaving the form open so a
+		  // later action cannot insert the same new record again.
+		  if (data.close.saved === true) {
+			applySavedIdentity(data);
+			setManagedFormDirty(true);
+		  }
+		  throw snapshotErr;
+		}
+		if (data.close.saved === true) {
+		  // Snapshot comparison above must use the pre-request id/version. After
+		  // it is captured, adopt durable identity before any renderer can throw.
+		  // Dirty stays fail-safe until every mutable response part is applied.
+		  applySavedIdentity(data);
+		  setManagedFormDirty(true);
+		}
+        if (replayingPrior || !currentBody || closeSnapshotKey(currentBody) !== snapshotKey) {
+		  if (!retryIntentAfterFailure) retryableClose = null;
+          // The save may already have committed before the user typed again.
+          // Retain the new input, but adopt the canonical identity/version so
+          // the retry updates that record instead of creating a duplicate.
+		  if (data.close && data.close.saved === true) {
+			if (currentBody) applyCloseResponse(data, body, currentBody);
+			else {
+			  (data.messages || []).forEach(function(message){ flash(message, 'ok'); });
+			  if (data.error) flash(data.error, 'err');
+			}
+          }
+		  // A mismatched/currently-unserializable form necessarily contains
+		  // state newer than the request, regardless of whether BeforeClose
+		  // also saved a durable object.
+		  setManagedFormDirty(true);
           flash(closeMessage('formChanged', 'Форма изменилась во время проверки закрытия. Повторите закрытие.'), 'err');
           return {allowed: false, intentId: intentID, error: 'form-changed'};
         }
         applyCloseResponse(data);
+		if (data.close && data.close.saved === true) {
+		  // A canonical save gives the server an authoritative baseline and may
+		  // therefore clear dirty. Missing dirty is fail-safe for mixed versions.
+		  setManagedFormDirty(data.dirty === false ? false : true);
+		} else if (data.dirty === true) {
+		  // An unsaved response can prove that BeforeClose introduced more
+		  // changes, but dirty=false cannot prove that pre-existing form-only
+		  // state was clean relative to the originally opened document.
+		  setManagedFormDirty(true);
+		}
         // A 408 is produced when this duplicate stopped waiting for an older
         // still-running request. It is not stored as this intent's terminal
         // replay result, so retry the same UUID. Every other correlated reply,
         // including data.ok=false, is terminal and releases the UUID.
+        var requiresSavedResult = mode === 'save' || mode === 'post' || mode === 'save_and_select';
         return {
-          allowed: response.ok && data.ok === true && data.close.allowed === true,
+          allowed: response.ok && data.ok === true && data.close.allowed === true &&
+            (!requiresSavedResult || data.close.saved === true),
           intentId: intentID,
-          error: data.error || ''
+		  mode: mode,
+          error: data.error || '',
+          saved: data.close.saved === true,
+          savedId: data.savedId || '',
+          savedLabel: data.savedLabel || '',
+          formUrl: data.close.formUrl || ''
         };
       } catch (err) {
-        retryableClose = retryIntentAfterFailure ? {key: snapshotKey, intentId: intentID} : null;
+		if (retryIntentAfterFailure) rememberRetry();
+		else retryableClose = null;
         var timeout = err && err.name === 'AbortError';
         flash((timeout
           ? closeMessage('timeout', 'Превышено время проверки закрытия')
@@ -1198,20 +1442,59 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         clearTimeout(timer);
       }
     })();
+    closeHandoffPending = false;
     closePending = closePending.finally(function(){ closePending = null; });
     return closePending;
   };
 
   window.obFinalizeFormClose = function(){
-    window._obFormDirty = false;
-    if (typeof _obBaseTitle === 'string' && _obBaseTitle) document.title = _obBaseTitle;
-    try {
-      if (window.__obEmbedded && window.parent && window.parent !== window) {
-        window.parent.postMessage({source: 'obDirty', dirty: false}, window.location.origin);
-      }
-    } catch (_) {}
+	setManagedFormDirty(false);
     return true;
   };
+
+  // A native submit must not race an unfinished close request. A lost close
+  // response is also an unknown commit outcome: BeforeClose may call
+  // Object.Write even for discard. Until the exact UUID/body is replayed, a
+  // native Save against /new could insert a duplicate outside the close-intent
+  // ledger. Reconcile identity first and require a separate submit afterward.
+  document.addEventListener('submit', function(e){
+    var form = e.target;
+    var requestInFlight = closePending;
+    var pending = retryableClose;
+    var recoveryMode = pending && String(pending.mode || '');
+    if (!form || form.id !== 'main-form') return;
+    var popupSubmit = false;
+    try {
+      popupSubmit = !!(form.querySelector && form.querySelector('[name="_popup"]')) ||
+        !!(location.search && new URLSearchParams(location.search).get('_popup') === '1');
+    } catch (_) {}
+    if (!requestInFlight && !closeHandoffPending && !pending && !popupSubmit) return;
+    e.preventDefault();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    else if (e.stopPropagation) e.stopPropagation();
+    // The active controller already owns this snapshot and will adopt any
+    // durable identity when it completes. Starting another request is unsafe.
+    if (requestInFlight || closeHandoffPending) return;
+    if (pending) {
+      Promise.resolve(window.obRequestFormClose({reason: pending.reason, mode: recoveryMode})).then(function(decision){
+        // An implicit popup submit is itself the save-and-select adapter. If
+        // this exact retry recovers a lost terminal result, publish it now;
+        // requiring a third Enter would start a fresh intent unnecessarily.
+        if (popupSubmit && recoveryMode === 'save_and_select' && decision && decision.allowed &&
+            typeof window.obManagedPostRefSaved === 'function') {
+          window.obManagedPostRefSaved(decision);
+        }
+      });
+      return;
+    }
+    // Implicit Enter/requestSubmit in a managed picker must use the same exact
+    // save-and-select close intent as its explicit button. A native popup POST
+    // would bypass BeforeClose and return the legacy uncorrelated result page.
+    Promise.resolve(window.obRequestFormClose({reason: 'ok', mode: 'save_and_select'})).then(function(decision){
+      if (!decision || !decision.allowed) return;
+      if (typeof window.obManagedPostRefSaved === 'function') window.obManagedPostRefSaved(decision);
+    });
+  }, true);
 
   // Standalone managed form: shell/popup adapters handle their own final step.
   // Here the allowed decision permits a same-origin navigation back to the list.
@@ -1221,7 +1504,6 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     if (!link) return;
     e.preventDefault();
     var reason = (link.dataset && link.dataset.obCloseReason) || 'cross';
-    if (window._obFormDirty && !window.confirm('Данные были изменены и не записаны. Закрыть форму?')) return;
     Promise.resolve(window.obRequestFormClose({reason: reason})).then(function(decision){
       if (!decision || !decision.allowed) return;
       window.obFinalizeFormClose();
@@ -1299,7 +1581,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
           form.appendChild(submitterInput);
         }
         try {
-          if (form.id === 'main-form') window._obFormDirty = false;
+		  if (form.id === 'main-form') window.obSetManagedFormDirty(false);
           nativeSubmit.call(form);
         } finally {
           if (submitterInput) submitterInput.remove();
@@ -1319,8 +1601,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   window._obFormDirty = false;
   var _obBaseTitle = document.title;
   function _obMarkDirty(){
-    window._obFormDirty = true;
-    if (document.title.charAt(0) !== '●') document.title = '● ' + _obBaseTitle;
+	setManagedFormDirty(true);
   }
   document.addEventListener('input',  function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(); }, true);
   document.addEventListener('change', function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(); }, true);
@@ -1349,7 +1630,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   }
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape' && e.keyCode !== 27) return;
-    var modal = document.getElementById('_ref-create-modal') || document.getElementById('_item-picker-modal') || document.getElementById('_ref-picker-modal');
+    var modal = document.getElementById('ob-managed-close-confirm') || document.getElementById('_ref-create-modal') || document.getElementById('_item-picker-modal') || document.getElementById('_ref-picker-modal');
     if (modal) {
       if (typeof modal._obClose === 'function') modal._obClose();
       else modal.remove();
@@ -1370,11 +1651,11 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName) && !ae.readOnly && ae.type !== 'submit' && ae.type !== 'button') {
       ae.blur(); consumeManagedEscape(e); return;
     }
-    var cancel = document.querySelector('a.btn-cancel');
+    // The canonical object-form Close control is a button. Keep legacy
+    // anchors as fallbacks for older/custom templates, but always route Esc
+    // through the same close controller as an explicit Close click.
+    var cancel = document.querySelector('button[data-ob-form-close=""], [data-ob-close-tab], a.btn-cancel');
     if (cancel) {
-      if (!window.__obEmbedded && window._obFormDirty && !confirm('Данные были изменены и не записаны. Закрыть форму?')) {
-        consumeManagedEscape(e); return;
-      }
       if (cancel.dataset) cancel.dataset.obCloseReason = 'escape';
       consumeManagedEscape(e); cancel.click();
       if (cancel.dataset) delete cancel.dataset.obCloseReason;
@@ -1477,6 +1758,23 @@ function obManagedAddVtRow(btn) {
   if (!vtName || !tbody || typeof addVtRow !== 'function') return;
   var fields = obManagedParseFieldMeta(tbody.getAttribute('data-vt-fields') || '').map(function (f) { return f.name; });
   addVtRow(vtName, fields, tbody);
+  if (window.obSetManagedFormDirty) window.obSetManagedFormDirty(true);
+}
+
+function obManagedRemoveRow(btn) {
+  var tr = btn && btn.closest && btn.closest('tr');
+  if (!tr) return false;
+  var table = tr.closest && tr.closest('table[data-ob-dom-table]');
+  var body = tr.parentElement;
+  var index = tr.sectionRowIndex;
+  tr.remove();
+  if (window.obSetManagedFormDirty) window.obSetManagedFormDirty(true);
+  if (table && body && window.obDOMFinishMutation) {
+    var next = body.rows.length ? body.rows[Math.min(Math.max(index, 0), body.rows.length - 1)] : null;
+    window.obDOMFinishMutation(table, next, false);
+    if (window.obDOMNotifyMutation) window.obDOMNotifyMutation(table, 'delete');
+  }
+  return true;
 }
 
 function obManagedSubmitAllowed(form) {
@@ -1498,7 +1796,7 @@ var obManagedFrameDocumentToken = typeof window.obFrameCloseDocumentToken === 's
   ? window.obFrameCloseDocumentToken : '';
 
 function obManagedPostRefCancel(decision) {
-  if (!decision || decision.allowed !== true || !decision.intentId) return false;
+	if (!decision || decision.allowed !== true || !decision.intentId || decision.mode === 'save_and_select') return false;
   try {
     parent.postMessage({
       source: 'obRefCancel',
@@ -1513,19 +1811,66 @@ function obManagedPostRefCancel(decision) {
   }
 }
 
+function obManagedPostRefSaved(decision) {
+	if (!decision || decision.allowed !== true || !decision.intentId || !decision.savedId || decision.mode !== 'save_and_select') return false;
+  try {
+    parent.postMessage({
+      source: 'obRefCreate',
+      id: String(decision.savedId),
+      label: decision.savedLabel ? String(decision.savedLabel) : String(decision.savedId),
+      allowed: true,
+      intentId: String(decision.intentId),
+      documentToken: obManagedFrameDocumentToken,
+      error: decision.error ? String(decision.error) : ''
+    }, window.location.origin);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+window.obManagedPostRefSaved = obManagedPostRefSaved;
+
 function obManagedInitDelegates() {
   document.addEventListener('click', function (e) {
     // data-ob-toggle-next НЕ обрабатываем здесь: managed-форма всегда грузит и
     // ui.js (из шаблона "head"), где этот же делегат уже висит на document.
     // Дублирование переключало бы display дважды (none→block→none) за один клик
     // и dropdown «Печать ▾»/«Ввести на основании» не открывался бы — issue #309.
-    var btn = e.target && e.target.closest ? e.target.closest('[data-ob-ref-picker],[data-ob-ref-current],[data-ob-file-trigger],[data-ob-fire-click],[data-ob-grid-add],[data-ob-grid-del],[data-ob-add-tp],[data-ob-add-vt],[data-ob-remove-row],[data-ob-ref-cancel]') : null;
+    var btn = e.target && e.target.closest ? e.target.closest('[data-ob-ref-picker],[data-ob-ref-current],[data-ob-file-trigger],[data-ob-fire-click],[data-ob-grid-add],[data-ob-grid-del],[data-ob-add-tp],[data-ob-add-vt],[data-ob-remove-row],[data-ob-ref-cancel],[data-ob-form-close]') : null;
     if (!btn) return;
     if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
 
+    if (btn.hasAttribute('data-ob-form-close')) {
+      e.preventDefault();
+      var mode = btn.getAttribute('data-ob-form-close') || '';
+      var reason = btn.getAttribute('data-ob-close-reason') || (mode === 'save' ? 'ok' : (mode === 'post' ? 'post_and_close' : 'close'));
+      if (window.__obEmbedded && mode !== 'save_and_select' && window.parent && window.parent !== window) {
+        if (typeof window.obBeginManagedCloseHandoff === 'function') window.obBeginManagedCloseHandoff();
+        try {
+          window.parent.postMessage({source: 'obCloseTab', reason: reason, mode: mode}, window.location.origin);
+        } catch (_) {
+          if (typeof window.obCancelManagedCloseHandoff === 'function') window.obCancelManagedCloseHandoff();
+        }
+        return;
+      }
+      var request = window.obRequestFormClose;
+      if (typeof request !== 'function') return;
+      btn.disabled = true;
+      Promise.resolve(request({reason: reason, mode: mode || undefined})).then(function(decision){
+        if (!decision || !decision.allowed) return;
+        if (mode === 'save_and_select') {
+          obManagedPostRefSaved(decision);
+          return;
+        }
+        window.obFinalizeFormClose();
+        var href = btn.getAttribute('data-ob-close-href') || btn.getAttribute('href') || '/ui/';
+        window.location.assign(href);
+      }).finally(function(){ btn.disabled = false; });
+      return;
+    }
+
     if (btn.hasAttribute('data-ob-ref-cancel')) {
       e.preventDefault();
-      if (window._obFormDirty && !window.confirm('Данные были изменены и не записаны. Закрыть форму?')) return;
       var requestClose = window.obRequestFormClose;
       if (typeof requestClose !== 'function') {
         if (window.obFlash) {
@@ -1595,18 +1940,7 @@ function obManagedInitDelegates() {
     }
     if (btn.hasAttribute('data-ob-remove-row')) {
       e.preventDefault();
-      var tr = btn.closest && btn.closest('tr');
-      if (tr) {
-        var table = tr.closest && tr.closest('table[data-ob-dom-table]');
-        var body = tr.parentElement;
-        var index = tr.sectionRowIndex;
-        tr.remove();
-        if (table && body && window.obDOMFinishMutation) {
-          var next = body.rows.length ? body.rows[Math.min(Math.max(index, 0), body.rows.length - 1)] : null;
-          window.obDOMFinishMutation(table, next, false);
-          if (window.obDOMNotifyMutation) window.obDOMNotifyMutation(table, 'delete');
-        }
-      }
+      obManagedRemoveRow(btn);
     }
   });
 
@@ -1736,7 +2070,7 @@ function obManagedInitDelegates() {
     }
     // Все синхронные veto пройдены: штатная навигация после submit не должна
     // показывать предупреждение о несохранённых данных.
-    if (form.id === 'main-form' && !e.defaultPrevented) window._obFormDirty = false;
+	if (form.id === 'main-form' && !e.defaultPrevented) window.obSetManagedFormDirty(false);
   });
 }
 
@@ -2637,7 +2971,7 @@ obManagedReady(obManagedInitDelegates);
     var cols = g.columnsMeta || [];
     for (var i = 0; i < cols.length; i++) item[cols[i].id] = "";
     g.dataView.addItem(item);
-    window._obFormDirty = true;
+	window.obSetManagedFormDirty(true);
     g.grid.invalidate();
     // scrollRowIntoView ждёт ИНДЕКС отображаемой строки, не id записи —
     // после удалений они расходятся. Берём индекс из getRowById.
@@ -2695,7 +3029,7 @@ obManagedReady(obManagedInitDelegates);
     }
     if (!toRemove.length) return false;
     for (var j = 0; j < toRemove.length; j++) g.dataView.deleteItem(toRemove[j].id);
-    window._obFormDirty = true;
+	window.obSetManagedFormDirty(true);
     try { g.grid.invalidate(); } catch (e) {
       if (window.console) window.console.error("SlickGrid delete refresh error [" + tpName + "]:", e);
     }
@@ -2747,7 +3081,7 @@ obManagedReady(obManagedInitDelegates);
     copy._obCellClasses = Object.assign({}, src._obCellClasses || {});
     g.dataView.addItem(copy);
     g.dataView.setItems(reindexOrd(byOrd(g)));
-    window._obFormDirty = true;
+	window.obSetManagedFormDirty(true);
     g.grid.invalidate();
     var rowIdx = g.dataView.getRowById(nextId);
     if (rowIdx !== undefined) {
@@ -2781,7 +3115,7 @@ obManagedReady(obManagedInitDelegates);
     if (pos < 0 || to < 0 || to >= items.length) return;
     items.splice(to, 0, items.splice(pos, 1)[0]);
     g.dataView.setItems(reindexOrd(items));
-    window._obFormDirty = true;
+	window.obSetManagedFormDirty(true);
     g.grid.invalidate();
     var rowIdx = g.dataView.getRowById(cur.id);
     if (rowIdx !== undefined) {
@@ -3093,7 +3427,7 @@ obManagedReady(obManagedInitDelegates);
     var colPrice = autoSum ? findColId(["цена", "price"]) : null;
     var colSum = autoSum ? findColId(["сумма", "amount", "sum"]) : null;
     grid.onCellChange.subscribe(function(e, args) {
-      window._obFormDirty = true;
+	  window.obSetManagedFormDirty(true);
       if (colQty && colPrice && colSum && args && args.item && args.cell != null) {
         var changed = columns[args.cell] && columns[args.cell].field;
         // Пересчитываем сумму при правке количества/цены; саму сумму не трогаем,

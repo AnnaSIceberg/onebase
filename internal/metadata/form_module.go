@@ -460,11 +460,9 @@ type FormModule struct {
 	Handlers   map[FormEventType]string  `yaml:"events,omitempty"`
 	Procedures map[string]*FormProcedure `yaml:"-"`
 
-	// Actions — переопределение стандартных действий формы объекта (issue #151).
-	// Пока поддерживается ключ "delete": actions.delete.visible=false скрывает
-	// платформенную кнопку «Удалить», чтобы конфиг мог увести удаление в свой
-	// процессор. Платформенное удаление и так пишется в _audit и закрыто правом
-	// delete — это про управление UI-кнопкой.
+	// Actions — переопределение стандартных действий формы объекта. Ключи
+	// delete/save/ok/close управляют только видимостью платформенных кнопок;
+	// права и серверные проверки они не ослабляют.
 	Actions map[string]*FormAction `yaml:"actions,omitempty"`
 
 	// Conditional — декларативное условное оформление табличных частей формы.

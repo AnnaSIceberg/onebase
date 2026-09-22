@@ -15,8 +15,10 @@ import (
 
 	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
+	"github.com/ivantit66/onebase/internal/entityservice"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/runtime"
+	"github.com/ivantit66/onebase/internal/storage"
 )
 
 // ── Рантайм событий управляемых форм (план 37, этап 8) ───────────────────
@@ -61,11 +63,18 @@ type formEventResponse struct {
 	// через Объект.Записать(). Клиент подставляет его в _id следующих событий и
 	// в адрес страницы — иначе второе действие подряд создало бы второй документ.
 	SavedID string `json:"savedId,omitempty"`
+	// SavedLabel accompanies savedId for popup save-and-select. It is derived
+	// from the persisted object, never trusted from the browser.
+	SavedLabel string `json:"savedLabel,omitempty"`
 	// Version — текущая версия записи после обработчика. Клиент кладёт её в
 	// скрытое поле _version: обработчик, записавший объект, версию поднял, а
 	// форма держала прочитанную при отрисовке — и следующая кнопка «Записать»
 	// упиралась в «объект изменён другим пользователем».
 	Version int64 `json:"version,omitempty"`
+	// Dirty reports whether BeforeClose left object state that is not durable.
+	// It is populated for save and discard: even a previously clean form can be
+	// mutated by a denied/failed close handler and must then remain protected.
+	Dirty *bool `json:"dirty,omitempty"`
 	// ChoiceList — динамический список значений для элемента ПолеСписка,
 	// сформированный обработчиком НачалоВыбора (билтин ДобавитьЗначениеСписка).
 	// Клиент заполняет им <select> того элемента, что инициировал событие.
@@ -80,6 +89,155 @@ type formEventResponse struct {
 	// Close присутствует только в ответе отдельного close-intent endpoint.
 	// Обычный /form-event не выдаёт разрешение уничтожить форму.
 	Close *formCloseDecision `json:"close,omitempty"`
+}
+
+type managedCloseSaveError struct {
+	status   int
+	kind     string
+	message  string
+	messages []string
+}
+
+func (e *managedCloseSaveError) Error() string { return e.message }
+
+const (
+	managedSaveForbidden  = "forbidden"
+	managedSaveConflict   = "conflict"
+	managedSaveValidation = "validation"
+	managedSaveHook       = "hook"
+)
+
+// saveManagedObject is the canonical result-returning save layer shared by
+// HTML submit and close-intent. Callers parse/render their transport, while all
+// permission, row-filter, required, optimistic-version, form-hook and
+// entityservice semantics live here exactly once.
+func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, obj *runtime.Object, isNew bool, action string, onCommitted func(uuid.UUID, int64)) ([]string, int64, error) {
+	if !s.can(r, string(entity.Kind), entity.Name, "write") {
+		return nil, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён"}
+	}
+	posting := action == "post" || action == "post_and_close"
+	if posting {
+		if !entity.Posting {
+			return nil, 0, &managedCloseSaveError{status: http.StatusBadRequest, kind: managedSaveValidation, message: "проведение недоступно для этой формы"}
+		}
+		if !s.can(r, string(entity.Kind), entity.Name, "post") {
+			return nil, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён"}
+		}
+	}
+	if !isNew {
+		if _, err := s.protectMaskedFieldsOnWrite(r.Context(), entity, obj.ID, obj.Fields); err != nil {
+			return nil, 0, err
+		}
+		dec, err := s.rowDecision(r.Context(), entity, "write")
+		if err != nil || !dec.Allowed {
+			return nil, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён"}
+		}
+		if !dec.Unrestricted {
+			row, loadErr := s.store.GetByID(r.Context(), entity.Name, obj.ID, entity)
+			if loadErr != nil || !s.matchRowPredicate(r.Context(), row, dec.Predicate) ||
+				!s.matchRowPredicate(r.Context(), storage.MergeRowFields(row, obj.Fields), dec.Predicate) {
+				return nil, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён"}
+			}
+		}
+		if posting {
+			postDec, err := s.rowDecision(r.Context(), entity, "post")
+			if err != nil || !postDec.Allowed {
+				return nil, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён"}
+			}
+			if !postDec.Unrestricted {
+				row, loadErr := s.store.GetByID(r.Context(), entity.Name, obj.ID, entity)
+				if loadErr != nil || !s.matchRowPredicate(r.Context(), row, postDec.Predicate) ||
+					!s.matchRowPredicate(r.Context(), storage.MergeRowFields(row, obj.Fields), postDec.Predicate) {
+					return nil, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён"}
+				}
+			}
+		}
+	}
+	if err := s.validateManagedFormRequired(r, entity, form, obj.Fields); err != nil {
+		return nil, 0, &managedCloseSaveError{status: http.StatusBadRequest, kind: managedSaveValidation, message: err.Error()}
+	}
+
+	var hookMessages []string
+	var hookErr error
+	var expectedVersion *int64
+	if !isNew {
+		if raw := r.FormValue("_version"); raw != "" {
+			if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil {
+				expectedVersion = &parsed
+			}
+		}
+		if hookErr = s.runPreSaveFormHooks(r.Context(), entity, obj, &hookMessages); hookErr != nil {
+			return hookMessages, 0, &managedCloseSaveError{status: http.StatusBadRequest, kind: managedSaveHook, message: hookErr.Error(), messages: hookMessages}
+		}
+	}
+	result, err := s.entitySvc.Save(r.Context(), entityservice.SaveRequest{
+		Entity: entity, ID: obj.ID, IsNew: isNew, Fields: obj.Fields,
+		TablePartRows: obj.TablePartRows, Action: action, ExpectedVersion: expectedVersion,
+		Preflight: func(txCtx context.Context, saveObj *runtime.Object) error {
+			if !isNew {
+				return nil
+			}
+			if err := s.autoFillRowAccessFields(txCtx, entity, "write", saveObj.Fields); err != nil {
+				return errSubmitRowAccessDenied
+			}
+			if posting {
+				if err := s.autoFillRowAccessFields(txCtx, entity, "post", saveObj.Fields); err != nil {
+					return errSubmitRowAccessDenied
+				}
+			}
+			if !s.rowAllowedContext(txCtx, entity, "write", saveObj.Fields) ||
+				(posting && !s.rowAllowedContext(txCtx, entity, "post", saveObj.Fields)) {
+				return errSubmitRowAccessDenied
+			}
+			if hookErr = s.runPreSaveFormHooks(txCtx, entity, saveObj, &hookMessages); hookErr != nil {
+				return errSubmitFormHook
+			}
+			return nil
+		},
+		OnCommitted: func(result entityservice.SaveResult) {
+			obj.ID = result.ID
+			if onCommitted != nil {
+				onCommitted(result.ID, result.Version)
+			}
+		},
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, storage.ErrVersionConflict):
+			return hookMessages, 0, &managedCloseSaveError{status: http.StatusConflict, kind: managedSaveConflict, message: "объект был изменён другим пользователем; форма оставлена открытой", messages: hookMessages}
+		case errors.Is(err, errSubmitRowAccessDenied):
+			return hookMessages, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён", messages: hookMessages}
+		case errors.Is(err, errSubmitFormHook):
+			return hookMessages, 0, &managedCloseSaveError{status: http.StatusBadRequest, kind: managedSaveHook, message: hookErr.Error(), messages: hookMessages}
+		default:
+			return hookMessages, 0, err
+		}
+	}
+	if result.DSLError != "" {
+		return result.DSLMessages, 0, &managedCloseSaveError{status: http.StatusBadRequest, kind: managedSaveHook, message: result.DSLError, messages: result.DSLMessages}
+	}
+	obj.ID = result.ID
+	s.runAfterWriteFormHook(r.Context(), entity, result.ID, &hookMessages)
+	return hookMessages, result.Version, nil
+}
+
+func (s *Server) saveManagedCloseObject(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, obj *runtime.Object, isNew bool, mode string, inv *formCloseInvocation) ([]string, int64, error) {
+	action := ""
+	if mode == "post" {
+		action = "post"
+	}
+	if mode == "save_and_select" && r.FormValue("_popup") != "1" {
+		return nil, 0, &managedCloseSaveError{status: http.StatusBadRequest, kind: managedSaveValidation, message: "save_and_select разрешён только для popup-формы"}
+	}
+	return s.saveManagedObject(r, entity, form, obj, isNew, action, func(id uuid.UUID, version int64) {
+		if inv == nil {
+			return
+		}
+		inv.saved = true
+		inv.savedID = id.String()
+		inv.version = version
+		inv.formURL = "/ui/" + strings.ToLower(string(entity.Kind)) + "/" + entity.Name + "/" + id.String()
+	})
 }
 
 // handleManagedFormEvent — единая точка обработки событий managed-форм.
@@ -199,6 +357,12 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
+	if closeInv != nil && closeInv.mode != "discard" &&
+		!(strings.EqualFold(form.Kind, "object") || form.Kind == "" && formKind == "object") {
+		w.WriteHeader(http.StatusBadRequest)
+		respondJSON(enc, formEventResponse{Error: "сохранение при закрытии разрешено только для формы объекта"})
+		return
+	}
 	tableAuthorities, err := managedFormTableAuthorities(form, entity.TableParts, canWrite)
 	if err != nil {
 		respondJSON(enc, formEventResponse{Error: err.Error()})
@@ -256,31 +420,36 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 				respondJSON(enc, formEventResponse{Error: "процедура «" + procName + "» не найдена в .form.os"})
 				return
 			}
+			// A save-mode close still has work even without ПередЗакрытием.
+			// Continue through snapshot parsing and the canonical save pipeline.
+			if closeInv.mode == "discard" {
+				opStatus = "ok"
+				respondJSON(enc, formEventResponse{OK: true})
+				return
+			}
+		} else {
+			// Preserve the historical no-op for forms without a loaded .form.os, but
+			// still enforce table authority: a missing AST must not turn a forged
+			// TP/ValueTable target into an accepted event for a read-only user.
+			if eventName != "" {
+				_, eventTarget, _, eligibilityErr := resolveBrowserFormEvent(form, elementName, eventName, false)
+				isTableTarget := eventTarget.parentTablePart != nil ||
+					eventTarget.element != nil && eventTarget.element.Kind == metadata.FormElementTablePart
+				if isTableTarget {
+					if err := validateManagedFormTableEventTarget(tableAuthorities, eventTarget); err != nil {
+						respondJSON(enc, formEventResponse{Error: err.Error()})
+						return
+					}
+				}
+				if !isTableTarget && strings.TrimSpace(r.FormValue("_tp")) != "" && eligibilityErr != nil {
+					respondJSON(enc, formEventResponse{Error: eligibilityErr.Error()})
+					return
+				}
+			}
 			opStatus = "ok"
 			respondJSON(enc, formEventResponse{OK: true})
 			return
 		}
-		// Preserve the historical no-op for forms without a loaded .form.os, but
-		// still enforce table authority: a missing AST must not turn a forged
-		// TP/ValueTable target into an accepted event for a read-only user.
-		if eventName != "" {
-			_, eventTarget, _, eligibilityErr := resolveBrowserFormEvent(form, elementName, eventName, false)
-			isTableTarget := eventTarget.parentTablePart != nil ||
-				eventTarget.element != nil && eventTarget.element.Kind == metadata.FormElementTablePart
-			if isTableTarget {
-				if err := validateManagedFormTableEventTarget(tableAuthorities, eventTarget); err != nil {
-					respondJSON(enc, formEventResponse{Error: err.Error()})
-					return
-				}
-			}
-			if !isTableTarget && strings.TrimSpace(r.FormValue("_tp")) != "" && eligibilityErr != nil {
-				respondJSON(enc, formEventResponse{Error: eligibilityErr.Error()})
-				return
-			}
-		}
-		opStatus = "ok"
-		respondJSON(enc, formEventResponse{OK: true})
-		return
 	}
 	if eventName == "" {
 		respondJSON(enc, formEventResponse{Error: "_event required"})
@@ -294,7 +463,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	var eventTarget browserFormEventTarget
 	if closeInv != nil {
 		procName = resolveFormCloseHandler(form)
-		if procName == "" {
+		if procName == "" && closeInv.mode == "discard" {
 			opStatus = "ok"
 			respondJSON(enc, formEventResponse{OK: true})
 			return
@@ -311,21 +480,27 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
 	}
-	program, ok := progAny.(*ast.Program)
-	if !ok || program == nil {
-		respondJSON(enc, formEventResponse{Error: "form AST type mismatch"})
-		return
+	var program *ast.Program
+	if progAny != nil {
+		var ok bool
+		program, ok = progAny.(*ast.Program)
+		if !ok || program == nil {
+			respondJSON(enc, formEventResponse{Error: "form AST type mismatch"})
+			return
+		}
 	}
 
 	// Найти AST процедуры.
 	var decl *ast.ProcedureDecl
-	for _, p := range program.Procedures {
-		if strings.EqualFold(p.Name.Literal, procName) {
-			decl = p
-			break
+	if procName != "" {
+		for _, p := range program.Procedures {
+			if strings.EqualFold(p.Name.Literal, procName) {
+				decl = p
+				break
+			}
 		}
 	}
-	if decl == nil {
+	if procName != "" && decl == nil {
 		if closeInv != nil {
 			respondJSON(enc, formEventResponse{Error: "процедура «" + procName + "» не найдена в .form.os"})
 			return
@@ -337,7 +512,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var closeArgs []any
-	if closeInv != nil {
+	if closeInv != nil && decl != nil {
 		closeArgs, err = validateFormCloseProcedure(decl)
 		if err != nil {
 			respondJSON(enc, formEventResponse{Error: err.Error()})
@@ -369,17 +544,75 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// случайный uuid, поэтому проверка obj.ID != uuid.Nil была бы всегда истинной
 	// и гоняла бы лишний запрос в БД на каждое событие.
 	existingFormID := strings.TrimSpace(r.FormValue("_id"))
+	var submittedVersion *int64
+	if rawVersion := strings.TrimSpace(r.FormValue("_version")); rawVersion != "" {
+		if parsedVersion, parseErr := strconv.ParseInt(rawVersion, 10, 64); parseErr == nil {
+			submittedVersion = &parsedVersion
+		}
+	}
+	copyStateRestored := false
 	if existingFormID != "" {
-		_ = s.restoreUnsubmittedFields(dslCtx, r, entity, form, obj.ID, obj.Fields)
+		if restoreErr := s.restoreUnsubmittedFields(dslCtx, r, entity, form, obj.ID, obj.Fields); restoreErr != nil && closeInv != nil {
+			// A close lifecycle must never continue with absent readonly/unplaced
+			// fields: a save could persist nulls and discard could authorize close
+			// or run side effects against an incomplete object.
+			w.WriteHeader(http.StatusInternalServerError)
+			respondJSON(enc, formEventResponse{Error: s.errText(r, restoreErr)})
+			return
+		}
+		if closeInv != nil {
+			persisted, loadErr := s.store.GetByID(dslCtx, entity.Name, obj.ID, entity)
+			if loadErr != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				respondJSON(enc, formEventResponse{Error: s.errText(r, loadErr)})
+				return
+			}
+			// Service fields are not regular form fields and therefore are not
+			// restored by restoreUnsubmittedFields. BeforeClose must nevertheless
+			// observe the canonical posting/deletion/hierarchy state on discard.
+			mergePersistedEntityServiceFieldsForClose(entity, persisted, obj.Fields, closeInv.mode != "discard")
+			// The object exposed to a discard lifecycle represents the browser
+			// snapshot, including its optimistic version. Replacing this with the
+			// latest DB version would let Object.Write persist stale editable fields
+			// over a concurrent update.
+			if submittedVersion != nil {
+				obj.Fields["_version"] = *submittedVersion
+			}
+			// Discard still runs trusted BeforeClose code, which may call
+			// Object.Write. Restore fields hidden/masked from this user before the
+			// handler so forged browser values cannot ride that authorized write.
+			if _, protectErr := s.protectMaskedFieldsOnWrite(dslCtx, entity, obj.ID, obj.Fields); protectErr != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				respondJSON(enc, formEventResponse{Error: s.errText(r, protectErr)})
+				return
+			}
+		}
+	} else if strings.TrimSpace(r.FormValue(copySourceFormField)) != "" {
+		if err := s.restoreManagedCopyStateResult(r, entity, form, obj.Fields, obj.Fields, obj.TablePartRows); err != nil {
+			status := http.StatusInternalServerError
+			if loadErr, ok := err.(*copySourceLoadError); ok {
+				status = loadErr.status
+			}
+			w.WriteHeader(status)
+			respondJSON(enc, formEventResponse{Error: err.Error()})
+			return
+		}
+		copyStateRestored = true
 	}
 	persistedID := uuid.Nil
 	if existingFormID != "" {
 		persistedID = obj.ID
 	}
-	if err := s.restoreUneditableTableParts(dslCtx, r, entity, form, persistedID, obj.TablePartRows, canWrite); err != nil {
-		opStatus = operationStatus(opCtx, err)
-		respondJSON(enc, formEventResponse{Error: s.errText(r, err)})
-		return
+	// A copy source already supplied the authorized canonical snapshot for
+	// readonly/unplaced table parts. Running the ordinary new-record restore
+	// with persistedID=nil would clear those copied rows. This mirrors the
+	// mutually exclusive copy/non-copy preparation in HTML submit.
+	if !copyStateRestored {
+		if err := s.restoreUneditableTableParts(dslCtx, r, entity, form, persistedID, obj.TablePartRows, canWrite); err != nil {
+			opStatus = operationStatus(opCtx, err)
+			respondJSON(enc, formEventResponse{Error: s.errText(r, err)})
+			return
+		}
 	}
 
 	// Псевдо-реквизит «Ссылка» самой записи — как в entityservice.Save. Без него
@@ -407,6 +640,85 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			obj.TablePartRows[k] = v
 		}
 	}
+	var msgs []string
+	if closeInv != nil && closeInv.mode != "discard" {
+		saveMessages, savedVersion, saveErr := s.saveManagedCloseObject(r, entity, form, obj, existingFormID == "", closeInv.mode, closeInv)
+		msgs = append(msgs, saveMessages...)
+		if saveErr != nil {
+			status := http.StatusInternalServerError
+			message := s.errText(r, saveErr)
+			var closeSaveErr *managedCloseSaveError
+			if errors.As(saveErr, &closeSaveErr) {
+				status = closeSaveErr.status
+				message = closeSaveErr.message
+			}
+			w.WriteHeader(status)
+			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(false)
+			resp.Error = message
+			respondJSON(enc, resp)
+			return
+		}
+		// The write is already committed. Record the durable identity before the
+		// canonical reload so a rare reload failure cannot misreport it as an
+		// unsaved attempt (the form still remains open fail-closed).
+		closeInv.saved = true
+		closeInv.savedID = obj.ID.String()
+		closeInv.formURL = "/ui/" + strings.ToLower(string(entity.Kind)) + "/" + entity.Name + "/" + obj.ID.String()
+		// Capture the committed optimistic version before any fallible reload.
+		// Even a fail-closed response must let the still-open form update this
+		// exact record instead of retrying an unversioned write.
+		closeInv.version = savedVersion
+		if version := s.currentEntityVersion(r.Context(), entity, obj); version > closeInv.version {
+			closeInv.version = version
+		}
+		// ПередЗакрытием must observe the canonical persisted object, including
+		// assigned number/id/version. Preserve form-only attributes and ValueTable
+		// rows while replacing persisted entity state from the database.
+		persisted, loadErr := s.store.GetByID(r.Context(), entity.Name, obj.ID, entity)
+		if loadErr != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			respondJSON(enc, formEventResponse{Error: s.errText(r, loadErr)})
+			return
+		}
+		for _, field := range entity.Fields {
+			for key := range obj.Fields {
+				if strings.EqualFold(key, field.Name) {
+					delete(obj.Fields, key)
+				}
+			}
+			if value, ok := maskCIKeyValue(persisted, field.Name); ok {
+				obj.Fields[field.Name] = value
+			}
+		}
+		mergePersistedEntityServiceFields(entity, persisted, obj.Fields)
+		if version := persistedEntityVersion(persisted); version > 0 {
+			obj.Fields["_version"] = version
+		}
+		for _, tp := range entity.TableParts {
+			rows, rowsErr := s.store.GetTablePartRows(r.Context(), entity.Name, tp.Name, obj.ID, tp)
+			if rowsErr != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				respondJSON(enc, formEventResponse{Error: s.errText(r, rowsErr)})
+				return
+			}
+			obj.TablePartRows[tp.Name] = rows
+		}
+		// A newly saved form now has a real reference. BeforeClose must be
+		// able to pass it to a common module just like an originally existing
+		// form; the pseudo-field is filtered from the browser response.
+		setPersistedFormSelfRef(entity, obj)
+		closeInv.savedLabel = s.maskedRecordLabel(r.Context(), entity, persisted)
+		if version := persistedEntityVersion(persisted); version > closeInv.version {
+			closeInv.version = version
+		}
+		if decl == nil {
+			opStatus = "ok"
+			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(true)
+			resp.Dirty = boolPtr(false)
+			respondJSON(enc, resp)
+			return
+		}
+	}
 	// Подмешать ссылки → *runtime.Ref, как при сохранении (нужно для
 	// Объект.Покупатель.Наименование и проч.).
 	s.enrichHeaderRefs(dslCtx, entity, obj)
@@ -421,13 +733,30 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// которая возвращает *formTpProxy для табличных частей (чтобы
 	// `Объект.Товары.Добавить()` реально модифицировал obj).
 	mc := runtime.NewMovementsCollector(entity.Name, obj.ID)
-	var msgs []string
 	// txState — «живой» контекст: обработчик может позвать модуль, который
 	// откроет транзакцию, и ссылки объекта обязаны выполнять ПолучитьОбъект()
 	// внутри неё, а не ждать второго соединения (пул SQLite — одно).
 	vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
 	defer rollbackDSLExecution(txState)
-	thisObj := s.newFormObjectThisLive(dslCtx, txState, obj, entity, form, strings.TrimSpace(r.FormValue("_id")) == "")
+	isNewForHandler := strings.TrimSpace(r.FormValue("_id")) == "" && (closeInv == nil || !closeInv.saved)
+	thisObj := s.newFormObjectThisLive(dslCtx, txState, obj, entity, form, isNewForHandler)
+	if closeInv != nil {
+		thisObj.onCommitted = func(result entityservice.SaveResult) {
+			closeInv.saved = true
+			closeInv.savedID = result.ID.String()
+			if result.Version > closeInv.version {
+				closeInv.version = result.Version
+			}
+			closeInv.formURL = "/ui/" + strings.ToLower(string(entity.Kind)) + "/" + entity.Name + "/" + result.ID.String()
+		}
+	}
+	if closeInv != nil && closeInv.saved && closeInv.version > 0 {
+		version := closeInv.version
+		thisObj.expectedVersion = &version
+	} else if submittedVersion != nil {
+		version := *submittedVersion
+		thisObj.expectedVersion = &version
+	}
 	vars["Объект"] = thisObj
 	vars["ЭтотОбъект"] = thisObj
 
@@ -439,9 +768,11 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// Передаём все процедуры формы, чтобы обработчик мог вызывать
 	// вспомогательные функции из того же .form.os (evalCall ищет
 	// их по ключу __form_procs__).
-	formProcs := make(map[string]*ast.ProcedureDecl, len(program.Procedures))
-	for _, p := range program.Procedures {
-		formProcs[strings.ToLower(p.Name.Literal)] = p
+	formProcs := make(map[string]*ast.ProcedureDecl)
+	if program != nil {
+		for _, p := range program.Procedures {
+			formProcs[strings.ToLower(p.Name.Literal)] = p
+		}
 	}
 	vars["__form_procs__"] = formProcs
 	if closeInv != nil {
@@ -489,10 +820,10 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// Run отличаем «модуль переписал ТЧ в базе» от «пользователь правил грид»
 	// (issue #579, см. refreshTablePartsWrittenByHandler). Только для существующей
 	// записи с табличными частями — иначе лишний запрос в БД на каждое событие.
-	existingRecord := strings.TrimSpace(r.FormValue("_id")) != ""
-	var tpBefore, tpDBBefore map[string][]map[string]any
+	existingRecord := strings.TrimSpace(r.FormValue("_id")) != "" || (closeInv != nil && closeInv.saved)
+	tpBefore := tablePartRowsSnapshot(obj.TablePartRows)
+	var tpDBBefore map[string][]map[string]any
 	if existingRecord && len(entity.TableParts) > 0 && obj.ID != uuid.Nil {
-		tpBefore = tablePartRowsSnapshot(obj.TablePartRows)
 		tpDBBefore = s.tablePartRowsFromDB(dslCtx, entity, obj.ID)
 	}
 
@@ -519,6 +850,20 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// ошибкой процедуры, чтобы конфигурационная ошибка не оставалась незаметной.
 	runErr = finishDSLExecution(txState, runErr)
 	liveCtx := txState.Ctx()
+	if closeInv != nil && thisObj.saved {
+		// BeforeClose itself may save in discard mode. Promote that durable
+		// outcome for both new and existing forms so the client adopts the
+		// final version and never retries an existing row as a new object.
+		closeInv.saved = true
+		closeInv.savedID = obj.ID.String()
+		closeInv.formURL = "/ui/" + strings.ToLower(string(entity.Kind)) + "/" + entity.Name + "/" + obj.ID.String()
+		if thisObj.expectedVersion != nil && *thisObj.expectedVersion > closeInv.version {
+			closeInv.version = *thisObj.expectedVersion
+		}
+		if version := s.currentEntityVersion(liveCtx, entity, obj); version > closeInv.version {
+			closeInv.version = version
+		}
+	}
 	// Перечитывать из базы имеет смысл только для записи, которая там есть:
 	// либо форма открыта по _id, либо обработчик записал новую (тогда нужен и он —
 	// номер от нумератора обязан приехать на экран «Создать» сразу). Гейт по
@@ -526,12 +871,45 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// случайный uuid, поэтому obj.ID != uuid.Nil истинно ВСЕГДА и каждое событие
 	// на «Создать» уходило бы в базу за несуществующей строкой. Ровно эта ловушка
 	// описана выше у restoreUnsubmittedFields.
-	if strings.TrimSpace(r.FormValue("_id")) != "" || savedFormID(thisObj) != "" {
+	if (existingRecord || savedFormID(thisObj) != "") && (closeInv == nil || !closeInv.saved) {
 		s.refreshFieldsWrittenByHandler(liveCtx, r, entity, form, obj, fieldsBefore)
 	}
-	if existingRecord && tpDBBefore != nil {
+	if existingRecord && tpDBBefore != nil && !thisObj.saved {
 		s.refreshTablePartsWrittenByHandler(liveCtx, entity, obj, tpBefore, tpDBBefore)
 	}
+	if closeInv != nil && closeInv.saved {
+		// BeforeClose may persist a new display value after the initial save.
+		// Popup save-and-select must publish the final canonical, field-masked
+		// label—not the snapshot captured before the handler ran.
+		if finalPersisted, finalErr := s.store.GetByID(liveCtx, entity.Name, obj.ID, entity); finalErr == nil {
+			closeInv.savedLabel = s.maskedRecordLabel(liveCtx, entity, cloneRecord(finalPersisted))
+			if version := persistedEntityVersion(finalPersisted); version > closeInv.version {
+				closeInv.version = version
+			}
+			if version := persistedEntityVersion(finalPersisted); version > 0 {
+				obj.Fields["_version"] = version
+			}
+			mergeBaselineFields := fieldsBefore
+			if thisObj.saved && thisObj.lastSavedFields != nil {
+				mergeBaselineFields = thisObj.lastSavedFields
+			}
+			mergePersistedFieldsUnchanged(entity, finalPersisted, obj.Fields, mergeBaselineFields)
+			if thisObj.saved && thisObj.lastSavedTableParts != nil {
+				s.mergePersistedTablePartsUnchanged(liveCtx, entity, obj, thisObj.lastSavedTableParts)
+			}
+		} else if runErr == nil {
+			runErr = fmt.Errorf("не удалось прочитать итоговое состояние записанной формы: %w", finalErr)
+		}
+	}
+	// Publish authoritative dirty state for ordinary commands as well as close
+	// lifecycle calls. Programmatic values/TableParts/FormTables do not emit DOM
+	// input events; without this signal an unsaved command mutation on a clean
+	// form could be silently discarded by the next Close.
+	dirty := transientManagedStateDirty(obj, fieldsBefore, tpBefore)
+	if existingRecord || thisObj.saved || (closeInv != nil && closeInv.saved) {
+		dirty = s.managedCloseStateDirty(liveCtx, entity, form, obj, fieldsBefore, tpBefore)
+	}
+	eventDirty := boolPtr(dirty)
 	if runErr != nil {
 		opStatus = operationStatus(opCtx, runErr)
 		resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, condRuntime.rules, msgs).response(false)
@@ -541,6 +919,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		// нужен клиенту, иначе повтор действия создаст второй документ.
 		resp.SavedID = savedFormID(thisObj)
 		resp.Version = s.versionWrittenByHandler(liveCtx, entity, obj, thisObj)
+		resp.Dirty = eventDirty
 		respondJSON(enc, resp)
 		return
 	}
@@ -551,7 +930,277 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	resp.ChoiceList = choiceItems
 	resp.SavedID = savedFormID(thisObj)
 	resp.Version = s.versionWrittenByHandler(liveCtx, entity, obj, thisObj)
+	resp.Dirty = eventDirty
 	respondJSON(enc, resp)
+}
+
+// mergePersistedTablePartsUnchanged mirrors mergePersistedFieldsUnchanged for
+// a handler that called Object.Write. Rows still equal to the exact successful
+// write snapshot may absorb canonical/external DB changes; edits performed by
+// BeforeClose after that write remain unsaved form state and must win.
+func (s *Server) mergePersistedTablePartsUnchanged(
+	ctx context.Context,
+	entity *metadata.Entity,
+	obj *runtime.Object,
+	lastSaved map[string][]map[string]any,
+) {
+	if s == nil || s.store == nil || entity == nil || obj == nil || obj.ID == uuid.Nil {
+		return
+	}
+	if obj.TablePartRows == nil {
+		obj.TablePartRows = map[string][]map[string]any{}
+	}
+	for _, tp := range entity.TableParts {
+		if !tpRowsEqual(obj.TablePartRows[tp.Name], lastSaved[tp.Name], tp) {
+			continue
+		}
+		fresh, err := s.store.GetTablePartRows(ctx, entity.Name, tp.Name, obj.ID, tp)
+		if err != nil {
+			continue
+		}
+		s.enrichTPRowsWithRefs(ctx, tp, fresh)
+		obj.TablePartRows[tp.Name] = fresh
+	}
+}
+
+func boolPtr(value bool) *bool { return &value }
+
+func persistedEntityVersion(row map[string]any) int64 {
+	value, ok := maskCIKeyValue(row, "_version")
+	if !ok {
+		return 0
+	}
+	switch version := value.(type) {
+	case int64:
+		return version
+	case int:
+		return int64(version)
+	default:
+		parsed, _ := strconv.ParseInt(fmt.Sprint(version), 10, 64)
+		return parsed
+	}
+}
+
+func mergePersistedEntityServiceFields(entity *metadata.Entity, persisted, fields map[string]any) {
+	if entity == nil || persisted == nil || fields == nil {
+		return
+	}
+	keys := []string{"deletion_mark"}
+	if entity.Posting {
+		keys = append(keys, "posted")
+	}
+	if entity.Hierarchical {
+		keys = append(keys, "parent_id", "is_folder")
+	}
+	for _, name := range keys {
+		for key := range fields {
+			if strings.EqualFold(key, name) {
+				delete(fields, key)
+			}
+		}
+		if value, ok := maskCIKeyValue(persisted, name); ok {
+			fields[name] = value
+		}
+	}
+}
+
+// mergePersistedEntityServiceFieldsForClose restores server-owned service
+// state before BeforeClose. Save-like intents keep hierarchy values submitted
+// by the form (the user may be moving/turning a group); missing hierarchy keys,
+// discard, posting and deletion state remain canonical from storage.
+func mergePersistedEntityServiceFieldsForClose(entity *metadata.Entity, persisted, fields map[string]any, preserveSubmittedHierarchy bool) {
+	type presentValue struct {
+		value any
+		ok    bool
+	}
+	preserved := map[string]presentValue{}
+	if preserveSubmittedHierarchy && entity != nil && entity.Hierarchical {
+		for _, name := range []string{"parent_id", "is_folder"} {
+			value, ok := maskCIKeyValue(fields, name)
+			preserved[name] = presentValue{value: value, ok: ok}
+		}
+	}
+	mergePersistedEntityServiceFields(entity, persisted, fields)
+	for name, item := range preserved {
+		if !item.ok {
+			continue
+		}
+		for key := range fields {
+			if strings.EqualFold(key, name) {
+				delete(fields, key)
+			}
+		}
+		fields[name] = item.value
+	}
+}
+
+// mergePersistedFieldsUnchanged absorbs writes made through another object or
+// a common module during BeforeClose, including submitted editable fields.
+// Direct in-memory mutations made by BeforeClose remain unsaved form state and
+// must win over the reload so the client can keep them dirty.
+func mergePersistedFieldsUnchanged(entity *metadata.Entity, persisted, fields map[string]any, before map[string]string) {
+	if entity == nil || persisted == nil || fields == nil {
+		return
+	}
+	names := make([]string, 0, len(entity.Fields)+4)
+	for _, field := range entity.Fields {
+		names = append(names, field.Name)
+	}
+	names = append(names, "deletion_mark")
+	if entity.Posting {
+		names = append(names, "posted")
+	}
+	if entity.Hierarchical {
+		names = append(names, "parent_id", "is_folder")
+	}
+	for _, name := range names {
+		was, wasOK := snapshotValueCI(before, name)
+		current, currentOK := maskCIKeyValue(fields, name)
+		if wasOK != currentOK || wasOK && was != snapshotComparableValue(current) {
+			continue
+		}
+		for key := range fields {
+			if strings.EqualFold(key, name) {
+				delete(fields, key)
+			}
+		}
+		if value, ok := maskCIKeyValue(persisted, name); ok {
+			fields[name] = value
+		}
+	}
+}
+
+// managedCloseStateDirty compares the final state returned to the browser
+// with the durable record after BeforeClose. Entity fields/table parts are
+// compared with storage; form-only attributes and ValueTables are compared
+// with their pre-handler snapshot because they have no durable counterpart.
+// Read failures are fail-safe: the form stays dirty instead of risking loss.
+func (s *Server) managedCloseStateDirty(
+	ctx context.Context,
+	entity *metadata.Entity,
+	form *metadata.FormModule,
+	obj *runtime.Object,
+	fieldsBefore map[string]string,
+	tpBefore map[string][]map[string]any,
+) bool {
+	if s == nil || s.store == nil || entity == nil || obj == nil || obj.ID == uuid.Nil {
+		return true
+	}
+	persisted, err := s.store.GetByID(ctx, entity.Name, obj.ID, entity)
+	if err != nil || persisted == nil {
+		return true
+	}
+	for _, field := range entity.Fields {
+		stored, _ := maskCIKeyValue(persisted, field.Name)
+		if tpCellNorm(field, obj.Get(field.Name)) != tpCellNorm(field, stored) {
+			return true
+		}
+	}
+	serviceKeys := []string{"deletion_mark"}
+	if entity.Posting {
+		serviceKeys = append(serviceKeys, "posted")
+	}
+	if entity.Hierarchical {
+		serviceKeys = append(serviceKeys, "parent_id", "is_folder")
+	}
+	for _, name := range serviceKeys {
+		live, _ := maskCIKeyValue(obj.Fields, name)
+		stored, _ := maskCIKeyValue(persisted, name)
+		if name == "parent_id" {
+			if refValueString(live) != refValueString(stored) {
+				return true
+			}
+		} else if boolCanon(asBool(live)) != boolCanon(asBool(stored)) {
+			return true
+		}
+	}
+	for _, tablePart := range entity.TableParts {
+		stored, rowsErr := s.store.GetTablePartRows(ctx, entity.Name, tablePart.Name, obj.ID, tablePart)
+		if rowsErr != nil || !tpRowsEqual(obj.TablePartRows[tablePart.Name], stored, tablePart) {
+			return true
+		}
+	}
+	for _, attr := range form.Attributes {
+		if attr == nil || attr.MainAttribute || entityField(entity, attr.Name) != nil || entityServiceFieldName(attr.Name) {
+			continue
+		}
+		if strings.EqualFold(attr.TypeRef, "ValueTable") {
+			tp := formAttributeTablePart(attr)
+			if tp == nil || !tpRowsEqual(obj.TablePartRows[attr.Name], tpBefore[attr.Name], *tp) {
+				return true
+			}
+			continue
+		}
+		if !formAttrIsScalar(attr) {
+			continue
+		}
+		before, beforeOK := snapshotValueCI(fieldsBefore, attr.Name)
+		after, afterOK := maskCIKeyValue(obj.Fields, attr.Name)
+		if beforeOK != afterOK || beforeOK && before != snapshotComparableValue(after) {
+			return true
+		}
+	}
+	return false
+}
+
+func snapshotValueCI(snapshot map[string]string, name string) (string, bool) {
+	for key, value := range snapshot {
+		if strings.EqualFold(key, name) {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+// transientManagedStateDirty is used by processor forms, which have no
+// durable record to compare with. It answers only whether BeforeClose changed
+// the request snapshot, so a no-op denied close stays clean while an unsaved
+// mutation is protected by the next close attempt.
+func transientManagedStateDirty(obj *runtime.Object, fieldsBefore map[string]string, tablesBefore map[string][]map[string]any) bool {
+	if obj == nil {
+		return true
+	}
+	fieldsAfter := snapshotFieldValues(obj.Fields)
+	if !snapshotStringMapsEqual(fieldsBefore, fieldsAfter) {
+		return true
+	}
+	if len(tablesBefore) != len(obj.TablePartRows) {
+		return true
+	}
+	for name, rowsBefore := range tablesBefore {
+		rowsAfter, ok := tableRowsCI(obj.TablePartRows, name)
+		if !ok || len(rowsBefore) != len(rowsAfter) {
+			return true
+		}
+		for i := range rowsBefore {
+			if !snapshotStringMapsEqual(snapshotFieldValues(rowsBefore[i]), snapshotFieldValues(rowsAfter[i])) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func snapshotStringMapsEqual(left, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for name, value := range left {
+		other, ok := snapshotValueCI(right, name)
+		if !ok || other != value {
+			return false
+		}
+	}
+	return true
+}
+
+func tableRowsCI(tables map[string][]map[string]any, name string) ([]map[string]any, bool) {
+	for key, rows := range tables {
+		if strings.EqualFold(key, name) {
+			return rows, true
+		}
+	}
+	return nil, false
 }
 
 // savedFormID возвращает id записи, если обработчик сохранил ЕЩЁ НЕ записанную
@@ -644,7 +1293,7 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 	values := normalizeFormAttrKeys(fields, form, entity)
 	// Псевдо-реквизит «Ссылка» — контекст обработчика, а не значение формы:
 	// в ответ он не едет, чтобы applyValues не искал под него элемент.
-	for _, k := range []string{"ссылка", "reference"} {
+	for _, k := range []string{"ссылка", "reference", "_version"} {
 		if _, isEntityField := entityFieldByName(entity, k); !isEntityField {
 			delete(values, k)
 		}
@@ -833,6 +1482,7 @@ func buildObjectFromForm(
 	if err != nil {
 		return nil, err
 	}
+	mergeSubmittedEntityServiceFields(r, entity, fields)
 	tpRows, err := parseTablePartRowsForManagedForm(r, entity, form, canWrite)
 	if err != nil {
 		return nil, err
@@ -1197,6 +1847,8 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			respondJSON(enc, formEventResponse{Error: err.Error()})
 			return
 		}
+		fieldsBefore := snapshotFieldValues(obj.Fields)
+		tablesBefore := tablePartRowsSnapshot(obj.TablePartRows)
 		mc := runtime.NewMovementsCollector("processor", uuid.Nil)
 		var msgs []string
 		// An unclosed explicit DSL transaction must be rolled back when the
@@ -1262,12 +1914,14 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(false)
 			resp.Error = interpreter.FormatUserError(runErr)
 			resp.PickerData = picker
+			resp.Dirty = boolPtr(transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
 			respondJSON(enc, resp)
 			return
 		}
 
 		resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(true)
 		resp.PickerData = picker
+		resp.Dirty = boolPtr(transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
 		respondJSON(enc, resp)
 		return
 	}

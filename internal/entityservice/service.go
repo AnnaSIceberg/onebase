@@ -388,11 +388,27 @@ type SaveRequest struct {
 	// lock (поведение совместимо с прежним Upsert). Не-nil ⇒ UpsertVersioned
 	// вернёт storage.ErrVersionConflict при несовпадении версии.
 	ExpectedVersion *int64
+
+	// OnPersisted runs immediately after the save scope succeeds. In an ambient
+	// outer transaction this means after its savepoint, before the outer commit;
+	// callers may expose the provisional identity/version inside that same DSL
+	// transaction when they also register rollback restoration.
+	OnPersisted func(SaveResult)
+
+	// OnCommitted runs after the storage transaction has committed, with the
+	// exact durable identity/version, and before fallible post-commit delivery
+	// such as webhooks or live-list notifications. Exactly-once callers can
+	// preserve the committed result even if a downstream publisher panics.
+	OnCommitted func(SaveResult)
 }
 
 // SaveResult — результат Service.Save.
 type SaveResult struct {
-	ID          uuid.UUID
+	ID uuid.UUID
+	// Version is the committed optimistic-lock version. It is derived from
+	// the successful write itself, so callers retain a safe token even when a
+	// subsequent canonical reload fails.
+	Version     int64
 	DSLError    string                      // если не пусто — хук вернул ошибку, БД не изменена
 	DSLMessages []string                    // сообщения из builtin Сообщить
 	Movements   *runtime.MovementsCollector // для отладки/инспекции (заполняется хуком OnPost)
@@ -645,10 +661,28 @@ func (s *Service) Save(ctx context.Context, req SaveRequest) (SaveResult, error)
 		return SaveResult{}, err
 	}
 
+	version := int64(1)
+	if !req.IsNew && req.ExpectedVersion != nil {
+		version = *req.ExpectedVersion + 1
+	}
+	result := SaveResult{ID: req.ID, Version: version, DSLMessages: msgs, Movements: mc}
+	if req.OnPersisted != nil {
+		req.OnPersisted(result)
+	}
+	if req.OnCommitted != nil {
+		notifyCommitted := func() { req.OnCommitted(result) }
+		// WithTxScope may have released only a nested savepoint. Register before
+		// webhook/change delivery so an ambient outer transaction invokes the
+		// durable callback first, and invoke immediately only when no tx exists.
+		if !storage.DeferUntilTxCommit(ctx, notifyCommitted) {
+			notifyCommitted()
+		}
+	}
+
 	s.dispatchSaved(ctx, req, isPosting)
 	s.publishChange(ctx, req, isPosting, changeBefore)
 
-	return SaveResult{ID: req.ID, DSLMessages: msgs, Movements: mc}, nil
+	return result, nil
 }
 
 // hookRunError distinguishes a user-facing save rejection (DSL hook or a

@@ -680,20 +680,7 @@ func (s *Server) parseSubmitForm(w http.ResponseWriter, r *http.Request, entity 
 		return
 	}
 
-	if entity.Hierarchical {
-		// Только если ключи реально пришли в теле. Авто-форма их рендерит
-		// (templates.go), управляемая — нет: безусловное чтение выбрасывало
-		// элемент в корень и снимало признак группы при каждой записи из
-		// managed-формы. Не пришли — восстановятся из БД вместе с прочими
-		// неприсланными полями.
-		submitted := submittedFormKeys(r)
-		if formKeySubmitted(submitted, "parent_id") {
-			fields["parent_id"] = r.FormValue("parent_id") //nolint:gosec // G120: предел тела ставит вызывающий обработчик; gosec видит только присваивание r.Body в той же функции
-		}
-		if formKeySubmitted(submitted, "is_folder") {
-			fields["is_folder"] = r.FormValue("is_folder") == "true" //nolint:gosec // G120: предел тела ставит вызывающий обработчик; gosec видит только присваивание r.Body в той же функции
-		}
-	}
+	mergeSubmittedEntityServiceFields(r, entity, fields)
 
 	// Объект для new строится через NewObject+Set (ключи нормализуются в lowercase
 	// — историческое поведение submit). Для existing — прямое присваивание Fields,
@@ -722,6 +709,23 @@ func (s *Server) parseSubmitForm(w http.ResponseWriter, r *http.Request, entity 
 	}
 	ok = true
 	return
+}
+
+// mergeSubmittedEntityServiceFields keeps the HTML-submit and close-intent
+// object builders in parity for platform-owned fields which are not declared
+// in entity.Fields. Missing keys remain missing and are restored from storage
+// for an existing partial managed form.
+func mergeSubmittedEntityServiceFields(r *http.Request, entity *metadata.Entity, fields map[string]any) {
+	if r == nil || entity == nil || fields == nil || !entity.Hierarchical {
+		return
+	}
+	submitted := submittedFormKeys(r)
+	if formKeySubmitted(submitted, "parent_id") {
+		fields["parent_id"] = r.FormValue("parent_id") //nolint:gosec // caller applies the entity-specific body limit
+	}
+	if formKeySubmitted(submitted, "is_folder") {
+		fields["is_folder"] = r.FormValue("is_folder") == "true" //nolint:gosec // caller applies the entity-specific body limit
+	}
 }
 
 // renderObjectFormError перерисовывает форму объекта с баннером ошибки — когда
@@ -789,6 +793,24 @@ func (s *Server) renderObjectFormBadRequest(w http.ResponseWriter, r *http.Reque
 	s.renderObjectFormError(w, r, entity, isNew, errMsg, nil, tpRows)
 }
 
+func (s *Server) renderManagedObjectSaveFailure(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, isNew bool, obj *runtime.Object, messages []string, saveErr error) {
+	var failure *managedCloseSaveError
+	if !errors.As(saveErr, &failure) {
+		s.serverError(w, r, saveErr)
+		return
+	}
+	switch failure.kind {
+	case managedSaveForbidden:
+		s.renderForbidden(w, r)
+	case managedSaveConflict:
+		s.renderVersionConflict(w, r, entity, obj.ID)
+	case managedSaveValidation:
+		s.renderObjectFormBadRequest(w, r, entity, isNew, failure.message, obj.TablePartRows)
+	default:
+		s.renderObjectFormError(w, r, entity, isNew, failure.message, messages, obj.TablePartRows)
+	}
+}
+
 func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	entity := s.getEntity(w, r)
 	if entity == nil {
@@ -804,6 +826,7 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	}
 	managedForm := pickManagedForm(entity, "object")
 	if managedForm != nil {
+		s.mergeFormAttrValues(r.Context(), r, managedForm, entity, obj)
 		if strings.TrimSpace(r.FormValue(copySourceFormField)) != "" {
 			if failed := s.restoreManagedCopyState(
 				w, r, entity, managedForm, fields, obj.Fields, obj.TablePartRows,
@@ -816,6 +839,23 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// Managed HTML submit and close-intent share one result-returning save
+		// layer. Transport differs (redirect/render vs JSON), write semantics do not.
+		hookMsgs, _, saveErr := s.saveManagedObject(r, entity, managedForm, obj, true, action, nil)
+		if saveErr != nil {
+			s.renderManagedObjectSaveFailure(w, r, entity, true, obj, hookMsgs, saveErr)
+			return
+		}
+		if r.FormValue("_popup") == "1" {
+			s.renderPopupSaved(w, obj.ID.String(), firstStringField(fields, entity))
+			return
+		}
+		if action == "post_and_close" {
+			http.Redirect(w, r, listURL(entity), http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, "/ui/"+strings.ToLower(string(entity.Kind))+"/"+entity.Name+"/"+obj.ID.String(), http.StatusSeeOther)
+		return
 	}
 	if err := s.validateManagedFormRequired(r, entity, managedForm, obj.Fields); err != nil {
 		s.renderObjectFormBadRequest(w, r, entity, true, err.Error(), obj.TablePartRows)
@@ -1495,7 +1535,19 @@ func (s *Server) submitEdit(w http.ResponseWriter, r *http.Request) {
 			s.serverError(w, r, err)
 			return
 		}
+		s.mergeFormAttrValues(r.Context(), r, managedForm, entity, obj)
 		tpRows = obj.TablePartRows
+		hookMsgs, _, saveErr := s.saveManagedObject(r, entity, managedForm, obj, false, action, nil)
+		if saveErr != nil {
+			s.renderManagedObjectSaveFailure(w, r, entity, false, obj, hookMsgs, saveErr)
+			return
+		}
+		if action == "post_and_close" {
+			http.Redirect(w, r, listURL(entity), http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, "/ui/"+strings.ToLower(string(entity.Kind))+"/"+entity.Name+"/"+id.String(), http.StatusSeeOther)
+		return
 	}
 	// План 88: не дать пользователю, видящему поле лишь замаскированным,
 	// перезаписать реальное значение маской/подделкой — восстанавливаем
