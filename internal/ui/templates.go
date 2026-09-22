@@ -411,6 +411,35 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return s
 		},
+		// managedRefOptions keeps choice_filter options scoped to the stable
+		// element id. The same entity field may be rendered twice with different
+		// filters; falling back by field name is only for elements without the
+		// opt-in contract.
+		"managedRefOptions": func(ctx map[string]any, element *metadata.FormElement, field string) []map[string]any {
+			if element != nil {
+				if scoped, ok := ctx["ManagedChoiceOptions"].(map[string][]map[string]any); ok {
+					if rows, exists := scoped[element.ID]; exists {
+						return rows
+					}
+				}
+			}
+			if refs, ok := ctx["RefOptions"].(map[string][]map[string]any); ok {
+				return refs[field]
+			}
+			if refs, ok := ctx["RefOptions"].(map[string]any); ok {
+				if rows, ok := refs[field].([]map[string]any); ok {
+					return rows
+				}
+			}
+			return nil
+		},
+		"managedChoiceContext": func(ctx map[string]any, element *metadata.FormElement) string {
+			if element == nil {
+				return ""
+			}
+			contexts, _ := ctx["ManagedChoiceContexts"].(map[string]string)
+			return contexts[element.ID]
+		},
 		// itemFormVisible/itemFormHidden делят реквизиты по блоку `item_form:`
 		// (план 117, Д12). До этого ключ парсился, хранился, отдавался в
 		// describe, круглился конфигуратором и проходил линт, но НИ ОДИН
@@ -1216,6 +1245,9 @@ const tplHead = `
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="onebase">
 <title>{{if .Cfg.AppName}}{{.Cfg.AppName}}{{else}}onebase{{end}}</title>
+<script type="application/json" id="ob-ui-messages">{{jsJSON (dict
+  "closeNotConfirmed" (t (or $.Lang "ru") "Форма не закрыта: сервер не подтвердил закрытие.")
+)}}</script>
 <script src="/static/ui.js"></script>
 <style>
 .ob-embedded .topbar,.ob-embedded .subsys-bar,.ob-embedded #ob-nav{display:none!important}

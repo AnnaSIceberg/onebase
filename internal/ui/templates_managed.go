@@ -81,15 +81,16 @@ const tplManagedForm = `
   {{$fn := dpField $el.DataPath}}
   {{$f := fieldByName $ctx.Entity $fn}}
   {{$hChg := hasHandler $el "ПриИзменении"}}
+  {{$choiceCtx := managedChoiceContext $ctx $el}}
   <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayout $el}} style="{{.}}"{{end}}>
     <label>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}</label>
     {{if $f}}
       {{if isRef (str $f.Type)}}
         <div class="managed-control-row" style="display:flex;gap:6px;align-items:center">
-          <select class="managed-fill-control" id="ref-{{$fn}}" name="{{$fn}}" style="flex:1" data-ref-entity="{{$f.RefEntity}}"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if and ($f.InlineCreateEnabled false) (refWriteAllowed $ctx.RefWriteAccess $f.RefEntity)}} data-ref-allow-create="1"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+          <select class="managed-fill-control" id="ref-{{$fn}}" name="{{$fn}}" style="flex:1" data-ref-entity="{{$f.RefEntity}}"{{if $choiceCtx}} data-ref-choice-context="{{$choiceCtx}}"{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if and ($f.InlineCreateEnabled false) (refWriteAllowed $ctx.RefWriteAccess $f.RefEntity)}} data-ref-allow-create="1"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
             <option value="">{{if $ro}}—{{else}}— выбрать —{{end}}</option>
-            {{range index $ctx.RefOptions $fn}}
-            <option value="{{index . "id"}}" {{if eq (index . "id") (index $ctx.Values $fn)}}selected{{end}}>{{index . "_label"}}</option>
+            {{range managedRefOptions $ctx $el $fn}}
+            <option value="{{index . "id"}}"{{if index . "_choice_outside_filter"}} data-ob-choice-outside-filter="1"{{end}} {{if eq (index . "id") (index $ctx.Values $fn)}}selected{{end}}>{{index . "_label"}}</option>
             {{end}}
           </select>
           {{/* Нередактируемому полю кнопка подбора не нужна — выбирать нечего, а
@@ -171,7 +172,7 @@ const tplManagedForm = `
       </div>
     {{else}}
       {{$attr := attrByName $ctx.Form $fn}}
-      {{if and $attr (attrRefEntity $attr.TypeRef) (index $ctx.RefOptions $fn)}}
+      {{if and $attr (attrRefEntity $attr.TypeRef) (or (index $ctx.RefOptions $fn) $choiceCtx)}}
         {{/* Реквизит формы ссылочного типа — рабочий пикер выбора (фикс B): select
              из вариантов справочника (mergeFormLocalRefOptions) + кнопка подбора.
              Условие требует ещё и загруженных опций: mergeFormLocalRefOptions
@@ -181,10 +182,10 @@ const tplManagedForm = `
              пустой select, теряющий текущее значение при записи. Нет опций —
              остаётся прежний текстовый ввод со значением. */}}
         <div class="managed-control-row" style="display:flex;gap:6px;align-items:center">
-          <select class="managed-fill-control" id="ref-{{$fn}}" name="{{$fn}}" style="flex:1" data-ref-entity="{{attrRefEntity $attr.TypeRef}}"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+          <select class="managed-fill-control" id="ref-{{$fn}}" name="{{$fn}}" style="flex:1" data-ref-entity="{{attrRefEntity $attr.TypeRef}}"{{if $choiceCtx}} data-ref-choice-context="{{$choiceCtx}}"{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
             <option value="">{{if $ro}}—{{else}}— выбрать —{{end}}</option>
-            {{range index $ctx.RefOptions $fn}}
-            <option value="{{index . "id"}}" {{if eq (index . "id") (index $ctx.Values $fn)}}selected{{end}}>{{index . "_label"}}</option>
+            {{range managedRefOptions $ctx $el $fn}}
+            <option value="{{index . "id"}}"{{if index . "_choice_outside_filter"}} data-ob-choice-outside-filter="1"{{end}} {{if eq (index . "id") (index $ctx.Values $fn)}}selected{{end}}>{{index . "_label"}}</option>
             {{end}}
           </select>
           <button type="button" data-ob-ref-picker="ref-{{$fn}}"{{if $ro}} disabled{{end}} style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">…</button>
@@ -769,12 +770,12 @@ main>.card{max-width:none}
   <a href="#" data-ob-ref-cancel class="btn btn-cancel">Отмена</a>
   {{else if .IsProcessor}}
   {{/* Кнопка «Выполнить» скрыта: managed-форма использует свои кнопки */}}
-  <a href="/ui/" class="btn btn-cancel">Отмена</a>
+  <a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">Отмена</a>
   {{else}}
   {{/* «Записать» здесь НЕ дублируем: она уже есть в командной панели формы, и
        две одинаковые кнопки на одном экране заставляют гадать, чем они
        отличаются. Внизу остаётся только выход из формы. */}}
-  <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}" class="btn btn-cancel">Отмена</a>
+  <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">Отмена</a>
   {{end}}
 </div>
 </form>
@@ -782,11 +783,22 @@ main>.card{max-width:none}
 
 {{/* ── Рантайм событий managed-формы (план 37, этап 8) ──────────────────
      Статический код живёт в /static/managed.js; ниже только JSON bootstrap. */}}
+{{$closeMessages := (dict
+  "controllerUnavailable" (t $.Lang "Проверка закрытия недоступна. Форма оставлена открытой.")
+  "invalidResponse" (t $.Lang "Сервер вернул некорректный ответ при проверке закрытия.")
+  "correlationMismatch" (t $.Lang "Ответ закрытия не совпал с запросом. Форма оставлена открытой.")
+  "formChanged" (t $.Lang "Форма изменилась во время проверки закрытия. Повторите закрытие.")
+  "timeout" (t $.Lang "Превышено время проверки закрытия")
+  "network" (t $.Lang "Сетевая ошибка при закрытии")
+)}}
 {{if .IsProcessor}}
 <script type="application/json" id="ob-managed-config">{{jsJSON (dict
   "kind" "processor"
   "entity" .Processor.Name
   "url" (printf "/ui/processor/%s/form-event" (lower .Processor.Name))
+  "closeUrl" (printf "/ui/processor/%s/form-close-intent" (lower .Processor.Name))
+  "closeTimeoutMs" .FormCloseTimeoutMS
+  "closeMessages" $closeMessages
   "docId" ""
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "serviceFields" (processorServiceFieldNames .Processor)
@@ -796,6 +808,9 @@ main>.card{max-width:none}
   "kind" (lower (str .Entity.Kind))
   "entity" .Entity.Name
   "url" (printf "/ui/%s/%s/form-event" (lower (str .Entity.Kind)) .Entity.Name)
+  "closeUrl" (printf "/ui/%s/%s/form-close-intent" (lower (str .Entity.Kind)) .Entity.Name)
+  "closeTimeoutMs" .FormCloseTimeoutMS
+  "closeMessages" $closeMessages
   "docId" .ID
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "formAttrs" (formAttrNames .Form .Entity)
