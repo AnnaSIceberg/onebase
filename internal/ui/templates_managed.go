@@ -582,6 +582,10 @@ main>.card{max-width:none}
    получает остаток высоты правилом выше; это правило доводит его до самого
    select/input, не растягивая соседние кнопки выбора. */
 .form-group.ob-el-fill>.managed-control-row>.managed-fill-control{height:100%;min-height:0}
+/* Сетевой сбой зависимого подбора виден прямо на поле, но не раскрывает
+   локальный полный список: ui.js оставляет прежние варианты и значение. */
+select[data-ref-choice-context][data-ob-choice-loading="1"]{cursor:progress}
+select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;background:#fef2f2;box-shadow:0 0 0 1px #fecaca}
 </style>
 {{if hasGridTP .Form}}
 <link rel="stylesheet" href="/vendor/slickgrid/slick.grid.css">
@@ -638,11 +642,10 @@ main>.card{max-width:none}
       {{end}}
     {{end}}
   {{end}}
-  {{if .CanWrite}}<button class="btn btn-secondary" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
   {{if .Entity.Posting}}
     {{if ne (index .Values "deletion_mark") "true"}}
       {{if .CanPost}}<button class="btn btn-primary" type="submit" name="_action" value="post" form="main-form">{{if .Entity.PostCaption}}{{.Entity.PostCaption}}{{else}}{{t $.Lang "Провести"}}{{end}}</button>{{end}}
-      {{if and .CanPost (not .Entity.PostAndCloseHidden)}}<button class="btn btn-post" type="submit" name="_action" value="post_and_close" form="main-form" title="Ctrl+Enter" aria-keyshortcuts="Control+Enter">{{if .Entity.PostCaption}}{{.Entity.PostCaption}} и закрыть{{else}}{{t $.Lang "Провести и закрыть"}}{{end}}</button>{{end}}
+      {{if and .CanPost (not .Entity.PostAndCloseHidden)}}<button class="btn btn-post" type="button" data-ob-form-close="post" data-ob-close-reason="post_and_close" title="Ctrl+Enter" aria-keyshortcuts="Control+Enter">{{if .Entity.PostCaption}}{{.Entity.PostCaption}} и закрыть{{else}}{{t $.Lang "Провести и закрыть"}}{{end}}</button>{{end}}
     {{end}}
     {{if not .IsNew}}
       {{if eq (index .Values "posted") "true"}}
@@ -764,18 +767,17 @@ main>.card{max-width:none}
   {{template "managed-element" (dict "El" . "Ctx" $ctx)}}
 {{end}}
 
-<div style="margin-top:16px">
+<div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
   {{if .IsPopup}}
-  {{if .CanWrite}}<button class="btn btn-primary" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать и выбрать"}}</button>{{end}}
+  {{if .CanWrite}}<button class="btn btn-primary" type="button" data-ob-form-close="save_and_select" data-ob-close-reason="ok" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать и выбрать"}}</button>{{end}}
   <a href="#" data-ob-ref-cancel class="btn btn-cancel">Отмена</a>
   {{else if .IsProcessor}}
   {{/* Кнопка «Выполнить» скрыта: managed-форма использует свои кнопки */}}
   <a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">Отмена</a>
   {{else}}
-  {{/* «Записать» здесь НЕ дублируем: она уже есть в командной панели формы, и
-       две одинаковые кнопки на одном экране заставляют гадать, чем они
-       отличаются. Внизу остаётся только выход из формы. */}}
-  <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">Отмена</a>
+  {{if and .CanWrite (formActionVisible .Form "save")}}<button class="btn btn-secondary" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
+  {{if and .CanWrite (formActionVisible .Form "ok")}}<button class="btn btn-primary" type="button" data-ob-form-close="save" data-ob-close-reason="ok" data-ob-close-href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}">{{t $.Lang "ОК"}}</button>{{end}}
+  {{if formActionVisible .Form "close"}}<button class="btn btn-cancel" type="button" data-ob-form-close="" data-ob-close-reason="close" data-ob-close-href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}">{{t $.Lang "Закрыть"}}</button>{{end}}
   {{end}}
 </div>
 </form>
@@ -790,6 +792,17 @@ main>.card{max-width:none}
   "formChanged" (t $.Lang "Форма изменилась во время проверки закрытия. Повторите закрытие.")
   "timeout" (t $.Lang "Превышено время проверки закрытия")
   "network" (t $.Lang "Сетевая ошибка при закрытии")
+  "operationPending" (t $.Lang "Команда формы ещё выполняется. Дождитесь её завершения.")
+  "closePending" (t $.Lang "Сначала завершите или восстановите проверку закрытия формы.")
+  "reloadRequired" (t $.Lang "Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.")
+  "unknownResult" (t $.Lang "Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.")
+  "dirtyTitle" (t $.Lang "Данные были изменены.")
+  "dirtyQuestion" (t $.Lang "Сохранить изменения?")
+  "processorQuestion" (t $.Lang "Закрыть без сохранения?")
+  "processorDiscard" (t $.Lang "Закрыть")
+  "yes" (t $.Lang "Да")
+  "no" (t $.Lang "Нет")
+  "cancel" (t $.Lang "Отмена")
 )}}
 {{if .IsProcessor}}
 <script type="application/json" id="ob-managed-config">{{jsJSON (dict
@@ -798,7 +811,12 @@ main>.card{max-width:none}
   "url" (printf "/ui/processor/%s/form-event" (lower .Processor.Name))
   "closeUrl" (printf "/ui/processor/%s/form-close-intent" (lower .Processor.Name))
   "closeTimeoutMs" .FormCloseTimeoutMS
+  "closeEpoch" .FormCloseEpoch
+  "closeClientId" .FormCloseClientID
+  "closeSchema" .FormCloseSchema
+  "closeServerNowMs" .FormCloseServerNowMS
   "closeMessages" $closeMessages
+  "initialDirty" .InitialDirty
   "docId" ""
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "serviceFields" (processorServiceFieldNames .Processor)
@@ -810,7 +828,12 @@ main>.card{max-width:none}
   "url" (printf "/ui/%s/%s/form-event" (lower (str .Entity.Kind)) .Entity.Name)
   "closeUrl" (printf "/ui/%s/%s/form-close-intent" (lower (str .Entity.Kind)) .Entity.Name)
   "closeTimeoutMs" .FormCloseTimeoutMS
+  "closeEpoch" .FormCloseEpoch
+  "closeClientId" .FormCloseClientID
+  "closeSchema" .FormCloseSchema
+  "closeServerNowMs" .FormCloseServerNowMS
   "closeMessages" $closeMessages
+  "initialDirty" .InitialDirty
   "docId" .ID
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "formAttrs" (formAttrNames .Form .Entity)
