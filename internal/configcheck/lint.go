@@ -664,6 +664,9 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		"save":   action,
 		"ok":     action,
 		"close":  action,
+		// attachments.visible:false скрывает панель вложений выбранной
+		// managed-формы (план 181C, #1621); attachment endpoint не меняется.
+		"attachments": action,
 	})
 	return with(obj("schema", "entity", "name", "kind", "layout_kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll"), map[string]*yamlLintSchema{
 		"form":                   formHeader,
