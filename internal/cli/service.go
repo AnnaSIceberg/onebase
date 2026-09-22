@@ -89,7 +89,7 @@ func runServiceInstall(cmd *cobra.Command, _ []string) error {
 		configSource = base.ConfigSource
 		project = base.Path
 		if !cmd.Flags().Changed("host") {
-			host = base.Host
+			host = normalizeRegisteredServiceHost(base.Host)
 		}
 		displayName = base.Name
 		if svcName == "" {
@@ -184,6 +184,16 @@ func normalizeServiceHost(host string) string {
 		return "127.0.0.1"
 	}
 	return host
+}
+
+// normalizeRegisteredServiceHost mirrors the launcher's secure allow-list.
+// A registry written by an older/newer binary or edited by hand must not expose
+// a service to the network unless it contains the explicit supported value.
+func normalizeRegisteredServiceHost(host string) string {
+	if strings.TrimSpace(host) == "0.0.0.0" {
+		return "0.0.0.0"
+	}
+	return "127.0.0.1"
 }
 
 // ── systemd ───────────────────────────────────────────────────────────────────

@@ -260,6 +260,26 @@ func TestRunServiceInstallPrintInheritsRegistryHost(t *testing.T) {
 	if !serviceOutputHasHost(out, "127.0.0.1") || serviceOutputHasHost(out, "0.0.0.0") {
 		t.Fatalf("explicit --host must override registered host:\n%s", out)
 	}
+
+	base.Host = "unexpected.example"
+	if err := store.Update(base); err != nil {
+		t.Fatal(err)
+	}
+	corrupt := &cobra.Command{}
+	addServiceInstallFlags(corrupt)
+	if err := corrupt.Flags().Set("id", base.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := corrupt.Flags().Set("print", "true"); err != nil {
+		t.Fatal(err)
+	}
+	out, err = captureStdout(t, func() error { return runServiceInstall(corrupt, nil) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !serviceOutputHasHost(out, "127.0.0.1") || strings.Contains(out, "unexpected.example") {
+		t.Fatalf("unknown registered host must fail safely to loopback:\n%s", out)
+	}
 }
 
 func serviceOutputHasHost(out, host string) bool {
