@@ -10,7 +10,7 @@ import (
 )
 
 // Список и подбор идут в порядке, заданном order_by, а не по алфавиту и не по
-// порядку появления: у направлений свой порядок — тот, в котором их читает
+// порядку UUID/id: у направлений свой порядок — тот, в котором их читает
 // руководитель в отчёте («порядок в отчётах» в 1С).
 func TestListUsesEntityOrderBy(t *testing.T) {
 	ctx := context.Background()
@@ -31,18 +31,21 @@ func TestListUsesEntityOrderBy(t *testing.T) {
 	if err := db.Migrate(ctx, []*metadata.Entity{ent}); err != nil {
 		t.Fatal(err)
 	}
-	// Заводим в обратном порядке — чтобы «порядок появления» не совпал случайно
-	// с ожидаемым и тест доказывал именно сортировку.
+	// Фиксированные UUID с заведомо иным порядком id: ЭР < СМ < АВТО, а ждали
+	// СМ < АВТО < ЭР. UUIDv4 не кодирует время вставки, поэтому обратный порядок
+	// вставки со случайными UUID ничего бы не доказал: при потере order_by тест
+	// обязан падать именно на fallback-сортировке по id.
 	rows := []struct {
 		name  string
 		order float64
+		id    uuid.UUID
 	}{
-		{"ЭР", 30},
-		{"АВТО", 20},
-		{"СМ", 10},
+		{"ЭР", 30, uuid.MustParse("00000000-0000-0000-0000-000000000001")},
+		{"АВТО", 20, uuid.MustParse("f0000000-0000-0000-0000-000000000002")},
+		{"СМ", 10, uuid.MustParse("80000000-0000-0000-0000-000000000003")},
 	}
 	for _, r := range rows {
-		if err := db.Upsert(ctx, ent.Name, uuid.New(), map[string]any{
+		if err := db.Upsert(ctx, ent.Name, r.id, map[string]any{
 			"наименование":    r.name,
 			"порядоквотчётах": r.order,
 		}, ent); err != nil {
