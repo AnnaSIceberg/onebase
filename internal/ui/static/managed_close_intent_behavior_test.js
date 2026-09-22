@@ -10,6 +10,11 @@ const start = managed.indexOf('  // One close controller for every managed-form 
 const end = managed.indexOf('  // Отслеживание «грязной» формы', start);
 assert.ok(start >= 0 && end > start, 'managed close-controller slice not found');
 const controller = managed.slice(start, end);
+const escapeComment = managed.indexOf('// Esc — отмена незаконченного ввода');
+const escapeStart = managed.indexOf('  function consumeManagedEscape', escapeComment);
+const escapeEnd = managed.indexOf('  }, true);', escapeStart);
+assert.ok(escapeComment >= 0 && escapeStart >= 0 && escapeEnd > escapeStart, 'managed Escape slice not found');
+const escapeHandler = managed.slice(escapeStart, escapeEnd + '  }, true);'.length);
 
 class FakeFormData {
   constructor(form) {
@@ -25,8 +30,9 @@ class FakeFormData {
   forEach(fn) { for (const [key, value] of this.values) fn(value, key); }
 }
 
-function runtime(fetchImpl) {
+function runtime(fetchImpl, cfgOverride = {}) {
   const applied = [];
+  const assigned = [];
   const listeners = new Map();
   let uuid = 0;
   const form = {
@@ -35,13 +41,47 @@ function runtime(fetchImpl) {
     querySelector() { return null; },
     appendChild() {},
   };
+  const cancelLink = {
+    dataset: {obCloseReason: 'close'},
+    getAttribute(name) { return name === 'href' ? '/ui/catalog/Тест' : null; },
+    closest(selector) { return selector === '[data-ob-close-tab]' ? this : null; },
+    click() {
+      document.dispatch('click', {
+        target: this, button: 0, defaultPrevented: false,
+        preventDefault() { this.defaultPrevented = true; },
+      });
+    },
+  };
   const document = {
     getElementById(id) { return id === 'main-form' ? form : null; },
     createElement() { return {}; },
-    addEventListener(type, fn) { listeners.set(type, fn); },
+    querySelector(selector) { return selector === 'a.btn-cancel' ? cancelLink : null; },
+    activeElement: null,
+    addEventListener(type, fn) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(fn);
+    },
+    dispatch(type, event) {
+      for (const fn of listeners.get(type) || []) {
+        fn(event);
+        if (event.immediatePropagationStopped) break;
+      }
+    },
   };
   const context = {
-    __cfg: {kind: 'catalog', closeUrl: '/ui/catalog/Тест/form-close-intent', closeTimeoutMs: 5000},
+    __cfg: Object.assign({
+      kind: 'catalog',
+      closeUrl: '/ui/catalog/Тест/form-close-intent',
+      closeTimeoutMs: 5000,
+      closeMessages: {
+        controllerUnavailable: 'Close check is unavailable. The form remains open.',
+        invalidResponse: 'The server returned an invalid close response.',
+        correlationMismatch: 'The close response did not match the request.',
+        formChanged: 'The form changed during the close check.',
+        timeout: 'Close check timed out',
+        network: 'Network error while closing',
+      },
+    }, cfgOverride),
     __form: form,
     __applied: applied,
     document,
@@ -53,7 +93,10 @@ function runtime(fetchImpl) {
     setTimeout,
     clearTimeout,
     fetch: fetchImpl,
-    location: {pathname: '/ui/catalog/Тест/new', origin: 'http://onebase.test'},
+    location: {
+      pathname: '/ui/catalog/Тест/new', origin: 'http://onebase.test',
+      assign(href) { assigned.push(href); },
+    },
     parent: null,
   };
   context.window = context;
@@ -63,6 +106,7 @@ function runtime(fetchImpl) {
   context.applyTableParts = (value) => applied.push(['parts', value]);
   context.confirm = () => true;
   context.__obEmbedded = true;
+  context._obGrids = {};
 
   const prefix = `
     (function(){
@@ -77,7 +121,8 @@ function runtime(fetchImpl) {
       function flash(value, kind){ globalThis.__applied.push(['flash', value, kind]); }
   `;
   vm.runInNewContext(prefix + controller + '\n})();', context, {filename: 'managed-close-controller.js'});
-  return {context, form, applied, listeners};
+  vm.runInNewContext(escapeHandler, context, {filename: 'managed-close-escape.js'});
+  return {context, form, applied, listeners, document, cancelLink, assigned};
 }
 
 function response(data, ok = true) {
@@ -139,7 +184,38 @@ test('network failure is fail-closed', async () => {
   const result = await app.context.obRequestFormClose({reason: 'close'});
   assert.equal(result.allowed, false);
   assert.equal(result.error, 'network');
-  assert.ok(app.applied.some((entry) => entry[0] === 'flash' && /Сетевая ошибка/.test(entry[1])));
+  assert.ok(app.applied.some((entry) => entry[0] === 'flash' && /Network error while closing/.test(entry[1])));
+});
+
+test('missing close endpoint is fail-closed', async () => {
+  const app = runtime(async () => { throw new Error('must not fetch'); }, {closeUrl: ''});
+  const result = await app.context.obRequestFormClose({reason: 'close'});
+  assert.equal(result.allowed, false);
+  assert.equal(result.error, 'controller-not-ready');
+  assert.ok(app.applied.some((entry) => entry[0] === 'flash' && /Close check is unavailable/.test(entry[1])));
+});
+
+test('editing after fetch starts rejects the stale decision without applying server state', async () => {
+  let complete;
+  const app = runtime(() => new Promise((resolve) => { complete = resolve; }));
+  const pending = app.context.obRequestFormClose({reason: 'cross'});
+  await Promise.resolve();
+  await Promise.resolve();
+  app.form.values.set('Наименование', 'Новый ввод');
+  const intent = '00000000-0000-4000-8000-000000000001';
+  complete(response({
+    ok: true,
+    values: {Наименование: 'Старый ответ'},
+    messages: ['не применять'],
+    close: {intentId: intent, allowed: true, saved: false},
+  }));
+  const decision = await pending;
+  assert.equal(decision.allowed, false);
+  assert.equal(decision.error, 'form-changed');
+  assert.equal(app.form.values.get('Наименование'), 'Новый ввод');
+  assert.equal(app.applied.some((entry) => entry[0] === 'values'), false);
+  assert.equal(app.applied.some((entry) => entry[0] === 'flash' && entry[1] === 'не применять'), false);
+  assert.ok(app.applied.some((entry) => entry[0] === 'flash' && /form changed/i.test(entry[1])));
 });
 
 test('server execution failure is retried with the same intent for the same snapshot', async () => {
@@ -156,4 +232,30 @@ test('server execution failure is retried with the same intent for the same snap
   assert.equal((await app.context.obRequestFormClose({reason: 'cross'})).allowed, false);
   assert.equal((await app.context.obRequestFormClose({reason: 'cross'})).allowed, true);
   assert.equal(calls[1], calls[0]);
+});
+
+test('standalone bottom link and Escape use the close controller before navigation', async () => {
+  const reasons = [];
+  const app = runtime(async (url, options) => {
+    const intentId = options.body.get('_close_intent_id');
+    reasons.push(options.body.get('_close_reason'));
+    return response({ok: true, close: {intentId, allowed: true}});
+  });
+  app.context.__obEmbedded = false;
+
+  app.cancelLink.click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(reasons, ['close']);
+  assert.deepEqual(app.assigned, ['/ui/catalog/Тест']);
+
+  app.assigned.length = 0;
+  app.document.dispatch('keydown', {
+    key: 'Escape', keyCode: 27,
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() { this.propagationStopped = true; },
+    stopImmediatePropagation() { this.immediatePropagationStopped = true; },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(reasons, ['close', 'escape']);
+  assert.deepEqual(app.assigned, ['/ui/catalog/Тест']);
 });

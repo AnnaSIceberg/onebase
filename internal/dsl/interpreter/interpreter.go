@@ -1212,11 +1212,6 @@ func (i *Interpreter) moduleEnvFor(proc *ast.ProcedureDecl, root *env) *env {
 	return me
 }
 
-func (i *Interpreter) callUserProcAtDepth(proc *ast.ProcedureDecl, callEnv *env, args []any, frameDepth int) (retVal any) {
-	retVal, _ = i.callUserProcAtDepthWithBindings(proc, callEnv, args, frameDepth)
-	return retVal
-}
-
 func (i *Interpreter) callUserProcAtDepthWithBindings(proc *ast.ProcedureDecl, callEnv *env, args []any, frameDepth int) (retVal any, bindings map[string]any) {
 	// Страж рекурсии: env нового кадра будет на уровень глубже вызывающего.
 	// Обрываем ДО создания кадра и проброса в отладчик, иначе бесконечная

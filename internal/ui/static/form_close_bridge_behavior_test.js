@@ -12,23 +12,57 @@ const end = ui.indexOf('if (window.__obEmbedded)', start);
 assert.ok(start >= 0 && end > start, 'form close bridge slice not found');
 const bridge = ui.slice(start, end);
 
-function runtime(managed = false) {
+function runtime(managed = false, readyState = 'complete') {
   const listeners = [];
+  const documentListeners = new Map();
   let uuid = 0;
+  let managedPage = managed;
+  const document = {
+    readyState,
+    getElementById(id) { return managedPage && id === 'ob-managed-config' ? {} : null; },
+    addEventListener(type, fn, options) {
+      if (!documentListeners.has(type)) documentListeners.set(type, []);
+      documentListeners.get(type).push({fn, once: !!(options && options.once)});
+    },
+    dispatch(type, event = {}) {
+      for (const entry of (documentListeners.get(type) || []).slice()) {
+        entry.fn(event);
+        if (entry.once) {
+          const current = documentListeners.get(type) || [];
+          const index = current.indexOf(entry);
+          if (index >= 0) current.splice(index, 1);
+        }
+        if (event.immediatePropagationStopped) break;
+      }
+    },
+  };
+  let alerts = 0;
   const context = {
     Promise,
     Math,
     Date,
     location: {origin: 'http://onebase.test'},
-    document: {getElementById(id) { return managed && id === 'ob-managed-config' ? {} : null; }},
+    document,
     crypto: {randomUUID() { uuid++; return `id-${uuid}`; }},
     setTimeout() { return 1; },
     clearTimeout() {},
+    alert() { alerts++; },
+    obUIMessage(name, fallback) { return fallback; },
     addEventListener(type, fn) { if (type === 'message') listeners.push(fn); },
   };
   context.window = context;
   vm.runInNewContext(bridge, context, {filename: 'form-close-bridge.js'});
-  return {context, message(ev) { for (const listener of listeners) listener(ev); }};
+  return {
+    context,
+    document,
+    message(ev) { for (const listener of listeners) listener(ev); },
+    setManaged(value) { managedPage = value; },
+    alerts() { return alerts; },
+    ready() {
+      document.readyState = 'interactive';
+      document.dispatch('DOMContentLoaded');
+    },
+  };
 }
 
 test('parent accepts a close decision only from the requested same-origin frame', async () => {
@@ -89,4 +123,88 @@ test('managed page without a ready controller fails closed', async () => {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(replies[0].data.allowed, false);
   assert.equal(replies[0].data.error, 'controller-not-ready');
+});
+
+test('close request received while parsing waits for the managed controller', async () => {
+  const app = runtime(false, 'loading');
+  const replies = [];
+  const parent = {postMessage(data, origin) { replies.push({data, origin}); }};
+  app.message({origin: 'http://onebase.test', source: parent, data: {
+    source: 'obRequestFormClose', correlation: 'corr-loading', reason: 'cross',
+  }});
+  await Promise.resolve();
+  assert.equal(replies.length, 0, 'loading page was classified as non-managed');
+
+  app.setManaged(true);
+  app.context.obRequestFormClose = async () => ({allowed: true, intentId: 'loaded-intent'});
+  app.ready();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].data.allowed, true);
+  assert.equal(replies[0].data.intentId, 'loaded-intent');
+});
+
+test('managed close link clicked while parsing is held until delegates are ready', () => {
+  const app = runtime(false, 'loading');
+  let replayed = 0;
+  const link = {
+    isConnected: true,
+    closest(selector) { return selector === '[data-ob-close-tab]' ? this : null; },
+    click() { replayed++; },
+  };
+  const event = {
+    target: link,
+    preventDefault() { this.defaultPrevented = true; },
+    stopImmediatePropagation() { this.immediatePropagationStopped = true; },
+  };
+  app.document.dispatch('click', event);
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(event.immediatePropagationStopped, true);
+  assert.equal(replayed, 0);
+  app.ready();
+  assert.equal(replayed, 1);
+});
+
+test('loaded managed page without its controller blocks direct close navigation', () => {
+  const app = runtime(true, 'complete');
+  const link = {closest(selector) { return selector === '[data-ob-close-tab]' ? this : null; }};
+  const event = {
+    target: link,
+    preventDefault() { this.defaultPrevented = true; },
+    stopImmediatePropagation() { this.immediatePropagationStopped = true; },
+  };
+  app.document.dispatch('click', event);
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(event.immediatePropagationStopped, true);
+  assert.equal(app.alerts(), 1);
+});
+
+test('parent finalizes the exact managed frame before removal is allowed', () => {
+  const app = runtime();
+  let finalized = 0;
+  const child = {
+    document: {readyState: 'complete', getElementById(id) { return id === 'ob-managed-config' ? {} : null; }},
+    obRequestFormClose() {},
+    obFinalizeFormClose() { finalized++; return true; },
+  };
+  const frame = {contentWindow: child};
+  assert.equal(app.context.obFinalizeFrameClose(frame, {
+    allowed: true,
+    intentId: 'managed-intent',
+  }), true);
+  assert.equal(finalized, 1);
+
+  assert.equal(app.context.obFinalizeFrameClose({contentWindow: {}}, {
+    allowed: true,
+    intentId: 'managed-intent',
+  }), false, 'managed decision without a finalizer was fail-open');
+  assert.equal(app.context.obFinalizeFrameClose({contentWindow: {document: {
+    readyState: 'complete', getElementById() { return null; },
+  }}}, {
+    allowed: true,
+    intentId: '',
+  }), true, 'non-managed page unexpectedly required managed finalization');
+  assert.equal(app.context.obFinalizeFrameClose({contentWindow: {
+    document: {readyState: 'complete', getElementById() { return {}; }},
+  }}, {allowed: true, intentId: ''}), false, 'managed frame accepted a decision without an intent');
 });

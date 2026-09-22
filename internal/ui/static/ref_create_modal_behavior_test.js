@@ -9,12 +9,16 @@ const end = source.indexOf('// onebaseDevice', start);
 if (start < 0 || end < 0) throw new Error('ref-create modal slice not found');
 const modalSource = source.slice(start, end);
 const managedEscapeComment = managedSource.indexOf('// Esc — отмена незаконченного ввода');
-const managedEscapeStart = managedSource.indexOf("  document.addEventListener('keydown'", managedEscapeComment);
+const managedEscapeStart = managedSource.indexOf('  function consumeManagedEscape', managedEscapeComment);
 const managedEscapeEnd = managedSource.indexOf('  }, true);', managedEscapeStart);
 if (managedEscapeComment < 0 || managedEscapeStart < 0 || managedEscapeEnd < 0) {
   throw new Error('managed Escape handler slice not found');
 }
 const managedEscapeSource = managedSource.slice(managedEscapeStart, managedEscapeEnd + '  }, true);'.length);
+const managedCancelStart = managedSource.indexOf('function obManagedPostRefCancel(');
+const managedCancelEnd = managedSource.indexOf('\nfunction obManagedInitDelegates(', managedCancelStart);
+if (managedCancelStart < 0 || managedCancelEnd < 0) throw new Error('managed popup cancel sender not found');
+const managedCancelSource = managedSource.slice(managedCancelStart, managedCancelEnd);
 
 function eventTarget(base) {
   const listeners = Object.create(null);
@@ -26,7 +30,7 @@ function eventTarget(base) {
     dispatch(type, event) {
       for (const fn of (listeners[type] || []).slice()) {
         fn(event);
-        if (event && event.propagationStopped) break;
+        if (event && event.immediatePropagationStopped) break;
       }
     },
     listenerCount(type) { return (listeners[type] || []).length; },
@@ -50,7 +54,13 @@ function element(tag) {
     removeChild(child) { this.children = this.children.filter((candidate) => candidate !== child); child.parentElement = null; },
     remove() { if (this.parentElement) this.parentElement.removeChild(this); },
   });
-  if (el.tagName === 'IFRAME') el.contentDocument = eventTarget({});
+  if (el.tagName === 'IFRAME') {
+    el.contentDocument = eventTarget({
+      readyState: 'complete',
+      getElementById() { return null; },
+    });
+    el.contentWindow = {document: el.contentDocument};
+  }
   return el;
 }
 
@@ -74,12 +84,34 @@ function setup(options) {
     getElementById(id) { return walk(body, (candidate) => candidate.id === id); },
     querySelector(selector) { return selector === 'a.btn-cancel' ? parentCancel : null; },
   });
-  const window = eventTarget({confirm() { throw new Error('window.confirm must not be used'); }});
+  let finalized = 0;
+  let finalizedWhileOpen = false;
+  let alerts = 0;
+  const window = eventTarget({
+    location: {origin: 'http://onebase.test'},
+    confirm() { throw new Error('window.confirm must not be used'); },
+    alert() { alerts++; },
+    obUIMessage(name, fallback) { return fallback; },
+  });
+  if (!options.noBridge) {
+    window.obRequestFrameClose = async () => ({allowed: true, intentId: 'managed-intent'});
+  }
+  if (!options.noFinalizer) {
+    window.obFinalizeFrameClose = () => {
+      finalized++;
+      finalizedWhileOpen = !!document.getElementById('_ref-create-modal');
+      return true;
+    };
+  }
   global.document = document;
   global.window = window;
   if (options.managedEscape) new Function(managedEscapeSource)();
   const api = new Function(modalSource + '\nreturn {openRefCreate};')();
-  return {document, window, parentCancel, openRefCreate: api.openRefCreate};
+  return {
+    document, window, parentCancel, openRefCreate: api.openRefCreate,
+    finalized() { return finalized; }, finalizedWhileOpen() { return finalizedWhileOpen; },
+    alerts() { return alerts; },
+  };
 }
 
 function escapeEvent() {
@@ -88,6 +120,7 @@ function escapeEvent() {
     keyCode: 27,
     preventDefault() { this.defaultPrevented = true; },
     stopPropagation() { this.propagationStopped = true; },
+    stopImmediatePropagation() { this.immediatePropagationStopped = true; },
   };
 }
 
@@ -99,7 +132,7 @@ function confirmationButtons(confirm) {
   return confirm.children[0].children[1].children;
 }
 
-test('external Cancel and close button use an in-page confirmation', () => {
+test('external Cancel and close button use an in-page confirmation', async () => {
   const env = setup();
   const select = {options: [], value: '', appendChild() {}, dispatchEvent() {}};
   env.openRefCreate(select, 'Город');
@@ -129,12 +162,14 @@ test('external Cancel and close button use an in-page confirmation', () => {
   assert.ok(confirm, 'close button bypassed the in-page confirmation');
   [closeWithoutSave] = confirmationButtons(confirm);
   closeWithoutSave.dispatch('click', {});
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(env.document.getElementById('_ref-create-modal'), null);
   assert.equal(closeConfirmation(env.document), null);
+  assert.equal(env.finalized(), 1, 'popup was removed without finalizing the child form');
   assert.equal(env.window.listenerCount('message'), 0, 'closed modal leaked its message handler');
 });
 
-test('Escape asks before closing from both parent document and same-origin error iframe', () => {
+test('Escape asks before closing from both parent document and same-origin error iframe', async () => {
   const env = setup();
   const select = {options: [], value: '', appendChild() {}, dispatchEvent() {}};
   env.openRefCreate(select, 'Город');
@@ -142,6 +177,7 @@ test('Escape asks before closing from both parent document and same-origin error
   let confirm = closeConfirmation(env.document);
   assert.ok(confirm);
   confirmationButtons(confirm)[0].dispatch('click', {});
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(env.document.getElementById('_ref-create-modal'), null);
 
   env.openRefCreate(select, 'Город');
@@ -152,10 +188,11 @@ test('Escape asks before closing from both parent document and same-origin error
   confirm = closeConfirmation(env.document);
   assert.ok(confirm);
   confirmationButtons(confirm)[0].dispatch('click', {});
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(env.document.getElementById('_ref-create-modal'), null);
 });
 
-test('managed capture handler opens confirmation before the parent form', () => {
+test('managed capture handler opens confirmation before the parent form', async () => {
   const env = setup({managedEscape: true});
   const select = {options: [], value: '', appendChild() {}, dispatchEvent() {}};
   env.openRefCreate(select, 'Город');
@@ -170,11 +207,102 @@ test('managed capture handler opens confirmation before the parent form', () => 
   assert.ok(env.document.getElementById('_ref-create-modal'), 'cancelling the confirmation closed the create form');
   env.document.dispatch('keydown', escapeEvent());
   confirmationButtons(closeConfirmation(env.document))[0].dispatch('click', {});
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(env.document.getElementById('_ref-create-modal'), null);
   assert.equal(env.window.listenerCount('message'), 0, 'managed Escape bypassed modal cleanup');
 });
 
-test('reopening cleans the previous modal before installing a new handler', () => {
+test('Escape consumed by a managed child field does not reach the popup parent listener', () => {
+  const env = setup();
+  const select = {options: [], value: '', appendChild() {}, dispatchEvent() {}};
+  env.openRefCreate(select, 'Город');
+  const modal = env.document.getElementById('_ref-create-modal');
+  const iframe = modal.children[0].children[1];
+  const childDocument = iframe.contentDocument;
+  let blurred = 0;
+  childDocument.getElementById = () => null;
+  childDocument.querySelector = () => null;
+  childDocument.activeElement = {
+    tagName: 'INPUT', type: 'text', readOnly: false,
+    blur() { blurred++; },
+  };
+  const childWindow = {_obGrids: {}, _obRefDropdown: null};
+  new Function('document', 'window', 'confirm', managedEscapeSource)(childDocument, childWindow, () => true);
+  iframe.dispatch('load', {}); // parent listener is registered after the child one
+
+  childDocument.dispatch('keydown', escapeEvent());
+
+  assert.equal(blurred, 1);
+  assert.equal(closeConfirmation(env.document), null, 'popup parent also handled the child Escape');
+  assert.ok(env.document.getElementById('_ref-create-modal'));
+});
+
+test('popup remains open when the close bridge or finalizer is unavailable', async () => {
+  for (const options of [{noBridge: true}, {noFinalizer: true}]) {
+    const env = setup(options);
+    const select = {options: [], value: '', appendChild() {}, dispatchEvent() {}};
+    env.openRefCreate(select, 'Город');
+    const modal = env.document.getElementById('_ref-create-modal');
+    const cancel = modal.children[0].children[0].children[0];
+    cancel.dispatch('click', {});
+    confirmationButtons(closeConfirmation(env.document))[0].dispatch('click', {});
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(env.document.getElementById('_ref-create-modal'), modal);
+  }
+});
+
+test('managed child Cancel sends the allowed intent for parent-side finalization', () => {
+  const posts = [];
+  const parent = {postMessage(data, origin) { posts.push({data, origin}); }};
+  const childWindow = {location: {origin: 'http://onebase.test'}};
+  const send = new Function('parent', 'window', managedCancelSource + '\nreturn obManagedPostRefCancel;')(parent, childWindow);
+  assert.equal(send({allowed: true, intentId: ''}), false);
+  assert.equal(posts.length, 0);
+  assert.equal(send({allowed: true, intentId: 'intent-popup'}), true);
+  assert.deepEqual(posts, [{
+    data: {source: 'obRefCancel', allowed: true, intentId: 'intent-popup', error: ''},
+    origin: 'http://onebase.test',
+  }]);
+});
+
+test('parent finalizes a managed child Cancel decision immediately before cleanup', () => {
+  const env = setup();
+  const select = {options: [], value: '', appendChild() {}, dispatchEvent() {}};
+  env.openRefCreate(select, 'Город');
+  const modal = env.document.getElementById('_ref-create-modal');
+  const iframe = modal.children[0].children[1];
+  iframe.contentDocument.getElementById = (id) => id === 'ob-managed-config' ? {} : null;
+
+  env.window.dispatch('message', {
+    origin: env.window.location.origin,
+    source: iframe.contentWindow,
+    data: {source: 'obRefCancel', allowed: true, intentId: 'intent-popup'},
+  });
+
+  assert.equal(env.finalized(), 1);
+  assert.equal(env.finalizedWhileOpen(), true);
+  assert.equal(env.document.getElementById('_ref-create-modal'), null);
+});
+
+test('parent keeps a managed popup open for an uncorrelated Cancel or missing finalizer', () => {
+  for (const options of [{}, {noFinalizer: true}]) {
+    const env = setup(options);
+    const select = {options: [], value: '', appendChild() {}, dispatchEvent() {}};
+    env.openRefCreate(select, 'Город');
+    const modal = env.document.getElementById('_ref-create-modal');
+    const iframe = modal.children[0].children[1];
+    iframe.contentDocument.getElementById = (id) => id === 'ob-managed-config' ? {} : null;
+    env.window.dispatch('message', {
+      origin: env.window.location.origin,
+      source: iframe.contentWindow,
+      data: {source: 'obRefCancel', allowed: true, intentId: options.noFinalizer ? 'intent-popup' : ''},
+    });
+    assert.equal(env.document.getElementById('_ref-create-modal'), modal);
+    assert.equal(env.alerts(), 1);
+  }
+});
+
+test('reopening keeps the existing popup instead of bypassing its close intent', () => {
   const env = setup();
   const select = {options: [], value: '', appendChild() {}, dispatchEvent() {}};
   env.openRefCreate(select, 'Город');
@@ -183,8 +311,8 @@ test('reopening cleans the previous modal before installing a new handler', () =
   assert.ok(closeConfirmation(env.document));
   env.openRefCreate(select, 'Город');
   const second = env.document.getElementById('_ref-create-modal');
-  assert.notEqual(second, first);
-  assert.equal(first.parentElement, null);
-  assert.equal(closeConfirmation(env.document), null, 'reopening leaked the old confirmation');
+  assert.equal(second, first);
+  assert.notEqual(first.parentElement, null);
+  assert.notEqual(closeConfirmation(env.document), null);
   assert.equal(env.window.listenerCount('message'), 1);
 });

@@ -1031,8 +1031,15 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // Shell/popup/standalone code decides how to destroy its own UI.
   var CLOSE_URL = String(cfg.closeUrl || '');
   var CLOSE_TIMEOUT_MS = Number(cfg.closeTimeoutMs || 30000);
+  var CLOSE_MESSAGES = cfg.closeMessages || {};
   var closePending = null;
   var lastFailedClose = null;
+
+  function closeMessage(name, fallback){
+    var value = CLOSE_MESSAGES && CLOSE_MESSAGES[name];
+    return value == null || value === '' ? fallback : String(value);
+  }
+  window.obManagedCloseMessage = closeMessage;
 
   function freshCloseIntentID(){
     try { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); } catch (_) {}
@@ -1069,6 +1076,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     body.set(serviceField('_close_reason'), reason);
     body.set(serviceField('_close_mode'), 'discard');
     return body;
+  }
+
+  function closeSnapshotKey(body){
+    var keyBody = new URLSearchParams(body.toString());
+    keyBody.delete(serviceField('_close_intent_id'));
+    if (keyBody.sort) keyBody.sort();
+    return keyBody.toString();
   }
 
   function applyCloseResponse(data){
@@ -1114,12 +1128,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     if (closePending) return closePending;
     var reason = String(options.reason || 'close');
     closePending = (async function(){
-      if (!CLOSE_URL) return {allowed: true, intentId: ''};
+      if (!CLOSE_URL) {
+        flash(closeMessage('controllerUnavailable', 'Проверка закрытия недоступна. Форма оставлена открытой.'), 'err');
+        return {allowed: false, intentId: '', error: 'controller-not-ready'};
+      }
       var body = await closeSnapshotBody(reason);
       if (!body) return {allowed: false, intentId: '', error: 'form-state'};
-      var keyBody = new URLSearchParams(body.toString());
-      if (keyBody.sort) keyBody.sort();
-      var snapshotKey = keyBody.toString();
+      var snapshotKey = closeSnapshotKey(body);
       var intentID = lastFailedClose && lastFailedClose.key === snapshotKey
         ? lastFailedClose.intentId : freshCloseIntentID();
       body.set(serviceField('_close_intent_id'), intentID);
@@ -1134,13 +1149,22 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         });
         var data;
         try { data = await response.json(); }
-        catch (_) { throw new Error('сервер вернул не JSON'); }
-        applyCloseResponse(data);
+        catch (_) { throw new Error(closeMessage('invalidResponse', 'Сервер вернул некорректный ответ при проверке закрытия.')); }
         if (!data.close || String(data.close.intentId || '') !== intentID) {
           lastFailedClose = {key: snapshotKey, intentId: intentID};
-          flash('Ответ закрытия не совпал с запросом. Форма оставлена открытой.', 'err');
+          flash(closeMessage('correlationMismatch', 'Ответ закрытия не совпал с запросом. Форма оставлена открытой.'), 'err');
           return {allowed: false, intentId: intentID, error: 'stale-correlation'};
         }
+        // The user may keep editing while the server executes BeforeClose.
+        // Re-snapshot before applying returned values: an answer for an older
+        // form must neither overwrite newer input nor authorize its removal.
+        var currentBody = await closeSnapshotBody(reason);
+        if (!currentBody || closeSnapshotKey(currentBody) !== snapshotKey) {
+          lastFailedClose = null;
+          flash(closeMessage('formChanged', 'Форма изменилась во время проверки закрытия. Повторите закрытие.'), 'err');
+          return {allowed: false, intentId: intentID, error: 'form-changed'};
+        }
+        applyCloseResponse(data);
         if (!response.ok || data.ok !== true) lastFailedClose = {key: snapshotKey, intentId: intentID};
         else lastFailedClose = null;
         return {
@@ -1151,7 +1175,9 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       } catch (err) {
         lastFailedClose = {key: snapshotKey, intentId: intentID};
         var timeout = err && err.name === 'AbortError';
-        flash((timeout ? 'Превышено время проверки закрытия' : 'Сетевая ошибка при закрытии') +
+        flash((timeout
+          ? closeMessage('timeout', 'Превышено время проверки закрытия')
+          : closeMessage('network', 'Сетевая ошибка при закрытии')) +
           ': ' + (err && err.message ? err.message : err), 'err');
         return {allowed: false, intentId: intentID, error: timeout ? 'timeout' : 'network'};
       } finally {
@@ -1164,6 +1190,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
   window.obFinalizeFormClose = function(){
     window._obFormDirty = false;
+    if (typeof _obBaseTitle === 'string' && _obBaseTitle) document.title = _obBaseTitle;
+    try {
+      if (window.__obEmbedded && window.parent && window.parent !== window) {
+        window.parent.postMessage({source: 'obDirty', dirty: false}, window.location.origin);
+      }
+    } catch (_) {}
+    return true;
   };
 
   // Standalone managed form: shell/popup adapters handle their own final step.
@@ -1295,36 +1328,41 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // ВАЖНО: слушатель в ФАЗЕ ПЕРЕХВАТА (capture=true). В фазе всплытия SlickGrid
   // успевал отменить правку РАНЬШЕ нас, editor-lock становился неактивным, и мы
   // ошибочно закрывали документ прямо из редактирования ячейки.
+  function consumeManagedEscape(e){
+    e.preventDefault();
+    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    else e.stopPropagation();
+  }
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape' && e.keyCode !== 27) return;
     var modal = document.getElementById('_ref-create-modal') || document.getElementById('_item-picker-modal') || document.getElementById('_ref-picker-modal');
     if (modal) {
       if (typeof modal._obClose === 'function') modal._obClose();
       else modal.remove();
-      e.preventDefault(); e.stopPropagation(); return;
+      consumeManagedEscape(e); return;
     }
     // Выпадающий список ячейки-ссылки закрываем ДО проверки editor-lock: этот
     // слушатель в фазе перехвата, и без отдельной ветки Esc из подбора отменял
     // бы всю правку ячейки, а не только список.
     if (window._obRefDropdown && window._obRefDropdown.close) {
-      window._obRefDropdown.close(); e.preventDefault(); e.stopPropagation(); return;
+      window._obRefDropdown.close(); consumeManagedEscape(e); return;
     }
     var grids = window._obGrids || {};
     for (var tp in grids) {
       var lock = grids[tp].grid && grids[tp].grid.getEditorLock && grids[tp].grid.getEditorLock();
-      if (lock && lock.isActive()) { lock.cancelCurrentEdit(); e.preventDefault(); e.stopPropagation(); return; }
+      if (lock && lock.isActive()) { lock.cancelCurrentEdit(); consumeManagedEscape(e); return; }
     }
     var ae = document.activeElement;
     if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName) && !ae.readOnly && ae.type !== 'submit' && ae.type !== 'button') {
-      ae.blur(); e.preventDefault(); e.stopPropagation(); return;
+      ae.blur(); consumeManagedEscape(e); return;
     }
     var cancel = document.querySelector('a.btn-cancel');
     if (cancel) {
       if (!window.__obEmbedded && window._obFormDirty && !confirm('Данные были изменены и не записаны. Закрыть форму?')) {
-        e.preventDefault(); e.stopPropagation(); return;
+        consumeManagedEscape(e); return;
       }
       if (cancel.dataset) cancel.dataset.obCloseReason = 'escape';
-      e.preventDefault(); e.stopPropagation(); cancel.click();
+      consumeManagedEscape(e); cancel.click();
       if (cancel.dataset) delete cancel.dataset.obCloseReason;
     }
   }, true);
@@ -1442,6 +1480,21 @@ function obManagedGridSubmitAllowed(form) {
   return true;
 }
 
+function obManagedPostRefCancel(decision) {
+  if (!decision || decision.allowed !== true || !decision.intentId) return false;
+  try {
+    parent.postMessage({
+      source: 'obRefCancel',
+      allowed: true,
+      intentId: String(decision.intentId),
+      error: decision.error ? String(decision.error) : ''
+    }, window.location.origin);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function obManagedInitDelegates() {
   document.addEventListener('click', function (e) {
     // data-ob-toggle-next НЕ обрабатываем здесь: managed-форма всегда грузит и
@@ -1455,11 +1508,24 @@ function obManagedInitDelegates() {
     if (btn.hasAttribute('data-ob-ref-cancel')) {
       e.preventDefault();
       if (window._obFormDirty && !window.confirm('Данные были изменены и не записаны. Закрыть форму?')) return;
-      var requestClose = window.obRequestFormClose || function(){ return Promise.resolve({allowed: true}); };
+      var requestClose = window.obRequestFormClose;
+      if (typeof requestClose !== 'function') {
+        if (window.obFlash) {
+          var unavailable = window.obManagedCloseMessage
+            ? window.obManagedCloseMessage('controllerUnavailable', 'Проверка закрытия недоступна. Форма оставлена открытой.')
+            : 'Проверка закрытия недоступна. Форма оставлена открытой.';
+          window.obFlash(unavailable, 'err');
+        }
+        return;
+      }
       Promise.resolve(requestClose({reason: 'popup_cancel'})).then(function(decision){
         if (!decision || !decision.allowed) return;
-        if (window.obFinalizeFormClose) window.obFinalizeFormClose();
-        try { parent.postMessage({ source: 'obRefCancel' }, window.location.origin); } catch (_) {}
+        if (!obManagedPostRefCancel(decision) && window.obFlash) {
+          var notConfirmed = window.obManagedCloseMessage
+            ? window.obManagedCloseMessage('controllerUnavailable', 'Проверка закрытия недоступна. Форма оставлена открытой.')
+            : 'Проверка закрытия недоступна. Форма оставлена открытой.';
+          window.obFlash(notConfirmed, 'err');
+        }
       });
       return;
     }

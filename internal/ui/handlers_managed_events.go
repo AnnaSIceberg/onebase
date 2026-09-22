@@ -114,10 +114,61 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Предел конкурентности и дедлайн — как у обработок (#735). Событие формы
-	// исполняет такой же прикладной DSL, но шло мимо: без лимита параллельных
-	// запусков и без предела времени вовсе (#865). Один обработчик с
-	// Приостановить(300) занимал бы соединение и слот пять минут.
+	if closeInv != nil {
+		var cancel context.CancelFunc
+		r, cancel = s.withFormCloseOperationDeadline(r, opFormEvent)
+		defer cancel()
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, s.entityFormBodyLimit(r, entity))
+	var rawID, formKind string
+	var form *metadata.FormModule
+	parseFormState := func() error {
+		if err := parseBoundedForm(r, 32<<20); err != nil {
+			return err
+		}
+		// Every value describing browser form state comes from the POST body.
+		// Request.Form and FormValue normally merge the query string; using one
+		// normalized request prevents query-only ids, targets, fields and table rows
+		// from reaching any of the existing form parsers below.
+		r = postFormOnlyRequest(r)
+		rawID = strings.TrimSpace(r.FormValue("_id"))
+		formKind = strings.ToLower(strings.TrimSpace(r.FormValue("_kind")))
+		if formKind == "" {
+			formKind = "object"
+		}
+		form = pickManagedForm(entity, formKind)
+		return nil
+	}
+	if closeInv != nil {
+		// Replay/single-flight lookup intentionally precedes the shared processor
+		// semaphore. Otherwise an exact duplicate gets 429 while its original owns
+		// the sole slot instead of waiting for and replaying that result.
+		if err := parseFormState(); err != nil {
+			w.WriteHeader(uploadErrorStatus(err))
+			respondJSON(enc, formEventResponse{Error: s.errText(r, formBodyError(err, entity))})
+			return
+		}
+		if form == nil {
+			respondJSON(enc, formEventResponse{Error: "managed form not found for " + entityName})
+			return
+		}
+		routeKey := "entity|" + entityKind + "|" + strings.ToLower(entity.Name) + "|" + strings.ToLower(form.Name) + "|" + rawID
+		if err := s.prepareFormCloseInvocation(r, closeInv, routeKey, r.FormValue); err != nil {
+			var closeErr *formCloseHTTPError
+			if errors.As(err, &closeErr) {
+				w.WriteHeader(closeErr.status)
+			}
+			respondJSON(enc, formEventResponse{Error: err.Error()})
+			return
+		}
+		if closeInv.replay != nil {
+			return
+		}
+	}
+
+	// Предел конкурентности и дедлайн — как у обработок (#735). Для close-intent
+	// он расположен после replay lookup; обычные события по-прежнему проверяют
+	// слот до разбора тела.
 	opCtx, finish, ok := s.beginOperation(r, opFormEvent, entity.Name)
 	if !ok {
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -137,40 +188,14 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	dslCtx, cancelDSL := context.WithCancel(opCtx)
 	defer cancelDSL()
 
-	r.Body = http.MaxBytesReader(w, r.Body, s.entityFormBodyLimit(r, entity))
-	if err := parseBoundedForm(r, 32<<20); err != nil {
-		opStatus = "error"
-		w.WriteHeader(uploadErrorStatus(err))
-		respondJSON(enc, formEventResponse{Error: s.errText(r, formBodyError(err, entity))})
-		return
-	}
-	// Every value describing browser form state comes from the POST body.
-	// Request.Form and FormValue normally merge the query string; using one
-	// normalized request prevents query-only ids, targets, fields and table rows
-	// from reaching any of the existing form parsers below.
-	r = postFormOnlyRequest(r)
-	rawID := strings.TrimSpace(r.FormValue("_id"))
-	formKind := strings.ToLower(strings.TrimSpace(r.FormValue("_kind")))
-	if formKind == "" {
-		formKind = "object"
-	}
-	form := pickManagedForm(entity, formKind)
-	if form == nil {
-		respondJSON(enc, formEventResponse{Error: "managed form not found for " + entityName})
-		return
-	}
-	if closeInv != nil {
-		routeKey := "entity|" + entityKind + "|" + strings.ToLower(entity.Name) + "|" + strings.ToLower(form.Name) + "|" + rawID
-		if err := s.prepareFormCloseInvocation(r, closeInv, routeKey, r.FormValue); err != nil {
-			var closeErr *formCloseHTTPError
-			if errors.As(err, &closeErr) {
-				w.WriteHeader(closeErr.status)
-			}
-			respondJSON(enc, formEventResponse{Error: err.Error()})
+	if closeInv == nil {
+		if err := parseFormState(); err != nil {
+			w.WriteHeader(uploadErrorStatus(err))
+			respondJSON(enc, formEventResponse{Error: s.errText(r, formBodyError(err, entity))})
 			return
 		}
-		if closeInv.replay != nil {
-			opStatus = "ok"
+		if form == nil {
+			respondJSON(enc, formEventResponse{Error: "managed form not found for " + entityName})
 			return
 		}
 	}
@@ -1032,23 +1057,20 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		respondJSON(enc, formEventResponse{Error: requestControls.formTablesErr.Error()})
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, processorFormBodyLimit(r, maxSize, requestControls))
-	opCtx, finish, ok := s.beginOperation(r, opProcessorRun, proc.Name)
-	if !ok {
-		w.WriteHeader(http.StatusTooManyRequests)
-		respondJSON(enc, formEventResponse{Error: "слишком много одновременно выполняемых обработок, повторите позже"})
-		return
-	}
-	opStatus := "ok"
-	defer func() { finish(opStatus, 0, false) }()
-
-	if err := parseBoundedForm(r, 32<<20); err != nil {
-		opStatus = "error"
-		w.WriteHeader(uploadErrorStatus(err))
-		respondJSON(enc, formEventResponse{Error: s.errText(r, formBodyError(err, nil))})
-		return
-	}
 	if closeInv != nil {
+		var cancel context.CancelFunc
+		r, cancel = s.withFormCloseOperationDeadline(r, opProcessorRun)
+		defer cancel()
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, processorFormBodyLimit(r, maxSize, requestControls))
+	if closeInv != nil {
+		// Parse and reserve before the processor semaphore so an exact duplicate
+		// joins the in-flight close instead of being rejected by its occupied slot.
+		if err := parseBoundedForm(r, 32<<20); err != nil {
+			w.WriteHeader(uploadErrorStatus(err))
+			respondJSON(enc, formEventResponse{Error: s.errText(r, formBodyError(err, nil))})
+			return
+		}
 		value := func(name string) string {
 			v, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, name))
 			return v
@@ -1059,12 +1081,27 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			if errors.As(err, &closeErr) {
 				w.WriteHeader(closeErr.status)
 			}
-			opStatus = "error"
 			respondJSON(enc, formEventResponse{Error: err.Error()})
 			return
 		}
 		if closeInv.replay != nil {
-			opStatus = "ok"
+			return
+		}
+	}
+	opCtx, finish, ok := s.beginOperation(r, opProcessorRun, proc.Name)
+	if !ok {
+		w.WriteHeader(http.StatusTooManyRequests)
+		respondJSON(enc, formEventResponse{Error: "слишком много одновременно выполняемых обработок, повторите позже"})
+		return
+	}
+	opStatus := "ok"
+	defer func() { finish(opStatus, 0, false) }()
+
+	if closeInv == nil {
+		if err := parseBoundedForm(r, 32<<20); err != nil {
+			opStatus = "error"
+			w.WriteHeader(uploadErrorStatus(err))
+			respondJSON(enc, formEventResponse{Error: s.errText(r, formBodyError(err, nil))})
 			return
 		}
 	}

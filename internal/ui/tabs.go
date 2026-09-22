@@ -124,17 +124,55 @@ const tplAppShell = `{{define "page-app-shell"}}
     persist();
     return true;
   }
+  function closeFailureMessage(){
+    return typeof window.obUIMessage==='function'
+      ? window.obUIMessage('closeNotConfirmed','Форма не закрыта: сервер не подтвердил закрытие.')
+      : 'Форма не закрыта: сервер не подтвердил закрытие.';
+  }
+  function frameIsManaged(t){
+    try{
+      var child=t&&t.frame&&t.frame.contentWindow;
+      var doc=child&&child.document;
+      // While the iframe is still parsing, the managed config near the bottom
+      // of <body> may not exist yet. Unknown/loading must stay fail-closed; only
+      // a fully loaded same-origin document without the marker is legacy.
+      if(!doc||doc.readyState==='loading')return true;
+      return typeof child.obRequestFormClose==='function'||
+        !!(doc.getElementById&&doc.getElementById('ob-managed-config'));
+    }catch(e){ return true; }
+  }
+  function finalizeTabClose(t,decision){
+    var finalized=false;
+    if(typeof window.obFinalizeFrameClose==='function') finalized=window.obFinalizeFrameClose(t.frame,decision);
+    else if(decision&&!decision.intentId) finalized=true;
+    else {
+      try{
+        var fn=t.frame.contentWindow&&t.frame.contentWindow.obFinalizeFormClose;
+        finalized=typeof fn==='function'&&fn.call(t.frame.contentWindow)!==false;
+      }catch(e){ finalized=false; }
+    }
+    if(!finalized)return false;
+    t.dirty=false;
+    t.btn.classList.toggle('dirty',false);
+    return true;
+  }
   function closeTab(t,reason){
     var i=tabs.indexOf(t); if(i<0)return false;
     if(t.closePromise)return t.closePromise;
     if(t.dirty && !window.confirm('В этой вкладке есть несохранённые изменения. Закрыть вкладку?'))return false; // фаза 3
-    // Старые/автогенерируемые страницы не имеют lifecycle-controller; ui.js
-    // отвечает за них allow=true. Fallback оставлен только для совместимости с
-    // тестовым harness и страницами из кэша до загрузки ui.js.
-    if(typeof window.obRequestFrameClose!=='function')return removeTab(t);
+    // Автогенерируемая страница без managed-конфига не имеет close lifecycle.
+    // Managed-форму без bridge уничтожать нельзя: server decision отсутствует.
+    if(typeof window.obRequestFrameClose!=='function'){
+      if(frameIsManaged(t)){ if(window.alert)window.alert(closeFailureMessage()); return false; }
+      return removeTab(t);
+    }
     t.closePromise=Promise.resolve(window.obRequestFrameClose(t.frame,reason||'close')).then(function(decision){
       if(!decision||decision.allowed!==true){
-        if(decision&&(decision.error==='timeout'||decision.error==='post-message'))window.alert('Форма не закрыта: сервер не подтвердил закрытие.');
+        if(decision&&(decision.error==='timeout'||decision.error==='post-message')&&window.alert)window.alert(closeFailureMessage());
+        return false;
+      }
+      if(!finalizeTabClose(t,decision)){
+        if(window.alert)window.alert(closeFailureMessage());
         return false;
       }
       return removeTab(t);
@@ -143,7 +181,6 @@ const tplAppShell = `{{define "page-app-shell"}}
   }
   // Фаза 4: управление множеством вкладок — контекст-меню по правому клику.
   function closeSequence(list,reason){
-    if(typeof window.obRequestFrameClose!=='function'){ list.forEach(function(t){closeTab(t,reason);}); return; }
     var chain=Promise.resolve();
     list.forEach(function(t){ chain=chain.then(function(){ return Promise.resolve(closeTab(t,reason)); }); });
     return chain;

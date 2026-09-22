@@ -15,6 +15,16 @@ try {
 // оболочки /ui/app, прячем хром (топбар/подсистемы) — навигация идёт из оболочки.
 window.__obEmbedded = window.self !== window.top;
 
+window.obUIMessage = function (name, fallback) {
+  try {
+    var node = document.getElementById('ob-ui-messages');
+    var messages = node ? JSON.parse(node.textContent || '{}') : {};
+    var value = messages && messages[name];
+    if (value != null && value !== '') return String(value);
+  } catch (_) {}
+  return String(fallback || '');
+};
+
 // Same-origin request/decision protocol shared by shell tabs and reference
 // popups. The parent owns the final DOM removal; the child owns the server
 // close-intent. Correlation plus exact source/origin prevent a late response
@@ -22,6 +32,43 @@ window.__obEmbedded = window.self !== window.top;
 (function () {
   var pending = Object.create(null);
   var seq = 0;
+  var earlyCloseLink = null;
+
+  // ui.js is loaded from <head>, while the managed controller and its config
+  // are rendered near the end of <body>. A close link can therefore become
+  // clickable before its lifecycle controller exists. Hold that click until
+  // parsing has completed, then replay it through the normal managed/shell
+  // delegate. If parsing never completes, navigation remains fail-closed.
+  document.addEventListener('click', function (ev) {
+    if (!ev.target || !ev.target.closest) return;
+    var link = ev.target.closest('[data-ob-close-tab]');
+    if (!link) return;
+    if (document.readyState === 'loading') {
+      ev.preventDefault();
+      if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+      else if (typeof ev.stopPropagation === 'function') ev.stopPropagation();
+      if (earlyCloseLink) return;
+      earlyCloseLink = link;
+      document.addEventListener('DOMContentLoaded', function () {
+        var replay = earlyCloseLink;
+        earlyCloseLink = null;
+        if (!replay || replay.isConnected === false || typeof replay.click !== 'function') return;
+        replay.click();
+      }, {once: true});
+      return;
+    }
+    // A managed document whose bottom runtime failed to load must not fall
+    // through to ordinary anchor navigation after parsing has completed.
+    if (document.getElementById('ob-managed-config') && typeof window.obRequestFormClose !== 'function') {
+      ev.preventDefault();
+      if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+      else if (typeof ev.stopPropagation === 'function') ev.stopPropagation();
+      if (window.alert) window.alert(window.obUIMessage
+        ? window.obUIMessage('closeNotConfirmed', 'Форма не закрыта: сервер не подтвердил закрытие.')
+        : 'Форма не закрыта: сервер не подтвердил закрытие.');
+    }
+  }, true);
+
   function correlationID() {
     try { if (window.crypto && typeof window.crypto.randomUUID === 'function') return 'close:' + window.crypto.randomUUID(); } catch (_) {}
     seq++;
@@ -51,20 +98,25 @@ window.__obEmbedded = window.self !== window.top;
     frame._obClosePromise = promise.finally(function () { frame._obClosePromise = null; });
     return frame._obClosePromise;
   };
-  window.addEventListener('message', function (ev) {
-    if (ev.origin !== window.location.origin) return;
-    var data = ev.data;
-    if (!data || typeof data !== 'object') return;
-    if (data.source === 'obFormCloseDecision') {
-      var slot = pending[String(data.correlation || '')];
-      if (!slot || ev.source !== slot.frame.contentWindow) return;
-      clearTimeout(slot.timer);
-      delete pending[String(data.correlation || '')];
-      slot.resolve({allowed: data.allowed === true, intentId: String(data.intentId || ''), error: data.error || ''});
-      return;
+  window.obFinalizeFrameClose = function (frame, decision) {
+    if (!decision || decision.allowed !== true) return false;
+    // Non-managed pages answer without an intent id and have no dirty lifecycle
+    // to finalize. A managed answer is not consumable unless its exact child can
+    // clear dirty state immediately before the parent destroys the iframe.
+    try {
+      var child = frame && frame.contentWindow;
+      var doc = child && child.document;
+      var managed = !doc || doc.readyState === 'loading' ||
+        typeof child.obRequestFormClose === 'function' ||
+        !!(doc.getElementById && doc.getElementById('ob-managed-config'));
+      if (!decision.intentId) return !managed;
+      var finalize = child && child.obFinalizeFormClose;
+      return typeof finalize === 'function' && finalize.call(frame.contentWindow) !== false;
+    } catch (_) {
+      return false;
     }
-    if (data.source !== 'obRequestFormClose' || !data.correlation || !ev.source) return;
-    var requester = ev.source;
+  };
+  function answerCloseRequest(requester, requesterOrigin, data) {
     var fn = window.obRequestFormClose;
     var result;
     if (typeof fn === 'function') result = fn({reason: String(data.reason || 'close')});
@@ -79,9 +131,32 @@ window.__obEmbedded = window.self !== window.top;
           allowed: !!(decision && decision.allowed),
           intentId: decision && decision.intentId ? String(decision.intentId) : '',
           error: decision && decision.error ? String(decision.error) : ''
-        }, ev.origin);
+        }, requesterOrigin);
       } catch (_) {}
     });
+  }
+  window.addEventListener('message', function (ev) {
+    if (ev.origin !== window.location.origin) return;
+    var data = ev.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.source === 'obFormCloseDecision') {
+      var slot = pending[String(data.correlation || '')];
+      if (!slot || ev.source !== slot.frame.contentWindow) return;
+      clearTimeout(slot.timer);
+      delete pending[String(data.correlation || '')];
+      slot.resolve({allowed: data.allowed === true, intentId: String(data.intentId || ''), error: data.error || ''});
+      return;
+    }
+    if (data.source !== 'obRequestFormClose' || !data.correlation || !ev.source) return;
+    var requester = ev.source;
+    var requesterOrigin = ev.origin;
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () {
+        answerCloseRequest(requester, requesterOrigin, data);
+      }, {once: true});
+      return;
+    }
+    answerCloseRequest(requester, requesterOrigin, data);
   });
 })();
 
@@ -3376,10 +3451,10 @@ function openRefCurrent(selOrId) {
 function openRefCreate(targetSelect, refEntity) {
   if (!targetSelect || !refEntity) return;
   var old = document.getElementById('_ref-create-modal');
-  if (old) {
-    if (typeof old._obCleanup === 'function') old._obCleanup();
-    else old.remove();
-  }
+  // A repeated picker command must not destroy an already open managed iframe
+  // without its close-intent. Keep the existing popup; its own Cancel/cross/Esc
+  // paths own the asynchronous close handshake.
+  if (old) return;
   var modal = document.createElement('div');
   modal.id = '_ref-create-modal';
   modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center';
@@ -3408,6 +3483,22 @@ function openRefCreate(targetSelect, refEntity) {
   document.body.appendChild(modal);
 
   var frameDocument = null;
+  function closeFailure() {
+    if (window.alert) window.alert(window.obUIMessage
+      ? window.obUIMessage('closeNotConfirmed', 'Форма не закрыта: сервер не подтвердил закрытие.')
+      : 'Форма не закрыта: сервер не подтвердил закрытие.');
+  }
+  function popupFrameIsManaged() {
+    try {
+      var child = iframe.contentWindow;
+      var doc = child && child.document;
+      return !doc || doc.readyState === 'loading' ||
+        typeof child.obRequestFormClose === 'function' ||
+        !!(doc.getElementById && doc.getElementById('ob-managed-config'));
+    } catch (_) {
+      return true;
+    }
+  }
   function handler(ev) {
     if (ev.origin !== window.location.origin || ev.source !== iframe.contentWindow) return;
     var d = ev.data;
@@ -3432,7 +3523,22 @@ function openRefCreate(targetSelect, refEntity) {
       } catch (e) {}
       cleanup();
     } else if (d.source === 'obRefCancel') {
-      cleanup();
+      if (!popupFrameIsManaged() && !d.intentId) {
+        cleanup();
+        return;
+      }
+      var decision = {
+        allowed: d.allowed === true,
+        intentId: d.intentId ? String(d.intentId) : '',
+        error: d.error ? String(d.error) : ''
+      };
+      if (decision.allowed && decision.intentId &&
+          typeof window.obFinalizeFrameClose === 'function' &&
+          window.obFinalizeFrameClose(iframe, decision)) {
+        cleanup();
+        return;
+      }
+      closeFailure();
     }
   }
   var closeConfirm = null;
@@ -3467,17 +3573,22 @@ function openRefCreate(targetSelect, refEntity) {
     stay.style.cssText = 'background:#e2e8f0;color:#333;border:none;padding:5px 12px;border-radius:4px;cursor:pointer';
     closeWithoutSave.addEventListener('click', function () {
       dismissCloseConfirm();
-      // Совместимость со страницей из старого кэша и минимальными встраиваниями,
-      // где общий close-controller ещё не загружен.
       if (typeof window.obRequestFrameClose !== 'function') {
-        cleanup();
+        closeFailure();
         return;
       }
       closeWithoutSave.disabled = true;
       var request = window.obRequestFrameClose(iframe, 'popup_cancel');
       Promise.resolve(request).then(function(decision){
-        if (decision && decision.allowed) cleanup();
-        else closeWithoutSave.disabled = false;
+        if (decision && decision.allowed && typeof window.obFinalizeFrameClose === 'function' &&
+            window.obFinalizeFrameClose(iframe, decision)) {
+          cleanup();
+          return;
+        }
+        closeWithoutSave.disabled = false;
+        if (decision && decision.allowed && window.alert) {
+          closeFailure();
+        }
       }, function(){ closeWithoutSave.disabled = false; });
     });
     stay.addEventListener('click', dismissCloseConfirm);

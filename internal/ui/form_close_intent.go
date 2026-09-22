@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,13 +22,16 @@ import (
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/shopspring/decimal"
 )
 
 const (
-	formCloseReplayTTL       = 10 * time.Minute
-	formCloseReplayPerUser   = 128
-	formCloseReplayGlobal    = 2048
-	formCloseDefaultClientMS = 30_000
+	formCloseReplayTTL        = 10 * time.Minute
+	formCloseReplayPerUser    = 128
+	formCloseReplayGlobal     = 2048
+	formCloseReplayMaxEntry   = int64(4 << 20)
+	formCloseReplayByteBudget = int64(64 << 20)
+	formCloseDefaultClientMS  = 30_000
 )
 
 var formCloseReasons = map[string]bool{
@@ -125,9 +131,24 @@ func formCloseBindingCancelled(decl *ast.ProcedureDecl, bindings map[string]any)
 		return value != 0
 	case float64:
 		return value != 0
+	case decimal.Decimal:
+		return !value.IsZero()
+	case *decimal.Decimal:
+		// DSL truthiness treats a nil decimal pointer as an unknown non-nil
+		// value (numericZero cannot convert it), and therefore as true.
+		return value == nil || !value.IsZero()
 	default:
 		return v != nil
 	}
+}
+
+func (s *Server) withFormCloseOperationDeadline(r *http.Request, kind string) (*http.Request, context.CancelFunc) {
+	timeout := s.operationTimeout(kind)
+	if timeout <= 0 {
+		return r, func() {}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	return r.WithContext(ctx), cancel
 }
 
 func (s *Server) prepareFormCloseInvocation(r *http.Request, inv *formCloseInvocation, routeKey string, value func(string) string) error {
@@ -149,7 +170,10 @@ func (s *Server) prepareFormCloseInvocation(r *http.Request, inv *formCloseInvoc
 		return &formCloseHTTPError{status: http.StatusBadRequest, msg: "режим закрытия пока поддерживает только discard"}
 	}
 
-	payloadHash := sha256.Sum256([]byte(r.PostForm.Encode()))
+	payloadHash, err := formCloseRequestFingerprint(r)
+	if err != nil {
+		return &formCloseHTTPError{status: http.StatusBadRequest, msg: "не удалось прочитать состояние формы для проверки закрытия"}
+	}
 	identity := formCloseIdentity(r)
 	// Identity is part of the replay key: two users may independently generate
 	// the same UUID without observing or blocking one another. The identity is
@@ -168,6 +192,98 @@ func (s *Server) prepareFormCloseInvocation(r *http.Request, inv *formCloseInvoc
 	inv.reservation = reservation
 	inv.replay = replay
 	return nil
+}
+
+// formCloseRequestFingerprint hashes the logical form payload rather than the
+// raw HTTP body. Multipart boundaries may legitimately change on a retry, but
+// every value, file byte and file-part header must remain identical for an
+// intent id to be replayed.
+func formCloseRequestFingerprint(r *http.Request) ([sha256.Size]byte, error) {
+	h := sha256.New()
+	writeFormCloseFingerprintString(h, "onebase-form-close-v2")
+
+	valueKeys := make([]string, 0, len(r.PostForm))
+	for key := range r.PostForm {
+		valueKeys = append(valueKeys, key)
+	}
+	sort.Strings(valueKeys)
+	for _, key := range valueKeys {
+		writeFormCloseFingerprintString(h, "value")
+		writeFormCloseFingerprintString(h, key)
+		values := r.PostForm[key]
+		writeFormCloseFingerprintUint64(h, uint64(len(values)))
+		for _, value := range values {
+			writeFormCloseFingerprintString(h, value)
+		}
+	}
+
+	if r.MultipartForm != nil {
+		fileKeys := make([]string, 0, len(r.MultipartForm.File))
+		for key := range r.MultipartForm.File {
+			fileKeys = append(fileKeys, key)
+		}
+		sort.Strings(fileKeys)
+		for _, key := range fileKeys {
+			writeFormCloseFingerprintString(h, "file-field")
+			writeFormCloseFingerprintString(h, key)
+			files := r.MultipartForm.File[key]
+			writeFormCloseFingerprintUint64(h, uint64(len(files)))
+			for _, fileHeader := range files {
+				if fileHeader == nil {
+					writeFormCloseFingerprintString(h, "nil-file")
+					continue
+				}
+				writeFormCloseFingerprintString(h, fileHeader.Filename)
+				writeFormCloseFingerprintString(h, strconv.FormatInt(fileHeader.Size, 10))
+
+				headerKeys := make([]string, 0, len(fileHeader.Header))
+				for headerKey := range fileHeader.Header {
+					headerKeys = append(headerKeys, headerKey)
+				}
+				sort.Strings(headerKeys)
+				writeFormCloseFingerprintUint64(h, uint64(len(headerKeys)))
+				for _, headerKey := range headerKeys {
+					writeFormCloseFingerprintString(h, headerKey)
+					headerValues := fileHeader.Header[headerKey]
+					writeFormCloseFingerprintUint64(h, uint64(len(headerValues)))
+					for _, headerValue := range headerValues {
+						writeFormCloseFingerprintString(h, headerValue)
+					}
+				}
+
+				file, err := fileHeader.Open()
+				if err != nil {
+					return [sha256.Size]byte{}, err
+				}
+				contentHash := sha256.New()
+				size, copyErr := io.Copy(contentHash, file)
+				closeErr := file.Close()
+				if copyErr != nil {
+					return [sha256.Size]byte{}, copyErr
+				}
+				if closeErr != nil {
+					return [sha256.Size]byte{}, closeErr
+				}
+				writeFormCloseFingerprintString(h, strconv.FormatInt(size, 10))
+				_, _ = h.Write(contentHash.Sum(nil))
+			}
+		}
+	}
+
+	var result [sha256.Size]byte
+	copy(result[:], h.Sum(nil))
+	return result, nil
+}
+
+func writeFormCloseFingerprintString(w io.Writer, value string) {
+	writeFormCloseFingerprintUint64(w, uint64(len(value)))
+	_, _ = io.WriteString(w, value)
+}
+
+func writeFormCloseFingerprintUint64(w io.Writer, value uint64) {
+	var encoded [8]byte
+	binary.BigEndian.PutUint64(encoded[:], value)
+	_, _ = w.Write(encoded[:])
 }
 
 func formCloseIdentity(r *http.Request) string {
@@ -211,8 +327,11 @@ type formCloseReplayEntry struct {
 }
 
 type formCloseReplayLedger struct {
-	mu      sync.Mutex
-	entries map[string]*formCloseReplayEntry
+	mu             sync.Mutex
+	entries        map[string]*formCloseReplayEntry
+	resultBytes    int64
+	maxEntryBytes  int64
+	maxResultBytes int64
 }
 
 type formCloseReservation struct {
@@ -222,7 +341,24 @@ type formCloseReservation struct {
 }
 
 func newFormCloseReplayLedger() *formCloseReplayLedger {
-	return &formCloseReplayLedger{entries: make(map[string]*formCloseReplayEntry)}
+	return newFormCloseReplayLedgerWithLimits(formCloseReplayMaxEntry, formCloseReplayByteBudget)
+}
+
+func newFormCloseReplayLedgerWithLimits(maxEntryBytes, maxResultBytes int64) *formCloseReplayLedger {
+	if maxEntryBytes <= 0 {
+		maxEntryBytes = formCloseReplayMaxEntry
+	}
+	if maxResultBytes <= 0 {
+		maxResultBytes = formCloseReplayByteBudget
+	}
+	if maxEntryBytes > maxResultBytes {
+		maxEntryBytes = maxResultBytes
+	}
+	return &formCloseReplayLedger{
+		entries:        make(map[string]*formCloseReplayEntry),
+		maxEntryBytes:  maxEntryBytes,
+		maxResultBytes: maxResultBytes,
+	}
 }
 
 func (s *Server) formCloseLedger() *formCloseReplayLedger {
@@ -273,7 +409,7 @@ func (l *formCloseReplayLedger) reserve(ctx context.Context, identity, key strin
 func (l *formCloseReplayLedger) pruneLocked(now time.Time) {
 	for key, entry := range l.entries {
 		if entry.done && now.Sub(entry.created) > formCloseReplayTTL {
-			delete(l.entries, key)
+			l.removeLocked(key)
 		}
 	}
 }
@@ -297,7 +433,7 @@ func (l *formCloseReplayLedger) makeRoomLocked(identity string) bool {
 		}
 		sort.Slice(keys, func(i, j int) bool { return l.entries[keys[i]].created.Before(l.entries[keys[j]].created) })
 		removed := l.entries[keys[0]]
-		delete(l.entries, keys[0])
+		l.removeLocked(keys[0])
 		if removed.identity == identity {
 			count--
 		}
@@ -315,9 +451,56 @@ func (r *formCloseReservation) complete(result formCloseReplayResult) {
 	if entry != r.entry || entry.done {
 		return
 	}
+	result = r.ledger.boundResult(result)
+	r.ledger.makeResultRoomLocked(int64(len(result.body)), entry)
 	entry.result = cloneFormCloseReplayResult(result)
 	entry.done = true
+	r.ledger.resultBytes += int64(len(entry.result.body))
 	close(entry.ready)
+}
+
+func (l *formCloseReplayLedger) boundResult(result formCloseReplayResult) formCloseReplayResult {
+	if int64(len(result.body)) <= l.maxEntryBytes {
+		return result
+	}
+	return formCloseReplayResult{
+		status: http.StatusInternalServerError,
+		header: http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
+		body:   []byte("{\"ok\":false,\"error\":\"ответ проверки закрытия формы превысил допустимый размер\"}\n"),
+	}
+}
+
+func (l *formCloseReplayLedger) makeResultRoomLocked(needed int64, keep *formCloseReplayEntry) {
+	for l.resultBytes+needed > l.maxResultBytes {
+		var oldestKey string
+		var oldest *formCloseReplayEntry
+		for key, entry := range l.entries {
+			if entry == keep || !entry.done {
+				continue
+			}
+			if oldest == nil || entry.created.Before(oldest.created) {
+				oldestKey, oldest = key, entry
+			}
+		}
+		if oldest == nil {
+			return
+		}
+		l.removeLocked(oldestKey)
+	}
+}
+
+func (l *formCloseReplayLedger) removeLocked(key string) {
+	entry := l.entries[key]
+	if entry == nil {
+		return
+	}
+	if entry.done {
+		l.resultBytes -= int64(len(entry.result.body))
+		if l.resultBytes < 0 {
+			l.resultBytes = 0
+		}
+	}
+	delete(l.entries, key)
 }
 
 func cloneFormCloseReplayResult(in formCloseReplayResult) formCloseReplayResult {
@@ -329,10 +512,12 @@ type capturedCloseResponse struct {
 	status      int
 	wroteHeader bool
 	body        bytes.Buffer
+	maxBody     int64
+	tooLarge    bool
 }
 
-func newCapturedCloseResponse() *capturedCloseResponse {
-	return &capturedCloseResponse{header: make(http.Header), status: http.StatusOK}
+func newCapturedCloseResponse(maxBody int64) *capturedCloseResponse {
+	return &capturedCloseResponse{header: make(http.Header), status: http.StatusOK, maxBody: maxBody}
 }
 
 func (w *capturedCloseResponse) Header() http.Header { return w.header }
@@ -347,7 +532,21 @@ func (w *capturedCloseResponse) Write(p []byte) (int, error) {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
-	return w.body.Write(p)
+	if w.tooLarge {
+		return len(p), nil
+	}
+	remaining := w.maxBody - int64(w.body.Len())
+	if remaining <= 0 {
+		w.tooLarge = true
+		return len(p), nil
+	}
+	if int64(len(p)) > remaining {
+		_, _ = w.body.Write(p[:int(remaining)])
+		w.tooLarge = true
+		return len(p), nil
+	}
+	_, _ = w.body.Write(p)
+	return len(p), nil
 }
 
 func (s *Server) handleManagedFormCloseIntent(w http.ResponseWriter, r *http.Request) {
@@ -365,7 +564,8 @@ func (s *Server) handleProcessorFormCloseIntent(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request, inv *formCloseInvocation, run func(http.ResponseWriter)) {
-	captured := newCapturedCloseResponse()
+	ledger := s.formCloseLedger()
+	captured := newCapturedCloseResponse(ledger.maxEntryBytes)
 	// Never leave an exact retry waiting forever if an unexpected panic escapes
 	// the normal DSL/HTTP error conversion. Preserve the panic for the server's
 	// recovery middleware, but publish a fail-closed terminal replay first.
@@ -390,7 +590,10 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 
 	status := captured.status
 	var response formEventResponse
-	if err := json.Unmarshal(captured.body.Bytes(), &response); err != nil {
+	if captured.tooLarge {
+		status = http.StatusInternalServerError
+		response = formEventResponse{Error: "ответ проверки закрытия формы превысил допустимый размер"}
+	} else if err := json.Unmarshal(captured.body.Bytes(), &response); err != nil {
 		status = http.StatusInternalServerError
 		response = formEventResponse{Error: "внутренняя ошибка ответа закрытия формы"}
 	}
@@ -405,6 +608,15 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 		body = []byte(`{"ok":false,"error":"внутренняя ошибка ответа закрытия формы"}`)
 	}
 	body = append(body, '\n')
+	if int64(len(body)) > ledger.maxEntryBytes {
+		status = http.StatusInternalServerError
+		response = formEventResponse{
+			Error: "ответ проверки закрытия формы превысил допустимый размер",
+			Close: &formCloseDecision{IntentID: inv.intentID, Allowed: false, Saved: false},
+		}
+		body, _ = json.Marshal(response)
+		body = append(body, '\n')
+	}
 	header := captured.header.Clone()
 	header.Set("Content-Type", "application/json; charset=utf-8")
 	result := formCloseReplayResult{status: status, header: header, body: body}

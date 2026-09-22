@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ivantit66/onebase/internal/i18n"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/processor"
 )
@@ -154,6 +155,12 @@ func TestPageManagedForm_Renders(t *testing.T) {
 		if !strings.Contains(html, e) {
 			t.Errorf("в HTML не найдено %q", e)
 		}
+	}
+	if got := strings.Count(html, `data-ob-close-tab`); got < 2 {
+		t.Errorf("both the header and bottom close controls must use the managed close controller, got %d:\n%s", got, html)
+	}
+	if !strings.Contains(html, `data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel"`) {
+		t.Errorf("bottom Cancel link bypasses the managed close controller:\n%s", html)
 	}
 	for _, old := range []string{
 		"window._tpRefOpts =",
@@ -324,6 +331,45 @@ func TestPageManagedForm_ProcessorHelperNamesAvoidParamCollisions(t *testing.T) 
 	}
 	if !strings.Contains(fileHTML, `data-ob-file-content-for="Data"`) {
 		t.Fatalf("processor file helper lacks control identity:\n%s", fileHTML)
+	}
+}
+
+func TestPageManagedForm_ProcessorBottomCancelUsesCloseControllerAndEnglishMessages(t *testing.T) {
+	bundle, err := i18n.Load(i18n.EmbeddedLocales, "")
+	if err != nil {
+		t.Fatalf("load i18n bundle: %v", err)
+	}
+	localizedTemplate, err := newTemplate(bundle)
+	if err != nil {
+		t.Fatalf("build localized template: %v", err)
+	}
+	form := &metadata.FormModule{
+		Name: "Form", Kind: "custom", LayoutKind: metadata.FormLayoutManaged,
+	}
+	proc := &processor.Processor{Name: "CloseProcessor", Forms: []*metadata.FormModule{form}}
+	data := map[string]any{
+		"Entity": processorVirtualEntity(proc), "Processor": proc, "Form": form, "IsProcessor": true,
+		"IsNew": true, "Values": map[string]string{}, "RefOptions": map[string]any{},
+		"EnumOptions": map[string]any{}, "ChoiceOptions": map[string]any{},
+		"TPRefOptions": map[string]any{}, "TPEnumLabels": map[string]map[string]map[string]string{},
+		"TPEnumOrder": map[string]map[string][]string{}, "TPRefMeta": map[string]any{},
+		"TablePartRows": map[string][]map[string]any{}, "Lang": "en", "FormCloseTimeoutMS": int64(30_000),
+	}
+	var rendered bytes.Buffer
+	if err := localizedTemplate.ExecuteTemplate(&rendered, "page-managed-form", data); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	html := rendered.String()
+	for _, want := range []string{
+		`href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel"`,
+		`"closeUrl":"/ui/processor/closeprocessor/form-close-intent"`,
+		`"controllerUnavailable":"The close check is unavailable. The form remains open."`,
+		`"formChanged":"The form changed while its close request was being checked. Try closing it again."`,
+		`"network":"Network error while closing the form"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("processor managed form is missing %q:\n%s", want, html)
+		}
 	}
 }
 
