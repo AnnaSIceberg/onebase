@@ -202,7 +202,7 @@ func writeFloat(dst *bytes.Buffer, value float64, bits int) bool {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return false
 	}
-	dst.WriteString(fmt.Sprintf("float%d:", bits))
+	_, _ = fmt.Fprintf(dst, "float%d:", bits)
 	dst.WriteString(strconv.FormatFloat(value, 'g', -1, bits))
 	dst.WriteByte(';')
 	return true
