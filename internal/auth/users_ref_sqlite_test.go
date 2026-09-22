@@ -6,7 +6,6 @@ package auth_test
 // можно. Заодно фиксируем, что FK-ошибка НЕ всплывает сырым текстом драйвера.
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -14,7 +13,6 @@ import (
 )
 
 func TestDeleteUser_ReferencedByAppTable(t *testing.T) {
-	ctx := context.Background()
 	repo, db, ctx := newTestRepoDB(t)
 
 	// Ссылку ставим на НЕ-админа: удаляемого нельзя оставлять ни последним
