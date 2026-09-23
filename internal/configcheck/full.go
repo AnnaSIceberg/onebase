@@ -45,6 +45,8 @@ func RunFullWithOptions(dir string, opts Options) Result {
 	if proj, err := project.Load(dir); err == nil {
 		strictLexicalScope := appCfgErr == nil && appCfg != nil && appCfg.DSL != nil && appCfg.DSL.StrictLexicalScope
 		issues = append(issues, CheckQueries(proj)...)
+		issues = append(issues, CheckWidgetRefreshOn(proj)...)
+		issues = append(issues, CheckWidgetSource(proj)...)
 		issues = append(issues, CheckReportComposition(proj)...)
 		issues = append(issues, CheckJournalConditional(proj)...)
 		issues = append(issues, CheckFormConditional(proj)...)
@@ -67,6 +69,7 @@ func RunFullWithOptions(dir string, opts Options) Result {
 		warnings = append(warnings, CheckFormPlacement(dir, proj)...)
 		warnings = append(warnings, CheckSecretHygiene(appCfg, proj)...)
 		warnings = append(warnings, CheckStages(proj)...)
+		warnings = append(warnings, CheckWidgetRefreshOnPublisherWarnings(proj)...)
 		issues = append(issues, CheckHTTPServices(proj)...)
 		warnings = append(warnings, CheckHTTPServiceAuthWarnings(proj)...)
 		issues = append(issues, CheckExchangePlans(proj)...)

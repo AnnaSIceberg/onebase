@@ -681,6 +681,15 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return !*a.Visible
 		},
+		// formActionVisible — видимость стандартного действия managed-формы.
+		// Отсутствующий ключ и visible:nil сохраняют платформенное умолчание.
+		"formActionVisible": func(form *metadata.FormModule, name string) bool {
+			if form == nil || form.Actions == nil {
+				return true
+			}
+			a, ok := form.Actions[name]
+			return !ok || a == nil || a.Visible == nil || *a.Visible
+		},
 		// tablePartByName ищет metadata.TablePart в Entity по имени.
 		// Возвращает указатель на копию (или nil) — нужно managed-шаблону
 		// для рендера ТабличнойЧасти с реальными колонками.
@@ -1293,6 +1302,7 @@ const tplHead = `
 <title>{{if .Cfg.AppName}}{{.Cfg.AppName}}{{else}}onebase{{end}}</title>
 <script type="application/json" id="ob-ui-messages">{{jsJSON (dict
   "closeNotConfirmed" (t (or $.Lang "ru") "Форма не закрыта: сервер не подтвердил закрытие.")
+  "unsavedClose" (t (or $.Lang "ru") "Данные были изменены и не записаны. Закрыть форму?")
 )}}</script>
 <script src="/static/ui.js"></script>
 <style>
@@ -1658,7 +1668,13 @@ const tplIndex = `
 .dash-row > .w-card-list,.dash-row > .w-card-chart,.dash-row > .w-card-recent{flex:1 1 360px}
 .dash-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
 .w-card{background:#fff;border-radius:10px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;min-height:120px}
-.w-title{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;font-weight:600;margin-bottom:8px}
+.w-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;min-height:24px}
+.w-title{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;font-weight:600;flex:1;min-width:0}
+.w-refresh{border:0;background:transparent;color:#64748b;border-radius:6px;padding:3px 5px;line-height:1;cursor:pointer;font-size:15px}
+.w-refresh:hover{background:#f1f5f9;color:#1d4ed8}.w-refresh:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+.w-refresh[disabled]{cursor:wait;opacity:.55}.w-card.ob-widget-loading .w-refresh{animation:ob-widget-spin .8s linear infinite}
+@keyframes ob-widget-spin{to{transform:rotate(360deg)}}
+.w-refresh-status{font-size:12px;color:#b91c1c;margin-top:7px;min-height:0}
 .w-kpi-value{font-size:32px;font-weight:700;color:#0f172a;line-height:1.1;white-space:nowrap}
 .w-kpi-sub{font-size:12px;color:#94a3b8;margin-top:6px}
 /* Кликабельный счётчик: остаётся числом (тот же кегль и цвет), но ведёт себя
@@ -1717,8 +1733,21 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 {{end}}
 
 {{define "widget-card"}}
-<div class="w-card w-card-{{.Type}}">
-  {{if .Title}}<div class="w-title">{{.Title}}</div>{{end}}
+<div class="w-card w-card-{{.Type}}"{{if .PartialURL}} data-ob-widget-card data-widget-name="{{.Name}}" data-widget-url="{{.PartialURL}}" data-refresh-error="{{.RefreshError}}"{{if .RefreshOn}} data-ob-refresh-on="{{.RefreshOn}}" data-ob-live="widget/{{.Name}}"{{end}}{{end}}>
+  {{if or .Title .PartialURL}}
+  <div class="w-head">
+    {{if .Title}}<div class="w-title">{{.Title}}</div>{{end}}
+    {{if .PartialURL}}<button type="button" class="w-refresh" data-ob-widget-refresh title="{{.RefreshLabel}}" aria-label="{{.RefreshLabel}}">↻</button>{{end}}
+  </div>
+  {{end}}
+  <div data-ob-widget-body>
+  {{template "widget-body" .}}
+  </div>
+  {{if .PartialURL}}<div class="w-refresh-status" data-ob-widget-status role="status" aria-live="polite"></div>{{end}}
+</div>
+{{end}}
+
+{{define "widget-body"}}
   {{if .Error}}<div class="w-error">{{.Error}}</div>
   {{else if eq .Type "kpi"}}{{template "widget-kpi-body" .}}
   {{else if eq .Type "list"}}{{template "widget-list-body" .}}
@@ -1726,7 +1755,6 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
   {{else if eq .Type "actions"}}{{template "widget-actions-body" .}}
   {{else if eq .Type "recent"}}{{template "widget-recent-body" .}}
   {{end}}
-</div>
 {{end}}
 
 {{define "widget-kpi-body"}}
@@ -1747,7 +1775,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
     <tbody>
     {{range .Rows}}
       {{$row := .}}
-      <tr>
+      {{with index $row "_row_url"}}<tr class="ob-row-link" tabindex="0" data-ob-row-url="{{.}}">{{else}}<tr>{{end}}
         {{range $.Columns}}
         <td{{if eq .Align "right"}} class="right"{{end}}>{{wcell $row .Field .Format}}</td>
         {{end}}

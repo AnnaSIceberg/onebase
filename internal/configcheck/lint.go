@@ -454,7 +454,8 @@ func constantsYAMLSchema() *yamlLintSchema {
 }
 
 func widgetYAMLSchema() *yamlLintSchema {
-	return with(obj("name", "type", "title", "query", "format", "compare_to", "limit", "chart_kind", "chart_type", "x_field", "y_fields", "entities", "scope", "link"), map[string]*yamlLintSchema{
+	return with(obj("name", "type", "title", "query", "format", "compare_to", "limit", "chart_kind", "chart_type", "x_field", "y_fields", "entities", "scope", "link", "refresh_on"), map[string]*yamlLintSchema{
+		"source": obj("entity", "id_field"),
 		"titles": freeMap(),
 		"params": freeMap(),
 		"columns": seq(with(obj("field", "label", "format", "align"), map[string]*yamlLintSchema{
@@ -658,12 +659,22 @@ func formModuleYAMLSchema() *yamlLintSchema {
 	// RefCardButton у тега yaml:"form"). Пока ключ был разрешён и в корне,
 	// конфигурация с ним проходила линт зелёно, а кнопка молча оставалась на
 	// месте — ровно та «тихая потеря», от которой этот линт и заведён (#1450).
+	action := obj("visible")
+	actions := with(obj(), map[string]*yamlLintSchema{
+		"delete": action,
+		"save":   action,
+		"ok":     action,
+		"close":  action,
+		// attachments.visible:false скрывает панель вложений выбранной
+		// managed-формы (план 181C, #1621); attachment endpoint не меняется.
+		"attachments": action,
+	})
 	return with(obj("schema", "entity", "name", "kind", "layout_kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll"), map[string]*yamlLintSchema{
 		"form":                   formHeader,
 		"title":                  freeMap(),
 		"events":                 freeMap(),
 		"elements":               seq(element),
-		"actions":                freeMap(),
+		"actions":                actions,
 		"attributes":             seq(attr),
 		"commands":               seq(command),
 		"command_bar":            commandBar,
