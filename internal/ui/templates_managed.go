@@ -871,8 +871,10 @@ window.MonacoEnvironment = window.MonacoEnvironment || { getWorkerUrl: function 
 <script src="/vendor/monaco/vs/loader.js" onerror="window._monacoLoadErr=1"></script>
 {{end}}
 
-{{/* Вложения к записи (issue #152) — тот же UI, что и в авто-форме. */}}
-{{template "ob-attachments" .}}
+{{/* Вложения к записи (issue #152) — тот же UI, что и в авто-форме.
+     actions.attachments.visible:false (план 181C, #1621) скрывает блок только
+     этой managed-формы; attachment endpoint не меняется. */}}
+{{if formActionVisible .Form "attachments"}}{{template "ob-attachments" .}}{{end}}
 
 {{template "form-shared-js" .}}
 
