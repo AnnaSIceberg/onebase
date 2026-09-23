@@ -1,6 +1,7 @@
 package configcheck
 
 import (
+	"github.com/google/uuid"
 	"fmt"
 	"io/fs"
 	"os"
@@ -80,7 +81,7 @@ func validateChoiceFilterYAML(node *yaml.Node, path, file string, issues *[]Issu
 		add(node, fmt.Sprintf("%s должен быть списком условий", path))
 		return
 	}
-	allowed := map[string]bool{"field": true, "op": true, "from": true, "value": true}
+	allowed := map[string]bool{"field": true, "op": true, "from": true, "value": true, "ref": true}
 	for index, condition := range node.Content {
 		conditionPath := fmt.Sprintf("%s[%d]", path, index)
 		if condition == nil || condition.Kind != yaml.MappingNode {
@@ -196,8 +197,15 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 
 					hasFrom := strings.TrimSpace(cond.From) != ""
 					hasValue := cond.Value != nil
-					if hasFrom == hasValue {
-						add("%s: требуется ровно одно из from и value", where)
+					hasRef := strings.TrimSpace(cond.Ref) != ""
+					указано := 0
+					for _, есть := range []bool{hasFrom, hasValue, hasRef} {
+						if есть {
+							указано++
+						}
+					}
+					if указано != 1 {
+						add("%s: требуется ровно одно из from, value и ref", where)
 						continue
 					}
 
@@ -246,6 +254,12 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 						if isParent {
 							if !target.Hierarchical {
 								add("%s: parent_id допустим только у иерархического справочника", where)
+								continue
+							}
+							if hasRef {
+								if _, err := uuid.Parse(strings.TrimSpace(cond.Ref)); err != nil {
+									add("%s: ref %q не является идентификатором", where, cond.Ref)
+								}
 								continue
 							}
 							source, sourceOK := formChoiceRefSource(owner, form, cond.From, entities)

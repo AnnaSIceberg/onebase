@@ -145,6 +145,15 @@ func choicePredicates(element *metadata.FormElement, sources map[string]string) 
 			predicates = append(predicates, predicate)
 			continue
 		}
+		if literal := strings.TrimSpace(condition.Ref); literal != "" {
+			id, err := uuid.Parse(literal)
+			if err != nil || id == uuid.Nil {
+				return nil, false, fmt.Errorf("invalid literal ref %q", literal)
+			}
+			predicate.Value = id
+			predicates = append(predicates, predicate)
+			continue
+		}
 		path := strings.TrimSpace(condition.From)
 		raw := strings.TrimSpace(sources[path])
 		if raw == "" {
