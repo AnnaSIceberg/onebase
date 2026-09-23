@@ -74,6 +74,28 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 			continue
 		}
 
+		// is_root — запись верхнего уровня: у неё нет родителя. Служебное поле
+		// наравне с is_folder: выразить «только корневые» через ссылочные
+		// реквизиты нечем, а именно так задаются регионы в адресном дереве.
+		if strings.EqualFold(fieldName, "is_root") {
+			if !entity.Hierarchical {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: is_root requires a hierarchical catalog", i)
+			}
+			if predicate.Op != metadata.FormChoiceOpEqual {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: is_root supports only eq", i)
+			}
+			value, ok := predicate.Value.(bool)
+			if !ok {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: is_root value must be boolean", i)
+			}
+			if value {
+				parts = append(parts, "parent_id IS NULL")
+			} else {
+				parts = append(parts, "parent_id IS NOT NULL")
+			}
+			continue
+		}
+
 		// «ТЧ.Поле» — отбор по табличной части: запись подходит, если в её ТЧ
 		// есть хотя бы одна строка с нужным значением. Так выражается связь
 		// многие-ко-многим, которой в самой записи нет: бренд обслуживает
@@ -145,6 +167,21 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 		field := choiceField(entity, fieldName)
 		if field == nil {
 			return "", nil, startArg, fmt.Errorf("choice filter %d: field %q does not exist", i, fieldName)
+		}
+		// Булев реквизит сравнивается с литералом: «показывать только
+		// немуниципальные» не зависит от того, что выбрано на форме.
+		if field.Type == metadata.FieldTypeBool {
+			if predicate.Op != metadata.FormChoiceOpEqual {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: boolean field supports only eq", i)
+			}
+			value, ok := predicate.Value.(bool)
+			if !ok {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: field %q requires boolean value", i, fieldName)
+			}
+			parts = append(parts, metadata.ColumnName(*field)+" = "+d.Placeholder(next))
+			args = append(args, value)
+			next++
+			continue
 		}
 		if strings.TrimSpace(field.RefEntity) == "" {
 			return "", nil, startArg, fmt.Errorf("choice filter %d: field %q is not a reference", i, fieldName)

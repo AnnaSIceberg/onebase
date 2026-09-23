@@ -210,6 +210,7 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 					}
 
 					isFolder := strings.EqualFold(fieldName, "is_folder")
+					isRoot := strings.EqualFold(fieldName, "is_root")
 					// «ТЧ.Поле» — отбор по табличной части справочника-цели.
 					tpName, tpField, isTablePart := strings.Cut(fieldName, ".")
 					// parent_id — собственная иерархия справочника-цели, а не его
@@ -249,7 +250,7 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 						continue
 					}
 					var targetField *metadata.Field
-					if !isFolder && !isParent {
+					if !isFolder && !isRoot && !isParent {
 						targetField = entityFieldFold(target, fieldName)
 						if targetField == nil {
 							add("%s: у справочника %s нет реквизита %q", where, target.Name, fieldName)
@@ -259,6 +260,21 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 
 					switch cond.Op {
 					case metadata.FormChoiceOpEqual:
+						if isRoot {
+							if !target.Hierarchical {
+								add("%s: is_root допустим только у иерархического справочника", where)
+							}
+							if !hasValue {
+								add("%s: is_root требует boolean value", where)
+							}
+							continue
+						}
+						if targetField != nil && targetField.Type == metadata.FieldTypeBool {
+							if !hasValue {
+								add("%s: булев реквизит %q сравнивается с value, а не from", where, fieldName)
+							}
+							continue
+						}
 						if isFolder {
 							if !target.Hierarchical {
 								add("%s: is_folder допустим только у иерархического справочника", where)
