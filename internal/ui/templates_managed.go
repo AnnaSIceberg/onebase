@@ -93,6 +93,12 @@ const tplManagedForm = `
             <option value="{{index . "id"}}"{{if index . "_choice_outside_filter"}} data-ob-choice-outside-filter="1"{{end}} {{if eq (index . "id") (index $ctx.Values $fn)}}selected{{end}}>{{index . "_label"}}</option>
             {{end}}
           </select>
+          {{/* Отключённый <select> браузер не отправляет, и значение
+               нередактируемого поля уехало бы пустым, затерев записанное:
+               именно так терялись автор документа и тип звонка, проставленные
+               при открытии формы. Скрытым элементам платформа это уже
+               обеспечивает — здесь тот же приём. */}}
+          {{if and $ro (index $ctx.Values $fn)}}<input type="hidden" name="{{$fn}}" value="{{index $ctx.Values $fn}}">{{end}}
           {{/* Нередактируемому полю кнопка подбора не нужна — выбирать нечего, а
                серая «…» рядом заставляет читать значение как незаполненный ввод.
                «Открыть карточку» остаётся и остаётся РАБОЧЕЙ: посмотреть связанный
@@ -116,6 +122,7 @@ const tplManagedForm = `
           <option value="{{.Value}}" {{if eq .Value (index $ctx.Values $fn)}}selected{{end}}>{{.Label}}</option>
           {{end}}
         </select>
+        {{if and $ro (index $ctx.Values $fn)}}<input type="hidden" name="{{$fn}}" value="{{index $ctx.Values $fn}}">{{end}}
       {{else if eq (str $f.Type) "date"}}
         <input type="datetime-local" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and (not $ro) $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{else if eq (str $f.Type) "bool"}}
