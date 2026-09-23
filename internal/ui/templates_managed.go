@@ -105,7 +105,7 @@ const tplManagedForm = `
           {{if or (not $ro) (elReadOnlyDynamic $ctx $el)}}
           <button type="button" data-ob-ref-picker="ref-{{$fn}}"{{if $ro}} disabled{{end}} style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">…</button>
           {{end}}
-          {{if and (or (not $ro) (index $ctx.Values $fn)) (not $ctx.HideRefCard)}}
+          {{if and (or (not $ro) (index $ctx.Values $fn)) (not (hideRefCard $ctx $el))}}
           <button type="button" data-ob-ref-current="ref-{{$fn}}" data-ob-readonly-navigation="1" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px" title="Открыть карточку">🔍</button>
           {{end}}
         </div>
@@ -193,7 +193,7 @@ const tplManagedForm = `
             {{end}}
           </select>
           <button type="button" data-ob-ref-picker="ref-{{$fn}}"{{if $ro}} disabled{{end}} style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">…</button>
-          {{if and (or (not $ro) (index $ctx.Values $fn)) (not $ctx.HideRefCard)}}
+          {{if and (or (not $ro) (index $ctx.Values $fn)) (not (hideRefCard $ctx $el))}}
           <button type="button" data-ob-ref-current="ref-{{$fn}}" data-ob-readonly-navigation="1" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px" title="Открыть карточку">🔍</button>
           {{end}}
         </div>

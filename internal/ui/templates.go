@@ -420,6 +420,15 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// отправки формы, но перестаёт быть интерактивным, а выбор идёт кнопкой
 		// подбора. Полностью заменить его на текст нельзя — форма подбора и
 		// обработчики событий работают именно с <select>.
+		// hideRefCard — кнопка «Открыть карточку» выключена: своим ключом
+		// элемента или, если его нет, ключом формы целиком.
+		"hideRefCard": func(ctx map[string]any, element *metadata.FormElement) bool {
+			if element != nil && element.RefCardButton != nil {
+				return !*element.RefCardButton
+			}
+			hidden, _ := ctx["HideRefCard"].(bool)
+			return hidden
+		},
 		"noChoiceDropdown": func(element *metadata.FormElement) bool {
 			return element != nil && element.ChoiceDropdown != nil && !*element.ChoiceDropdown
 		},
