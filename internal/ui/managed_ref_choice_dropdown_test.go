@@ -123,6 +123,15 @@ elements:
 			if опций != tc.wantOptions {
 				t.Fatalf("опций в списке = %d, ожидалось %d:\n%s", опций, tc.wantOptions, селект)
 			}
+			// При выключенном списке поле не должно раскрываться вовсе:
+			// выбор идёт только кнопкой подбора.
+			неРаскрывается := strings.Contains(селект, `data-ob-no-dropdown="1"`) &&
+				strings.Contains(селект, "pointer-events:none") &&
+				strings.Contains(селект, "appearance:none")
+			if неРаскрывается == (tc.elSetting == "") {
+				t.Fatalf("список %s раскрывается, ожидалось обратное:\n%s",
+					map[bool]string{true: "не", false: ""}[неРаскрывается], селект)
+			}
 			// Кнопка подбора обязана остаться: без неё поле стало бы невыбираемым.
 			if !strings.Contains(html, `data-ob-ref-picker="ref-Клиент"`) {
 				t.Fatalf("пропала кнопка подбора у поля:\n%.1200s", html)

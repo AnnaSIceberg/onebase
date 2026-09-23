@@ -415,6 +415,14 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// element id. The same entity field may be rendered twice with different
 		// filters; falling back by field name is only for elements without the
 		// opt-in contract.
+		// noChoiceDropdown — элемент объявил choice_dropdown: false. Список у
+		// такого поля не раскрывается вовсе: <select> остаётся ради значения и
+		// отправки формы, но перестаёт быть интерактивным, а выбор идёт кнопкой
+		// подбора. Полностью заменить его на текст нельзя — форма подбора и
+		// обработчики событий работают именно с <select>.
+		"noChoiceDropdown": func(element *metadata.FormElement) bool {
+			return element != nil && element.ChoiceDropdown != nil && !*element.ChoiceDropdown
+		},
 		"managedRefOptions": func(ctx map[string]any, element *metadata.FormElement, field string) []map[string]any {
 			// choice_dropdown: false — список вариантов в <select> не
 			// разворачивается, выбор идёт формой подбора. Текущее значение
