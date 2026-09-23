@@ -429,6 +429,16 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			hidden, _ := ctx["HideRefCard"].(bool)
 			return hidden
 		},
+		// adminOnlyLocked — поле заперто, потому что смотрит не администратор.
+		// В карту ElReadOnly не попадает намеренно: состояние не меняется в
+		// течение сессии, и клиенту нечего пересчитывать.
+		"adminOnlyLocked": func(ctx map[string]any, element *metadata.FormElement) bool {
+			if element == nil || !element.EditableAdminOnly {
+				return false
+			}
+			admin, _ := ctx["IsAdmin"].(bool)
+			return !admin
+		},
 		"noChoiceDropdown": func(element *metadata.FormElement) bool {
 			return element != nil && element.ChoiceDropdown != nil && !*element.ChoiceDropdown
 		},

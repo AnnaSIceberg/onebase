@@ -23,7 +23,7 @@ const tplManagedForm = `
      effectiveFormElementReadOnly, условного — карта ElReadOnly, которую строит
      managedFormElementStates. Скрытые по hidden_when не отрисовываются вовсе —
      первой веткой цепочки. */}}
-{{$ro := or (effectiveFormElementReadOnly $ctx.Form $el) (elReadOnly $ctx $el)}}
+{{$ro := or (effectiveFormElementReadOnly $ctx.Form $el) (elReadOnly $ctx $el) (adminOnlyLocked $ctx $el)}}
 {{$effectiveReq := effectiveFormElementRequired $ctx.Entity $el}}{{$req := nativeFormElementRequired $ctx.Entity $el}}
 {{if elHidden $ctx $el}}
 {{else if eq (str $el.Kind) "ГруппаФормы"}}
