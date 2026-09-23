@@ -210,9 +210,44 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 					}
 
 					isFolder := strings.EqualFold(fieldName, "is_folder")
+					// «ТЧ.Поле» — отбор по табличной части справочника-цели.
+					tpName, tpField, isTablePart := strings.Cut(fieldName, ".")
 					// parent_id — собственная иерархия справочника-цели, а не его
 					// реквизит: отбирает по месту самой записи в дереве.
 					isParent := strings.EqualFold(fieldName, "parent_id")
+					if isTablePart {
+						var tp *metadata.TablePart
+						for i := range target.TableParts {
+							if strings.EqualFold(target.TableParts[i].Name, tpName) {
+								tp = &target.TableParts[i]
+								break
+							}
+						}
+						if tp == nil {
+							add("%s: у справочника %s нет табличной части %q", where, target.Name, tpName)
+							continue
+						}
+						var поле *metadata.Field
+						for i := range tp.Fields {
+							if strings.EqualFold(tp.Fields[i].Name, tpField) {
+								поле = &tp.Fields[i]
+								break
+							}
+						}
+						if поле == nil || strings.TrimSpace(поле.RefEntity) == "" {
+							add("%s: в табличной части %q нет ссылочного реквизита %q", where, tpName, tpField)
+							continue
+						}
+						if cond.Op != metadata.FormChoiceOpEqual {
+							add("%s: отбор по табличной части поддерживает только eq", where)
+							continue
+						}
+						source, sourceOK := formChoiceRefSource(owner, form, cond.From, entities)
+						if !hasFrom || !sourceOK || source == nil || !strings.EqualFold(source.Name, поле.RefEntity) {
+							add("%s: from %q должен ссылаться на %s", where, cond.From, поле.RefEntity)
+						}
+						continue
+					}
 					var targetField *metadata.Field
 					if !isFolder && !isParent {
 						targetField = entityFieldFold(target, fieldName)

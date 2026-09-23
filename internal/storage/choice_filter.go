@@ -74,6 +74,39 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 			continue
 		}
 
+		// «ТЧ.Поле» — отбор по табличной части: запись подходит, если в её ТЧ
+		// есть хотя бы одна строка с нужным значением. Так выражается связь
+		// многие-ко-многим, которой в самой записи нет: бренд обслуживает
+		// несколько направлений, и одним реквизитом это не описать.
+		if tpName, tpField, ok := strings.Cut(fieldName, "."); ok {
+			tp := choiceTablePart(entity, tpName)
+			if tp == nil {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: table part %q does not exist", i, tpName)
+			}
+			column := choiceTablePartField(tp, tpField)
+			if column == nil {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: table part %q has no field %q", i, tpName, tpField)
+			}
+			if strings.TrimSpace(column.RefEntity) == "" {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: table part field %q is not a reference", i, fieldName)
+			}
+			if predicate.Op != metadata.FormChoiceOpEqual {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: table part supports only eq", i)
+			}
+			id, err := choiceUUID(predicate.Value)
+			if err != nil {
+				return "", nil, startArg, fmt.Errorf("choice filter %d field %q: %w", i, fieldName, err)
+			}
+			parts = append(parts, fmt.Sprintf(`EXISTS (SELECT 1 FROM %s AS tp WHERE tp.parent_id = %s.id AND tp.%s = %s)`,
+				metadata.TablePartTableName(entity.Name, tp.Name),
+				metadata.TableName(entity.Name),
+				metadata.ColumnName(*column),
+				d.Placeholder(next)))
+			args = append(args, idArg(d, id))
+			next++
+			continue
+		}
+
 		// parent_id — собственная иерархия справочника-цели, а не ссылочный
 		// реквизит. Отбирает по МЕСТУ САМОЙ ЗАПИСИ в дереве: «эта запись лежит
 		// (или не лежит) внутри такой-то группы». Без этого нельзя было
@@ -182,4 +215,22 @@ func choiceUUID(value any) (uuid.UUID, error) {
 	default:
 		return uuid.Nil, fmt.Errorf("value must be UUID, got %T", value)
 	}
+}
+
+func choiceTablePart(entity *metadata.Entity, name string) *metadata.TablePart {
+	for i := range entity.TableParts {
+		if strings.EqualFold(entity.TableParts[i].Name, name) {
+			return &entity.TableParts[i]
+		}
+	}
+	return nil
+}
+
+func choiceTablePartField(tp *metadata.TablePart, name string) *metadata.Field {
+	for i := range tp.Fields {
+		if strings.EqualFold(tp.Fields[i].Name, name) {
+			return &tp.Fields[i]
+		}
+	}
+	return nil
 }
