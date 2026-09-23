@@ -429,7 +429,7 @@ PostgreSQL; для SQLite потребовалось бы суммировани
 
 | № | Файл | Фича | Эстимейт | Статус |
 |---|---|---|---|---|
-| 160 | [160-processor-permissions-fail-closed.md](160-processor-permissions-fail-closed.md) | Явные права на обработки: переходный lint и compatibility mode, затем fail-closed для отсутствующего `permissions.processors` (#1191) | ~3–4 дня в нескольких релизах | 📋 Проектирование |
+| 162 | [162-processor-permissions-fail-closed.md](162-processor-permissions-fail-closed.md) | Явные права на обработки: переходный lint и compatibility mode, затем fail-closed для отсутствующего `permissions.processors` (#1191) | ~3–4 дня в нескольких релизах | 📋 Проектирование |
 
 ### Направление Т — надёжность конвейера сопровождения
 
