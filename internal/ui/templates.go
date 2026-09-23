@@ -594,6 +594,19 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			set, _ := ctx["ElReadOnly"].(map[string]bool)
 			return set[el.Name]
 		},
+		// elReadOnlyDynamic — состояние элемента зависит от условия и может
+		// смениться без перезагрузки страницы. В карту ElReadOnly сервер кладёт
+		// КАЖДЫЙ элемент, на который влияет readonly_when (своё или предка), в
+		// том числе с ложным условием. Постоянный запрет (el.ReadOnly) сюда не
+		// относится: он не снимается никогда.
+		"elReadOnlyDynamic": func(ctx map[string]any, el *metadata.FormElement) bool {
+			if el == nil || el.ReadOnly {
+				return false
+			}
+			set, _ := ctx["ElReadOnly"].(map[string]bool)
+			_, ok := set[el.Name]
+			return ok
+		},
 		"elHidden": func(ctx map[string]any, el *metadata.FormElement) bool {
 			if el == nil {
 				return false

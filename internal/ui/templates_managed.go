@@ -98,8 +98,12 @@ const tplManagedForm = `
                «Открыть карточку» остаётся и остаётся РАБОЧЕЙ: посмотреть связанный
                объект — не редактирование, и на readonly-поле это как раз то, что
                нужно (открыть звонок, клиента, документ-основание). */}}
-          {{if not $ro}}
-          <button type="button" data-ob-ref-picker="ref-{{$fn}}" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">…</button>
+          {{/* У поля с условным запретом кнопка рисуется всегда, но гаснет
+               вместе с полем: состояние меняется без перезагрузки, и заново
+               создать кнопку в DOM клиенту неоткуда — поле осталось бы
+               невыбираемым до обновления страницы. */}}
+          {{if or (not $ro) (elReadOnlyDynamic $ctx $el)}}
+          <button type="button" data-ob-ref-picker="ref-{{$fn}}"{{if $ro}} disabled{{end}} style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">…</button>
           {{end}}
           {{if and (or (not $ro) (index $ctx.Values $fn)) (not $ctx.HideRefCard)}}
           <button type="button" data-ob-ref-current="ref-{{$fn}}" data-ob-readonly-navigation="1" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px" title="Открыть карточку">🔍</button>
