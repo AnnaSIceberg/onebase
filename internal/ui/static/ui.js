@@ -3509,7 +3509,7 @@ function openRefPicker(selOrId) {
     var seq = ++requestSeq;
     if (status) status.textContent = 'Загрузка...';
     var choiceQuery = obRefChoiceQuery(sel);
-    var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + encodeURIComponent(q || '') + choiceQuery;
+    var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=1000&q=' + encodeURIComponent(q || '') + choiceQuery;
     fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then(function (resp) {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);

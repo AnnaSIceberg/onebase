@@ -91,6 +91,14 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 		if managed.RefCardButton != nil && !*managed.RefCardButton {
 			data["HideRefCard"] = true
 		}
+		// «Только администратору»: для остальных карточка не рисуется вовсе.
+		// Клиент её потом не создаст, но это и не нужно — роль в течение
+		// сессии не меняется.
+		// Признак администратора берём из запроса: в data он попадает позже,
+		// уже на этапе render, и здесь его ещё нет.
+		if managed.RefCardButtonAdminOnly && !s.isAdmin(r) {
+			data["HideRefCard"] = true
+		}
 		// Фикс A: команды формы, не размещённые вручную элементом kind: Кнопка,
 		// рисуются автоматической командной панелью (иначе объявленная в commands:
 		// команда в UI не видна — её кнопку рисует только kind: Кнопка). Fire-click

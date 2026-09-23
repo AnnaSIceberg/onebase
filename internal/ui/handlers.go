@@ -123,8 +123,14 @@ const (
 )
 
 const (
+	// Предзагрузка вариантов в форму остаётся маленькой: её платят все
+	// ссылочные поля на каждой отрисовке.
 	refPickerDefaultLimit = 50
-	refPickerMaxLimit     = 100
+	// Потолок для формы подбора. Здесь страница одна и запрашивается по
+	// требованию, поэтому дешевле показать справочник целиком, чем заставлять
+	// оператора угадывать, что список обрезан: «показано 50 из 56» он читает
+	// как «остальных нет».
+	refPickerMaxLimit = 1000
 )
 
 func (s *Server) refListParamsForMode(refEntity *metadata.Entity, mode refOptionsMode) storage.ListParams {

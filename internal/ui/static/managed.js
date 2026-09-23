@@ -1966,7 +1966,7 @@ obManagedReady(obManagedInitDelegates);
       if (!refEntity || !window.fetch) return;
       var seq = ++searchSeq;
       var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) +
-                '?limit=50&q=' + encodeURIComponent(q || '');
+                '?limit=1000&q=' + encodeURIComponent(q || '');
       fetch(url, {credentials: 'same-origin', headers: {'Accept': 'application/json'}})
         .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
         .then(function(data) {

@@ -608,7 +608,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		"id", "name", "kind", "field", "table_part", "visible", "enabled", "required",
 		"original_id", "data_path", "picture", "values_picture", "width", "height",
 		"halign", "valign", "readonly", "readonly_when", "hidden_when", "use_grid", "no_grid", "auto_sum", "hint", "mask",
-		"accesskey", "hotkey", "multiline", "format", "display_format", "type", "choice", "choice_dropdown", "ref_card_button", "unknown_xml", "view",
+		"accesskey", "hotkey", "multiline", "format", "display_format", "type", "choice", "choice_dropdown", "ref_card_button", "ref_card_button_admin_only", "unknown_xml", "view",
 		// Ключи, поддержанные загрузчиком, но забытые здесь: линт объявлял их
 		// неизвестными, а гейт CI считает предупреждение ошибкой — то есть
 		// документированный «language» у kind: ПолеКода не давал примеру

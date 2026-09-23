@@ -30,6 +30,11 @@ func TestManagedRefCardButtonThroughHTTP(t *testing.T) {
 		// Ключ элемента точечнее ключа формы и перекрывает его: бывает нужно
 		// убрать карточку у одного поля, а не у всех сразу.
 		{name: "выключено у элемента", elementSetting: "    ref_card_button: false\n", wantButton: false},
+		// «Только администратору»: без настроенной авторизации isAdmin
+		// возвращает истину, поэтому кнопка остаётся. Случай закрывает разбор
+		// ключа и его путь до рендера; разделение по ролям проверяется на живой
+		// базе — поднять здесь полноценную авторизацию дороже пользы.
+		{name: "только администратору", formSetting: "  ref_card_button_admin_only: true\n", wantButton: true},
 		{name: "элемент включает вопреки форме", formSetting: "  ref_card_button: false\n", elementSetting: "    ref_card_button: true\n", wantButton: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
