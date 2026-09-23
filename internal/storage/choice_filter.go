@@ -74,6 +74,41 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 			continue
 		}
 
+		// parent_id — собственная иерархия справочника-цели, а не ссылочный
+		// реквизит. Отбирает по МЕСТУ САМОЙ ЗАПИСИ в дереве: «эта запись лежит
+		// (или не лежит) внутри такой-то группы». Без этого нельзя было
+		// исключить архивную папку: is_folder убирает саму группу, но не её
+		// содержимое, а обойти иерархию через ссылочные реквизиты нечем.
+		if strings.EqualFold(fieldName, "parent_id") {
+			if !entity.Hierarchical {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: parent_id requires a hierarchical catalog", i)
+			}
+			if predicate.Op != metadata.FormChoiceOpInHierarchy && predicate.Op != metadata.FormChoiceOpNotInHierarchy {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: parent_id supports only in_hierarchy and not_in_hierarchy", i)
+			}
+			id, err := choiceUUID(predicate.Value)
+			if err != nil {
+				return "", nil, startArg, fmt.Errorf("choice filter %d field %q: %w", i, fieldName, err)
+			}
+			table := metadata.TableName(entity.Name)
+			op := "IN"
+			if predicate.Op == metadata.FormChoiceOpNotInHierarchy {
+				op = "NOT IN"
+			}
+			parts = append(parts, fmt.Sprintf(`id `+op+` (
+				WITH RECURSIVE choice_tree(id) AS (
+					SELECT id FROM %s WHERE id = %s
+					UNION
+					SELECT child.id FROM %s AS child
+					JOIN choice_tree AS parent ON child.parent_id = parent.id
+				)
+				SELECT id FROM choice_tree
+			)`, table, d.Placeholder(next), table))
+			args = append(args, idArg(d, id))
+			next++
+			continue
+		}
+
 		field := choiceField(entity, fieldName)
 		if field == nil {
 			return "", nil, startArg, fmt.Errorf("choice filter %d: field %q does not exist", i, fieldName)
@@ -91,10 +126,15 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 			parts = append(parts, column+" = "+d.Placeholder(next))
 			args = append(args, idArg(d, id))
 			next++
-		case metadata.FormChoiceOpInHierarchy:
+		case metadata.FormChoiceOpInHierarchy, metadata.FormChoiceOpNotInHierarchy:
 			table := metadata.TableName(field.RefEntity)
 			placeholder := d.Placeholder(next)
-			parts = append(parts, fmt.Sprintf(`%s IN (
+			// Отрицание — тот же рекурсивный обход поддерева, только NOT IN.
+			оператор := "IN"
+			if predicate.Op == metadata.FormChoiceOpNotInHierarchy {
+				оператор = "NOT IN"
+			}
+			parts = append(parts, fmt.Sprintf(`%s `+оператор+` (
 				WITH RECURSIVE choice_tree(id) AS (
 					SELECT id FROM %s WHERE id = %s
 					UNION

@@ -286,6 +286,11 @@ type FormChoiceOperator string
 const (
 	FormChoiceOpEqual       FormChoiceOperator = "eq"
 	FormChoiceOpInHierarchy FormChoiceOperator = "in_hierarchy"
+	// FormChoiceOpNotInHierarchy — зеркало in_hierarchy: значение поля НЕ входит
+	// в поддерево указанного элемента. Нужно для «исключить архивную папку»:
+	// закрытый набор v1 умел только положительный отбор, а выразить «кроме этой
+	// ветки» было нечем — ни отрицания, ни ne в грамматике нет.
+	FormChoiceOpNotInHierarchy FormChoiceOperator = "not_in_hierarchy"
 )
 
 // FormChoiceCondition описывает одно серверно проверяемое условие подбора.

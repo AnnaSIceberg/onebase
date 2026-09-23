@@ -202,8 +202,11 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 					}
 
 					isFolder := strings.EqualFold(fieldName, "is_folder")
+					// parent_id — собственная иерархия справочника-цели, а не его
+					// реквизит: отбирает по месту самой записи в дереве.
+					isParent := strings.EqualFold(fieldName, "parent_id")
 					var targetField *metadata.Field
-					if !isFolder {
+					if !isFolder && !isParent {
 						targetField = entityFieldFold(target, fieldName)
 						if targetField == nil {
 							add("%s: у справочника %s нет реквизита %q", where, target.Name, fieldName)
@@ -235,9 +238,20 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 							add("%s: eq сравнивает несовместимые ссылки %s.%s и %q", where, target.Name, targetField.Name, cond.From)
 						}
 
-					case metadata.FormChoiceOpInHierarchy:
+					case metadata.FormChoiceOpInHierarchy, metadata.FormChoiceOpNotInHierarchy:
 						if isFolder || hasValue {
-							add("%s: in_hierarchy требует ссылочный field и from", where)
+							add("%s: %s требует field и from", where, cond.Op)
+							continue
+						}
+						if isParent {
+							if !target.Hierarchical {
+								add("%s: parent_id допустим только у иерархического справочника", where)
+								continue
+							}
+							source, sourceOK := formChoiceRefSource(owner, form, cond.From, entities)
+							if !sourceOK || source == nil || !strings.EqualFold(source.Name, target.Name) {
+								add("%s: from %q должен ссылаться на сам справочник %s", where, cond.From, target.Name)
+							}
 							continue
 						}
 						hierarchy := entities[strings.ToLower(targetField.RefEntity)]
