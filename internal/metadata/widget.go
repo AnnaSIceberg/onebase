@@ -66,6 +66,16 @@ func (a WidgetAction) DisplayLabel(lang string) string {
 	return a.Label
 }
 
+// WidgetSource описывает навигацию строк list-виджета (план 182C): сущность,
+// чью карточку открывает клик по строке, и колонку результата, несущую
+// идентификатор записи. Компилятор подтверждает по RefColumns, что колонка —
+// ссылка именно на эту сущность; без подтверждения строки остаются
+// некликабельными (fail-closed).
+type WidgetSource struct {
+	Entity  string `yaml:"entity"`
+	IDField string `yaml:"id_field"`
+}
+
 // Widget describes a single dashboard widget loaded from widgets/<Name>.yaml.
 type Widget struct {
 	Name      string            `yaml:"name"`
@@ -85,6 +95,11 @@ type Widget struct {
 	Items     []WidgetAction    `yaml:"items"`      // actions
 	Entities  []string          `yaml:"entities"`   // recent — filter to these entity names
 	Scope     string            `yaml:"scope"`      // recent: current_user | all
+	// Source — навигация строк list-виджета: клик по строке открывает карточку
+	// записи Source.Entity по идентификатору из колонки Source.IDField. У
+	// kpi/chart/recent/actions навигации строк нет, и check такое объявление
+	// отвергает.
+	Source *WidgetSource `yaml:"source"`
 	// Link — куда ведёт клик по карточке (kpi). Счётчик «в карантине: 3» без
 	// ссылки заставляет искать эту очередь руками; со ссылкой карточка сама
 	// открывает список с нужным отбором. Значение — внутренний путь приложения

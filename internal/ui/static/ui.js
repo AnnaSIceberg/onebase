@@ -644,6 +644,42 @@ window.obRefreshWidgetCard = function (card) {
 };
 // END onebase-widget-refresh
 
+// BEGIN onebase-widget-row-nav
+/* План 182C (#1617): строка list-виджета с data-ob-row-url открывает карточку
+   записи. Клик и Enter. Клик не срабатывает при выделении текста и на
+   ссылках/кнопках внутри ячеек; Enter работает, только когда фокус на самой
+   строке. Делегирование на document: partial-refresh подменяет тело карточки,
+   обработчик его переживает. */
+(function () {
+  if (window.__obWidgetRowNavInit) return;
+  window.__obWidgetRowNavInit = true;
+  function rowOf(target) {
+    return target && target.closest ? target.closest('[data-ob-row-url]') : null;
+  }
+  function go(el) {
+    var url = el.getAttribute('data-ob-row-url');
+    if (url) window.location.assign(url);
+  }
+  document.addEventListener('click', function (ev) {
+    var el = rowOf(ev.target);
+    if (!el) return;
+    if (ev.target.closest('a, button, select, input, textarea, label')) return;
+    try {
+      var sel = window.getSelection && window.getSelection();
+      if (sel && String(sel).length > 0) return;
+    } catch (e) {}
+    go(el);
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    var el = rowOf(ev.target);
+    if (!el || ev.target !== el) return;
+    ev.preventDefault();
+    go(el);
+  });
+})();
+// END onebase-widget-row-nav
+
 function obInitReportChart() {
   if (!window.echarts) return;
   var node = document.getElementById('ob-chart');
