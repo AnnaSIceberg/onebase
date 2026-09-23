@@ -198,7 +198,10 @@ func (s *Server) homeDashboardData(r *http.Request) map[string]any {
 				Error: s.tr(lang, "виджет не найден:") + " " + wMeta.Name,
 			}
 		}
-		res := runner.Run(r.Context(), wMeta)
+		// Фильтры полной страницы (план 182D): URL-значения применяются к данным
+		// толерантно — мусор трактуется как пустой отбор, страница не ломается.
+		// Иначе после F5 контролы заполнены, а строки неотфильтрованы.
+		res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: lenientWidgetFilterParams(r, wMeta)})
 		res.Title = wMeta.DisplayTitle(lang)
 		s.decorateRefreshResult(r, wMeta, &res, runner)
 		return res

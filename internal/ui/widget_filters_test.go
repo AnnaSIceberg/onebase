@@ -146,6 +146,41 @@ func TestWidgetFiltersDashboard_ResilientToGarbage(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("garbage value must not break the page: %d", rec.Code)
 	}
+	// Мусорное значение — пустой отбор: обе строки на месте.
+	if !strings.Contains(rec.Body.String(), "Гвозди") || !strings.Contains(rec.Body.String(), "молоток") {
+		t.Fatalf("garbage value must degrade to empty filter: %s", rec.Body.String())
+	}
+}
+
+// F5/закладка: значения фильтров из URL применяются к данным полной страницы,
+// а не только к контролам — иначе после перезагрузки контролы заполнены,
+// а строки неотфильтрованы (блокирующее замечание ревью #1671).
+func TestWidgetFiltersDashboard_F5AppliesFilter(t *testing.T) {
+	router := newFiltersFixture(t)
+	key := widgetFilterKey("ЗадачиФильтр", "Тема")
+	req := httptest.NewRequest(http.MethodGet, "/ui/?"+key+"="+urlQueryEscape("Гвозди"), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Гвозди") {
+		t.Fatalf("F5 filter not applied to data: %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "молоток") {
+		t.Fatalf("F5 page renders unfiltered rows: %s", rec.Body.String())
+	}
+	// Контрол предзаполнен тем же значением.
+	if !strings.Contains(rec.Body.String(), `value="Гвозди"`) {
+		t.Fatalf("control not prefilled: %s", rec.Body.String())
+	}
+	// Без ключа — обе строки (контрольный заход).
+	req2 := httptest.NewRequest(http.MethodGet, "/ui/", nil)
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+	if !strings.Contains(rec2.Body.String(), "Гвозди") || !strings.Contains(rec2.Body.String(), "молоток") {
+		t.Fatalf("plain dashboard must be unfiltered")
+	}
 }
 
 func TestWidgetFiltersMatrix_TypedParamsBothDialects(t *testing.T) {

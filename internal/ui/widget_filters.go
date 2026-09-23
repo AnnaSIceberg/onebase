@@ -209,3 +209,27 @@ func widgetPartialURL(name string, w *metadata.Widget, subsystem string, rawValu
 	}
 	return u
 }
+
+// lenientWidgetFilterParams возвращает типизированные значения фильтров виджета
+// из запроса для ПОЛНОЙ страницы: мусорное значение трактуется как пустой
+// отбор (в отличие от partial-endpoint, где контракт строгий и даёт 400).
+// Отсутствующие фильтры получают типизированный nil — канонический шаблон
+// «&Параметр ЕСТЬ ПУСТО ИЛИ ...» ожидает параметр всегда.
+func lenientWidgetFilterParams(r *http.Request, w *metadata.Widget) map[string]any {
+	if len(w.Filters) == 0 {
+		return nil
+	}
+	raw := widgetFilterRawValues(r, w)
+	out := make(map[string]any, len(w.Filters))
+	for _, f := range w.Filters {
+		key := widgetFilterKey(w.Name, f.Name)
+		if v, ok := raw[key]; ok {
+			if typed, err := widget.ParseFilterValue(f, v); err == nil {
+				out[f.Param] = typed
+				continue
+			}
+		}
+		out[f.Param] = nil
+	}
+	return out
+}
