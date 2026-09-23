@@ -416,6 +416,12 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// filters; falling back by field name is only for elements without the
 		// opt-in contract.
 		"managedRefOptions": func(ctx map[string]any, element *metadata.FormElement, field string) []map[string]any {
+			// choice_dropdown: false — список вариантов в <select> не
+			// разворачивается, выбор идёт формой подбора. Текущее значение
+			// остаётся: без его <option> заполненное поле выглядело бы пустым.
+			if element != nil && element.ChoiceDropdown != nil && !*element.ChoiceDropdown {
+				return managedRefSelectedOnly(ctx, element, field)
+			}
 			if element != nil {
 				if scoped, ok := ctx["ManagedChoiceOptions"].(map[string][]map[string]any); ok {
 					if rows, exists := scoped[element.ID]; exists {
@@ -4047,3 +4053,45 @@ const tplPageCustom = `
 </body></html>
 {{end}}
 `
+
+// managedRefSelectedOnly возвращает единственный вариант ссылочного поля —
+// текущее значение, — когда элемент объявил `choice_dropdown: false`.
+// Варианты берутся из того же набора, что и обычно: отфильтрованного
+// choice_filter, если он есть, иначе общего. Так значение поля показывается
+// ровно тем же представлением, что и в развёрнутом списке, а выбор нового
+// значения остаётся за формой подбора.
+func managedRefSelectedOnly(ctx map[string]any, element *metadata.FormElement, field string) []map[string]any {
+	values, _ := ctx["Values"].(map[string]string)
+	current := strings.TrimSpace(values[field])
+	if current == "" {
+		return nil
+	}
+	rows := managedRefAllOptions(ctx, element, field)
+	for _, row := range rows {
+		if id, _ := row["id"].(string); id == current {
+			return []map[string]any{row}
+		}
+	}
+	return nil
+}
+
+// managedRefAllOptions — общий набор вариантов элемента: сначала
+// отфильтрованный choice_filter по стабильному id, затем общий по имени поля.
+func managedRefAllOptions(ctx map[string]any, element *metadata.FormElement, field string) []map[string]any {
+	if element != nil {
+		if scoped, ok := ctx["ManagedChoiceOptions"].(map[string][]map[string]any); ok {
+			if rows, exists := scoped[element.ID]; exists {
+				return rows
+			}
+		}
+	}
+	if refs, ok := ctx["RefOptions"].(map[string][]map[string]any); ok {
+		return refs[field]
+	}
+	if refs, ok := ctx["RefOptions"].(map[string]any); ok {
+		if rows, ok := refs[field].([]map[string]any); ok {
+			return rows
+		}
+	}
+	return nil
+}
