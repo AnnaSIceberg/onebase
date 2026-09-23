@@ -3690,6 +3690,54 @@ function openItemPicker(payload, elementName, eventContext) {
   });
 }
 
+// BEGIN onebase-question-modal
+/* ПоказатьВопрос (#1528, план 158 срез A): модал вопроса фазы 1. Ответ
+   пользователя уходит событием Ответ с _question_answer — сервер кладёт его
+   в переменную ВопросОтвет и вызывает обработчик Ответ того же элемента.
+   Диалог неблокирующий: клик мимо закрывает модал без ответа (обработчик фазы 1
+   сам решает, что делать без второй фазы). */
+function obOpenQuestion(payload, elementName) {
+  if (!payload || !payload.variants || !payload.variants.length) return;
+  var old = document.getElementById('_question-modal');
+  if (old) old.remove();
+  var modal = document.createElement('div');
+  modal.id = '_question-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:10px;padding:20px;width:460px;max-width:94vw;box-shadow:0 8px 32px rgba(0,0,0,.18)';
+  if (payload.title) {
+    var title = document.createElement('div');
+    title.style.cssText = 'font-weight:600;font-size:15px;color:#1e293b;margin-bottom:8px';
+    title.textContent = payload.title;
+    box.appendChild(title);
+  }
+  var text = document.createElement('div');
+  text.style.cssText = 'font-size:14px;color:#1e293b;white-space:pre-line;margin-bottom:16px';
+  text.textContent = payload.text;
+  box.appendChild(text);
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+  payload.variants.forEach(function (variant) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = variant;
+    btn.style.cssText = 'padding:8px 16px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:14px';
+    btn.addEventListener('click', function () {
+      modal.remove();
+      if (typeof obFire === 'function') obFire(elementName, 'Ответ', { _question_answer: variant });
+    });
+    row.appendChild(btn);
+  });
+  box.appendChild(row);
+  modal.appendChild(box);
+  modal.addEventListener('click', function (ev) {
+    if (ev.target === modal) modal.remove();
+  });
+  document.body.appendChild(modal);
+}
+window.obOpenQuestion = obOpenQuestion;
+// END onebase-question-modal
+
 /* Live refresh for managed-form choice_filter controls (plan 170/C).
    The server remains authoritative: the browser only snapshots declared
    source values and never reconstructs field/operator predicates. */
