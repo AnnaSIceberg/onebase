@@ -1694,6 +1694,18 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
     {{if .PartialURL}}<button type="button" class="w-refresh" data-ob-widget-refresh title="{{.RefreshLabel}}" aria-label="{{.RefreshLabel}}">↻</button>{{end}}
   </div>
   {{end}}
+  {{if .Filters}}
+  <div class="w-filters">
+    {{range .Filters}}{{$f := .}}
+    <label class="w-filter"><span>{{$f.Label}}</span>
+    {{if or (eq $f.Kind "bool") (eq $f.Kind "select") (eq $f.Kind "reference")}}<select data-ob-filter="{{$f.Key}}">
+      {{range $f.Options}}<option value="{{.Value}}"{{if eq .Value $f.Current}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select>{{else}}<input type="{{if eq $f.Kind "date"}}date{{else}}text{{end}}"{{if eq $f.Kind "number"}} inputmode="decimal"{{end}} data-ob-filter="{{$f.Key}}" value="{{$f.Current}}">{{end}}
+    </label>
+    {{end}}
+    <button type="button" class="w-filter-reset" data-ob-filter-reset>{{.ResetLabel}}</button>
+  </div>
+  {{end}}
   <div data-ob-widget-body>
   {{template "widget-body" .}}
   </div>

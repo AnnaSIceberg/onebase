@@ -680,6 +680,130 @@ window.obRefreshWidgetCard = function (card) {
 })();
 // END onebase-widget-row-nav
 
+// BEGIN onebase-widget-filters
+/* План 182D (#1620): интерактивные фильтры list-виджета. Изменение контрола
+   пересобирает адрес карточки из её именаосванных ключей w.<виджет>.<фильтр>
+   (чужие ключи в адрес карточки не попадают — сервер отвергает их с 400),
+   синхронизирует адрес строки (pushState — F5 и Back/Forward восстанавливают
+   отбор; ключи других карточек в адресе сохраняются) и перечитывает карточку
+   существующим контроллером: abort/sequence защищают от поздних ответов,
+   свежий запрос идёт мимо кеша. Сброс очищает контролы карточки; popstate
+   восстанавливает значения контролов из адреса и перечитывает карточки,
+   чей адрес изменился. */
+(function () {
+  if (window.__obWidgetFiltersInit) return;
+  window.__obWidgetFiltersInit = true;
+
+  function filterCard(el) {
+    return el && el.closest ? el.closest('[data-ob-widget-card]') : null;
+  }
+
+  function filterNodes(card) {
+    return card.querySelectorAll('[data-ob-filter]');
+  }
+
+  // Пар ключ→значение контролов карточки.
+  function collectFilters(card) {
+    var out = [];
+    var nodes = filterNodes(card);
+    for (var i = 0; i < nodes.length; i++) {
+      out.push({ key: nodes[i].getAttribute('data-ob-filter'), value: nodes[i].value || '' });
+    }
+    return out;
+  }
+
+  // Адрес карточки: subsystem + только её собственные непустые ключи.
+  function rebuildEndpoint(card, filters) {
+    var base = (card.getAttribute('data-widget-url') || '').split('?')[0];
+    var params = new URLSearchParams(window.location.search);
+    var sub = params.get('subsystem');
+    if (sub) params.set('subsystem', sub); else params.delete('subsystem');
+    var own = new URLSearchParams();
+    if (sub) own.set('subsystem', sub);
+    for (var i = 0; i < filters.length; i++) {
+      if (filters[i].value !== '') own.set(filters[i].key, filters[i].value);
+    }
+    var qs = own.toString();
+    return qs ? base + '?' + qs : base;
+  }
+
+  // Адрес строки: текущий поиск с заменой ключей ЭТОЙ карточки — ключи
+  // остальных карточек и subsystem сохраняются.
+  function mergedSearch(filters) {
+    var params = new URLSearchParams(window.location.search);
+    for (var i = 0; i < filters.length; i++) {
+      if (filters[i].value !== '') params.set(filters[i].key, filters[i].value);
+      else params.delete(filters[i].key);
+    }
+    return params.toString();
+  }
+
+  function applyEndpoint(card, endpoint, search) {
+    var previous = card.getAttribute('data-widget-url') || '';
+    if (previous !== endpoint) {
+      card.setAttribute('data-widget-url', endpoint);
+      if (window.obRefreshWidgetCard) window.obRefreshWidgetCard(card);
+    }
+    if (search !== null && window.history && window.history.pushState &&
+        (window.location.search || '') !== '?' + search) {
+      window.history.pushState({}, '', search ? '?' + search : window.location.pathname);
+    }
+  }
+
+  document.addEventListener('change', function (ev) {
+    var el = ev.target;
+    if (!el || !el.hasAttribute || !el.hasAttribute('data-ob-filter')) return;
+    var card = filterCard(el);
+    if (!card) return;
+    var filters = collectFilters(card);
+    applyEndpoint(card, rebuildEndpoint(card, filters), mergedSearch(filters));
+  });
+
+  // Enter в текстовом поле применяет отбор сразу, не дожидаясь blur.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter') return;
+    var el = ev.target;
+    if (!el || !el.hasAttribute || !el.hasAttribute('data-ob-filter')) return;
+    ev.preventDefault();
+    var card = filterCard(el);
+    if (!card) return;
+    var filters = collectFilters(card);
+    applyEndpoint(card, rebuildEndpoint(card, filters), mergedSearch(filters));
+  });
+
+  document.addEventListener('click', function (ev) {
+    var el = ev.target;
+    if (!el || !el.closest || !el.closest('[data-ob-filter-reset]')) return;
+    var card = filterCard(el);
+    if (!card) return;
+    var nodes = filterNodes(card);
+    for (var i = 0; i < nodes.length; i++) nodes[i].value = '';
+    var filters = collectFilters(card);
+    applyEndpoint(card, rebuildEndpoint(card, filters), mergedSearch(filters));
+  });
+
+  // Back/Forward: значения контролов восстанавливаются из адреса, карточки
+  // перечитываются. Сервер отрисовывает полную страницу по адресу сам.
+  window.addEventListener('popstate', function () {
+    var params = new URLSearchParams(window.location.search);
+    var cards = document.querySelectorAll('[data-ob-widget-card]');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      if (!filterNodes(card).length) continue;
+      var nodes = filterNodes(card);
+      for (var j = 0; j < nodes.length; j++) {
+        nodes[j].value = params.get(nodes[j].getAttribute('data-ob-filter')) || '';
+      }
+      var endpoint = rebuildEndpoint(card, collectFilters(card));
+      if ((card.getAttribute('data-widget-url') || '') !== endpoint) {
+        card.setAttribute('data-widget-url', endpoint);
+        if (window.obRefreshWidgetCard) window.obRefreshWidgetCard(card);
+      }
+    }
+  });
+})();
+// END onebase-widget-filters
+
 function obInitReportChart() {
   if (!window.echarts) return;
   var node = document.getElementById('ob-chart');

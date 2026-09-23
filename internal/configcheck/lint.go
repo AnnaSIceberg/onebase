@@ -456,6 +456,12 @@ func constantsYAMLSchema() *yamlLintSchema {
 func widgetYAMLSchema() *yamlLintSchema {
 	return with(obj("name", "type", "title", "query", "format", "compare_to", "limit", "chart_kind", "chart_type", "x_field", "y_fields", "entities", "scope", "link", "refresh_on"), map[string]*yamlLintSchema{
 		"source": obj("entity", "id_field"),
+		"filters": seq(with(obj("name", "label", "type", "param"), map[string]*yamlLintSchema{
+			"labels": freeMap(),
+			"values": seq(with(obj("value", "label"), map[string]*yamlLintSchema{
+				"labels": freeMap(),
+			})),
+		})),
 		"titles": freeMap(),
 		"params": freeMap(),
 		"columns": seq(with(obj("field", "label", "format", "align"), map[string]*yamlLintSchema{
