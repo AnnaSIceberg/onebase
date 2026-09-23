@@ -65,6 +65,8 @@ var maskHelperExempt = map[string]maskHelperExemption{
 	"Server.publishDocChange": {reason: "живой список (план 87): читает after для адресации по правам, " +
 		"само событие несёт только действие, строки клиенту не отдаются"},
 	"Server.blobReferencedWithPolicy": {reason: "проверка, ссылается ли видимая строка на блоб: наружу идёт bool"},
+	"Server.resolveDeepChoiceSources": {reason: "разыменование источника choice_filter: из записи берётся " +
+		"только значение ссылочного реквизита и уходит в WHERE отбора, клиенту не отдаётся"},
 	"Server.loadAuthorizedRecordHistory": {reason: "история объекта (план 121): строка читается только для проверки " +
 		"построчного доступа и наружу не идёт; сами значения истории редактирует redactAuditEntries"},
 	"Server.validateConstant": {reason: "валидация ссылки константы: наружу идёт текст ошибки, не значения"},

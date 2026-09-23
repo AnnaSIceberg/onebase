@@ -478,6 +478,11 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       // кнопку подбора гасим (disabled) — как это делает серверный рендер.
       el.querySelectorAll('input, textarea').forEach(function (inp) {
         if (!ownControl(el, inp)) return;
+        // Скрытое поле значения нередактируемого элемента — не контрол, а
+        // способ довезти значение до сервера: помечать его readOnly незачем, а
+        // состояние элемента оно бы искажало. Служебный presence-marker
+        // флажка, наоборот, гасить обязательно — у него своя пометка.
+        if (inp.dataset && inp.dataset.obReadonlyValue === '1') return;
         // Hidden presence-marker distinguishes an unchecked checkbox from a
         // checkbox absent from the submitted form. It must be successful only
         // while the checkbox itself is editable; otherwise marker-without-value

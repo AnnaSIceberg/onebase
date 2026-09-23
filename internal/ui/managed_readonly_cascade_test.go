@@ -389,6 +389,7 @@ type managedControlNode struct {
 	Disabled           bool     `json:"disabled"`
 	ReadOnly           bool     `json:"readOnly"`
 	CheckboxPresence   bool     `json:"checkboxPresence"`
+	ReadOnlyValue      bool     `json:"readOnlyValue"`
 	ReadOnlyNavigation bool     `json:"readOnlyNavigation"`
 	RefCurrent         bool     `json:"refCurrent"`
 	TabButton          bool     `json:"tabButton"`
@@ -455,12 +456,14 @@ func managedFormDOM(t *testing.T, rendered string) managedFormDOMModel {
 				_, readOnly := managedHTMLAttr(n, "readonly")
 				presence, _ := managedHTMLAttr(n, "data-ob-checkbox-presence")
 				_, readOnlyNavigation := managedHTMLAttr(n, "data-ob-readonly-navigation")
+				readOnlyValue, _ := managedHTMLAttr(n, "data-ob-readonly-value")
 				_, refCurrent := managedHTMLAttr(n, "data-ob-ref-current")
 				_, tabButton := managedHTMLAttr(n, "data-tab-idx")
 				model.Controls = append(model.Controls, managedControlNode{
 					Tag: strings.ToUpper(n.Data), Name: name, Type: typeName, Value: value,
 					Checked: checked, Disabled: disabled, ReadOnly: readOnly,
 					CheckboxPresence: presence == "1", ReadOnlyNavigation: readOnlyNavigation,
+					ReadOnlyValue:    readOnlyValue == "1",
 					RefCurrent: refCurrent, TabButton: tabButton, Anchors: anchors, InTablePart: inTP,
 				})
 			}
@@ -550,6 +553,7 @@ const controls = payload.dom.controls.map((c) => ({
   readOnly: c.readOnly,
   dataset: Object.assign(
     c.checkboxPresence ? {obCheckboxPresence: '1'} : {},
+    c.readOnlyValue ? {obReadonlyValue: '1'} : {},
     c.readOnlyNavigation ? {obReadonlyNavigation: '1'} : {}
   ),
   _refCurrent: c.refCurrent,
@@ -602,6 +606,7 @@ process.stdout.write(JSON.stringify({
     disabled: c.disabled,
     readOnly: c.readOnly,
     checkboxPresence: c.dataset.obCheckboxPresence === '1',
+    readOnlyValue: c.dataset.obReadonlyValue === '1',
     readOnlyNavigation: c.dataset.obReadonlyNavigation === '1',
     refCurrent: c._refCurrent,
     tabButton: c._tabButton,

@@ -81,7 +81,7 @@ elements:
 	}
 
 	html := response.Body.String()
-	скрытое := `<input type="hidden" name="Клиент" value="` + клиент.String() + `">`
+	скрытое := `<input type="hidden" name="Клиент" value="` + клиент.String() + `" data-ob-readonly-value="1">`
 	if !strings.Contains(html, скрытое) {
 		i := strings.Index(html, `id="ref-Клиент"`)
 		фрагмент := html
