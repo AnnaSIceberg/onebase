@@ -294,10 +294,17 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 // rejected so future syntax cannot reinterpret an existing configuration.
 func formChoiceRefSource(owner *metadata.Entity, form *metadata.FormModule, path string, entities map[string]*metadata.Entity) (*metadata.Entity, bool) {
 	parts := strings.Split(strings.TrimSpace(path), ".")
-	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+	if len(parts) < 2 || len(parts) > 3 || strings.TrimSpace(parts[1]) == "" {
 		return nil, false
 	}
 	prefix, name := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	deref := ""
+	if len(parts) == 3 {
+		deref = strings.TrimSpace(parts[2])
+		if deref == "" {
+			return nil, false
+		}
+	}
 	var ref string
 	switch {
 	case strings.EqualFold(prefix, "Объект"):
@@ -318,7 +325,20 @@ func formChoiceRefSource(owner *metadata.Entity, form *metadata.FormModule, path
 		return nil, false
 	}
 	entity := entities[strings.ToLower(ref)]
-	return entity, entity != nil
+	if entity == nil {
+		return nil, false
+	}
+	// Разыменование в одно звено: берём реквизит промежуточной записи. Он
+	// обязан быть ссылкой — сравнивать подбор умеет только ссылки.
+	if deref != "" {
+		field := entityFieldFold(entity, deref)
+		if field == nil || strings.TrimSpace(field.RefEntity) == "" {
+			return nil, false
+		}
+		entity = entities[strings.ToLower(field.RefEntity)]
+		return entity, entity != nil
+	}
+	return entity, true
 }
 
 func formChoiceTypeRefEntity(typeRef string) string {

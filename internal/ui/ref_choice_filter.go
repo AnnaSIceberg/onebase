@@ -58,12 +58,29 @@ func findChoiceElementByID(form *metadata.FormModule, id string) *metadata.FormE
 }
 
 func formChoicePath(path string) (root, name string, ok bool) {
+	root, name, _, ok = formChoiceDeepPath(path)
+	return root, name, ok
+}
+
+// formChoiceDeepPath разбирает источник условия. Кроме двух звеньев
+// («Объект.Поле») допускается одно разыменование: «Объект.Направление.Группа».
+// Браузер и в этом случае шлёт значение ПЕРВОГО поля — оно единственное, что
+// есть на форме контролом, — а последний шаг делает сервер: читает запись по
+// ссылке и берёт из неё нужный реквизит. Без этого нельзя было отобрать по
+// признаку, живущему не в самой форме, а в связанном объекте.
+func formChoiceDeepPath(path string) (root, name, deref string, ok bool) {
 	parts := strings.Split(strings.TrimSpace(path), ".")
-	if len(parts) != 2 {
-		return "", "", false
+	if len(parts) < 2 || len(parts) > 3 {
+		return "", "", "", false
 	}
 	root, name = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-	return root, name, root != "" && name != ""
+	if len(parts) == 3 {
+		deref = strings.TrimSpace(parts[2])
+		if deref == "" {
+			return "", "", "", false
+		}
+	}
+	return root, name, deref, root != "" && name != ""
 }
 
 func formChoiceTypeEntity(typeRef string) string {
@@ -265,6 +282,7 @@ func (s *Server) resolveChoiceRequest(r *http.Request, target *metadata.Entity) 
 	if err != nil {
 		return nil, err
 	}
+	sources = s.resolveDeepChoiceSources(r.Context(), owner, form, sources)
 	predicates, empty, err := choicePredicates(element, sources)
 	if err != nil {
 		return nil, err
@@ -387,6 +405,7 @@ func (s *Server) applyManagedChoiceFilters(ctx context.Context, owner *metadata.
 			sources[path] = formValueForPath(data["Values"], path)
 		}
 		selected := formValueForPath(data["Values"], element.DataPath)
+		sources = s.resolveDeepChoiceSources(ctx, owner, form, sources)
 		rows, err := s.initialChoiceOptions(ctx, target, element, sources, selected)
 		if err == nil {
 			options[element.ID] = rows
@@ -408,4 +427,64 @@ func (s *Server) applyManagedChoiceFilters(ctx context.Context, owner *metadata.
 		data["ManagedChoiceOptions"] = options
 		data["ManagedChoiceContexts"] = contexts
 	}
+}
+
+// resolveDeepChoiceSources доводит значения источников с разыменованием до
+// конечного реквизита. Браузер прислал идентификатор промежуточной записи
+// (например направления), а условие сравнивает с её реквизитом — читаем запись
+// и подменяем значение. Нечитаемая или отсутствующая запись обнуляет источник:
+// подбор в этом случае честно показывает пустоту, а не весь справочник.
+func (s *Server) resolveDeepChoiceSources(ctx context.Context, owner *metadata.Entity, form *metadata.FormModule, sources map[string]string) map[string]string {
+	if len(sources) == 0 {
+		return sources
+	}
+	out := make(map[string]string, len(sources))
+	for path, raw := range sources {
+		root, name, deref, ok := formChoiceDeepPath(path)
+		if !ok || deref == "" || strings.TrimSpace(raw) == "" {
+			out[path] = raw
+			continue
+		}
+		refEntityName := ""
+		switch {
+		case strings.EqualFold(root, "Объект"):
+			if owner != nil {
+				for i := range owner.Fields {
+					if strings.EqualFold(owner.Fields[i].Name, name) {
+						refEntityName = owner.Fields[i].RefEntity
+						break
+					}
+				}
+			}
+		case strings.EqualFold(root, "Форма"):
+			if form != nil {
+				for _, attr := range form.Attributes {
+					if attr != nil && strings.EqualFold(attr.Name, name) {
+						refEntityName = formChoiceTypeEntity(attr.TypeRef)
+						break
+					}
+				}
+			}
+		}
+		refEntity := s.reg.GetEntity(refEntityName)
+		if refEntity == nil {
+			out[path] = ""
+			continue
+		}
+		id, err := uuid.Parse(strings.TrimSpace(raw))
+		if err != nil {
+			out[path] = ""
+			continue
+		}
+		row, err := s.store.GetByID(ctx, refEntity.Name, id, refEntity)
+		if err != nil || row == nil {
+			out[path] = ""
+			continue
+		}
+		out[path] = fmt.Sprint(row[deref])
+		if out[path] == "<nil>" {
+			out[path] = ""
+		}
+	}
+	return out
 }
