@@ -97,6 +97,25 @@ func TestValueTableReadOnlyColumnsHideRowEditing(t *testing.T) {
 	}
 }
 
+// План колонок обязан доехать до клиента: строки после события перерисовывает
+// он, и без плана рисовал их «как умеет» — всеми колонками, включая служебные,
+// и без признака строки, то есть щелчок переставал работать после первого же
+// поиска.
+func TestValueTableSendsColumnPlanToClient(t *testing.T) {
+	html := renderValueTableElement(t,
+		[]*metadata.FormElement{колонка("Улица", "Улица", true), колонка("Представление", "Представление", true)},
+		map[metadata.FormEventType]string{metadata.FormEventOnRowActivated: "СтрокаВыбрана"})
+
+	for _, маркер := range []string{
+		`data-vt-editable="0"`,
+		`data-vt-flags="Улица:r,Представление:r,Ид:rh"`,
+	} {
+		if !strings.Contains(html, маркер) {
+			t.Errorf("клиент не получит план колонок, нет %s: %s", маркер, html)
+		}
+	}
+}
+
 func TestValueTableEditableKeepsRowEditing(t *testing.T) {
 	// Редактируемая колонка — прежнее поведение: таблицу можно пополнять руками.
 	html := renderValueTableElement(t, []*metadata.FormElement{

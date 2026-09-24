@@ -749,12 +749,31 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       });
       var rows = vts[vtName] || [];
       var readOnly = obManagedTableReadOnly(tbody);
+      // План колонок с сервера: какие скрыты и какие закрыты для правки.
+      // Без него клиент перерисовывал таблицу «как умеет» — всеми колонками,
+      // включая служебные, и без признака строки, то есть щелчок по строке
+      // переставал работать сразу после первого же поиска.
+      var flags = {};
+      (tbody.getAttribute('data-vt-flags') || '').split(',').forEach(function(part){
+        var i = part.lastIndexOf(':');
+        if (i < 0) return;
+        var f = part.slice(i + 1);
+        flags[part.slice(0, i)] = {readonly: f.indexOf('r') >= 0, hidden: f.indexOf('h') >= 0};
+      });
+      var rowsEditable = tbody.getAttribute('data-vt-editable') !== '0';
+      var activate = tbody.getAttribute('data-ob-vt-activate');
       tbody.innerHTML = '';
       rows.forEach(function(row, idx){
         var tr = document.createElement('tr');
         tr.className = obFormRowClass(row);
+        if (activate) {
+          tr.setAttribute('data-ob-vt-row', String(idx));
+          tr.style.cursor = 'pointer';
+        }
         fieldsMeta.forEach(function(f){
+          var flag = flags[f.name] || {};
           var td = document.createElement('td');
+          if (flag.hidden) td.style.display = 'none';
           td.className = obFormCellClass(row, f.name);
           var v = row[f.name];
           var inp = document.createElement('input');
@@ -771,17 +790,22 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
             inp.type = 'text';
             inp.value = (v == null ? '' : v);
           }
-          inp.disabled = readOnly;
+          // Закрытая колонка остаётся успешной: значение обязано вернуться
+          // на сервер, иначе обработчик не узнает, какую строку выбрали.
+          if (flag.readonly && inp.type !== 'checkbox') inp.readOnly = true;
+          else inp.disabled = readOnly || !!flag.readonly;
           td.appendChild(inp);
           tr.appendChild(td);
         });
-        var tdDel = document.createElement('td');
-        var btn = document.createElement('button');
-        btn.type = 'button'; btn.className = 'del-btn'; btn.textContent = '×';
-        btn.disabled = readOnly;
-        if (!readOnly) btn.setAttribute('data-ob-remove-row', '');
-        tdDel.appendChild(btn);
-        tr.appendChild(tdDel);
+        if (rowsEditable) {
+          var tdDel = document.createElement('td');
+          var btn = document.createElement('button');
+          btn.type = 'button'; btn.className = 'del-btn'; btn.textContent = '×';
+          btn.disabled = readOnly;
+          if (!readOnly) btn.setAttribute('data-ob-remove-row', '');
+          tdDel.appendChild(btn);
+          tr.appendChild(tdDel);
+        }
         tbody.appendChild(tr);
       });
       });

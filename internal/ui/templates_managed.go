@@ -444,7 +444,7 @@ const tplManagedForm = `
         {{if $vtEditable}}<th style="width:40px"></th>{{end}}
       </tr>
     </thead>
-    <tbody id="vt-body-{{$tpName}}" {{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}{{if $vtActivate}}data-ob-vt-activate="{{$el.Name}}" data-ob-vt-name="{{$tpName}}" {{end}}data-vt-fields="{{range $i, $c := $vtCols}}{{if $i}},{{end}}{{$c.Name}}|{{$c.TypeRef}}{{end}}">
+    <tbody id="vt-body-{{$tpName}}" {{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}{{if $vtActivate}}data-ob-vt-activate="{{$el.Name}}" data-ob-vt-name="{{$tpName}}" {{end}}data-vt-editable="{{if $vtEditable}}1{{else}}0{{end}}" data-vt-flags="{{range $i, $col := $vtPlan}}{{if $i}},{{end}}{{$col.Column.Name}}:{{if $col.ReadOnly}}r{{end}}{{if $col.Hidden}}h{{end}}{{end}}" data-vt-fields="{{range $i, $c := $vtCols}}{{if $i}},{{end}}{{$c.Name}}|{{$c.TypeRef}}{{end}}">
     {{range $i, $row := $vtRows}}
       <tr{{with formRowClass $row}} class="{{.}}"{{end}}{{if $vtActivate}} data-ob-vt-row="{{$i}}" style="cursor:pointer"{{end}}>
         {{range $col := $vtPlan}}{{$c := $col.Column}}
