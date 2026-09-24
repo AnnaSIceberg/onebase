@@ -1662,6 +1662,17 @@ const tplIndex = `
 .w-refresh[disabled]{cursor:wait;opacity:.55}.w-card.ob-widget-loading .w-refresh{animation:ob-widget-spin .8s linear infinite}
 @keyframes ob-widget-spin{to{transform:rotate(360deg)}}
 .w-refresh-status{font-size:12px;color:#b91c1c;margin-top:7px;min-height:0}
+/* Отборы list-виджета: разметка их рисовала (.w-filters/.w-filter), а правил
+   не было вовсе — <label> инлайновый, подпись и список текли в строку и
+   переносились как придётся, а ширина <select> равнялась самому длинному
+   значению («ОператорКоллЦентраТест» растягивал карточку). Теперь это ряд:
+   каждый отбор занимает равную долю и ужимается (min-width:0 — иначе flex не
+   даёт элементу стать уже содержимого), подпись стоит НАД полем. */
+.w-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin-bottom:10px}
+.w-filter{display:flex;flex-direction:column;gap:2px;flex:1 1 0;min-width:96px}
+.w-filter>span{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.w-filter select,.w-filter input{width:100%;min-width:0;box-sizing:border-box;font-size:13px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:6px;background:#fff}
+.w-filter-reset{flex:0 0 auto}
 .w-kpi-value{font-size:32px;font-weight:700;color:#0f172a;line-height:1.1;white-space:nowrap}
 .w-kpi-sub{font-size:12px;color:#94a3b8;margin-top:6px}
 /* Кликабельный счётчик: остаётся числом (тот же кегль и цвет), но ведёт себя
