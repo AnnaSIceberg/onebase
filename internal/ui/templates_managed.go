@@ -251,7 +251,7 @@ const tplManagedForm = `
   {{$hotKey := ""}}{{if and (not $ro) $clickAction}}{{$hotKey = normalizedFormHotkey $el.HotKey}}{{end}}
   {{$buttonLayout := elLayout $el}}
   {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}" style="{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn btn-secondary managed-btn"{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{end}}>
+  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
   {{if $buttonLayout}}</div>{{end}}
@@ -540,6 +540,12 @@ const tplManagedForm = `
 .managed-group-horizontal>.managed-group-body{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
 /* Поле в горизонтальной группе не растягивается на всю строку: иначе одинокое
    поле уезжало во всю ширину, а кнопка рядом с ним — к правому краю экрана. */
+/* Вертикальный шаг полей управляемой формы: у автоформы .form-group отбивается
+   на 16px плюс 5px под подписью — на плотной форме, повторяющей раскладку 1С,
+   это растягивает десяток полей на полтора экрана. Здесь шаг вдвое меньше;
+   автоформ, списков и прочей разметки правило не касается. */
+.managed-group-body>.form-group{margin-bottom:8px}
+.managed-group-body>.form-group>label{margin-bottom:3px}
 .managed-group-horizontal>.managed-group-body>.form-group{flex:0 1 260px;min-width:180px;margin-bottom:0}
 /* Колонка-группа внутри горизонтальной группы делит ширину строки: растягивается
    вместе с окном и сжимается вместе с ним. min-width:0 — иначе флекс-элемент не
