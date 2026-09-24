@@ -333,12 +333,19 @@ const tplManagedForm = `
        {{if $tpCmds}}data-sg-cmd="1"{{end}}
        {{if not $tpReadOnly}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}></div>
   {{if not $tpReadOnly}}<input type="hidden" name="tp_json.{{$tpName}}" id="tp-json-{{$tpName}}" value="">{{end}}
+  {{/* У таблицы «только показать» (результаты поиска, итоги) кнопки правки
+       строк не нужны вовсе: раньше они рисовались серыми и занимали место,
+       обещая действие, которого нет. Таблица считается такой и когда закрыта
+       целиком, и когда все её колонки объявлены readonly — второе важно там,
+       где нужен щелчок по строке: саму таблицу закрывать нельзя. */}}
+  {{if and (not $tpReadOnly) (managedTPEditable $tpPlan)}}
   <div style="display:flex;gap:6px;margin-top:4px">
-    <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569"{{if $tpReadOnly}} disabled{{else}}
-      data-ob-grid-add="{{$tpName}}" title="Insert" aria-keyshortcuts="Insert"{{end}}>+ Добавить строку</button>
-    <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#991b1b"{{if $tpReadOnly}} disabled{{else}}
-      data-ob-grid-del="{{$tpName}}" title="Delete" aria-keyshortcuts="Delete"{{end}}>− Удалить строку</button>
+    <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569"
+      data-ob-grid-add="{{$tpName}}" title="Insert" aria-keyshortcuts="Insert">+ Добавить строку</button>
+    <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#991b1b"
+      data-ob-grid-del="{{$tpName}}" title="Delete" aria-keyshortcuts="Delete">− Удалить строку</button>
   </div>
+  {{end}}
 {{else}}
 {{/* Маркер присутствия простой таблицы: строки — это ключи tp.X.<i>.<колонка>,
      и удалив их все, браузер шлёт то же самое, что и форма, где таблицы вовсе

@@ -1131,6 +1131,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"managedTPColumnPlan": managedTPColumnPlan,
 		"managedVTColumnPlan": managedVTColumnPlan,
 		"managedVTEditable":   managedVTEditable,
+		"managedTPEditable":   managedTPEditable,
 		// managedTPFieldsAttr — значение data-tp-fields в порядке отрисовки
 		// ячеек: applyTableParts перестраивает строку по этому списку, и любое
 		// расхождение порядка развалило бы соответствие ячеек колонкам.
