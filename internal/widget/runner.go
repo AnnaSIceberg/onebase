@@ -39,6 +39,11 @@ type Result struct {
 	// пробелом разделённые для атрибута data-ob-refresh-on. Заполняется вместе
 	// с остальными презентационными полями после Run.
 	RefreshOn string
+	// Filters — презентационные модели контролов интерактивных фильтров
+	// (план 182D), заполняются HTTP-слоем после Run вместе с PartialURL.
+	Filters []FilterControl
+	// ResetLabel — подпись кнопки сброса фильтров карточки (i18n HTTP-слоя).
+	ResetLabel string
 	// AccessDenied — у пользователя нет прав на источник данных виджета (или на
 	// все его кнопки-действия). Дашборд такие карточки не рендерит вовсе, в
 	// отличие от настоящих ошибок (compile/SQL), которые остаются видимыми.
@@ -60,6 +65,24 @@ type Result struct {
 	// Link — внутренний адрес, на который ведёт клик по карточке (см.
 	// metadata.Widget.Link). Пусто — карточка не кликабельна, как раньше.
 	Link string
+}
+
+// FilterControl — презентационная модель одного контрола фильтра карточки
+// (план 182D). Key — именаосванный ключ URL (w.<виджет>.<фильтр>); Current —
+// каноничное сырое значение из текущего URL, пустое = отбор не задан.
+type FilterControl struct {
+	Key     string
+	Name    string
+	Label   string
+	Kind    string // string | number | date | bool | select | reference
+	Current string
+	Options []FilterOption
+}
+
+// FilterOption — вариант select-контрола (bool/select/reference).
+type FilterOption struct {
+	Value string
+	Label string
 }
 
 // KPIResult holds the single numeric value rendered by a KPI widget.

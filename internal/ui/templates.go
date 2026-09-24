@@ -613,19 +613,6 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			set, _ := ctx["ElReadOnly"].(map[string]bool)
 			return set[el.Name]
 		},
-		// elReadOnlyDynamic — состояние элемента зависит от условия и может
-		// смениться без перезагрузки страницы. В карту ElReadOnly сервер кладёт
-		// КАЖДЫЙ элемент, на который влияет readonly_when (своё или предка), в
-		// том числе с ложным условием. Постоянный запрет (el.ReadOnly) сюда не
-		// относится: он не снимается никогда.
-		"elReadOnlyDynamic": func(ctx map[string]any, el *metadata.FormElement) bool {
-			if el == nil || el.ReadOnly {
-				return false
-			}
-			set, _ := ctx["ElReadOnly"].(map[string]bool)
-			_, ok := set[el.Name]
-			return ok
-		},
 		"elHidden": func(ctx map[string]any, el *metadata.FormElement) bool {
 			if el == nil {
 				return false
@@ -1738,6 +1725,18 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
   <div class="w-head">
     {{if .Title}}<div class="w-title">{{.Title}}</div>{{end}}
     {{if .PartialURL}}<button type="button" class="w-refresh" data-ob-widget-refresh title="{{.RefreshLabel}}" aria-label="{{.RefreshLabel}}">↻</button>{{end}}
+  </div>
+  {{end}}
+  {{if .Filters}}
+  <div class="w-filters">
+    {{range .Filters}}{{$f := .}}
+    <label class="w-filter"><span>{{$f.Label}}</span>
+    {{if or (eq $f.Kind "bool") (eq $f.Kind "select") (eq $f.Kind "reference")}}<select data-ob-filter="{{$f.Key}}">
+      {{range $f.Options}}<option value="{{.Value}}"{{if eq .Value $f.Current}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select>{{else}}<input type="{{if eq $f.Kind "date"}}date{{else}}text{{end}}"{{if eq $f.Kind "number"}} inputmode="decimal"{{end}} data-ob-filter="{{$f.Key}}" value="{{$f.Current}}">{{end}}
+    </label>
+    {{end}}
+    <button type="button" class="w-filter-reset" data-ob-filter-reset>{{.ResetLabel}}</button>
   </div>
   {{end}}
   <div data-ob-widget-body>

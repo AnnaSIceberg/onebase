@@ -680,6 +680,130 @@ window.obRefreshWidgetCard = function (card) {
 })();
 // END onebase-widget-row-nav
 
+// BEGIN onebase-widget-filters
+/* План 182D (#1620): интерактивные фильтры list-виджета. Изменение контрола
+   пересобирает адрес карточки из её именаосванных ключей w.<виджет>.<фильтр>
+   (чужие ключи в адрес карточки не попадают — сервер отвергает их с 400),
+   синхронизирует адрес строки (pushState — F5 и Back/Forward восстанавливают
+   отбор; ключи других карточек в адресе сохраняются) и перечитывает карточку
+   существующим контроллером: abort/sequence защищают от поздних ответов,
+   свежий запрос идёт мимо кеша. Сброс очищает контролы карточки; popstate
+   восстанавливает значения контролов из адреса и перечитывает карточки,
+   чей адрес изменился. */
+(function () {
+  if (window.__obWidgetFiltersInit) return;
+  window.__obWidgetFiltersInit = true;
+
+  function filterCard(el) {
+    return el && el.closest ? el.closest('[data-ob-widget-card]') : null;
+  }
+
+  function filterNodes(card) {
+    return card.querySelectorAll('[data-ob-filter]');
+  }
+
+  // Пар ключ→значение контролов карточки.
+  function collectFilters(card) {
+    var out = [];
+    var nodes = filterNodes(card);
+    for (var i = 0; i < nodes.length; i++) {
+      out.push({ key: nodes[i].getAttribute('data-ob-filter'), value: nodes[i].value || '' });
+    }
+    return out;
+  }
+
+  // Адрес карточки: subsystem + только её собственные непустые ключи.
+  function rebuildEndpoint(card, filters) {
+    var base = (card.getAttribute('data-widget-url') || '').split('?')[0];
+    var params = new URLSearchParams(window.location.search);
+    var sub = params.get('subsystem');
+    if (sub) params.set('subsystem', sub); else params.delete('subsystem');
+    var own = new URLSearchParams();
+    if (sub) own.set('subsystem', sub);
+    for (var i = 0; i < filters.length; i++) {
+      if (filters[i].value !== '') own.set(filters[i].key, filters[i].value);
+    }
+    var qs = own.toString();
+    return qs ? base + '?' + qs : base;
+  }
+
+  // Адрес строки: текущий поиск с заменой ключей ЭТОЙ карточки — ключи
+  // остальных карточек и subsystem сохраняются.
+  function mergedSearch(filters) {
+    var params = new URLSearchParams(window.location.search);
+    for (var i = 0; i < filters.length; i++) {
+      if (filters[i].value !== '') params.set(filters[i].key, filters[i].value);
+      else params.delete(filters[i].key);
+    }
+    return params.toString();
+  }
+
+  function applyEndpoint(card, endpoint, search) {
+    var previous = card.getAttribute('data-widget-url') || '';
+    if (previous !== endpoint) {
+      card.setAttribute('data-widget-url', endpoint);
+      if (window.obRefreshWidgetCard) window.obRefreshWidgetCard(card);
+    }
+    if (search !== null && window.history && window.history.pushState &&
+        (window.location.search || '') !== '?' + search) {
+      window.history.pushState({}, '', search ? '?' + search : window.location.pathname);
+    }
+  }
+
+  document.addEventListener('change', function (ev) {
+    var el = ev.target;
+    if (!el || !el.hasAttribute || !el.hasAttribute('data-ob-filter')) return;
+    var card = filterCard(el);
+    if (!card) return;
+    var filters = collectFilters(card);
+    applyEndpoint(card, rebuildEndpoint(card, filters), mergedSearch(filters));
+  });
+
+  // Enter в текстовом поле применяет отбор сразу, не дожидаясь blur.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter') return;
+    var el = ev.target;
+    if (!el || !el.hasAttribute || !el.hasAttribute('data-ob-filter')) return;
+    ev.preventDefault();
+    var card = filterCard(el);
+    if (!card) return;
+    var filters = collectFilters(card);
+    applyEndpoint(card, rebuildEndpoint(card, filters), mergedSearch(filters));
+  });
+
+  document.addEventListener('click', function (ev) {
+    var el = ev.target;
+    if (!el || !el.closest || !el.closest('[data-ob-filter-reset]')) return;
+    var card = filterCard(el);
+    if (!card) return;
+    var nodes = filterNodes(card);
+    for (var i = 0; i < nodes.length; i++) nodes[i].value = '';
+    var filters = collectFilters(card);
+    applyEndpoint(card, rebuildEndpoint(card, filters), mergedSearch(filters));
+  });
+
+  // Back/Forward: значения контролов восстанавливаются из адреса, карточки
+  // перечитываются. Сервер отрисовывает полную страницу по адресу сам.
+  window.addEventListener('popstate', function () {
+    var params = new URLSearchParams(window.location.search);
+    var cards = document.querySelectorAll('[data-ob-widget-card]');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      if (!filterNodes(card).length) continue;
+      var nodes = filterNodes(card);
+      for (var j = 0; j < nodes.length; j++) {
+        nodes[j].value = params.get(nodes[j].getAttribute('data-ob-filter')) || '';
+      }
+      var endpoint = rebuildEndpoint(card, collectFilters(card));
+      if ((card.getAttribute('data-widget-url') || '') !== endpoint) {
+        card.setAttribute('data-widget-url', endpoint);
+        if (window.obRefreshWidgetCard) window.obRefreshWidgetCard(card);
+      }
+    }
+  });
+})();
+// END onebase-widget-filters
+
 function obInitReportChart() {
   if (!window.echarts) return;
   var node = document.getElementById('ob-chart');
@@ -3565,6 +3689,54 @@ function openItemPicker(payload, elementName, eventContext) {
     }
   });
 }
+
+// BEGIN onebase-question-modal
+/* ПоказатьВопрос (#1528, план 158 срез A): модал вопроса фазы 1. Ответ
+   пользователя уходит событием Ответ с _question_answer — сервер кладёт его
+   в переменную ВопросОтвет и вызывает обработчик Ответ того же элемента.
+   Диалог неблокирующий: клик мимо закрывает модал без ответа (обработчик фазы 1
+   сам решает, что делать без второй фазы). */
+function obOpenQuestion(payload, elementName) {
+  if (!payload || !payload.variants || !payload.variants.length) return;
+  var old = document.getElementById('_question-modal');
+  if (old) old.remove();
+  var modal = document.createElement('div');
+  modal.id = '_question-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:10px;padding:20px;width:460px;max-width:94vw;box-shadow:0 8px 32px rgba(0,0,0,.18)';
+  if (payload.title) {
+    var title = document.createElement('div');
+    title.style.cssText = 'font-weight:600;font-size:15px;color:#1e293b;margin-bottom:8px';
+    title.textContent = payload.title;
+    box.appendChild(title);
+  }
+  var text = document.createElement('div');
+  text.style.cssText = 'font-size:14px;color:#1e293b;white-space:pre-line;margin-bottom:16px';
+  text.textContent = payload.text;
+  box.appendChild(text);
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+  payload.variants.forEach(function (variant) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = variant;
+    btn.style.cssText = 'padding:8px 16px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:14px';
+    btn.addEventListener('click', function () {
+      modal.remove();
+      if (typeof obFire === 'function') obFire(elementName, 'Ответ', { _question_answer: variant });
+    });
+    row.appendChild(btn);
+  });
+  box.appendChild(row);
+  modal.appendChild(box);
+  modal.addEventListener('click', function (ev) {
+    if (ev.target === modal) modal.remove();
+  });
+  document.body.appendChild(modal);
+}
+window.obOpenQuestion = obOpenQuestion;
+// END onebase-question-modal
 
 /* Live refresh for managed-form choice_filter controls (plan 170/C).
    The server remains authoritative: the browser only snapshots declared

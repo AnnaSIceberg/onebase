@@ -197,3 +197,40 @@ query: |
 		t.Fatalf("Source = %+v", w.Source)
 	}
 }
+
+func TestLoadWidgetFile_Filters(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "filtered.yaml")
+	writeFile(t, path, `name: Задачи
+type: list
+filters:
+  - name: Тема
+    label: Тема
+    type: string
+    param: Тема
+  - name: Статус
+    type: select
+    param: Статус
+    values:
+      - value: open
+        label: Открыта
+      - value: closed
+        label: Закрыта
+    default: open
+query: |
+  ВЫБРАТЬ Тема ИЗ Документ.А_Задача ГДЕ &Статус
+`)
+	w, err := LoadWidgetFile(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(w.Filters) != 2 {
+		t.Fatalf("Filters = %+v", w.Filters)
+	}
+	if w.Filters[0].Type != "string" || w.Filters[1].Type != "select" || len(w.Filters[1].Values) != 2 || w.Filters[1].Default != "open" {
+		t.Fatalf("Filters content = %+v", w.Filters)
+	}
+	if w.Filters[1].Values[0].DisplayLabel("ru") != "Открыта" {
+		t.Fatalf("value label = %+v", w.Filters[1].Values[0])
+	}
+}
