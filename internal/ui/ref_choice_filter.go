@@ -29,6 +29,9 @@ type resolvedChoiceRequest struct {
 	Predicates []storage.ChoicePredicate
 	Empty      bool
 	Selected   *uuid.UUID
+	// Folders — элемент объявил choice_folders: группы иерархического
+	// справочника участвуют в подборе наравне с элементами.
+	Folders bool
 }
 
 func findManagedFormByName(owner *metadata.Entity, name string) *metadata.FormModule {
@@ -312,7 +315,7 @@ func (s *Server) resolveChoiceRequest(r *http.Request, target *metadata.Entity) 
 		return nil, err
 	}
 
-	resolved := &resolvedChoiceRequest{Predicates: predicates, Empty: empty}
+	resolved := &resolvedChoiceRequest{Predicates: predicates, Empty: empty, Folders: element.ChoiceFolders}
 	if selectedRaw != "" {
 		id, parseErr := uuid.Parse(selectedRaw)
 		if parseErr != nil || id == uuid.Nil {
@@ -323,8 +326,11 @@ func (s *Server) resolveChoiceRequest(r *http.Request, target *metadata.Entity) 
 	return resolved, nil
 }
 
-func (s *Server) choiceSelectedAllowed(ctx context.Context, target *metadata.Entity, id uuid.UUID, predicates []storage.ChoicePredicate) (bool, error) {
+func (s *Server) choiceSelectedAllowed(ctx context.Context, target *metadata.Entity, id uuid.UUID, predicates []storage.ChoicePredicate, folders bool) (bool, error) {
 	params := s.refListParamsForMode(target, refOptionsChoice)
+	if folders {
+		params.ExcludeFolders = false
+	}
 	params.ChoicePredicates = predicates
 	var err error
 	params, err = s.rowFilterFor(ctx, target, "read", params)
@@ -380,6 +386,7 @@ func (s *Server) initialChoiceOptions(ctx context.Context, target *metadata.Enti
 		rows, err = s.referenceOptionsWithParams(ctx, target, refOptionsChoice, storage.ListParams{
 			Limit:            refPickerDefaultLimit,
 			ChoicePredicates: predicates,
+			IncludeFolders:   element.ChoiceFolders,
 		})
 		if err != nil {
 			return nil, err
@@ -392,7 +399,7 @@ func (s *Server) initialChoiceOptions(ctx context.Context, target *metadata.Enti
 	allowed := false
 	if !empty {
 		if id, parseErr := uuid.Parse(selected); parseErr == nil && id != uuid.Nil {
-			allowed, err = s.choiceSelectedAllowed(ctx, target, id, predicates)
+			allowed, err = s.choiceSelectedAllowed(ctx, target, id, predicates, element.ChoiceFolders)
 			if err != nil {
 				return nil, err
 			}

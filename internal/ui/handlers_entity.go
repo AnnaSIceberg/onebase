@@ -1045,6 +1045,10 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 		extra := storage.ListParams{}
 		if choice != nil {
 			extra.ChoicePredicates = choice.Predicates
+			// choice_folders: группы участвуют в подборе наравне с элементами.
+			// Флаг переносится в extra, а не в общий режим: он относится к
+			// конкретному полю формы, а не к справочнику.
+			extra.IncludeFolders = choice.Folders
 		}
 		items, total, err = s.referenceOptionsPageWithParams(r.Context(), ent, r.URL.Query().Get("q"), limit, offset, extra)
 		if err != nil {
@@ -1062,7 +1066,7 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 	if choice != nil && choice.Selected != nil {
 		allowed := false
 		if !choice.Empty {
-			allowed, err = s.choiceSelectedAllowed(r.Context(), ent, *choice.Selected, choice.Predicates)
+			allowed, err = s.choiceSelectedAllowed(r.Context(), ent, *choice.Selected, choice.Predicates, choice.Folders)
 			if err != nil {
 				s.serverError(w, r, err)
 				return
