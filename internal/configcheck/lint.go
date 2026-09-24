@@ -675,6 +675,10 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		"save":   action,
 		"ok":     action,
 		"close":  action,
+		// copy.visible:false убирает «Скопировать» у документа, который
+		// копировать нельзя по смыслу: звонок и заявка — свидетельства
+		// конкретного обращения, их заводят заново, а не размножают.
+		"copy": action,
 		// attachments.visible:false скрывает панель вложений выбранной
 		// managed-формы (план 181C, #1621); attachment endpoint не меняется.
 		"attachments": action,

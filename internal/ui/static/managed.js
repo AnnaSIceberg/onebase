@@ -1435,10 +1435,38 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
   window.obRequestFormClose = function(options){
     options = options || {};
+	if (formEventPending && !options.__awaitedFormEvent) {
+	  // Ждём текущее событие вместо немедленного отказа. Два сценария, где
+	  // отказ был ложным: обработчик, закрывающий форму своей же командой
+	  // ui.закрытьФорму (уведомление доставляется по SSE, пока его собственный
+	  // запрос ещё в полёте), и клик по «Закрыть» сразу после правки поля —
+	  // уход фокуса запускает ПриИзменении, и пользователю приходилось жать
+	  // второй раз.
+	  //
+	  // Ждём ровно один круг очереди: если к её концу подоспело новое событие,
+	  // отказываем как прежде — иначе поток событий отложил бы закрытие
+	  // навсегда. Таймаут — тот же, что у самого закрытия.
+	  var waited = new Promise(function(resolve){
+		var done = false;
+		var finish = function(){ if (!done) { done = true; resolve(); } };
+		setTimeout(finish, CLOSE_TIMEOUT_MS);
+		formEventQueue.catch(function(){}).then(finish);
+	  });
+	  return waited.then(function(){
+		if (formEventPending) {
+		  // An embedded adapter may already have raised the handoff flag before
+		  // its parent asks for this decision. This refusal completes that
+		  // handoff; leaving it set would permanently block later form events
+		  // and submits.
+		  closeHandoffPending = false;
+		  flash(closeMessage('operationPending', 'Команда формы ещё выполняется. Дождитесь её завершения и повторите закрытие.'), 'err');
+		  return {allowed: false, intentId: '', error: 'form-event-pending'};
+		}
+		options.__awaitedFormEvent = true;
+		return window.obRequestFormClose(options);
+	  });
+	}
 	if (formEventPending) {
-	  // An embedded adapter may already have raised the handoff flag before its
-	  // parent asks for this decision. This early refusal completes that handoff;
-	  // leaving it set would permanently block later form events and submits.
 	  closeHandoffPending = false;
 	  flash(closeMessage('operationPending', 'Команда формы ещё выполняется. Дождитесь её завершения и повторите закрытие.'), 'err');
 	  return Promise.resolve({allowed: false, intentId: '', error: 'form-event-pending'});
