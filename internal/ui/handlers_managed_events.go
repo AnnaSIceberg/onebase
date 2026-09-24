@@ -1632,26 +1632,15 @@ func (s *Server) managedCloseStateDirty(
 			return true
 		}
 	}
-	for _, attr := range form.Attributes {
-		if attr == nil || attr.MainAttribute || entityField(entity, attr.Name) != nil || entityServiceFieldName(attr.Name) {
-			continue
-		}
-		if strings.EqualFold(attr.TypeRef, "ValueTable") {
-			tp := formAttributeTablePart(attr)
-			if tp == nil || !tpRowsEqual(obj.TablePartRows[attr.Name], tpBefore[attr.Name], *tp) {
-				return true
-			}
-			continue
-		}
-		if !formAttrIsScalar(attr) {
-			continue
-		}
-		before, beforeOK := snapshotValueCI(fieldsBefore, attr.Name)
-		after, afterOK := maskCIKeyValue(obj.Fields, attr.Name)
-		if beforeOK != afterOK || beforeOK && before != snapshotComparableValue(after) {
-			return true
-		}
-	}
+	// Реквизиты формы (save:false) и ValueTable намеренно НЕ сравниваются:
+	// записать их нельзя в принципе, поэтому «несохранённых данных» в них не
+	// бывает. Раньше их изменение поднимало dirty — и обработчик ПриОткрытии,
+	// который проставляет видимость («ПользовательАдмин», «СкрытьХ»), помечал
+	// форму изменённой сразу после отрисовки. Пользователь ничего не трогал,
+	// а крестик спрашивал «Данные были изменены. Сохранить?».
+	//
+	// Формы обработок этим путём не идут: у них нет сущности, и реквизиты
+	// формы — единственные данные, их сравнивает transientManagedStateDirty.
 	return false
 }
 

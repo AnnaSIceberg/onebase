@@ -1056,14 +1056,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         openItemPicker(data.pickerData, elementName, extraParams || null);
         return;
       }
-      // Вопрос фазы 1 (#1528): открыть модал; ответ вернётся событием Ответ
-      // через _question_answer — сервер положит его в ВопросОтвет.
-      if (data.question) {
-        (data.messages || []).forEach(m => flash(m, 'ok'));
-        if (data.error) flash(data.error, 'err');
-        if (window.obOpenQuestion) window.obOpenQuestion(data.question, elementName);
-        return;
-      }
+      // Вопрос фазы 1 (#1528): модал открывается ПОСЛЕ применения ответа —
+      // состояние формы в нём такое же, как без вопроса. Ранний выход здесь
+      // пропускал и dirty, и values: обработчик, записавший документ перед
+      // вопросом, оставлял форму «изменённой» (при закрытии выскакивало
+      // «Данные были изменены. Сохранить?»), а поля, которые он поправил,
+      // не доезжали до формы до самого ответа.
+      var pendingQuestion = data.question || null;
       // dirty=true is an authoritative safety signal and must survive a
       // partially failing renderer. Programmatic response application does
       // not emit input/change, so raise it before touching mutable DOM state.
@@ -1081,6 +1080,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	  if (data.dirty === false && (data.savedId || data.version)) window.obSetManagedFormDirty(false);
       (data.messages || []).forEach(m => flash(m, 'ok'));
       if (data.error) flash(data.error, 'err');
+      if (pendingQuestion && window.obOpenQuestion) window.obOpenQuestion(pendingQuestion, elementName);
     } catch (e) {
       // A lost/unparseable response for /new may hide a committed insert and
       // there is no identity with which to issue another safe write. Fence all
