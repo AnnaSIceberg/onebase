@@ -3752,13 +3752,7 @@ function obRefChoiceSnapshot(sel) {
   var declared = ctx.sources || {};
   var paths = Object.keys(declared).sort();
   paths.forEach(function (path) {
-    var name = declared[path];
-    var control = null;
-    if (sel.form && sel.form.elements && name) control = sel.form.elements.namedItem(name);
-    if (!control && name) {
-      var controls = document.getElementsByName(name);
-      if (controls && controls.length) control = controls[0];
-    }
+    var control = obChoiceSourceControl(sel, declared[path]);
     values[path] = control && control.value != null ? String(control.value) : '';
   });
   var query = '&form_entity=' + encodeURIComponent(ctx.form_entity) +
@@ -3772,6 +3766,40 @@ function obRefChoiceSnapshot(sel) {
     fingerprint: JSON.stringify([ctx.form_entity, ctx.form, ctx.element, fingerprintParts]),
     selected: sel.value == null ? '' : String(sel.value)
   };
+}
+
+// obChoiceSourceControl — контрол поля-источника отбора по имени.
+//
+// Одно имя носят ДВА элемента, если у поля есть readonly_when: сам контрол и
+// скрытое зеркало значения (data-ob-ro-mirror). form.elements.namedItem в этом
+// случае отдаёт RadioNodeList, а у него .value пуст, когда это не радиокнопки —
+// источник уезжал пустым, и зависимый подбор показывал пустой список: поле
+// разблокировано, а выбирать не из чего.
+//
+// Берём тот элемент, который браузер и отправил бы: не выключенный и со
+// значением. Под запретом это зеркало, после разблокировки — сам контрол.
+function obChoiceSourceControl(sel, name) {
+  if (!name) return null;
+  var list = [];
+  if (sel && sel.form && sel.form.elements) {
+    var found = sel.form.elements.namedItem(name);
+    if (found) {
+      if (found.tagName) list = [found];
+      else if (typeof found.length === 'number') list = Array.prototype.slice.call(found);
+    }
+  }
+  if (!list.length) {
+    var byName = document.getElementsByName(name);
+    if (byName && byName.length) list = Array.prototype.slice.call(byName);
+  }
+  if (!list.length) return null;
+  for (var i = 0; i < list.length; i++) {
+    if (!list[i].disabled && list[i].value) return list[i];
+  }
+  for (var j = 0; j < list.length; j++) {
+    if (list[j].value) return list[j];
+  }
+  return list[0];
 }
 
 function obRefChoiceQuery(sel) {
