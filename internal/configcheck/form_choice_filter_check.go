@@ -288,6 +288,20 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 							add("%s: литерал value допустим только для is_folder", where)
 							continue
 						}
+						// Строковый реквизит сравнивается со строковым же
+						// значением по разыменованному пути: так связан дом с
+						// улицей в адресном классификаторе — ВладелецКод хранит
+						// ИД записи иерархии, а не ссылку. Без этого подбор
+						// умел сравнивать только ссылку со ссылкой.
+						// Разрешаем только корректную пару «строка ↔ строка».
+						// Всё остальное падает в прежние проверки: строковый
+						// реквизит со ссылочным источником по-прежнему ошибка,
+						// и сообщение у неё прежнее.
+						if targetField != nil && targetField.Type == metadata.FieldTypeString &&
+							cond.Op == metadata.FormChoiceOpEqual &&
+							formChoiceStringSource(owner, form, cond.From, entities) {
+							continue
+						}
 						source, sourceOK := formChoiceRefSource(owner, form, cond.From, entities)
 						if !sourceOK || source == nil {
 							add("%s: from %q не является явной ссылкой Объект.* или Форма.*", where, cond.From)
@@ -343,6 +357,42 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 // formChoiceRefSource resolves an explicit two-segment form path to the entity
 // referenced by that value. Bare names and deeper paths are intentionally
 // rejected so future syntax cannot reinterpret an existing configuration.
+// formChoiceStringSource проверяет, что путь вида Объект.Ссылка.Реквизит
+// приводит к СТРОКОВОМУ реквизиту промежуточной записи. Такой источник
+// сравнивается со строковым реквизитом справочника-цели.
+func formChoiceStringSource(owner *metadata.Entity, form *metadata.FormModule, path string, entities map[string]*metadata.Entity) bool {
+	parts := strings.Split(strings.TrimSpace(path), ".")
+	if len(parts) != 3 {
+		return false
+	}
+	prefix, name, deref := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2])
+	if name == "" || deref == "" {
+		return false
+	}
+	var ref string
+	switch {
+	case strings.EqualFold(prefix, "Объект"):
+		if field := entityFieldFold(owner, name); field != nil {
+			ref = field.RefEntity
+		}
+	case strings.EqualFold(prefix, "Форма"):
+		for _, attr := range form.Attributes {
+			if attr != nil && strings.EqualFold(attr.Name, name) {
+				ref = formChoiceTypeRefEntity(attr.TypeRef)
+				break
+			}
+		}
+	default:
+		return false
+	}
+	entity := entities[strings.ToLower(strings.TrimSpace(ref))]
+	if entity == nil {
+		return false
+	}
+	field := entityFieldFold(entity, deref)
+	return field != nil && field.Type == metadata.FieldTypeString
+}
+
 func formChoiceRefSource(owner *metadata.Entity, form *metadata.FormModule, path string, entities map[string]*metadata.Entity) (*metadata.Entity, bool) {
 	parts := strings.Split(strings.TrimSpace(path), ".")
 	if len(parts) < 2 || len(parts) > 3 || strings.TrimSpace(parts[1]) == "" {

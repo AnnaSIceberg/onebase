@@ -143,7 +143,7 @@ func choiceSourceControls(element *metadata.FormElement) map[string]string {
 // choicePredicates converts only server-owned metadata into storage
 // predicates. Missing known source values fail closed with Empty=true;
 // unknown source names and malformed UUIDs are request errors.
-func choicePredicates(element *metadata.FormElement, sources map[string]string) ([]storage.ChoicePredicate, bool, error) {
+func choicePredicates(target *metadata.Entity, element *metadata.FormElement, sources map[string]string) ([]storage.ChoicePredicate, bool, error) {
 	if element == nil || len(element.ChoiceFilter) == 0 {
 		return nil, false, fmt.Errorf("choice_filter is not declared")
 	}
@@ -176,6 +176,16 @@ func choicePredicates(element *metadata.FormElement, sources map[string]string) 
 		if raw == "" {
 			return nil, true, nil
 		}
+		// Источник не обязан быть ссылкой: разыменованный путь может дать
+		// строковый реквизит (ВладелецКод дома хранит ИД улицы, а не ссылку).
+		// Решает тип реквизита-цели: у строкового значение едет строкой, у
+		// ссылочного по-прежнему обязано быть корректным UUID — иначе мусор
+		// в источнике получил бы 500 вместо внятного 400.
+		if choiceTargetFieldIsString(target, condition.Field) {
+			predicate.Value = raw
+			predicates = append(predicates, predicate)
+			continue
+		}
 		id, err := uuid.Parse(raw)
 		if err != nil || id == uuid.Nil {
 			return nil, false, fmt.Errorf("invalid value for choice source %q", path)
@@ -184,6 +194,20 @@ func choicePredicates(element *metadata.FormElement, sources map[string]string) 
 		predicates = append(predicates, predicate)
 	}
 	return predicates, false, nil
+}
+
+// choiceTargetFieldIsString сообщает, что реквизит справочника-цели строковый:
+// тогда значение источника едет строкой, а не UUID.
+func choiceTargetFieldIsString(target *metadata.Entity, name string) bool {
+	if target == nil {
+		return false
+	}
+	for i := range target.Fields {
+		if strings.EqualFold(target.Fields[i].Name, strings.TrimSpace(name)) {
+			return target.Fields[i].Type == metadata.FieldTypeString
+		}
+	}
+	return false
 }
 
 func decodeChoiceSources(raw string) (map[string]string, error) {
@@ -283,7 +307,7 @@ func (s *Server) resolveChoiceRequest(r *http.Request, target *metadata.Entity) 
 		return nil, err
 	}
 	sources = s.resolveDeepChoiceSources(r.Context(), owner, form, sources)
-	predicates, empty, err := choicePredicates(element, sources)
+	predicates, empty, err := choicePredicates(target, element, sources)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +371,7 @@ func markOutsideChoice(rows []map[string]any, selected string) {
 }
 
 func (s *Server) initialChoiceOptions(ctx context.Context, target *metadata.Entity, element *metadata.FormElement, sources map[string]string, selected string) ([]map[string]any, error) {
-	predicates, empty, err := choicePredicates(element, sources)
+	predicates, empty, err := choicePredicates(target, element, sources)
 	if err != nil {
 		return nil, err
 	}
