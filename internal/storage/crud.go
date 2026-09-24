@@ -838,6 +838,7 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 		// порядок, не алфавитный, — «порядок в отчётах» у направлений. Папки
 		// по-прежнему идут первыми: перемешать их с элементами значило бы сломать
 		// дерево.
+		d := db.dialect
 		parts := make([]string, 0, len(entity.OrderBy)+1)
 		if entity.Hierarchical {
 			parts = append(parts, "is_folder DESC")
