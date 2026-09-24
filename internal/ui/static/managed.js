@@ -1986,6 +1986,32 @@ function obManagedAddTpRow(btn) {
   if (table && window.obDOMNotifyMutation) window.obDOMNotifyMutation(table, 'add');
 }
 
+// obManagedVtRowActivated — щелчок по строке ValueTable зовёт
+// ПриАктивизацииСтроки.
+//
+// У «большой» табличной части это делает SlickGrid (data-sg-rowactivate), а
+// ValueTable рисуется простой разметкой, и подписки у неё не было вовсе: форма
+// могла объявить обработчик, а сработать он не мог. Именно такой таблицей
+// удобно показывать результат поиска, где строку выбирают щелчком.
+//
+// Подписываемся только когда обработчик объявлен (атрибут на tbody) — иначе
+// гоняли бы сеть на каждый щелчок по любой таблице формы. Повторный щелчок по
+// той же строке события не шлёт: активизация строки — это смена строки.
+var obManagedVtActiveRow = {};
+
+function obManagedVtRowActivated(tr) {
+  if (!tr || !tr.parentNode) return;
+  var tbody = tr.parentNode;
+  var elName = tbody.getAttribute && tbody.getAttribute('data-ob-vt-activate');
+  var vtName = tbody.getAttribute && tbody.getAttribute('data-ob-vt-name');
+  if (!elName || !vtName) return;
+  var row = tr.getAttribute('data-ob-vt-row');
+  if (row === null || row === '') return;
+  if (obManagedVtActiveRow[vtName] === row) return;
+  obManagedVtActiveRow[vtName] = row;
+  if (window.obFire) window.obFire(elName, 'ПриАктивизацииСтроки', {_tp: vtName, _tp_row: row});
+}
+
 function obManagedAddVtRow(btn) {
   var vtName = btn.getAttribute('data-ob-add-vt') || '';
   var tbody = obManagedWritableTableBody('vt-body-' + vtName, 'data-vt-fields');
@@ -2071,6 +2097,11 @@ function obManagedInitDelegates() {
     // ui.js (из шаблона "head"), где этот же делегат уже висит на document.
     // Дублирование переключало бы display дважды (none→block→none) за один клик
     // и dropdown «Печать ▾»/«Ввести на основании» не открывался бы — issue #309.
+    // Щелчок по строке ValueTable — не кнопка, поэтому проверяем до выхода:
+    // иначе выбор строки в таблице результатов не доходил бы до обработчика.
+    var vtRow = e.target && e.target.closest ? e.target.closest('tr[data-ob-vt-row]') : null;
+    if (vtRow) obManagedVtRowActivated(vtRow);
+
     var btn = e.target && e.target.closest ? e.target.closest('[data-ob-ref-picker],[data-ob-ref-current],[data-ob-file-trigger],[data-ob-fire-click],[data-ob-grid-add],[data-ob-grid-del],[data-ob-add-tp],[data-ob-add-vt],[data-ob-remove-row],[data-ob-ref-cancel],[data-ob-form-close]') : null;
     if (!btn) return;
     if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;

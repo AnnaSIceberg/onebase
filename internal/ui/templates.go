@@ -1129,6 +1129,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return template.JS(b) //nolint:gosec // G203: JSON сформирован encoding/json
 		},
 		"managedTPColumnPlan": managedTPColumnPlan,
+		"managedVTColumnPlan": managedVTColumnPlan,
+		"managedVTEditable":   managedVTEditable,
 		// managedTPFieldsAttr — значение data-tp-fields в порядке отрисовки
 		// ячеек: applyTableParts перестраивает строку по этому списку, и любое
 		// расхождение порядка развалило бы соответствие ячеек колонкам.
