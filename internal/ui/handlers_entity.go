@@ -73,6 +73,8 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.resolveListSort(w, r, entity, &params)
+
 	view := r.URL.Query().Get("view")
 	treeView := entity.Hierarchical && view == "tree"
 	tilesView := view == "tiles"
@@ -2664,6 +2666,75 @@ func (s *Server) resolveListMode(w http.ResponseWriter, r *http.Request, entity 
 		return v == "feed"
 	}
 	return entity.ListMode == "feed"
+}
+
+// listSortCookie — кука с per-сущностной сортировкой списка. Значение —
+// URL-escaped JSON map: "kind/name" → "поле|dir".
+const listSortCookie = "ob_listsort"
+
+// resolveListSort запоминает выбранный пользователем порядок и возвращает его
+// при следующем открытии того же списка.
+//
+// Без этого сортировка живёт только в адресе страницы: ушёл в другой список,
+// вернулся — и порядок снова по идентификатору, хотя человек его менял.
+// Ровно как у режима списка (listModeCookie), той же кукой на год.
+func (s *Server) resolveListSort(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, params *storage.ListParams) {
+	key := strings.ToLower(string(entity.Kind)) + "/" + strings.ToLower(entity.Name)
+	if params.Sort != "" {
+		dir := strings.ToLower(params.Dir)
+		if dir != "desc" {
+			dir = "asc"
+		}
+		setListSortCookie(w, r, key, params.Sort+"|"+dir)
+		return
+	}
+	saved, ok := readListSortCookie(r)[key]
+	if !ok {
+		return
+	}
+	field, dir, _ := strings.Cut(saved, "|")
+	// Поле могло исчезнуть из метаданных — тогда молча остаёмся с умолчанием,
+	// а не подставляем несуществующую колонку в ORDER BY.
+	for _, f := range entity.Fields {
+		if f.Name == field {
+			params.Sort = field
+			params.Dir = dir
+			return
+		}
+	}
+}
+
+func readListSortCookie(r *http.Request) map[string]string {
+	m := map[string]string{}
+	c, err := r.Cookie(listSortCookie)
+	if err != nil {
+		return m
+	}
+	raw, err := url.QueryUnescape(c.Value)
+	if err != nil {
+		return m
+	}
+	_ = json.Unmarshal([]byte(raw), &m)
+	return m
+}
+
+func setListSortCookie(w http.ResponseWriter, r *http.Request, key, value string) {
+	m := readListSortCookie(r)
+	if m[key] == value {
+		return
+	}
+	m[key] = value
+	b, err := json.Marshal(m)
+	if err != nil {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     listSortCookie,
+		Value:    url.QueryEscape(string(b)),
+		Path:     "/",
+		MaxAge:   365 * 24 * 3600,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 func readListModeCookie(r *http.Request) map[string]string {
