@@ -61,8 +61,17 @@ func expandQuestionVariants(v any) ([]string, error) {
 	if token, ok := knownQuestionVariants[strings.ToLower(s)]; ok {
 		return append([]string(nil), token...), nil
 	}
-	// Массив строк — произвольные подписи кнопок.
-	if arr, ok := v.([]any); ok {
+	// Массив строк — произвольные подписи кнопок. Принимаем и готовый срез,
+	// и Массив самого DSL: конфигурация пишет «Новый Массив», а он приходит
+	// сюда как *interpreter.Array, и документированный «массив строк»
+	// отвергался с «неизвестный набор вариантов "Массив[N]"».
+	items, ok := v.([]any)
+	if !ok {
+		if arr, isArray := v.(interface{ Iterate() []any }); isArray {
+			items, ok = arr.Iterate(), true
+		}
+	}
+	if arr := items; ok {
 		var out []string
 		for _, item := range arr {
 			label := strings.TrimSpace(fmt.Sprintf("%v", item))
