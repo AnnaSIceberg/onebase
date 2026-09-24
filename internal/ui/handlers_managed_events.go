@@ -1200,6 +1200,12 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		vars["QuestionAnswer"] = qa
 	}
 
+	// Значения редактируемых полей диалога — структура ДиалогПоля.
+	if qf := parseQuestionFields(r.FormValue("_question_fields")); qf != nil {
+		vars["ДиалогПоля"] = qf
+		vars["DialogFields"] = qf
+	}
+
 	if err := addEntityTPEventContext(r, entity, form, tableAuthorities, eventTarget, obj, vars); err != nil {
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
