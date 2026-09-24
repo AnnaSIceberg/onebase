@@ -2471,6 +2471,24 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			vars["ПодборРезультат"] = pr
 			vars["PickResult"] = pr
 		}
+
+		// Вопрос (#1528, #1683): в формах ОБРАБОТОК билтин не регистрировался —
+		// конфигурация получала «unknown function "ПоказатьВопрос"», причём
+		// только в ответе на XHR: check и линтер этого не видят. Обработке
+		// подтверждение нужно ровно так же, как форме документа: «Вы уверены,
+		// что нужна повторная заявка?» перед созданием документа.
+		var question questionPayload
+		questionFn := newQuestionBuiltin(&question)
+		vars["ПоказатьВопрос"] = questionFn
+		vars["ShowQuestion"] = questionFn
+		if qa := strings.TrimSpace(r.FormValue("_question_answer")); qa != "" {
+			vars["ВопросОтвет"] = qa
+			vars["QuestionAnswer"] = qa
+		}
+		if qf := parseQuestionFields(r.FormValue("_question_fields")); qf != nil {
+			vars["ДиалогПоля"] = qf
+			vars["DialogFields"] = qf
+		}
 		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars); err != nil {
 			opStatus = "error"
 			respondJSON(enc, formEventResponse{Error: err.Error()})
@@ -2498,6 +2516,9 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(false)
 			resp.Error = interpreter.FormatUserError(runErr)
 			resp.PickerData = picker
+			if question.Text != "" {
+				resp.Question = &question
+			}
 			resp.Dirty = boolPtr(transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
 			compactFormCloseDelta(&resp, closeInv)
 			respondJSON(enc, resp)
@@ -2506,6 +2527,9 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 
 		resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(true)
 		resp.PickerData = picker
+		if question.Text != "" {
+			resp.Question = &question
+		}
 		resp.Dirty = boolPtr(transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
 		compactFormCloseDelta(&resp, closeInv)
 		respondJSON(enc, resp)
