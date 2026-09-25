@@ -91,6 +91,9 @@ type rawEntity struct {
 	// Presentation принимает и строку, и список: «одно поле» — частый случай,
 	// а список задаёт запасной вариант, если основной реквизит пуст.
 	Presentation stringOrList `yaml:"presentation"`
+	// OrderBy — порядок списка по умолчанию (см. Entity.OrderBy). Принимает и
+	// строку, и список: «одно поле» — частый случай.
+	OrderBy stringOrList `yaml:"order_by"`
 	// ChoicePreview — реквизит, показываемый в области просмотра формы выбора.
 	ChoicePreview string `yaml:"choice_preview"`
 	// ChoicePreviewProc — «Модуль.Функция», собирающая тексты просмотра с учётом
@@ -301,6 +304,7 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 		e.Stages = st
 	}
 	e.Presentation = raw.Presentation.values()
+	e.OrderBy = raw.OrderBy.values()
 	e.ChoicePreview = strings.TrimSpace(raw.ChoicePreview)
 	e.ChoicePreviewProc = strings.TrimSpace(raw.ChoicePreviewProc)
 	if raw.Numerator != nil {
