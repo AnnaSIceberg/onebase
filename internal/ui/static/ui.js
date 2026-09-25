@@ -3752,12 +3752,20 @@ function obOpenQuestion(payload, elementName) {
     box.appendChild(gap);
   }
   var row = document.createElement('div');
-  row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+  // Два-три варианта («Да / Нет / Отмена») кладём в ряд справа, как привычную
+  // пару кнопок. Списком выбора — четыре и больше («укажите причину жалобы») —
+  // столбиком во всю ширину: в ряд они не помещались и вылезали за окно,
+  // потому что перенос не был разрешён вовсе.
+  var manyVariants = payload.variants.length > 3;
+  row.style.cssText = manyVariants
+    ? 'display:flex;flex-direction:column;gap:6px;align-items:stretch;max-height:50vh;overflow-y:auto'
+    : 'display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end';
   payload.variants.forEach(function (variant) {
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = variant;
-    btn.style.cssText = 'padding:8px 16px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:14px';
+    btn.style.cssText = 'padding:8px 16px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:14px;white-space:normal'
+      + (manyVariants ? ';text-align:left;width:100%' : ';max-width:100%');
     btn.addEventListener('click', function () {
       modal.remove();
       var extra = { _question_answer: variant };
