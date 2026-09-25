@@ -73,6 +73,8 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	params = s.applyListFormFilter(r, entity, params)
+
 	s.resolveListSort(w, r, entity, &params)
 
 	view := r.URL.Query().Get("view")

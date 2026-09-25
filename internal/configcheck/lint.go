@@ -655,8 +655,11 @@ func formModuleYAMLSchema() *yamlLintSchema {
 	// только внутри блока form: (поле RefCardButtonAdminOnly). Без него в этом
 	// списке рабочая конфигурация получала «неизвестный ключ» на ключ, который
 	// платформа исправно исполняет, — ложная тревога вместо тихой потери.
+	// filter — постоянный отбор формы списка (поле ListFilter), читается
+	// загрузчиком там же, внутри блока form:.
 	formHeader := with(obj("entity", "name", "kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "ref_card_button", "ref_card_button_admin_only"), map[string]*yamlLintSchema{
-		"title": freeMap(),
+		"title":  freeMap(),
+		"filter": seq(obj("field", "op", "value")),
 	})
 	style := obj("color", "background", "bold", "italic")
 	conditional := with(obj("when", "target", "element", "table_part", "field"), map[string]*yamlLintSchema{

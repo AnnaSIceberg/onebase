@@ -572,6 +572,20 @@ type FormModule struct {
 	// Отдельным ключом, а не значением ref_card_button: тот отвечает на вопрос
 	// «рисовать ли вообще», этот — «кому».
 	RefCardButtonAdminOnly bool `yaml:"ref_card_button_admin_only,omitempty"`
+	// ListFilter — постоянный отбор ФОРМЫ СПИСКА. Отличается от фильтров в
+	// адресе страницы тем, что его не снять: список сущности просто не
+	// показывает записи, не прошедшие условие.
+	//
+	// Нужен там, где «мои записи» — это правило интерфейса, а не прав:
+	// оператор должен видеть в списке задач свои, но остальные ему не
+	// запрещены (их видно в отчётах и по ссылке), поэтому RLS здесь не
+	// подходит — он скрыл бы записи везде разом.
+	//
+	// Поле допускает ОДНО разыменование: «Инициатор.УчётнаяЗапись» отбирает
+	// по реквизиту связанной записи. Значение — литерал или @ТекущийПользователь
+	// (идентификатор учётной записи смотрящего).
+	ListFilter []FormListCondition `yaml:"filter,omitempty"`
+
 	// OneCMeta — служебный блок, используемый только конвертером 1С,
 	// рантайм его игнорирует. Может содержать version, unknown_xml и т.п.
 	OneCMeta map[string]any `yaml:"oneC_meta,omitempty"`
@@ -590,6 +604,16 @@ type FormModule struct {
 	idCounter int        `yaml:"-"`
 	idMu      sync.Mutex `yaml:"-"`
 }
+
+// FormListCondition — одно условие постоянного отбора формы списка.
+type FormListCondition struct {
+	Field string `yaml:"field"`
+	Op    string `yaml:"op,omitempty"`    // пока только eq (умолчание)
+	Value string `yaml:"value,omitempty"` // литерал или @ТекущийПользователь
+}
+
+// ListFilterCurrentUser — подстановка «тот, кто смотрит» в значении условия.
+const ListFilterCurrentUser = "@ТекущийПользователь"
 
 // FormProcedure represents a procedure in form module
 type FormProcedure struct {

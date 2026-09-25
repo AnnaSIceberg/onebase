@@ -160,6 +160,8 @@ type formYAMLDoc struct {
 		RefCardButton *bool `yaml:"ref_card_button"`
 		// Роль вычисляется на сервере при отрисовке, поэтому здесь просто флаг.
 		RefCardButtonAdminOnly bool `yaml:"ref_card_button_admin_only"`
+		// Постоянный отбор формы списка (metadata.FormListCondition).
+		ListFilter []metadata.FormListCondition `yaml:"filter"`
 	} `yaml:"form"`
 	Attributes            []*metadata.FormAttribute       `yaml:"attributes"`
 	Commands              []*metadata.FormCommand         `yaml:"commands"`
@@ -211,6 +213,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		VerticalScroll:         doc.Form.VerticalScroll,
 		RefCardButton:          doc.Form.RefCardButton,
 		RefCardButtonAdminOnly: doc.Form.RefCardButtonAdminOnly,
+		ListFilter:             doc.Form.ListFilter,
 		Attributes:             doc.Attributes,
 		Commands:               doc.Commands,
 		AutoCommandBar:         doc.CommandBar,
