@@ -849,6 +849,13 @@ func processorVirtualEntity(proc *processorpkg.Processor) *metadata.Entity {
 			enumName := "_" + p.Name + "_choice"
 			f.Type = metadata.FieldType("enum:" + enumName)
 			f.EnumName = enumName
+		case strings.HasPrefix(p.Type, "enum:"):
+			// Параметр-ПЕРЕЧИСЛЕНИЕ: без этой ветки тип уходил в default и
+			// становился строкой, EnumName терялся, и список значений на форме
+			// оставался пустым — Переключатель рисовал один «— выбрать —».
+			enumName := strings.TrimPrefix(p.Type, "enum:")
+			f.Type = metadata.FieldType("enum:" + enumName)
+			f.EnumName = enumName
 		case strings.HasPrefix(p.Type, "reference:"):
 			f.Type = metadata.FieldType("reference:" + strings.TrimPrefix(p.Type, "reference:"))
 			f.RefEntity = strings.TrimPrefix(p.Type, "reference:")
