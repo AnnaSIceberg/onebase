@@ -53,9 +53,9 @@ func TestRefPickerChoiceContextReadsCurrentControl(t *testing.T) {
 	var walk func(*html.Node)
 	walk = func(node *html.Node) {
 		if node.Type == html.ElementNode && node.Data == "select" {
-			id := htmlAttribute(node, "id")
+			id, _ := htmlAttribute(node, "id")
 			if id == "ref-Направление" {
-				rawContext = htmlAttribute(node, "data-ref-context")
+				rawContext, _ = htmlAttribute(node, "data-ref-context")
 			}
 		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
@@ -83,7 +83,9 @@ func TestRefPickerChoiceContextReadsCurrentControl(t *testing.T) {
 	picker := js[start:end]
 	for _, want := range []string{
 		"sel.form.elements.namedItem(fieldName)",
-		"var refContext = refContextForRequest(sel);",
+		"var refContextRaw = sel.getAttribute('data-ref-context') || '';",
+		"fetchOptions.method = 'POST';",
+		"'/ui/_ref-options/' + encodeURIComponent(refEntity) + '/page'",
 	} {
 		if !strings.Contains(picker, want) {
 			t.Fatalf("runtime не читает текущее значение при каждом запросе: нет %q", want)
@@ -91,14 +93,6 @@ func TestRefPickerChoiceContextReadsCurrentControl(t *testing.T) {
 	}
 }
 
-func htmlAttribute(node *html.Node, name string) string {
-	for _, attribute := range node.Attr {
-		if attribute.Key == name {
-			return attribute.Val
-		}
-	}
-	return ""
-}
 
 func TestOnlyReferencePickerWaitsForPreviewLayout(t *testing.T) {
 	js := string(uiJS)

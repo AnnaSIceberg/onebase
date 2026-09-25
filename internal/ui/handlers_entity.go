@@ -1055,20 +1055,9 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 	// направлению собирается уже под него. Ошибка процедуры не валит подбор:
 	// выбирать элемент оператору нужно в любом случае, а текст справа —
 	// вспомогательный (что сломалось, видно в логе сервера).
+	// Динамический preview (choice_preview_proc) обслуживается POST /page:
+	// GET остаётся статическим и обратно совместимым (план 168, инвариант 1).
 	previewField := canonicalChoicePreviewField(ent)
-	if strings.TrimSpace(ent.ChoicePreviewProc) != "" {
-		if applied := s.applyChoicePreviewProc(r, ent, items); applied {
-			previewField = choicePreviewKey
-		}
-	}
-	// Реквизит просмотра типа richtext показывается С ОФОРМЛЕНИЕМ: жирный,
-	// списки, абзацы. Разметка чистится тем же санитайзером, что и остальной
-	// richtext платформы, и только после этого объявляется клиенту как HTML —
-	// иначе область просмотра стала бы дырой для чужого скрипта.
-	previewHTML := choicePreviewIsRich(ent, previewField)
-	if previewHTML {
-		sanitizeChoicePreview(items, previewField)
-	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	response := map[string]any{
 		"items":  items,
@@ -1077,7 +1066,6 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 		"offset": offset,
 	}
 	response["preview"] = previewField
-	response["previewHtml"] = previewHTML
 	if choice != nil && choice.Selected != nil {
 		allowed := false
 		if !choice.Empty {

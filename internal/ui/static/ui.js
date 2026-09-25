@@ -4060,10 +4060,8 @@ function openRefPicker(selOrId) {
   // rpPreviewField — имя реквизита области просмотра; приезжает вместе со
   // строками (choice_preview сущности). Пусто — области просмотра нет.
   var rpPreviewField = '';
-  // rpPreviewHtml — текст просмотра размечен (реквизит richtext). Разметку чистит
   // сервер тем же санитайзером, что и остальной richtext платформы; клиент сам
   // ничего не разрешает и в обычном режиме ставит текст, а не HTML.
-  var rpPreviewHtml = false;
   function rpApplyPreviewLayout() {
     var box = document.getElementById('_rp-preview');
     var card = document.getElementById('_rp-card');
@@ -4093,7 +4091,7 @@ function openRefPicker(selOrId) {
     var text = (rpActive >= 0 && items[rpActive]) ? (items[rpActive].getAttribute('data-preview') || '') : '';
     // Пустой текст — прочерк, а не исчезающая колонка: строка без пояснения не
     // должна ни двигать вёрстку, ни оставлять на экране чужой текст.
-    if (rpPreviewHtml && text) {
+    if (false) {
       box.innerHTML = text;
     } else {
       box.textContent = text || '—';
@@ -4101,7 +4099,7 @@ function openRefPicker(selOrId) {
     // Размеченный текст приносит свои абзацы и списки — переносы по пробелам
     // ему только мешают; у обычного текста они, наоборот, единственный способ
     // сохранить строки.
-    box.style.whiteSpace = rpPreviewHtml ? 'normal' : 'pre-wrap';
+    box.style.whiteSpace = 'pre-wrap';
     box.style.color = text ? '#334155' : '#cbd5e1';
   }
   function rpPaint() {
@@ -4192,20 +4190,50 @@ function openRefPicker(selOrId) {
     if (requestController) requestController.abort();
     requestController = window.AbortController ? new window.AbortController() : null;
     if (status) status.textContent = 'Загрузка...';
-    var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + encodeURIComponent(q || '');
-    var refContext = refContextForRequest(sel);
-    if (refContext) url += '&ctx=' + encodeURIComponent(refContext);
-    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-
     var choiceSnapshot = obRefChoiceSnapshot(sel);
     var choiceQuery = choiceSnapshot ? choiceSnapshot.query : obRefChoiceQuery(sel);
     var choiceFingerprint = choiceSnapshot ? choiceSnapshot.fingerprint : '';
     var choiceSelected = sel.value == null ? '' : String(sel.value);
+    // План 168: у элемента с choice_context страница запрашивается POST-ом
+    // /_ref-options/{entity}/page — значения незаписанной формы не попадают в
+    // URL и access log, а allowlist контекста сервер восстанавливает сам.
+    // Ответ 422 — «Пояснение недоступно»: выбор блокируется (fail-closed),
+    // тихий откат к списку без просмотра запрещён.
+    var refContextRaw = sel.getAttribute('data-ref-context') || '';
+    var usePreviewPage = !!refContextRaw;
     var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + encodeURIComponent(q || '') + choiceQuery;
     var fetchOptions = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
     if (requestController) fetchOptions.signal = requestController.signal;
+    if (usePreviewPage) {
+      url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '/page';
+      fetchOptions.method = 'POST';
+      fetchOptions.headers['Content-Type'] = 'application/json';
+      var sourceElement = sel.getAttribute('data-ref-element') || '';
+      var contextValues = {};
+      try {
+        var bindings = JSON.parse(refContextRaw);
+        Object.keys(bindings).forEach(function (name) {
+          var parts = String(bindings[name]).split('.');
+          var control = sel.form && sel.form.elements ? sel.form.elements.namedItem(parts[parts.length - 1]) : null;
+          contextValues[name] = control && control.value != null ? String(control.value) : '';
+        });
+      } catch (e) {}
+      fetchOptions.body = JSON.stringify({
+        q: q || '', limit: 50, offset: 0,
+        source: { entity: refEntity, element: sourceElement },
+        context: contextValues
+      });
+    }
     fetch(url, fetchOptions)
       .then(function (resp) {
+        if (resp.status === 422) {
+          // Пояснение недоступно: блокируем выбор (fail-closed, инвариант 10).
+          rpPreviewField = '';
+          rpReveal();
+          renderItems([], '');
+          if (status) status.textContent = 'Пояснение недоступно: повторите запрос';
+          throw new Error('preview-unavailable');
+        }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         return resp.json();
       })
@@ -4217,7 +4245,6 @@ function openRefPicker(selOrId) {
         var keep = rpActiveId();
         var rows = (data && data.items) || [];
         rpPreviewField = (data && data.preview) || '';
-        rpPreviewHtml = !!(data && data.previewHtml);
         rpApplyPreviewLayout();
         var opts = rows.map(function (row) {
           var id = row && row.id != null ? String(row.id) : '';

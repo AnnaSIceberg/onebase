@@ -1,38 +1,43 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
-	"github.com/ivantit66/onebase/internal/richtext"
-	"github.com/ivantit66/onebase/internal/runtime"
+	"github.com/ivantit66/onebase/internal/storage"
 )
 
-// Область просмотра формы выбора, зависящая от КОНТЕКСТА подбора.
+// Область просмотра формы выбора (план 168).
 //
-// choice_preview показывает реквизит строки — этого хватает, пока текст зависит
-// только от самого элемента. Памятка по направлению обслуживания так не
-// устроена: у филиала МСК свои ограничения («по АВИТО не дальше 20 км от МКАД»),
-// у региона другие, и знать, ДЛЯ КАКОГО филиала идёт подбор, может только
-// вызывающая форма. Поэтому она присылает контекст (FormElement.ChoiceContext),
-// а конфигурация собирает тексты процедурой choice_preview_proc:
+// Статический preview (`choice_preview`) — имя реквизита; значения уже лежат в
+// items и прошли object read → row filter → field mask, отдельного запроса нет.
+// Динамический (`choice_preview_proc`) — строго квалифицированная экспортная
+// функция `Модуль.Функция(Ссылки, Контекст)`, вызывается ОДИН раз на страницу
+// в allowlist-окружении (choice_preview_env.go) внутри host-owned транзакции,
+// которая откатывается ВСЕГДА. Ошибка функции — контролируемый 422 с безопасным
+// сообщением: выбор блокируется (fail-closed), тихий откат к старому списку
+// запрещён инвариантом 10.
 //
-//	Функция ПамяткиДляПодбора(Ссылки, Контекст) Экспорт  // → Соответствие
-//
-// Одна процедура на страницу подбора, а не вызов на строку: пятьдесят вызовов на
-// каждое нажатие в поиске — это пятьдесят запросов к базе, и подбор из бодрого
-// становится задумчивым.
+// Preview всегда обычный текст: HTML/richtext не интерпретируются никогда
+// (инвариант 5), санитайзер разметки не нужен — клиент пишет textContent.
 
 // choicePreviewKey — служебный ключ строки, под которым уезжает собранный текст.
 // Начинается с подчёркивания, как _label: у реквизита конфигурации такого имени
 // быть не может, и подмены настоящего значения не выйдет.
 const choicePreviewKey = "_preview"
+
+// errChoicePreview — маркер ошибки функции/контракта preview: наружу отдаётся
+// контролируемый 422 с безопасным сообщением, а не 500.
+var errChoicePreview = errors.New("choice preview unavailable")
 
 // canonicalChoicePreviewField возвращает имя реквизита в том регистре, в
 // котором оно объявлено в metadata.Entity.Fields. Validate допускает ссылки на
@@ -51,88 +56,75 @@ func canonicalChoicePreviewField(ent *metadata.Entity) string {
 	return declared
 }
 
-// choiceContextFromRequest — контекст подбора из запроса: JSON-объект строк
-// («Филиал» → uuid). Чужой или битый параметр — пустой контекст, а не ошибка:
-// подбор обязан открыться в любом случае.
-func choiceContextFromRequest(r *http.Request) map[string]any {
-	raw := strings.TrimSpace(r.URL.Query().Get("ctx"))
-	if raw == "" || len(raw) > 4096 {
-		return map[string]any{}
-	}
-	var parsed map[string]string
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		return map[string]any{}
-	}
-	out := make(map[string]any, len(parsed))
-	for k, v := range parsed {
-		out[k] = v
-	}
-	return out
-}
-
-// applyChoicePreviewProc зовёт процедуру конфигурации и раскладывает её ответ по
-// строкам под ключом choicePreviewKey. Возвращает, удалось ли: не нашли
-// процедуру или она упала — вызывающий оставляет прежний choice_preview.
-func (s *Server) applyChoicePreviewProc(r *http.Request, ent *metadata.Entity, items []map[string]any) bool {
-	if s == nil || ent == nil || len(items) == 0 {
-		return false
+// runChoicePreviewProc вызывает функцию конфигурации и раскладывает ответ по
+// строкам под choicePreviewKey. Контракт (план 168):
+//   - вызов идёт целиком внутри host-owned транзакции, которая откатывается
+//     ВСЕГДА — и при успехе, и при ошибке (инвариант 9);
+//   - окружение — позитивный allowlist (buildChoicePreviewVars), полный
+//     buildDSLVarsTx сюда запрещён;
+//   - запись из результата ПЕРЕКРЫВАЕТ статический preview, ОТСУТСТВУЮЩАЯ —
+//     оставляет его (инвариант: «отсутствующая запись оставляет статическое
+//     значение»); ключ не из Ссылок игнорируется.
+//
+// Ошибка функции/контракта оборачивается в errChoicePreview — вызывающий
+// отдаёт 422 и блокирует выбор.
+func (s *Server) runChoicePreviewProc(ctx context.Context, ent *metadata.Entity, items []map[string]any, ctxVals map[string]any) error {
+	if len(items) == 0 {
+		return nil
 	}
 	name := strings.TrimSpace(ent.ChoicePreviewProc)
 	if name == "" {
-		return false
+		return nil
 	}
-	proc := s.reg.GetModuleProc(name)
-	if proc == nil {
-		if mod, fn, ok := strings.Cut(name, "."); ok {
-			proc = s.reg.GetModuleNamespacedProc(mod, fn)
-		}
-	}
-	if proc == nil {
-		uiLog().Warn("choice_preview_proc: процедура не найдена", "proc", name, "entity", ent.Name)
-		return false
+	proc, err := resolveChoicePreviewProc(s.reg, name)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errChoicePreview, err)
 	}
 
-	ids := &interpreter.Array{}
-	for _, row := range items {
-		ids.CallMethod("добавить", []any{refValueString(row["id"])})
+	// Host-owned транзакция: сервер сам её открывает и ВСЕГДА откатывает.
+	// finishDSLExecution тут не используется: откатывать «оставленную открытой
+	// DSL-транзакцию» — не доказательство отсутствия стойких эффектов, а
+	// безусловный rollback хоста — доказательство.
+	tx, txCtx, berr := s.store.BeginTx(ctx)
+	if berr != nil {
+		return fmt.Errorf("%w: %w", errChoicePreview, berr)
 	}
-	// Контекст едет Соответствием, а не служебной обёрткой: конфигурация читает
-	// его обычным Контекст.Получить("Филиал"), как любое Соответствие в DSL.
-	ctxMap := &interpreter.Map{}
-	for k, v := range choiceContextFromRequest(r) {
-		ctxMap.CallMethod("вставить", []any{k, v})
-	}
+	defer func() { _ = tx.Rollback(txCtx) }()
 
-	mc := runtime.NewMovementsCollector("choice-preview", uuid.Nil)
-	dslVars, txState := s.buildDSLVarsTx(r.Context(), mc)
-	defer rollbackDSLExecution(txState)
-	dslVars["Ссылки"] = ids
-	dslVars["Refs"] = ids
-	dslVars["Контекст"] = ctxMap
-	dslVars["Context"] = ctxMap
-
+	dslVars := s.buildChoicePreviewVars(txCtx, items, ent, canonicalChoicePreviewField(ent), ctxVals)
+	this := &interpreter.MapThis{M: map[string]any{}}
 	var result any
-	runErr := s.interp.RunWithResult(proc, &interpreter.MapThis{M: map[string]any{}}, &result, dslVars)
-	if runErr = finishDSLExecution(txState, runErr); runErr != nil {
+	if runErr := s.interp.RunWithResult(proc, this, &result, dslVars); runErr != nil {
 		uiLog().Warn("choice_preview_proc: ошибка исполнения", "proc", name, "entity", ent.Name, "err", runErr)
-		return false
+		return fmt.Errorf("%w: функция просмотра завершилась ошибкой", errChoicePreview)
 	}
-	texts := choicePreviewTexts(result)
-	if texts == nil {
-		return false
+	// DEBUG(result=%T keys=%v)
+	texts, err := choicePreviewTexts(result)
+	if err != nil {
+		uiLog().Warn("choice_preview_proc: неверный результат", "proc", name, "entity", ent.Name, "err", err)
+		return fmt.Errorf("%w: %w", errChoicePreview, err)
 	}
+	// Merge-семантика: запись функции перекрывает статический fallback,
+	// отсутствующая запись оставляет его (инвариант плана 168).
+	staticField := canonicalChoicePreviewField(ent)
 	for _, row := range items {
-		row[choicePreviewKey] = texts[refValueString(row["id"])]
+		id := refValueString(row["id"])
+		if text, ok := texts[id]; ok {
+			row[choicePreviewKey] = text
+			continue
+		}
+		row[choicePreviewKey] = refValueString(row[staticField])
 	}
-	return true
+	return nil
 }
 
-// choicePreviewTexts приводит ответ процедуры к «идентификатор → текст».
-// Ожидается Соответствие; всё прочее — отказ, а не молчаливая пустая панель.
-func choicePreviewTexts(result any) map[string]string {
+// choicePreviewTexts приводит ответ функции к «идентификатор → текст». Только
+// Соответствие (interpreter.Map); значение НЕопределено/nil — запись без
+// текста (статический fallback остаётся), всё прочее — ошибка контракта.
+func choicePreviewTexts(result any) (map[string]string, error) {
 	m, ok := result.(*interpreter.Map)
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("результат должен быть Соответствием")
 	}
 	out := map[string]string{}
 	for _, key := range m.Keys() {
@@ -142,44 +134,180 @@ func choicePreviewTexts(result any) map[string]string {
 		}
 		out[fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
 	}
-	return out
+	return out, nil
 }
 
-// choicePreviewIsRich — показывать ли текст просмотра с оформлением. Признак
-// берётся из ТИПА объявленного реквизита, а не из содержимого строки: «похоже на
-// HTML» — негодный критерий, по нему обычный текст с угловой скобкой стал бы
-// разметкой.
-//
-// Тексты, собранные процедурой (choicePreviewKey), формат наследуют от того же
-// choice_preview: процедура обычно поставляет значения ИЗ НЕГО, только выбирая
-// нужное по контексту. Не объявлен choice_preview — оформления нет: обещать
-// разметку, глядя на строку, нельзя.
-func choicePreviewIsRich(ent *metadata.Entity, previewField string) bool {
-	if ent == nil || previewField == "" {
-		return false
-	}
-	declared := previewField
-	if previewField == choicePreviewKey {
-		declared = strings.TrimSpace(ent.ChoicePreview)
-		if declared == "" {
-			return false
-		}
-	}
-	for _, f := range ent.Fields {
-		if strings.EqualFold(f.Name, declared) {
-			return f.Type == metadata.FieldTypeRichText
-		}
-	}
-	return false
+// choicePreviewPageBody — тело POST /ui/_ref-options/{entity}/page.
+type choicePreviewPageBody struct {
+	Q      string `json:"q"`
+	Limit  int    `json:"limit"`
+	Offset int    `json:"offset"`
+	Source struct {
+		Entity  string `json:"entity"`
+		Form    string `json:"form"`
+		Element string `json:"element"`
+	} `json:"source"`
+	Context map[string]string `json:"context"`
 }
 
-// sanitizeChoicePreview чистит разметку строк перед отправкой в браузер. Гоняем
-// через тот же санитайзер, что и остальной richtext: значения приходят из базы,
-// а в базу их мог положить кто угодно с правом записи в справочник.
-func sanitizeChoicePreview(items []map[string]any, previewField string) {
-	for _, row := range items {
-		if raw, ok := row[previewField]; ok && raw != nil {
-			row[previewField] = richtext.Sanitize(fmt.Sprintf("%v", raw))
-		}
+// choicePreviewPage — POST /ui/_ref-options/{entity}/page (план 168, HTTP-контракт).
+// POST выбран, чтобы значения незаписанной формы не попадали в URL, access log
+// и историю браузера. Имя функции, поля preview и состав контекста браузер НЕ
+// присылает: только идентичность form/entity/element и значения объявленных
+// источников; сервер сам находит форму и элемент, проверяет ссылочный
+// data_path и восстанавливает allowlist choice_context.
+func (s *Server) choicePreviewPageHandler(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "entity")
+	ent := s.reg.GetEntity(name)
+	if ent == nil {
+		http.Error(w, s.tr(s.resolveLang(r), "Сущность не найдена")+": "+name, http.StatusNotFound)
+		return
 	}
+	if !s.can(r, string(ent.Kind), ent.Name, "read") {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	s.choicePreviewPage(w, r, ent)
+}
+
+func (s *Server) choicePreviewPage(w http.ResponseWriter, r *http.Request, ent *metadata.Entity) {
+	var body choicePreviewPageBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	limit := body.Limit
+	if limit <= 0 {
+		limit = refPickerDefaultLimit
+	}
+	if limit > refPickerMaxLimit {
+		limit = refPickerMaxLimit
+	}
+
+	// Server-resolved source (блокер 3 круга 2): форма и элемент восстанавливаются
+	// из метаданных, элемент обязан быть ссылочным ПолеВвода на целевую сущность.
+	owner := s.reg.GetEntity(body.Source.Entity)
+	if owner == nil {
+		http.Error(w, "unknown form entity", http.StatusBadRequest)
+		return
+	}
+	element := findPreviewElementByName(owner, body.Source.Element)
+	if element == nil {
+		http.Error(w, "unknown preview element", http.StatusBadRequest)
+		return
+	}
+	field := entityField(owner, formChoicePathName(strings.TrimSpace(element.DataPath)))
+	if field == nil || field.RefEntity == "" || !strings.EqualFold(field.RefEntity, ent.Name) {
+		http.Error(w, "element does not reference this entity", http.StatusBadRequest)
+		return
+	}
+
+	// Контекст: только объявленные в choice_context параметры; значение типизируется
+	// по реквизиту-источнику (блокер 3: произвольный клиентский JSON больше не
+	// доходит до функции). Скрытые/замаскированные источники отклоняются на
+	// этапе валидации формы (configcheck), здесь — типы и ссылки.
+	ctxVals := map[string]any{}
+	for alias, path := range element.ChoiceContext {
+		srcField := entityField(owner, formChoicePathName(strings.TrimSpace(path)))
+		if srcField == nil {
+			http.Error(w, "invalid choice context source", http.StatusBadRequest)
+			return
+		}
+		raw := strings.TrimSpace(body.Context[alias])
+		if raw == "" {
+			continue
+		}
+		if srcField.RefEntity != "" {
+			id, perr := uuid.Parse(raw)
+			if perr != nil || id == uuid.Nil {
+				http.Error(w, "invalid context reference: "+alias, http.StatusBadRequest)
+				return
+			}
+			refEnt := s.reg.GetEntity(srcField.RefEntity)
+			if refEnt == nil {
+				http.Error(w, "invalid context reference entity: "+alias, http.StatusBadRequest)
+				return
+			}
+			// Ссылка требует object read и допуска строки (инвариант 7) —
+			// тот же гейт, что и selected_allowed у choice.
+			okAllowed, aerr := s.choiceSelectedAllowed(r.Context(), refEnt, id, nil)
+			if aerr != nil {
+				s.serverError(w, r, aerr)
+				return
+			}
+			if !okAllowed {
+				http.Error(w, "context reference not allowed: "+alias, http.StatusForbidden)
+				return
+			}
+			ctxVals[alias] = &interpreter.Ref{UUID: id.String(), Type: refEnt.Name, Kind: refEnt.Kind}
+			continue
+		}
+		ctxVals[alias] = raw
+	}
+
+	// Страница — тем же путём, что и обычный подбор: object read → row filter →
+	// field mask → _label (инварианты 2 и 11). Только затем вызывается функция.
+	items, total, err := s.referenceOptionsPageWithParams(r.Context(), ent, body.Q, limit, body.Offset, storage.ListParams{})
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	if err := s.runChoicePreviewProc(r.Context(), ent, items, ctxVals); err != nil {
+		if errors.Is(err, errChoicePreview) {
+			// Контролируемый 422 с безопасным сообщением (инвариант 10):
+			// клиент блокирует выбор и показывает «Пояснение недоступно».
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error":   s.tr(s.resolveLang(r), "Пояснение недоступно: повторите запрос"),
+				"preview": false,
+			})
+			return
+		}
+		s.serverError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"items":   items,
+		"total":   total,
+		"limit":   limit,
+		"offset":  body.Offset,
+		"preview": choicePreviewKey,
+		"canPick": true,
+	})
+}
+
+// findPreviewElementByName — элемент с choice_context по имени среди ВСЕХ форм
+// сущности; для preview годится только ссылочное ПолеВвода. Найдено больше
+// одного — неоднозначно: fail-closed, а не «возьмём первую попавшуюся связь».
+// formChoicePathName — имя реквизита из пути `Объект.<Реквизит>`.
+func formChoicePathName(path string) string {
+	root, fieldName, ok := formChoicePath(path)
+	if !ok || !strings.EqualFold(root, "Объект") && !strings.EqualFold(root, "Object") {
+		return ""
+	}
+	return fieldName
+}
+
+func findPreviewElementByName(owner *metadata.Entity, name string) *metadata.FormElement {
+	if owner == nil || strings.TrimSpace(name) == "" {
+		return nil
+	}
+	var matches []*metadata.FormElement
+	for _, form := range owner.Forms {
+		if form == nil {
+			continue
+		}
+		form.Walk(func(el *metadata.FormElement) bool {
+			if el != nil && strings.EqualFold(el.Name, name) && el.Kind == "ПолеВвода" && len(el.ChoiceContext) > 0 {
+				matches = append(matches, el)
+			}
+			return true
+		})
+	}
+	if len(matches) == 1 {
+		return matches[0]
+	}
+	return nil // нет ни одного — неизвестный элемент; больше одного — неоднозначно
 }
