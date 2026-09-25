@@ -93,7 +93,6 @@ func TestRefPickerChoiceContextReadsCurrentControl(t *testing.T) {
 	}
 }
 
-
 func TestOnlyReferencePickerWaitsForPreviewLayout(t *testing.T) {
 	js := string(uiJS)
 	itemStart := strings.Index(js, "function openItemPicker(")

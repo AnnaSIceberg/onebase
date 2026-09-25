@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/runtime"
