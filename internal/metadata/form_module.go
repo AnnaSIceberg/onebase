@@ -204,6 +204,11 @@ type FormElement struct {
 	HorizontalAlign string            `yaml:"halign,omitempty"`         // left|center|right|stretch
 	VerticalAlign   string            `yaml:"valign,omitempty"`         // top|center|bottom
 	Orientation     string            `yaml:"orientation,omitempty"`    // vertical|horizontal для контейнеров
+	// ScrollX — горизонтальная группа не переносит содержимое на вторую строку,
+	// а прокручивается. Нужна ряду кнопок: перенос рвёт панель действий пополам,
+	// и половина кнопок оказывается отдельной полосой, будто это другой блок.
+	// По умолчанию поведение прежнее — перенос.
+	ScrollX bool `yaml:"scroll_x,omitempty"`
 	Background      string            `yaml:"background,omitempty"`     // фон контейнера; читается только у ГруппаФормы (#1547), цвет проверяет csssafe.Color
 	ReadOnly        bool              `yaml:"readonly,omitempty"`       // только чтение
 	// ChoiceFolders — разрешить выбирать ГРУППЫ иерархического справочника

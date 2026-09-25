@@ -29,7 +29,7 @@ const tplManagedForm = `
 {{$effectiveReq := effectiveFormElementRequired $ctx.Entity $el}}{{$req := nativeFormElementRequired $ctx.Entity $el}}
 {{if elHidden $ctx $el}}
 {{else if eq (str $el.Kind) "ГруппаФормы"}}
-  <fieldset class="form-group-box{{if eq $el.Orientation "horizontal"}} managed-group-horizontal{{end}}" data-ob-el="{{$el.Name}}" style="border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:8px;{{elBackground $el}}{{elLayout $el}}">
+  <fieldset class="form-group-box{{if eq $el.Orientation "horizontal"}} managed-group-horizontal{{end}}{{if $el.ScrollX}} managed-group-scrollx{{end}}" data-ob-el="{{$el.Name}}" style="border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:8px;{{elBackground $el}}{{elLayout $el}}">
     {{if $el.TitleMap}}<legend style="font-weight:600;color:#475569;padding:0 6px;font-size:13px">{{fieldTitleRU $el.TitleMap $el.Name}}</legend>{{end}}
     <div class="managed-group-body">
       {{range $el.Children}}{{template "managed-element" (dict "El" . "Ctx" $ctx)}}{{end}}
@@ -545,6 +545,8 @@ const tplManagedForm = `
 {{if .TabTitle}}<meta name="ob-tab-title" content="{{.TabTitle}}">{{end}}
 <style>
 .managed-group-horizontal>.managed-group-body{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
+/* scroll_x: ряд не переносится, а прокручивается — панель действий остаётся одной полосой. */
+.managed-group-scrollx>.managed-group-body{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding-bottom:4px}
 /* Поле в горизонтальной группе не растягивается на всю строку: иначе одинокое
    поле уезжало во всю ширину, а кнопка рядом с ним — к правому краю экрана. */
 /* Вертикальный шаг полей управляемой формы: у автоформы .form-group отбивается
