@@ -74,6 +74,8 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	params = s.applyListFormFilter(r, entity, params)
+
 	view := r.URL.Query().Get("view")
 	// tree проходит мимо нормализации: иерархический вид открывается по
 	// ?view=tree, но персистентно не сохраняется — его выбирают заново.
