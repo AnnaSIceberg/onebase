@@ -93,11 +93,16 @@ type rawEntity struct {
 	Presentation stringOrList `yaml:"presentation"`
 	// OrderBy — порядок списка по умолчанию (см. Entity.OrderBy). Принимает и
 	// строку, и список: «одно поле» — частый случай.
-	OrderBy       stringOrList    `yaml:"order_by"`
-	Predefined    []rawPredefined `yaml:"predefined"`
-	Hierarchical  bool            `yaml:"hierarchical"`
-	HierarchyKind string          `yaml:"hierarchy_kind"`
-	ListForm      []string        `yaml:"list_form"`
+	OrderBy stringOrList `yaml:"order_by"`
+	// ChoicePreview — реквизит, показываемый в области просмотра формы выбора.
+	ChoicePreview string `yaml:"choice_preview"`
+	// ChoicePreviewProc — «Модуль.Функция», собирающая тексты просмотра с учётом
+	// контекста подбора (Entity.ChoicePreviewProc).
+	ChoicePreviewProc string          `yaml:"choice_preview_proc"`
+	Predefined        []rawPredefined `yaml:"predefined"`
+	Hierarchical      bool            `yaml:"hierarchical"`
+	HierarchyKind     string          `yaml:"hierarchy_kind"`
+	ListForm          []string        `yaml:"list_form"`
 	// ItemForm принимает и строку, и запись {name: X, readonly: true} —
 	// см. rawItemFormField.
 	ItemForm      []rawItemFormField `yaml:"item_form"`
@@ -300,6 +305,8 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 	}
 	e.Presentation = raw.Presentation.values()
 	e.OrderBy = raw.OrderBy.values()
+	e.ChoicePreview = strings.TrimSpace(raw.ChoicePreview)
+	e.ChoicePreviewProc = strings.TrimSpace(raw.ChoicePreviewProc)
 	if raw.Numerator != nil {
 		n := &Numerator{
 			Prefix:     raw.Numerator.Prefix,
