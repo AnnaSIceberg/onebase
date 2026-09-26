@@ -1760,10 +1760,10 @@ func (st formEventState) response(ok bool) formEventResponse {
 	}
 }
 
-// elementStates — состояние элементов формы, зависящее от полей записи.
+// elementStates — состояние элементов формы с учётом полей записи и роли.
 // В картах присутствует каждый элемент, у которого условие ОБЪЯВЛЕНО, — со
 // значением true или false: клиент должен уметь и снять запрет, а не только
-// поставить.
+// поставить. Постоянный запрет editable_admin_only также сохраняется здесь.
 //
 // Снять получается не всё: элемент, скрытый на момент отрисовки, в разметку не
 // попал, и показать его обратно клиенту нечем — hidden=false для него ничего не
@@ -1776,12 +1776,12 @@ type elementStates struct {
 // formElementStates пересчитывает readonly_when/hidden_when по значениям формы
 // ПОСЛЕ обработчика: команда меняет состояние объекта, и доступность полей
 // должна измениться сразу, а не после перезагрузки страницы. nil, если условий
-// в форме нет — клиенту нечего применять.
-func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.Entity, values map[string]any) *elementStates {
+// и ролевых запретов в форме нет — клиенту нечего применять.
+func (s *Server) formElementStates(ctx context.Context, form *metadata.FormModule, entity *metadata.Entity, values map[string]any) *elementStates {
 	if form == nil || s.interp == nil {
 		return nil
 	}
-	ro, hidden, _ := managedFormElementStates(form, managedFormHeaderValues(entity, values), newInterpEvaluator(s.interp))
+	ro, hidden, _ := managedFormElementStates(ctx, form, managedFormHeaderValues(entity, values), newInterpEvaluator(s.interp))
 	if len(ro) == 0 && len(hidden) == 0 {
 		return nil
 	}
@@ -1837,7 +1837,7 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 		// Условия readonly_when/hidden_when считаются здесь же, где известны
 		// значения ПОСЛЕ обработчика: команда, изменившая состояние объекта,
 		// сразу меняет доступность полей.
-		ElementStates: s.formElementStates(form, entity, values),
+		ElementStates: s.formElementStates(ctx, form, entity, values),
 	}
 }
 

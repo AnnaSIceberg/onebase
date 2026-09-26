@@ -72,3 +72,36 @@ func TestQueryMaskPlan_DiscloseStillMasksOutput(t *testing.T) {
 		t.Fatal("значение ПДн отдано столбцом без маски")
 	}
 }
+
+// The compiler currently reports unqualified field names. A grant on one
+// source must never authorize a protected field of another joined source.
+func TestQueryMaskPlan_DiscloseDoesNotCrossSources(t *testing.T) {
+	request := discloseTestEntity()
+	client := &metadata.Entity{Name: "Клиент", Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: "Телефон", Type: metadata.FieldTypeString, PII: true}}}
+	lookup := func(_, name string) *metadata.Entity {
+		if name == client.Name {
+			return client
+		}
+		return request
+	}
+	for _, from := range []string{
+		"Документ.Заявка КАК З ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Клиент КАК К ПО ИСТИНА",
+		"Справочник.Клиент КАК К ЛЕВОЕ СОЕДИНЕНИЕ Документ.Заявка КАК З ПО ИСТИНА",
+	} {
+		for _, suffix := range []string{`ГДЕ З.Телефон = &Т`, `УПОРЯДОЧИТЬ ПО З.Телефон`, `УПОРЯДОЧИТЬ ПО Контакт`, `УПОРЯДОЧИТЬ ПО 2`} {
+			res, err := query.Compile(`ВЫБРАТЬ З.Номер, З.Телефон КАК Контакт ИЗ `+from+" "+suffix, query.CompileOpts{Entities: []*metadata.Entity{request, client}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			u := discloseUser("read")
+			u.Roles[0].Permissions.Catalogs = map[string][]string{client.Name: {"read", "disclose"}}
+			if plan := QueryMaskPlanFor(u, res, lookup); plan.Denied == "" {
+				t.Errorf("disclose crossed sources: %s %s", from, suffix)
+			}
+			u.Roles[0].Permissions.Documents[request.Name] = []string{"read", "disclose"}
+			if plan := QueryMaskPlanFor(u, res, lookup); plan.Denied != "" {
+				t.Errorf("both sources disclosable: %s", plan.Denied)
+			}
+		}
+	}
+}

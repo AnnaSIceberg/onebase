@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
 	processorpkg "github.com/ivantit66/onebase/internal/processor"
 	"github.com/ivantit66/onebase/internal/report/compose"
@@ -174,7 +175,7 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 	// ЗАПИСИ, поэтому считается здесь же, где известны Values, и заново после
 	// каждого события формы.
 	if s.interp != nil {
-		ro, hidden, warns := managedFormElementStates(form, header, newInterpEvaluator(s.interp))
+		ro, hidden, warns := managedFormElementStates(ctx, form, header, newInterpEvaluator(s.interp))
 		if len(ro) > 0 {
 			data["ElReadOnly"] = ro
 		}
@@ -229,12 +230,14 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 // ошибка конфигурации, и молча запертое поле объяснить пользователю нечем.
 // Вместо этого условие игнорируется, а конфигуратор получает предупреждение на
 // форме — тем же способом, что и у условного оформления.
-func managedFormElementStates(form *metadata.FormModule, header map[string]any, ev compose.Evaluator) (map[string]bool, map[string]bool, []string) {
+func managedFormElementStates(ctx context.Context, form *metadata.FormModule, header map[string]any, ev compose.Evaluator) (map[string]bool, map[string]bool, []string) {
 	if form == nil || ev == nil {
 		return nil, nil, nil
 	}
 	ro := map[string]bool{}
 	hidden := map[string]bool{}
+	user := auth.UserFromContext(ctx)
+	isAdmin := user == nil || user.IsAdmin
 	wc := &formWarnCollector{}
 	row := compose.Row(header)
 	eval := func(expr, kind, elName string) bool {
@@ -270,8 +273,9 @@ func managedFormElementStates(form *metadata.FormModule, header map[string]any, 
 		// числе с ложным. Ответ события формы переносит эти карты на клиент, и
 		// без явного «false» он не смог бы снять запрет, когда условие перестало
 		// выполняться (отличить «условия нет» от «условие ложно» было бы нечем).
-		if own || len(visit.readOnlyWhenAncestors) > 0 {
-			state := visit.effectiveReadOnly || conds[el]
+		adminLocked := el.EditableAdminOnly && !isAdmin
+		if own || len(visit.readOnlyWhenAncestors) > 0 || adminLocked {
+			state := visit.effectiveReadOnly || conds[el] || adminLocked
 			for _, ancestor := range visit.readOnlyWhenAncestors {
 				state = state || conds[ancestor]
 			}

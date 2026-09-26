@@ -443,8 +443,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return hidden
 		},
 		// adminOnlyLocked — поле заперто, потому что смотрит не администратор.
-		// В карту ElReadOnly не попадает намеренно: состояние не меняется в
-		// течение сессии, и клиенту нечего пересчитывать.
+		// Тот же запрет входит в ElReadOnly и ответы событий, чтобы ложное
+		// readonly_when не разблокировало поле после первого round trip.
 		"adminOnlyLocked": func(ctx map[string]any, element *metadata.FormElement) bool {
 			if element == nil || !element.EditableAdminOnly {
 				return false

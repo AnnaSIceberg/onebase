@@ -2065,7 +2065,9 @@ function obManagedAddTpRow(btn) {
 // Подписываемся только когда обработчик объявлен (атрибут на tbody) — иначе
 // гоняли бы сеть на каждый щелчок по любой таблице формы. Повторный щелчок по
 // той же строке события не шлёт: активизация строки — это смена строки.
-var obManagedVtActiveRow = {};
+// Scope activation to a concrete table and row node. Repainting replaces the
+// node, so a new result at the same index can be activated again.
+var obManagedVtActiveRow = new WeakMap();
 
 function obManagedVtRowActivated(tr) {
   if (!tr || !tr.parentNode) return;
@@ -2075,8 +2077,8 @@ function obManagedVtRowActivated(tr) {
   if (!elName || !vtName) return;
   var row = tr.getAttribute('data-ob-vt-row');
   if (row === null || row === '') return;
-  if (obManagedVtActiveRow[vtName] === row) return;
-  obManagedVtActiveRow[vtName] = row;
+  if (obManagedVtActiveRow.get(tbody) === tr) return;
+  obManagedVtActiveRow.set(tbody, tr);
   if (window.obFire) window.obFire(elName, 'ПриАктивизацииСтроки', {_tp: vtName, _tp_row: row});
 }
 

@@ -224,15 +224,17 @@ func searchableMaskedFields(u *auth.User, sources []query.SourceRef, lookup func
 	}
 	out := map[string]bool{}
 	for _, src := range sources {
-		if !u.Has(src.Kind, src.Name, "disclose") {
-			continue
-		}
+		canDisclose := u.Has(src.Kind, src.Name, "disclose")
 		var meta *metadata.Entity
 		if lookup != nil {
 			meta = lookup(src.Kind, src.Name)
 		}
 		for field := range FieldDecisions(u, src.Kind, src.Name, meta) {
-			out[fieldKey(field)] = true
+			key := fieldKey(field)
+			// Projection fields have no source qualifier. Require permission on
+			// every protected occurrence, regardless of JOIN/source order.
+			previous, exists := out[key]
+			out[key] = canDisclose && (!exists || previous)
 		}
 	}
 	if len(out) == 0 {

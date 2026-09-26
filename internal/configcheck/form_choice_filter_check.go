@@ -1,13 +1,13 @@
 package configcheck
 
 import (
-	"github.com/google/uuid"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/project"
 	"gopkg.in/yaml.v3"
@@ -247,6 +247,16 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 						if !hasFrom || !sourceOK || source == nil || !strings.EqualFold(source.Name, поле.RefEntity) {
 							add("%s: from %q должен ссылаться на %s", where, cond.From, поле.RefEntity)
 						}
+						continue
+					}
+					// Service fields have no metadata.Field. Validate their grammar
+					// before entering branches that dereference an ordinary field.
+					if (isFolder || isRoot) && cond.Op != metadata.FormChoiceOpEqual {
+						add("%s: %s поддерживает только eq", where, fieldName)
+						continue
+					}
+					if isParent && cond.Op != metadata.FormChoiceOpInHierarchy && cond.Op != metadata.FormChoiceOpNotInHierarchy {
+						add("%s: parent_id поддерживает только in_hierarchy и not_in_hierarchy", where)
 						continue
 					}
 					var targetField *metadata.Field

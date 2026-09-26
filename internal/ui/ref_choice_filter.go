@@ -507,12 +507,18 @@ func (s *Server) resolveDeepChoiceSources(ctx context.Context, owner *metadata.E
 			out[path] = ""
 			continue
 		}
-		row, err := s.store.GetByID(ctx, refEntity.Name, id, refEntity)
-		if err != nil || row == nil {
+		decision, err := s.rowDecision(ctx, refEntity, "read")
+		if err != nil || !decision.Allowed || s.dslFieldMasked(ctx, refEntity, deref) {
 			out[path] = ""
 			continue
 		}
-		out[path] = fmt.Sprint(row[deref])
+		row, err := s.store.GetByID(ctx, refEntity.Name, id, refEntity)
+		if err != nil || row == nil || (!decision.Unrestricted && !s.matchRowPredicate(ctx, row, decision.Predicate)) {
+			out[path] = ""
+			continue
+		}
+		key, _ := rowKeyByName(row, deref)
+		out[path] = fmt.Sprint(row[key])
 		if out[path] == "<nil>" {
 			out[path] = ""
 		}
