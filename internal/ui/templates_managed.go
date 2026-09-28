@@ -72,7 +72,7 @@ const tplManagedForm = `
        монтирования textarea скрыта, поэтому native required здесь не ставим:
        браузер не умеет сфокусировать скрытый invalid-контрол; соответствующая
        серверная проверка обязательности всё равно действует. */}}
-  <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayout $el}} style="{{.}}"{{end}}>
+  <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayoutEx $ctx $el}} style="{{.}}"{{end}}>
     <label>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}</label>
     <textarea name="{{$fn}}" autocomplete="off" class="code-field" rows="12" spellcheck="false"
       style="width:100%;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px"
@@ -84,7 +84,7 @@ const tplManagedForm = `
   {{$f := fieldByName $ctx.Entity $fn}}
   {{$hChg := hasHandler $el "ПриИзменении"}}
   {{$choiceCtx := managedChoiceContext $ctx $el}}
-  <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayout $el}} style="{{.}}"{{end}}>
+  <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayoutEx $ctx $el}} style="{{.}}"{{end}}>
     <label>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}</label>
     {{if $f}}
       {{if isRef (str $f.Type)}}
@@ -220,7 +220,7 @@ const tplManagedForm = `
        может подгрузить связанные данные и вернуть их в values. */}}
   {{$fn := dpField $el.DataPath}}
   {{$hChg := hasHandler $el "ПриИзменении"}}
-  <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayout $el}} style="{{.}}"{{end}}>
+  <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayoutEx $ctx $el}} style="{{.}}"{{end}}>
     <label>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}</label>
     <select name="{{$fn}}"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if and $roUnlockable (hasHandler $el "НачалоВыбора")}} data-el="{{$el.Name}}" data-ob-list-choice="{{$el.Name}}"{{end}}{{if $ro}} disabled{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       <option value="">{{if $ro}}—{{else}}— выбрать —{{end}}</option>
@@ -493,7 +493,7 @@ const tplManagedForm = `
   {{$fn := dpField $el.DataPath}}
   {{$hChg := hasHandler $el "ПриИзменении"}}
   {{$dv := index $ctx.Values $fn}}
-  <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayout $el}} style="{{.}}"{{end}}>
+  <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayoutEx $ctx $el}} style="{{.}}"{{end}}>
     <label>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}</label>
     <input type="date" name="{{$fn}}" value="{{if ge (len $dv) 10}}{{slice $dv 0 10}}{{else}}{{$dv}}{{end}}"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
   </div>
@@ -507,7 +507,7 @@ const tplManagedForm = `
   {{$cur := index $ctx.Values $fn}}
   {{$hChg := hasHandler $el "ПриИзменении"}}
   {{$enum := and $f (isEnum (str $f.Type))}}
-  <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayout $el}} style="{{.}}"{{end}}>
+  <div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayoutEx $ctx $el}} style="{{.}}"{{end}}>
     <label>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}</label>
     {{if eq $el.View "select"}}
       <select name="{{$fn}}"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
