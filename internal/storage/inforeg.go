@@ -822,8 +822,10 @@ func (db *DB) checkInfoRegMovementKey(ctx context.Context, ir *metadata.InfoRegi
 	if ownerType != nil {
 		typ = *ownerType
 	}
+	// Имя из метаданных, а не regName: коллектор движений отдаёт его в нижнем
+	// регистре, а сообщение читает человек.
 	return i18nerr.Errorf("регистр сведений %s: запись с ключом %s уже записана документом %s %s — второй документ её не перехватывает",
-		regName, infoRegKeyDescription(ir, dimKey, period), typ, *owner)
+		ir.Name, infoRegKeyDescription(ir, dimKey, period), typ, *owner)
 }
 
 // infoRegKeyDescription — ключ записи регистра сведений для сообщения:
@@ -834,7 +836,11 @@ func infoRegKeyDescription(ir *metadata.InfoRegister, dimKey map[string]any, per
 		parts = append(parts, "Период="+period.Format("02.01.2006 15:04:05"))
 	}
 	for _, f := range ir.Dimensions {
-		parts = append(parts, fmt.Sprintf("%s=%v", f.Name, dimKey[f.Name]))
+		v := dimKey[f.Name]
+		if t, ok := v.(time.Time); ok {
+			v = t.Format("02.01.2006 15:04:05")
+		}
+		parts = append(parts, fmt.Sprintf("%s=%v", f.Name, v))
 	}
 	return "(" + strings.Join(parts, ", ") + ")"
 }
