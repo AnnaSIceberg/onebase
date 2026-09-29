@@ -718,6 +718,9 @@ func (db *DB) writeInfoMovementsInTx(ctx context.Context, regName, recorderType 
 		if err != nil {
 			return fmt.Errorf("write info movement %s row %d key: %w", regName, i+1, err)
 		}
+		if err := db.checkInfoRegMovementKey(ctx, ir, regName, recorderID, writeKey, dimKey, rowPeriod); err != nil {
+			return err
+		}
 		for _, f := range ir.Dimensions {
 			col := metadata.ColumnName(f)
 			cols = append(cols, col)
@@ -776,6 +779,64 @@ func (db *DB) writeInfoMovementsInTx(ctx context.Context, regName, recorderType 
 		}
 	}
 	return nil
+}
+
+// checkInfoRegMovementKey не даёт движению документа перехватить чужую запись
+// регистра сведений.
+//
+// У регистра сведений одна запись на ключ (период + измерения), а запись
+// движений идёт через ON CONFLICT DO UPDATE с recorder = EXCLUDED.recorder.
+// Без проверки второй документ с тем же ключом молча забирал запись первого;
+// отмена его проведения удаляла её целиком, и первый документ оставался
+// проведённым без своего значения в регистре. В 1С это ошибка уникальности.
+//
+// Собственные прежние записи документа к этому моменту уже удалены (DELETE по
+// регистратору выше); строка, записанная этим же вызовом раньше, остаётся его
+// собственной — внутри одного проведения последняя строка с ключом побеждает,
+// как и раньше. Запись без регистратора — значение, заданное вручную в
+// независимый регистр, — документ по-прежнему перезаписывает: хозяина у такой
+// записи нет.
+func (db *DB) checkInfoRegMovementKey(ctx context.Context, ir *metadata.InfoRegister, regName string,
+	recorderID uuid.UUID, writeKey, dimKey map[string]any, period *time.Time,
+) error {
+	d := db.dialect
+	where, args := physicalDimWhere(d, ir, writeKey, 1)
+	if period != nil {
+		where = fmt.Sprintf("%s AND period = %s", where, d.Placeholder(len(args)+1))
+		args = append(args, *period)
+	}
+
+	var owner, ownerType *string
+	err := db.QueryRow(ctx, fmt.Sprintf("SELECT CAST(recorder AS TEXT), recorder_type FROM %s WHERE %s LIMIT 1",
+		metadata.InfoRegTableName(ir.Name), where), args...).Scan(&owner, &ownerType)
+	if IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("info register %s: чтение владельца ключа: %w", regName, err)
+	}
+	if owner == nil || *owner == "" || strings.EqualFold(*owner, recorderID.String()) {
+		return nil
+	}
+	typ := ""
+	if ownerType != nil {
+		typ = *ownerType
+	}
+	return i18nerr.Errorf("регистр сведений %s: запись с ключом %s уже записана документом %s %s — второй документ её не перехватывает",
+		regName, infoRegKeyDescription(ir, dimKey, period), typ, *owner)
+}
+
+// infoRegKeyDescription — ключ записи регистра сведений для сообщения:
+// «Период=…, Измерение=…».
+func infoRegKeyDescription(ir *metadata.InfoRegister, dimKey map[string]any, period *time.Time) string {
+	parts := make([]string, 0, len(ir.Dimensions)+1)
+	if period != nil {
+		parts = append(parts, "Период="+period.Format("02.01.2006 15:04:05"))
+	}
+	for _, f := range ir.Dimensions {
+		parts = append(parts, fmt.Sprintf("%s=%v", f.Name, dimKey[f.Name]))
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
 }
 
 // pkCols returns the primary key column names for an info register.
