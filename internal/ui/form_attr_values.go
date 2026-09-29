@@ -233,3 +233,57 @@ func normalizeFormAttrKeys(values map[string]any, form *metadata.FormModule, ent
 	}
 	return values
 }
+
+// managedFormAttrNames — имена скалярных реквизитов формы, которых нет среди
+// полей сущности. По ним клиент переносит реквизиты через перезагрузку
+// страницы и заводит скрытые поля тем, у кого на форме нет своего контрола.
+//
+// Скрытое поле нужно потому, что сервер реквизиты формы между событиями не
+// хранит: событие получает только то, что прислал браузер. Реквизит без
+// контрола (флаг для hidden_when, признак роли для readonly_when) доживал до
+// следующего события — обработчик ставил Объект.СкрытьX = Истина, а любое
+// другое событие приходило без него, и условие молча откатывалось.
+func managedFormAttrNames(form *metadata.FormModule, entity *metadata.Entity) []string {
+	if form == nil {
+		return nil
+	}
+	var names []string
+	for _, a := range form.Attributes {
+		if a == nil || a.Name == "" || a.MainAttribute || a.TypeRef == "ValueTable" {
+			continue
+		}
+		if _, isEntityField := entityFieldByName(entity, a.Name); isEntityField {
+			continue
+		}
+		names = append(names, a.Name)
+	}
+	return names
+}
+
+// managedFormAttrValues — значения реквизитов из managedFormAttrNames на момент
+// отрисовки, в том же виде, в каком их отдаёт событие формы (serializeValue).
+// Незаполненные не попадают: пустое скрытое поле и так означает «не задано».
+func managedFormAttrValues(form *metadata.FormModule, entity *metadata.Entity, values any) map[string]any {
+	out := map[string]any{}
+	names := managedFormAttrNames(form, entity)
+	if len(names) == 0 {
+		return out
+	}
+	header := managedFormHeaderValues(nil, values)
+	for _, name := range names {
+		v, ok := header[name]
+		if !ok {
+			for k, candidate := range header {
+				if strings.EqualFold(k, name) {
+					v, ok = candidate, true
+					break
+				}
+			}
+		}
+		if !ok || v == nil {
+			continue
+		}
+		out[name] = serializeValue(v)
+	}
+	return out
+}

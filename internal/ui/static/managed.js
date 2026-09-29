@@ -17,6 +17,32 @@ function obManagedReady(fn) {
   else fn();
 }
 
+// BEGIN onebase-form-attr-carriers
+// Реквизиты формы (save:false) без своего контрола браузер с событиями не
+// отправлял, а сервер их между событиями не хранит: значение, выставленное
+// обработчиком (Объект.СкрытьX = Истина), доживало до следующего события, и
+// hidden_when/readonly_when по нему молча откатывались. Такому реквизиту
+// заводим скрытое поле: ответ события обновляет его через applyValues, FormData
+// увозит обратно. Реквизит со своим контролом (поле, флажок, ссылка) не
+// трогаем — два одноимённых элемента дали бы серверу два значения.
+function obEnsureFormAttrCarriers(form, names) {
+  var created = [];
+  if (!form || !names || !names.length) return created;
+  for (var i = 0; i < names.length; i++) {
+    var name = String(names[i] || '');
+    if (!name) continue;
+    if (form.elements && form.elements.namedItem && form.elements.namedItem(name)) continue;
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = name;
+    input.setAttribute('data-ob-form-attr-carrier', '1');
+    form.appendChild(input);
+    created.push(name);
+  }
+  return created;
+}
+// END onebase-form-attr-carriers
+
 // WeakSet не даёт повторному requestSubmit() снова попасть в асинхронное
 // ожидание FileReader и защищает от нескольких отправок, пока чтение ещё идёт.
 var obManagedFileSubmitPending = new WeakSet();
@@ -1840,7 +1866,18 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // предупреждение при ЛЮБОМ уходе со страницы — крестик, клик по ссылке,
   // закрытие/обновление вкладки.
   // Сохранить реквизиты формы перед полной отправкой и вернуть после перезагрузки.
-  obManagedReady(restoreFormAttrs);
+  // Скрытые поля реквизитов без контрола заводятся раньше: восстановление и
+  // первое событие (ПриОткрытии) должны их уже застать.
+  obManagedReady(function(){
+    var carried = obEnsureFormAttrCarriers(document.getElementById('main-form'), FORM_ATTRS);
+    var initial = cfg.formAttrValues && typeof cfg.formAttrValues === 'object' ? cfg.formAttrValues : {};
+    var start = {};
+    carried.forEach(function(name){
+      if (Object.prototype.hasOwnProperty.call(initial, name)) start[name] = initial[name];
+    });
+    if (Object.keys(start).length) applyValues(start);
+    restoreFormAttrs();
+  });
   document.addEventListener('submit', function(e){
     const form = e.target;
     if (!form || !form.querySelectorAll) return;

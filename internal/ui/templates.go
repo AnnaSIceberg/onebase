@@ -540,22 +540,13 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// полной перезагрузки страницы: «Записать» уходит POST'ом с редиректом, и
 		// иначе выбор в реквизите формы просто пропадал (в 1С форма живёт в
 		// памяти клиента и реквизиты переживают запись).
-		"formAttrNames": func(form *metadata.FormModule, entity *metadata.Entity) []string {
-			if form == nil {
-				return nil
-			}
-			var names []string
-			for _, a := range form.Attributes {
-				if a == nil || a.Name == "" || a.MainAttribute || a.TypeRef == "ValueTable" {
-					continue
-				}
-				if _, isEntityField := entityFieldByName(entity, a.Name); isEntityField {
-					continue
-				}
-				names = append(names, a.Name)
-			}
-			return names
-		},
+		//
+		// По тем же именам клиент заводит скрытые поля реквизитам без своего
+		// контрола, чтобы их значения доезжали и до событий формы.
+		"formAttrNames": managedFormAttrNames,
+		// formAttrValues — значения этих реквизитов на момент отрисовки: из них
+		// клиент заполняет скрытые поля (managed.js, obEnsureFormAttrCarriers).
+		"formAttrValues": managedFormAttrValues,
 		// fieldTitleRU достаёт ru-вариант из map[string]string или возвращает fallback.
 		"fieldTitleRU": func(m map[string]string, fallback string) string {
 			if v, ok := m["ru"]; ok && v != "" {
