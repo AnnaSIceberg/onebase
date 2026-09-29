@@ -21,7 +21,10 @@ func TestRefOptionsDeepChoiceSourceAccess(t *testing.T) {
 		{name: "object denied", denyRead: true},
 		{name: "row denied", denyRow: true},
 		{name: "field masked", masked: true},
-		{name: "field disclosable", masked: true, disclose: true, total: 53},
+		// Право disclose — явное раскрытие по действию пользователя, а не
+		// разрешение тихо отбирать по скрытому значению: маска закрывает
+		// источник и при нём (раскрытие из main, #1769 — deepChoiceSourceValue).
+		{name: "field disclosable", masked: true, disclose: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newChoiceHTTPFixture(t)

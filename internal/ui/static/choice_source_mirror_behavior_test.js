@@ -51,6 +51,9 @@ function runtime(items) {
   const sandbox = {
     window: {}, document, Promise, JSON, Array, Object, String, Error,
     encodeURIComponent, obReady() {},
+    // Отбор по владельцу подчинённого справочника (#1696) живёт вне
+    // вырезанного блока; у этого поля владельца нет — пустой параметр.
+    obRefFilterParam: () => '',
   };
   vm.createContext(sandbox);
   vm.runInContext(block, sandbox, {filename: 'ui.js#choice-source'});

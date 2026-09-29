@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -25,8 +26,12 @@ func TestChoicePredicatesEqualOrEmptyEmptySource(t *testing.T) {
 		}
 	}
 	empty := map[string]string{"Объект.Филиал": ""}
+	// Метод сервера (после #1769): источник без разыменования, поэтому ни
+	// реестр, ни хранилище не нужны — пустой сервер.
+	s := &Server{}
+	ctx := context.Background()
 
-	predicates, closed, err := choicePredicates(target, element(metadata.FormChoiceOpEqualOrEmpty), empty)
+	predicates, closed, err := s.choicePredicates(ctx, nil, nil, target, element(metadata.FormChoiceOpEqualOrEmpty), empty)
 	if err != nil {
 		t.Fatalf("eq_or_empty: %v", err)
 	}
@@ -34,12 +39,12 @@ func TestChoicePredicatesEqualOrEmptyEmptySource(t *testing.T) {
 		t.Fatalf("eq_or_empty with empty source: closed=%v predicates=%+v, want one predicate with nil value", closed, predicates)
 	}
 
-	if _, closed, err := choicePredicates(target, element(metadata.FormChoiceOpEqual), empty); err != nil || !closed {
+	if _, closed, err := s.choicePredicates(ctx, nil, nil, target, element(metadata.FormChoiceOpEqual), empty); err != nil || !closed {
 		t.Fatalf("eq with empty source: closed=%v err=%v, want fail-closed", closed, err)
 	}
 
 	id := uuid.MustParse("11111111-1111-4111-8111-111111111111")
-	predicates, closed, err = choicePredicates(target, element(metadata.FormChoiceOpEqualOrEmpty), map[string]string{"Объект.Филиал": id.String()})
+	predicates, closed, err = s.choicePredicates(ctx, nil, nil, target, element(metadata.FormChoiceOpEqualOrEmpty), map[string]string{"Объект.Филиал": id.String()})
 	if err != nil || closed || len(predicates) != 1 || predicates[0].Value != id {
 		t.Fatalf("eq_or_empty with source: closed=%v err=%v predicates=%+v", closed, err, predicates)
 	}

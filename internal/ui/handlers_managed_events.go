@@ -1100,6 +1100,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// txState — «живой» контекст: обработчик может позвать модуль, который
 	// откроет транзакцию, и ссылки объекта обязаны выполнять ПолучитьОбъект()
 	// внутри неё, а не ждать второго соединения (пул SQLite — одно).
+	if eventName == string(metadata.FormEventOnSearch) {
+		dslCtx = storage.ReadOnlyContext(dslCtx)
+	}
 	vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
 	defer rollbackDSLExecution(txState)
 	isNewForHandler := strings.TrimSpace(r.FormValue("_id")) == "" && (closeInv == nil || !closeInv.saved)
@@ -1202,6 +1205,17 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	if pr := parsePickResult(r.FormValue("_pick_result")); pr != nil {
 		vars["ПодборРезультат"] = pr
 		vars["PickResult"] = pr
+	}
+
+	// Повторная фаза 1: набранное в строке поиска открытого диалога приходит как
+	// _pick_query → переменная ПодборЗапрос для обработчика события Поиск.
+	// Кладём ВСЕГДА, а не только для непустой строки: очистка строки поиска —
+	// такой же запрос («покажи всё»), и обработчику нужно уметь его отличить от
+	// первого открытия, где переменной нет вовсе.
+	if eventName == string(metadata.FormEventOnSearch) {
+		q := strings.TrimSpace(r.FormValue("_pick_query"))
+		vars["ПодборЗапрос"] = q
+		vars["PickQuery"] = q
 	}
 
 	// Фаза 2 вопроса (#1528): ответ пользователя — переменная ВопросОтвет
@@ -1821,7 +1835,7 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 	// «пересчёт на лету»: выбрал в строке другую ссылку, обработчик строки
 	// отработал — колонка приехала обновлённой.
 	s.applyVirtualTPColumns(ctx, entity, form, tableParts)
-	tpRefOptions, _ := s.loadInitialTPRefOptions(ctx, entity, tableParts)
+	tpRefOptions, _ := s.loadInitialTPRefOptions(ctx, entity, tableParts, values)
 	if s.interp != nil {
 		if warnings := applyManagedFormConditionalRules(form, tableParts, values, rules, newInterpEvaluator(s.interp)); len(warnings) > 0 {
 			msgs = append(msgs, warnings...)
@@ -2454,6 +2468,9 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		// request ends even when operation timeouts are disabled.
 		dslCtx, cancelDSL := context.WithCancel(opCtx)
 		defer cancelDSL()
+		if eventName == string(metadata.FormEventOnSearch) {
+			dslCtx = storage.ReadOnlyContext(dslCtx)
+		}
 		vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
 		defer rollbackDSLExecution(txState)
 		thisObj := s.newFormObjectThisLive(dslCtx, txState, obj, virtEntity, form, false)
@@ -2477,6 +2494,20 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		pickerFn := newPickerBuiltin(&picker)
 		vars["ПоказатьПодбор"] = pickerFn
 		vars["ShowPicker"] = pickerFn
+
+		// Вопрос и список значений (#1683): формы обработок получают те же
+		// билтины диалогов, что и формы сущностей — иначе check пропускает
+		// вызов, а рантайм отвечает unknown function.
+		var question questionPayload
+		questionFn := newQuestionBuiltin(&question)
+		vars["ПоказатьВопрос"] = questionFn
+		vars["ShowQuestion"] = questionFn
+
+		var choiceItems []choiceListItem
+		choiceFn := newChoiceListBuiltin(&choiceItems)
+		vars["ДобавитьЗначениеСписка"] = choiceFn
+		vars["AddChoiceItem"] = choiceFn
+
 		condRuntime := newFormConditionalRuntime(form)
 		for k, v := range condRuntime.builtins() {
 			vars[k] = v
@@ -2486,23 +2517,30 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			vars["ПодборРезультат"] = pr
 			vars["PickResult"] = pr
 		}
-
-		// Вопрос (#1528, #1683): в формах ОБРАБОТОК билтин не регистрировался —
-		// конфигурация получала «unknown function "ПоказатьВопрос"», причём
-		// только в ответе на XHR: check и линтер этого не видят. Обработке
-		// подтверждение нужно ровно так же, как форме документа: «Вы уверены,
-		// что нужна повторная заявка?» перед созданием документа.
-		var question questionPayload
-		questionFn := newQuestionBuiltin(&question)
-		vars["ПоказатьВопрос"] = questionFn
-		vars["ShowQuestion"] = questionFn
-		if qa := strings.TrimSpace(r.FormValue("_question_answer")); qa != "" {
+		// Тот же ПодборЗапрос, что и в формах сущностей: серверный поиск обязан
+		// работать и в формах обработок, иначе платформенное поведение молча
+		// разное. Кладём ВСЕГДА при событии Поиск — очистка строки поиска это
+		// такой же запрос «покажи всё», и обработчику надо отличать его от
+		// первого открытия, где переменной нет вовсе.
+		if eventName == string(metadata.FormEventOnSearch) {
+			pickQuery, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_pick_query"))
+			q := strings.TrimSpace(pickQuery)
+			vars["ПодборЗапрос"] = q
+			vars["PickQuery"] = q
+		}
+		// Фаза 2 вопроса (#1683): ответ пользователя — переменная ВопросОтвет
+		// для обработчика события Ответ.
+		if qa, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_question_answer")); strings.TrimSpace(qa) != "" {
 			vars["ВопросОтвет"] = qa
 			vars["QuestionAnswer"] = qa
 		}
-		if qf := parseQuestionFields(r.FormValue("_question_fields")); qf != nil {
-			vars["ДиалогПоля"] = qf
-			vars["DialogFields"] = qf
+		// Поля диалога (правка форка): значения редактируемых полей вопроса —
+		// структура ДиалогПоля для обработчика события Ответ.
+		if qf, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_question_fields")); strings.TrimSpace(qf) != "" {
+			if fields := parseQuestionFields(qf); fields != nil {
+				vars["ДиалогПоля"] = fields
+				vars["DialogFields"] = fields
+			}
 		}
 		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars); err != nil {
 			opStatus = "error"
@@ -2531,8 +2569,9 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(false)
 			resp.Error = interpreter.FormatUserError(runErr)
 			resp.PickerData = picker
-			if question.Text != "" {
-				resp.Question = &question
+			if question.Variants != nil {
+				q := question
+				resp.Question = &q
 			}
 			resp.Dirty = boolPtr(transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
 			compactFormCloseDelta(&resp, closeInv)
@@ -2542,9 +2581,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 
 		resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(true)
 		resp.PickerData = picker
-		if question.Text != "" {
-			resp.Question = &question
+		if question.Variants != nil {
+			q := question
+			resp.Question = &q
 		}
+		resp.ChoiceList = choiceItems
 		resp.Dirty = boolPtr(transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
 		compactFormCloseDelta(&resp, closeInv)
 		respondJSON(enc, resp)
