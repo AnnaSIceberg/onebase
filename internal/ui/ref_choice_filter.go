@@ -177,6 +177,13 @@ func choicePredicates(target *metadata.Entity, element *metadata.FormElement, so
 		path := strings.TrimSpace(condition.From)
 		raw := strings.TrimSpace(sources[path])
 		if raw == "" {
+			// eq_or_empty: источник пуст — остаются записи с пустым
+			// реквизитом (общие), а не пустой список.
+			if condition.Op == metadata.FormChoiceOpEqualOrEmpty {
+				predicate.Value = nil
+				predicates = append(predicates, predicate)
+				continue
+			}
 			return nil, true, nil
 		}
 		// Источник не обязан быть ссылкой: разыменованный путь может дать

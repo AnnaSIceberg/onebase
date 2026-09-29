@@ -321,6 +321,22 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 							add("%s: eq сравнивает несовместимые ссылки %s.%s и %q", where, target.Name, targetField.Name, cond.From)
 						}
 
+					case metadata.FormChoiceOpEqualOrEmpty:
+						// Только ссылка со ссылочным источником того же типа:
+						// «пусто» у булева или строкового реквизита не нужно.
+						if isFolder || isRoot || isParent || hasValue || targetField == nil {
+							add("%s: eq_or_empty требует ссылочный field и from", where)
+							continue
+						}
+						source, sourceOK := formChoiceRefSource(owner, form, cond.From, entities)
+						if !sourceOK || source == nil {
+							add("%s: from %q не является явной ссылкой Объект.* или Форма.*", where, cond.From)
+							continue
+						}
+						if targetField.RefEntity == "" || !strings.EqualFold(targetField.RefEntity, source.Name) {
+							add("%s: eq_or_empty сравнивает несовместимые ссылки %s.%s и %q", where, target.Name, targetField.Name, cond.From)
+						}
+
 					case metadata.FormChoiceOpInHierarchy, metadata.FormChoiceOpNotInHierarchy:
 						if isFolder || hasValue {
 							add("%s: %s требует field и from", where, cond.Op)
