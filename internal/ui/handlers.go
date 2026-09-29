@@ -180,14 +180,8 @@ const (
 )
 
 const (
-	// Предзагрузка вариантов в форму остаётся маленькой: её платят все
-	// ссылочные поля на каждой отрисовке.
 	refPickerDefaultLimit = 50
-	// Потолок для формы подбора. Здесь страница одна и запрашивается по
-	// требованию, поэтому дешевле показать справочник целиком, чем заставлять
-	// оператора угадывать, что список обрезан: «показано 50 из 56» он читает
-	// как «остальных нет».
-	refPickerMaxLimit = 1000
+	refPickerMaxLimit     = 100
 )
 
 func (s *Server) refListParamsForMode(refEntity *metadata.Entity, mode refOptionsMode) storage.ListParams {
@@ -214,14 +208,6 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	params.Limit = extra.Limit
 	params.Offset = extra.Offset
 	params.ChoicePredicates = extra.ChoicePredicates
-	// choice_folders у элемента формы: группы участвуют в подборе наравне с
-	// элементами. Иначе поле, значение которого по смыслу является группой
-	// (населённый пункт адресного классификатора — у него есть улицы),
-	// невыбираемо: список пуст, а записанное значение платформа считает
-	// недопустимым и чистит.
-	if extra.IncludeFolders {
-		params.ExcludeFolders = false
-	}
 	var err error
 	params, err = s.rowFilterFor(ctx, refEntity, "read", params)
 	if err != nil {
@@ -234,7 +220,7 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	// The legacy picker never offered catalog groups. An explicit is_folder
 	// choice condition is the opt-in exception from plan 170; storage already
 	// applies its true/false value and replaces the implicit folder scope.
-	if !extra.IncludeFolders && !hasChoiceFolderScope(params.ChoicePredicates) {
+	if !hasChoiceFolderScope(params.ChoicePredicates) {
 		rows = filterOutFolders(rows)
 	}
 	// План 88: picker маскирует чувствительные поля до вычисления подписи и до
@@ -261,9 +247,6 @@ func (s *Server) referenceOptionsPageWithParams(ctx context.Context, refEntity *
 	countParams := s.refListParamsForMode(refEntity, refOptionsChoice)
 	countParams.Search = strings.TrimSpace(search)
 	countParams.ChoicePredicates = extra.ChoicePredicates
-	if extra.IncludeFolders {
-		countParams.ExcludeFolders = false
-	}
 	countParams, err = s.rowFilterFor(ctx, refEntity, "read", countParams)
 	if err != nil {
 		return nil, 0, err

@@ -428,40 +428,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// element id. The same entity field may be rendered twice with different
 		// filters; falling back by field name is only for elements without the
 		// opt-in contract.
-		// noChoiceDropdown — элемент объявил choice_dropdown: false. Список у
-		// такого поля не раскрывается вовсе: <select> остаётся ради значения и
-		// отправки формы, но перестаёт быть интерактивным, а выбор идёт кнопкой
-		// подбора. Полностью заменить его на текст нельзя — форма подбора и
-		// обработчики событий работают именно с <select>.
-		// hideRefCard — кнопка «Открыть карточку» выключена: своим ключом
-		// элемента или, если его нет, ключом формы целиком.
-		"hideRefCard": func(ctx map[string]any, element *metadata.FormElement) bool {
-			if element != nil && element.RefCardButton != nil {
-				return !*element.RefCardButton
-			}
-			hidden, _ := ctx["HideRefCard"].(bool)
-			return hidden
-		},
-		// adminOnlyLocked — поле заперто, потому что смотрит не администратор.
-		// Тот же запрет входит в ElReadOnly и ответы событий, чтобы ложное
-		// readonly_when не разблокировало поле после первого round trip.
-		"adminOnlyLocked": func(ctx map[string]any, element *metadata.FormElement) bool {
-			if element == nil || !element.EditableAdminOnly {
-				return false
-			}
-			admin, _ := ctx["IsAdmin"].(bool)
-			return !admin
-		},
-		"noChoiceDropdown": func(element *metadata.FormElement) bool {
-			return element != nil && element.ChoiceDropdown != nil && !*element.ChoiceDropdown
-		},
 		"managedRefOptions": func(ctx map[string]any, element *metadata.FormElement, field string) []map[string]any {
-			// choice_dropdown: false — список вариантов в <select> не
-			// разворачивается, выбор идёт формой подбора. Текущее значение
-			// остаётся: без его <option> заполненное поле выглядело бы пустым.
-			if element != nil && element.ChoiceDropdown != nil && !*element.ChoiceDropdown {
-				return managedRefSelectedOnly(ctx, element, field)
-			}
 			if element != nil {
 				if scoped, ok := ctx["ManagedChoiceOptions"].(map[string][]map[string]any); ok {
 					if rows, exists := scoped[element.ID]; exists {
@@ -1187,9 +1154,6 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return template.JS(b) //nolint:gosec // G203: JSON сформирован encoding/json
 		},
 		"managedTPColumnPlan": managedTPColumnPlan,
-		"managedVTColumnPlan": managedVTColumnPlan,
-		"managedVTEditable":   managedVTEditable,
-		"managedTPEditable":   managedTPEditable,
 		// managedTPFieldsAttr — значение data-tp-fields в порядке отрисовки
 		// ячеек: applyTableParts перестраивает строку по этому списку, и любое
 		// расхождение порядка развалило бы соответствие ячеек колонкам.
@@ -1251,8 +1215,6 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// Решается по составу маски, а не отдельным ключом: «00.00.00» — это
 		// заведомо цифры, и заставлять автора объявлять это второй раз незачем.
 		"inputMaskDigitsOnly": metadata.InputMaskDigitsOnly,
-		// inputMaskHint — шаблон в пустом поле: «(___)___-__-__».
-		"inputMaskHint":       metadata.InputMaskHint,
 		"wcell":               widgetCell,
 		"echartsJSON":         echartsJSON,
 		"stageChartJSON":      stageChartJSON,
@@ -1412,7 +1374,10 @@ body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;height:
    auto, поэтому он не может стать ниже своего содержимого — и длинное меню
    растягивало всю страницу, несмотря на overflow:hidden выше. */
 .app-body{display:flex;flex:1;overflow:hidden;min-height:0}
-aside{width:210px;background:#1e293b;color:#fff;padding:16px 0;flex-shrink:0;overflow-y:auto;min-height:0}
+/* Оформление меню привязано к #ob-nav, а не к голому aside: детальная панель —
+   тоже <aside> с белым фоном, и унаследованный color:#fff делал её значения
+   белыми на белом (#1670). */
+#ob-nav{width:210px;background:#1e293b;color:#fff;padding:16px 0;flex-shrink:0;overflow-y:auto;min-height:0}
 aside .sec{font-size:11px;text-transform:uppercase;color:#94a3b8;margin:14px 12px 4px;letter-spacing:.05em}
 aside a{display:block;padding:6px 14px;color:#cbd5e1;text-decoration:none;font-size:14px;margin:1px 6px;border-radius:5px;line-height:1.3;overflow-wrap:break-word}
 aside a:hover{background:#334155;color:#fff}
@@ -1510,8 +1475,8 @@ body{padding-bottom:32px}
      содержимому, иначе низ формы стал бы недоступен. */
   body{height:auto;overflow:visible}
   .app-body{display:block;overflow:visible}
-  aside{position:fixed;left:0;top:0;bottom:0;width:78vw;max-width:300px;z-index:401;transform:translateX(-100%);transition:transform .2s ease;box-shadow:2px 0 16px rgba(0,0,0,.3)}
-  body.nav-open aside{transform:translateX(0)}
+  #ob-nav{position:fixed;left:0;top:0;bottom:0;width:78vw;max-width:300px;z-index:401;transform:translateX(-100%);transition:transform .2s ease;box-shadow:2px 0 16px rgba(0,0,0,.3)}
+  body.nav-open #ob-nav{transform:translateX(0)}
   body.nav-open::before{content:"";position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400}
   main{padding:14px;overflow-y:visible}
   h2{font-size:19px;margin-bottom:14px}
@@ -1725,17 +1690,6 @@ const tplIndex = `
 .w-refresh[disabled]{cursor:wait;opacity:.55}.w-card.ob-widget-loading .w-refresh{animation:ob-widget-spin .8s linear infinite}
 @keyframes ob-widget-spin{to{transform:rotate(360deg)}}
 .w-refresh-status{font-size:12px;color:#b91c1c;margin-top:7px;min-height:0}
-/* Отборы list-виджета: разметка их рисовала (.w-filters/.w-filter), а правил
-   не было вовсе — <label> инлайновый, подпись и список текли в строку и
-   переносились как придётся, а ширина <select> равнялась самому длинному
-   значению («ОператорКоллЦентраТест» растягивал карточку). Теперь это ряд:
-   каждый отбор занимает равную долю и ужимается (min-width:0 — иначе flex не
-   даёт элементу стать уже содержимого), подпись стоит НАД полем. */
-.w-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin-bottom:10px}
-.w-filter{display:flex;flex-direction:column;gap:2px;flex:1 1 0;min-width:96px}
-.w-filter>span{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.w-filter select,.w-filter input{width:100%;min-width:0;box-sizing:border-box;font-size:13px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:6px;background:#fff}
-.w-filter-reset{flex:0 0 auto}
 .w-kpi-value{font-size:32px;font-weight:700;color:#0f172a;line-height:1.1;white-space:nowrap}
 .w-kpi-sub{font-size:12px;color:#94a3b8;margin-top:6px}
 /* Кликабельный счётчик: остаётся числом (тот же кегль и цвет), но ведёт себя
@@ -2025,7 +1979,14 @@ const tplList = `
 {{if .TreeRows}}
 {{$treeCols := listColumns .Entity}}
 <div style="overflow-x:auto">
-<table><thead><tr>
+<table
+  data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
+  data-ob-row-subsystem="{{$.CurrentSubsystem}}"
+  data-ob-row-list-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}"
+  data-ob-row-copy-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/new{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}"
+  data-ob-row-can-copy="{{if $.CanWrite}}1{{end}}"
+  data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
+><thead><tr>
   {{range $treeCols}}<th>{{.DisplayName $.Lang}}</th>{{end}}
   <th style="width:90px"></th>
 </tr></thead><tbody>
@@ -2038,20 +1999,10 @@ const tplList = `
   data-tree-parent="{{index $row "parent_id"}}"
   data-predefined="{{if index $row "_is_predefined"}}1{{end}}"
   data-is-folder="{{if $isFolder}}1{{end}}"
-  data-folder-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}?parent={{index $row "id"}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}"
-  data-mark-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/delete?mark=1"
-  data-del-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/delete"
   data-posted="{{if index $row "posted"}}1{{end}}"
   data-marked="{{if index $row "deletion_mark"}}1{{end}}"
-  data-unpost-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/unpost"
-  data-unmark-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/delete?mark=0"
-  data-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
   data-activity-inactive="{{if index $row "_activity_inactive"}}1{{end}}"
-  data-activity-hide-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/activity?active=0"
-  data-activity-show-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/activity?active=1"
-  data-copy-url="{{if $.CanWrite}}/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/new?copy={{index $row "id"}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}{{end}}"
-  data-open-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}"
-  data-ob-detail-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/detail-panel">
+>
   {{range $i, $col := $treeCols}}
     {{if treeColumn $treeCols $i}}
       <td>
@@ -2086,27 +2037,24 @@ const tplList = `
 {{/* ===== TILES VIEW (плитка) ===== */}}
 {{if .Rows}}
 {{$tile := tileView .Entity}}
-<div class="tile-grid" role="listbox">
+<div class="tile-grid" role="listbox"
+  data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
+  data-ob-row-subsystem="{{$.CurrentSubsystem}}"
+  data-ob-row-list-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" ""}}"
+  data-ob-row-copy-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/new{{listURL $.Query "copy" ""}}"
+  data-ob-row-can-copy="{{if $.CanWrite}}1{{end}}"
+  data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
+>
 {{range .Rows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}
 <div class="tile-card{{if index $row "deletion_mark"}} tile-deleted{{end}}"
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if $.CanWrite}} F9{{end}}{{if and $.CanDelete (not (index $row "_is_predefined"))}} Delete{{end}}" role="option"
   data-ob-entity-id="{{index $row "id"}}"
   data-predefined="{{if index $row "_is_predefined"}}1{{end}}"
   data-is-folder="{{if $isFolder}}1{{end}}"
-  data-folder-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}"
-  data-mark-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/delete?mark=1"
-  data-del-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/delete"
   data-posted="{{if index $row "posted"}}1{{end}}"
   data-marked="{{if index $row "deletion_mark"}}1{{end}}"
-  data-unpost-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/unpost"
-  data-unmark-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/delete?mark=0"
-  data-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
   data-activity-inactive="{{if index $row "_activity_inactive"}}1{{end}}"
-  data-activity-hide-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/activity?active=0"
-  data-activity-show-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/activity?active=1"
-  data-copy-url="{{if $.CanWrite}}/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/new?copy={{index $row "id"}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}{{end}}"
-  data-open-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}"
-  data-ob-detail-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/detail-panel">
+>
   {{range $f := $tile.ImageFields}}{{$iv := index $row $f.Name}}
   <div class="tile-img"{{if $iv}} style="background-image:url('/ui/_image/{{$iv}}')"{{end}}>{{if not $iv}}🖼{{end}}</div>
   {{end}}
@@ -2145,27 +2093,24 @@ const tplList = `
   </th>
   {{end}}
   <th style="width:90px"></th>
-</tr></thead><tbody id="list-body">
+</tr></thead><tbody id="list-body"
+  data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
+  data-ob-row-subsystem="{{$.CurrentSubsystem}}"
+  data-ob-row-list-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" ""}}"
+  data-ob-row-copy-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/new{{listURL $.Query "copy" ""}}"
+  data-ob-row-can-copy="{{if $.CanWrite}}1{{end}}"
+  data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
+>
 {{range .Rows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}
 <tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer"{{else}}style="cursor:pointer"{{end}}
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if $.CanWrite}} F9{{end}}{{if and $.CanDelete (not (index $row "_is_predefined"))}} Delete{{end}}"
   data-ob-entity-id="{{index $row "id"}}"
   data-predefined="{{if index $row "_is_predefined"}}1{{end}}"
   data-is-folder="{{if $isFolder}}1{{end}}"
-  data-folder-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}"
-  data-mark-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/delete?mark=1"
-  data-del-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/delete"
   data-posted="{{if index $row "posted"}}1{{end}}"
   data-marked="{{if index $row "deletion_mark"}}1{{end}}"
-  data-unpost-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/unpost"
-  data-unmark-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/delete?mark=0"
-  data-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
   data-activity-inactive="{{if index $row "_activity_inactive"}}1{{end}}"
-  data-activity-hide-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/activity?active=0"
-  data-activity-show-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/activity?active=1"
-  data-copy-url="{{if $.CanWrite}}/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/new?copy={{index $row "id"}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}{{end}}"
-  data-open-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}"
-  data-ob-detail-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}/detail-panel">
+>
   {{if eq (str $.Entity.Kind) "document"}}
     <td style="text-align:center">
       {{if index $row "posted"}}<span style="color:#16a34a;font-weight:700" title="{{t $.Lang "Проведён"}}">✓</span>{{else}}<span style="color:#94a3b8" title="{{t $.Lang "Не проведён"}}">—</span>{{end}}
@@ -4198,45 +4143,3 @@ const tplPageCustom = `
 </body></html>
 {{end}}
 `
-
-// managedRefSelectedOnly возвращает единственный вариант ссылочного поля —
-// текущее значение, — когда элемент объявил `choice_dropdown: false`.
-// Варианты берутся из того же набора, что и обычно: отфильтрованного
-// choice_filter, если он есть, иначе общего. Так значение поля показывается
-// ровно тем же представлением, что и в развёрнутом списке, а выбор нового
-// значения остаётся за формой подбора.
-func managedRefSelectedOnly(ctx map[string]any, element *metadata.FormElement, field string) []map[string]any {
-	values, _ := ctx["Values"].(map[string]string)
-	current := strings.TrimSpace(values[field])
-	if current == "" {
-		return nil
-	}
-	rows := managedRefAllOptions(ctx, element, field)
-	for _, row := range rows {
-		if id, _ := row["id"].(string); id == current {
-			return []map[string]any{row}
-		}
-	}
-	return nil
-}
-
-// managedRefAllOptions — общий набор вариантов элемента: сначала
-// отфильтрованный choice_filter по стабильному id, затем общий по имени поля.
-func managedRefAllOptions(ctx map[string]any, element *metadata.FormElement, field string) []map[string]any {
-	if element != nil {
-		if scoped, ok := ctx["ManagedChoiceOptions"].(map[string][]map[string]any); ok {
-			if rows, exists := scoped[element.ID]; exists {
-				return rows
-			}
-		}
-	}
-	if refs, ok := ctx["RefOptions"].(map[string][]map[string]any); ok {
-		return refs[field]
-	}
-	if refs, ok := ctx["RefOptions"].(map[string]any); ok {
-		if rows, ok := refs[field].([]map[string]any); ok {
-			return rows
-		}
-	}
-	return nil
-}

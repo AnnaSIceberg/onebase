@@ -1296,6 +1296,76 @@ function obListConfig() {
   return obReadJSONScript('ob-list-config', { labels: {} }) || { labels: {} };
 }
 
+// BEGIN onebase-row-url (executed directly by the Node regression test)
+// Ссылки строк списка собираются из опорных адресов, объявленных один раз на
+// контейнере (data-ob-row-base, -subsystem, -list-url, -copy-url, -can-copy,
+// -activity-enabled), а не повторяются в каждой строке: на списке из 100 строк
+// это экономит около 1,5 КБ на строку. Строки, приходящие из JSON при подгрузке,
+// по-прежнему могут нести готовые ссылки — они имеют приоритет.
+var OB_ROW_OWN = {
+  open: 'openUrl', folder: 'folderUrl', mark: 'markUrl', unmark: 'unmarkUrl',
+  del: 'delUrl', unpost: 'unpostUrl', activityShow: 'activityShowUrl',
+  activityHide: 'activityHideUrl', detail: 'obDetailUrl', copy: 'copyUrl'
+};
+// Ссылка действия строки собирается из опорных адресов контейнера и
+// идентификатора строки: раньше каждая строка несла десять готовых URL, и на
+// списке из 100 строк это давало больше половины веса страницы. Параметр
+// добавляется штатным URLSearchParams, а не подстановкой в строку, — иначе
+// пользовательский ввод, сохранённый в query списка, мог бы подменить слот.
+function obRowParamURL(base, name, value) {
+  // Через new URL() нельзя: он percent-кодирует кириллицу в пути, и адрес
+  // перестаёт совпадать с тем, что отдаёт сервер. Трогаем только строку запроса.
+  var hash = '';
+  var h = base.indexOf('#');
+  if (h >= 0) { hash = base.slice(h); base = base.slice(0, h); }
+  var q = base.indexOf('?');
+  var path = q >= 0 ? base.slice(0, q) : base;
+  var params = new URLSearchParams(q >= 0 ? base.slice(q + 1) : '');
+  params.set(name, value);
+  var query = params.toString();
+  return path + (query ? '?' + query : '') + hash;
+}
+function obRowUrl(row, kind) {
+  if (!row) return '';
+  var own = row.dataset[OB_ROW_OWN[kind]];
+  if (own) return own;                     // строка из JSON-подгрузки несёт свои ссылки
+  var box = row.closest('[data-ob-row-base]');
+  if (!box) return '';
+  var id = row.dataset.obEntityId || '';
+  if (!id) return '';
+  var base = box.dataset.obRowBase || '';
+  var sub = box.dataset.obRowSubsystem || '';
+  var item = base + '/' + encodeURIComponent(id);
+  switch (kind) {
+    case 'open': return item + (sub ? '?subsystem=' + encodeURIComponent(sub) : '');
+    case 'mark': return item + '/delete?mark=1';
+    case 'unmark': return item + '/delete?mark=0';
+    case 'del': return item + '/delete';
+    case 'unpost': return item + '/unpost';
+    case 'activityShow': return item + '/activity?active=1';
+    case 'activityHide': return item + '/activity?active=0';
+    case 'detail': return item + '/detail-panel';
+    case 'folder': return obRowParamURL(box.dataset.obRowListUrl || base, 'parent', id);
+    case 'copy':
+      if (box.dataset.obRowCanCopy !== '1') return '';
+      return obRowParamURL(box.dataset.obRowCopyUrl || (base + '/new'), 'copy', id);
+  }
+  return '';
+}
+function obRowActivityEnabled(row) {
+  if (!row) return false;
+  var own = row.dataset.activityEnabled;
+  if (own) return own === '1';
+  var box = row.closest('[data-ob-row-base]');
+  return !!box && box.dataset.obRowActivityEnabled === '1';
+}
+// Ключ выделенной строки: идентификатор устойчив к перерисовке списка, тогда как
+// прежний data-open-url на строках больше не выводится.
+function obRowKey(row) {
+  if (!row) return '';
+  return row.dataset.obEntityId || row.getAttribute('data-open-url') || '';
+}
+// END onebase-row-url
 function obListLabel(key, fallback) {
   var labels = obListConfig().labels || {};
   return labels[key] || fallback;
@@ -1391,14 +1461,16 @@ function listSyncActionsBtn() {
 }
 
 // Возврат выделения после перерисовки списка: та же запись опознаётся по
-// data-open-url (в нём id, у всех трёх видов строк — таблица, плитка, дерево).
+// obRowKey() — то есть по data-ob-entity-id, который несут все три вида строк
+// (таблица, плитка, дерево); строки из JSON-подгрузки откатываются на свой
+// data-open-url.
 // Записи не стало в выдаче — выделение снимается, а не остаётся на призраке.
 function listRestoreSel(key, root, options) {
   var next = null;
   if (key) {
     var rows = (root || document).querySelectorAll('[data-ob-list-row]');
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].getAttribute('data-open-url') === key) { next = rows[i]; break; }
+      if (obRowKey(rows[i]) === key) { next = rows[i]; break; }
     }
   }
   listSetSel(next, { focus: !!(options && options.focus), root: root || document });
@@ -1421,7 +1493,7 @@ function obReplaceLiveListContents(cur, fresh) {
 
 function listSelKey() {
   var sel = listSel();
-  return sel ? (sel.getAttribute('data-open-url') || '') : '';
+  return obRowKey(sel);
 }
 
 function listRowClick(e, tr) {
@@ -1436,8 +1508,8 @@ function listRowDblClick(e, tr) {
 
 function listActivateRow(tr) {
   if (!tr) return;
-  if (tr.dataset.isFolder === '1') window.location.href = tr.dataset.folderUrl;
-  else listOpen(tr.dataset.openUrl);
+  if (tr.dataset.isFolder === '1') window.location.href = obRowUrl(tr, 'folder');
+  else listOpen(obRowUrl(tr, 'open'));
 }
 
 // Встроенные горячие клавиши — привычные по 1С. Живут в ui.js, потому что нужны
@@ -1570,7 +1642,7 @@ function obListCurrentRow() {
 function obListCanMarkDelete(row) {
   var cfg = obListConfig();
   return !!(row && row.dataset && cfg.canDelete === true &&
-    row.dataset.predefined !== '1' && String(row.dataset.markUrl || '').trim());
+    row.dataset.predefined !== '1' && String(obRowUrl(row, 'mark') || '').trim());
 }
 
 function obHandleListDeleteShortcut(e) {
@@ -1582,7 +1654,7 @@ function obHandleListDeleteShortcut(e) {
   if (!obListCanMarkDelete(sel)) return;
   e.preventDefault();
   if (listSel() !== sel) listSetSel(sel);
-  listSubmit(sel.dataset.markUrl, obListLabel('markDeleteConfirm', 'Пометить на удаление?'));
+  listSubmit(obRowUrl(sel, 'mark'), obListLabel('markDeleteConfirm', 'Пометить на удаление?'));
 }
 
 function obInitListFocusSelection() {
@@ -1948,17 +2020,17 @@ function obInitKeyboardShortcuts() {
     if ((e.key === 'Enter' || e.key === 'F2') && sel) {
       e.preventDefault();
       if (listSel() !== sel) listSetSel(sel);
-      if (e.key === 'F2') listOpen(sel.dataset.openUrl);
+      if (e.key === 'F2') listOpen(obRowUrl(sel, 'open'));
       else listActivateRow(sel);
       return;
     }
     // F9 в списке — «Создать копированием», как в 1С. В форме та же клавиша
     // копирует строку ТЧ, но туда обработчик не доходит: obHandleDOMTableShortcut
     // выше забирает F9 себе, когда активна таблица ТЧ.
-    if (e.key === 'F9' && sel && sel.dataset.copyUrl) {
+    if (e.key === 'F9' && sel && obRowUrl(sel, 'copy')) {
       e.preventDefault();
       if (listSel() !== sel) listSetSel(sel);
-      listOpen(sel.dataset.copyUrl);
+      listOpen(obRowUrl(sel, 'copy'));
     }
   });
   document.addEventListener('keydown', obHandleListDeleteShortcut);
@@ -2141,42 +2213,43 @@ function listMenuItems(tr) {
   var isFolder = tr.dataset.isFolder === '1';
   var items = [];
   if (isFolder) {
-    items.push({ label: labels.enterGroup || '▶ Войти в группу', fn: function () { window.location.href = tr.dataset.folderUrl; } });
-    items.push({ label: labels.edit || 'Редактировать', fn: function () { listOpen(tr.dataset.openUrl); } });
+    items.push({ label: labels.enterGroup || '▶ Войти в группу', fn: function () { window.location.href = obRowUrl(tr, 'folder'); } });
+    items.push({ label: labels.edit || 'Редактировать', fn: function () { listOpen(obRowUrl(tr, 'open')); } });
   } else {
-    items.push({ label: labels.open || 'Открыть', fn: function () { listOpen(tr.dataset.openUrl); } });
+    items.push({ label: labels.open || 'Открыть', fn: function () { listOpen(obRowUrl(tr, 'open')); } });
   }
   // «Скопировать» (F9): открывает форму создания, заполненную значениями строки.
-  // Пустой data-copy-url = нет права записи, пункт не показываем.
-  if (tr.dataset.copyUrl) {
-    items.push({ label: labels.copy || 'Скопировать', fn: function () { listOpen(tr.dataset.copyUrl); } });
+  // Право записи объявлено один раз на контейнере (data-ob-row-can-copy);
+  // без него obRowUrl вернёт пустую строку и пункт не показываем.
+  if (obRowUrl(tr, 'copy')) {
+    items.push({ label: labels.copy || 'Скопировать', fn: function () { listOpen(obRowUrl(tr, 'copy')); } });
   }
   var basedOnItems = listBasedOnItems(tr, cfg);
   if (basedOnItems.length) {
     items.push({ label: labels.basedOn || 'Ввести на основании', items: basedOnItems });
   }
-  if (cfg.canWrite && tr.dataset.activityEnabled === '1') {
+  if (cfg.canWrite && obRowActivityEnabled(tr)) {
     if (tr.dataset.activityInactive === '1') {
-      items.push({ label: labels.activityShow || 'Вернуть в выбор', fn: function () { listSubmit(tr.dataset.activityShowUrl, labels.activityShowConfirm || 'Вернуть в выбор?'); } });
+      items.push({ label: labels.activityShow || 'Вернуть в выбор', fn: function () { listSubmit(obRowUrl(tr, 'activityShow'), labels.activityShowConfirm || 'Вернуть в выбор?'); } });
     } else {
-      items.push({ label: labels.activityHide || 'Скрыть из выбора', fn: function () { listSubmit(tr.dataset.activityHideUrl, labels.activityHideConfirm || 'Скрыть из выбора?'); } });
+      items.push({ label: labels.activityHide || 'Скрыть из выбора', fn: function () { listSubmit(obRowUrl(tr, 'activityHide'), labels.activityHideConfirm || 'Скрыть из выбора?'); } });
     }
   }
   if (cfg.canDelete) {
     if (!isPredefined) {
-      items.push({ label: labels.markDelete || 'Пометить на удаление', danger: true, fn: function () { listSubmit(tr.dataset.markUrl, labels.markDeleteConfirm || 'Пометить на удаление?'); } });
+      items.push({ label: labels.markDelete || 'Пометить на удаление', danger: true, fn: function () { listSubmit(obRowUrl(tr, 'mark'), labels.markDeleteConfirm || 'Пометить на удаление?'); } });
     } else {
       items.push({ label: labels.predefinedNoDelete || 'Предопределённый — нельзя удалить', disabled: true });
     }
   }
   if (cfg.canUnpost && tr.dataset.posted === '1') {
-    items.push({ label: labels.unpost || 'Отменить проведение', fn: function () { listSubmit(tr.dataset.unpostUrl, labels.unpostConfirm || 'Отменить проведение?'); } });
+    items.push({ label: labels.unpost || 'Отменить проведение', fn: function () { listSubmit(obRowUrl(tr, 'unpost'), labels.unpostConfirm || 'Отменить проведение?'); } });
   }
   if (cfg.canDelete && tr.dataset.marked === '1' && !isPredefined) {
-    items.push({ label: labels.unmarkDelete || 'Снять пометку на удаление', fn: function () { listSubmit(tr.dataset.unmarkUrl, labels.unmarkDeleteConfirm || 'Снять пометку на удаление?'); } });
+    items.push({ label: labels.unmarkDelete || 'Снять пометку на удаление', fn: function () { listSubmit(obRowUrl(tr, 'unmark'), labels.unmarkDeleteConfirm || 'Снять пометку на удаление?'); } });
   }
   if (cfg.isAdmin && !isPredefined) {
-    items.push({ label: labels.deleteForever || 'Удалить навсегда', danger: true, fn: function () { listSubmit(tr.dataset.delUrl, labels.deleteForeverConfirm || 'Удалить запись навсегда?'); } });
+    items.push({ label: labels.deleteForever || 'Удалить навсегда', danger: true, fn: function () { listSubmit(obRowUrl(tr, 'del'), labels.deleteForeverConfirm || 'Удалить запись навсегда?'); } });
   }
   return items;
 }
@@ -2274,6 +2347,27 @@ function listActionsBtnClick(e, btn) {
 // переход по ссылке и возврат назад не должны сами забирать фокус в поиск.
 var OB_LIST_SEARCH_FOCUS = 'ob-list-search-focus';
 
+// Ключ отметки привязан к вкладке оболочки. Вкладки — same-origin iframe с
+// общим sessionStorage, и один общий ключ позволял вкладкам глотать отметку
+// друг друга: A читал отметку B, расходовал её и отклонял по pathname, B
+// оставался без ничего (#1599). Имя фрейма «ob-tab-<id>» ставит оболочка
+// (tabs.go): оно переживает навигацию внутри iframe, восстанавливается вместе
+// с вкладками после перезапуска оболочки и различает два экземпляра одного
+// URL. Страница без оболочки (открыта напрямую) продолжает пользоваться общим
+// ключом — в окне без вкладок глотать отметку некому.
+function obListSearchKey() {
+  var frame = null;
+  try {
+    frame = window.frameElement;
+  } catch (e) {
+    frame = null;
+  }
+  if (frame && typeof frame.name === 'string' && frame.name.indexOf('ob-tab-') === 0) {
+    return OB_LIST_SEARCH_FOCUS + ':' + frame.name;
+  }
+  return OB_LIST_SEARCH_FOCUS;
+}
+
 function obListSearchStorage() {
   // В приватном режиме и при запрещённых сайту данных бросает сам доступ к
   // свойству — потерянный фокус не повод ронять поиск целиком.
@@ -2298,7 +2392,7 @@ function obSaveListSearchFocus(input) {
   var start = obListSearchCaret(input.selectionStart, value.length);
   var end = obListSearchCaret(input.selectionEnd, value.length);
   try {
-    store.setItem(OB_LIST_SEARCH_FOCUS, JSON.stringify({
+    store.setItem(obListSearchKey(), JSON.stringify({
       path: location.pathname,
       start: start,
       end: end < start ? start : end,
@@ -2313,9 +2407,9 @@ function obRestoreListSearchFocus() {
   if (!store) return null;
   var raw = null;
   try {
-    raw = store.getItem(OB_LIST_SEARCH_FOCUS);
+    raw = store.getItem(obListSearchKey());
     // Снимаем отметку сразу: она действует ровно на одну загрузку страницы.
-    if (raw !== null) store.removeItem(OB_LIST_SEARCH_FOCUS);
+    if (raw !== null) store.removeItem(obListSearchKey());
   } catch (e) {
     return null;
   }
@@ -2329,6 +2423,15 @@ function obRestoreListSearchFocus() {
   if (!state || state.path !== location.pathname) return null;
   var input = document.getElementById('ob-list-search');
   if (!input) return null;
+  // Скрытая вкладка (display:none в оболочке) не должна забирать активный
+  // фокус оболочки: отметку расходуем, фокус не трогаем (#1599).
+  var hidden = false;
+  try {
+    hidden = document.hidden === true;
+  } catch (e) {
+    hidden = false;
+  }
+  if (hidden) return null;
   var value = typeof input.value === 'string' ? input.value : '';
   var start = obListSearchCaret(state.start, value.length);
   var end = obListSearchCaret(state.end, value.length);
@@ -3737,67 +3840,16 @@ function obOpenQuestion(payload, elementName) {
   text.style.cssText = 'font-size:14px;color:#1e293b;white-space:pre-line;margin-bottom:16px';
   text.textContent = payload.text;
   box.appendChild(text);
-  // Строки данных: итог операции (номер записанного документа, клиент, дата)
-  // и, при необходимости, поле ввода. Значения редактируемых уезжают обратно
-  // в обработчик вместе с нажатой кнопкой.
-  var inputs = {};
-  (payload.fields || []).forEach(function (field) {
-    if (!field || !field.name) return;
-    var line = document.createElement('div');
-    line.style.cssText = 'margin-bottom:10px';
-    if (field.label) {
-      var label = document.createElement('div');
-      label.style.cssText = 'font-size:12px;color:#64748b;margin-bottom:3px';
-      label.textContent = field.label;
-      line.appendChild(label);
-    }
-    if (field.editable) {
-      var input = document.createElement('input');
-      input.type = 'text';
-      input.value = field.value == null ? '' : String(field.value);
-      input.style.cssText = 'width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:14px;outline:none';
-      line.appendChild(input);
-      inputs[field.name] = input;
-    } else {
-      var value = document.createElement('div');
-      value.style.cssText = field.strong
-        ? 'font-size:15px;font-weight:650;color:#0f172a'
-        : 'font-size:14px;color:#1e293b';
-      value.textContent = field.value == null ? '' : String(field.value);
-      line.appendChild(value);
-    }
-    box.appendChild(line);
-  });
-  if (payload.fields && payload.fields.length) {
-    var gap = document.createElement('div');
-    gap.style.cssText = 'height:8px';
-    box.appendChild(gap);
-  }
   var row = document.createElement('div');
-  // Два-три варианта («Да / Нет / Отмена») кладём в ряд справа, как привычную
-  // пару кнопок. Списком выбора — четыре и больше («укажите причину жалобы») —
-  // столбиком во всю ширину: в ряд они не помещались и вылезали за окно,
-  // потому что перенос не был разрешён вовсе.
-  var manyVariants = payload.variants.length > 3;
-  row.style.cssText = manyVariants
-    ? 'display:flex;flex-direction:column;gap:6px;align-items:stretch;max-height:50vh;overflow-y:auto'
-    : 'display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end';
+  row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
   payload.variants.forEach(function (variant) {
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = variant;
-    btn.style.cssText = 'padding:8px 16px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:14px;white-space:normal'
-      + (manyVariants ? ';text-align:left;width:100%' : ';max-width:100%');
+    btn.style.cssText = 'padding:8px 16px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:14px';
     btn.addEventListener('click', function () {
       modal.remove();
-      var extra = { _question_answer: variant };
-      var names = Object.keys(inputs);
-      if (names.length) {
-        var values = {};
-        names.forEach(function (name) { values[name] = inputs[name].value; });
-        extra._question_fields = JSON.stringify(values);
-      }
-      if (typeof obFire === 'function') obFire(elementName, 'Ответ', extra);
+      if (typeof obFire === 'function') obFire(elementName, 'Ответ', { _question_answer: variant });
     });
     row.appendChild(btn);
   });
@@ -3825,7 +3877,13 @@ function obRefChoiceSnapshot(sel) {
   var declared = ctx.sources || {};
   var paths = Object.keys(declared).sort();
   paths.forEach(function (path) {
-    var control = obChoiceSourceControl(sel, declared[path]);
+    var name = declared[path];
+    var control = null;
+    if (sel.form && sel.form.elements && name) control = sel.form.elements.namedItem(name);
+    if (!control && name) {
+      var controls = document.getElementsByName(name);
+      if (controls && controls.length) control = controls[0];
+    }
     values[path] = control && control.value != null ? String(control.value) : '';
   });
   var query = '&form_entity=' + encodeURIComponent(ctx.form_entity) +
@@ -3839,40 +3897,6 @@ function obRefChoiceSnapshot(sel) {
     fingerprint: JSON.stringify([ctx.form_entity, ctx.form, ctx.element, fingerprintParts]),
     selected: sel.value == null ? '' : String(sel.value)
   };
-}
-
-// obChoiceSourceControl — контрол поля-источника отбора по имени.
-//
-// Одно имя носят ДВА элемента, если у поля есть readonly_when: сам контрол и
-// скрытое зеркало значения (data-ob-ro-mirror). form.elements.namedItem в этом
-// случае отдаёт RadioNodeList, а у него .value пуст, когда это не радиокнопки —
-// источник уезжал пустым, и зависимый подбор показывал пустой список: поле
-// разблокировано, а выбирать не из чего.
-//
-// Берём тот элемент, который браузер и отправил бы: не выключенный и со
-// значением. Под запретом это зеркало, после разблокировки — сам контрол.
-function obChoiceSourceControl(sel, name) {
-  if (!name) return null;
-  var list = [];
-  if (sel && sel.form && sel.form.elements) {
-    var found = sel.form.elements.namedItem(name);
-    if (found) {
-      if (found.tagName) list = [found];
-      else if (typeof found.length === 'number') list = Array.prototype.slice.call(found);
-    }
-  }
-  if (!list.length) {
-    var byName = document.getElementsByName(name);
-    if (byName && byName.length) list = Array.prototype.slice.call(byName);
-  }
-  if (!list.length) return null;
-  for (var i = 0; i < list.length; i++) {
-    if (!list[i].disabled && list[i].value) return list[i];
-  }
-  for (var j = 0; j < list.length; j++) {
-    if (list[j].value) return list[j];
-  }
-  return list[0];
 }
 
 function obRefChoiceQuery(sel) {
@@ -4273,10 +4297,6 @@ function openRefPicker(selOrId) {
     var choiceQuery = choiceSnapshot ? choiceSnapshot.query : obRefChoiceQuery(sel);
     var choiceFingerprint = choiceSnapshot ? choiceSnapshot.fingerprint : '';
     var choiceSelected = sel.value == null ? '' : String(sel.value);
-    // Предел выборки 1000, а не 50 (наша правка поверх плана 168): форма
-    // подбора показывает справочник одной страницей, и «показано 50 из 56»
-    // оператор читает как «остальных нет».
-    //
     // План 168: у элемента с choice_context страница запрашивается POST-ом
     // /_ref-options/{entity}/page — значения незаписанной формы не попадают в
     // URL и access log, а allowlist контекста сервер восстанавливает сам.
@@ -4284,7 +4304,7 @@ function openRefPicker(selOrId) {
     // тихий откат к списку без просмотра запрещён.
     var refContextRaw = sel.getAttribute('data-ref-context') || '';
     var usePreviewPage = !!refContextRaw;
-    var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=1000&q=' + encodeURIComponent(q || '') + choiceQuery;
+    var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + encodeURIComponent(q || '') + choiceQuery;
     var fetchOptions = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
     if (requestController) fetchOptions.signal = requestController.signal;
     if (usePreviewPage) {
@@ -5182,7 +5202,7 @@ function obDetailFetch(row, url) {
       // Строка могла смениться, пока ответ шёл. Старый ответ не должен даже
       // попадать в общий кэш, иначе следующий render покажет чужую версию.
       var current = (typeof listSel === 'function') ? listSel() : null;
-      if (!current || current.getAttribute('data-ob-detail-url') !== url) return;
+      if (!current || obRowUrl(current, 'detail') !== url) return;
       obDetailCache = { url: url, body: body };
       obDetailRender();
     })
@@ -5191,7 +5211,7 @@ function obDetailFetch(row, url) {
       obDetailPending = { url: '', controller: null };
       if (err && err.name === 'AbortError') return;
       var current = (typeof listSel === 'function') ? listSel() : null;
-      if (!current || current.getAttribute('data-ob-detail-url') !== url) return;
+      if (!current || obRowUrl(current, 'detail') !== url) return;
       obDetailCache = { url: '', body: '' };
       if (fieldsEl) fieldsEl.textContent = 'Не удалось загрузить детали: ' + err.message;
     });
@@ -5215,7 +5235,7 @@ function obDetailRender() {
   // #860). Ответ кэшируется на строку: переключение закладок не должно
   // дёргать сервер.
   var raw = row ? row.getAttribute('data-ob-detail') : '';
-  var lazyURL = row ? row.getAttribute('data-ob-detail-url') : '';
+  var lazyURL = row ? obRowUrl(row, 'detail') : '';
   if (!raw && lazyURL) {
     if (obDetailCache.url === lazyURL) {
       raw = obDetailCache.body;

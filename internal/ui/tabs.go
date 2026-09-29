@@ -220,6 +220,11 @@ const tplAppShell = `{{define "page-app-shell"}}
     var cl=document.createElement('span'); cl.className='ob-tab-close'; cl.textContent='✕'; cl.title='Закрыть'; btn.appendChild(cl);
     var frame=document.createElement('iframe'); frame.src=url;
     var t={id:uniqueTabID(opts.id),url:url,title:title,btn:btn,frame:frame,label:lab};
+    // Стабильное имя фрейма «ob-tab-<id>»: страница внутри iframe читает его
+    // через window.frameElement.name и различает себя от других вкладок
+    // (изоляция отметки фокуса поиска, #1599). id сохраняется оболочкой и
+    // переживает навигацию внутри фрейма и перезапуск оболочки.
+    frame.name='ob-tab-'+t.id;
     frame.addEventListener('load',function(){ syncFrameURL(t); });
     btn.addEventListener('click',function(e){ if(e.target===cl||e.target===dup)return; setActive(t); });
     btn.addEventListener('mousedown',function(e){ if(e.button===1){ e.preventDefault(); closeTab(t,'cross'); } });
@@ -329,25 +334,6 @@ const tplAppShell = `{{define "page-app-shell"}}
     e.preventDefault();
     openTab(href,(a.getAttribute('title')||a.textContent||'').replace(/\s+/g,' ').trim()||'Форма');
   });
-
-  // Аварийный сброс: ?tabs=reset открывает оболочку с чистой панелью.
-  // Нужен, когда вкладки восстанавливаются битыми — страница пережила
-  // перезапуск сервера (её поколение процесса устарело, и закрытие через
-  // подтверждение не проходит) или указывает на удалённый документ, который
-  // отдаёт 404 и в протоколе закрытия вообще не участвует. Крестиком такую
-  // вкладку не убрать, а лезть в консоль браузера за sessionStorage —
-  // не дело пользователя.
-  try{
-    var q=new URLSearchParams(location.search||'');
-    if(String(q.get('tabs')||'')==='reset'){
-      try{ sessionStorage.removeItem(STORE); sessionStorage.removeItem(STORE_ACTIVE); }catch(e){}
-      // Убираем параметр из адреса: иначе перезагрузка страницы чистила бы
-      // панель снова и снова, а вкладки, открытые после сброса, пропадали бы.
-      q.delete('tabs');
-      var qs=q.toString();
-      if(history.replaceState)history.replaceState(null,'',location.pathname+(qs?'?'+qs:'')+location.hash);
-    }
-  }catch(e){}
 
   // Снимок читаем ДО openTab: восстановление само создаёт вкладки и не должно
   // успеть заменить сохранённый выбор последней добавленной вкладкой.

@@ -37,7 +37,6 @@ type ListParams struct {
 	AfterID            *uuid.UUID            // exclusive keyset cursor; requires id ASC and Offset=0
 	ThroughID          *uuid.UUID            // inclusive keyset high-water mark; requires id ASC and Offset=0
 	ExcludeFolders     bool                  // for hierarchical catalogs: only non-folder elements
-	IncludeFolders     bool                  // choice_folders у элемента формы: группы наравне с элементами (обрабатывается слоем UI)
 	OnlyFolders        bool                  // for hierarchical catalogs: only folder elements
 	// ExcludeMarked отбрасывает помеченные на удаление строки (план 153).
 	// Нужен источнику дефолта `единственный`: помеченный элемент — кандидат
@@ -358,7 +357,7 @@ func (db *DB) upsertInTx(ctx context.Context, entityName string, id uuid.UUID, f
 		sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (id) DO UPDATE SET %s",
 			table, strings.Join(cols, ", "), strings.Join(placeholders, ", "), strings.Join(updates, ", "))
 	}
-	tag, err := db.Exec(ctx, sql, args...)
+	tag, err := db.execAllowingFKDiagnosis(ctx, sql, args...)
 	if err != nil {
 		if staged {
 			if conflict := stageConcurrencyErr(err); errors.Is(conflict, ErrStageConcurrentWrite) {
@@ -372,7 +371,11 @@ func (db *DB) upsertInTx(ctx context.Context, entityName string, id uuid.UUID, f
 		if explained := ExplainUniqueViolation(err, entity, fields); errors.Is(explained, ErrCodeDuplicate) {
 			return explained
 		}
-		return fmt.Errorf("upsert %s: %w", entityName, classifyConstraintErr(err))
+		classified := classifyConstraintErr(err)
+		if errors.Is(classified, ErrForeignKeyViolation) {
+			return fmt.Errorf("upsert %s: %w", entityName, db.explainFKViolation(ctx, entity, fields, classified))
+		}
+		return fmt.Errorf("upsert %s: %w", entityName, classified)
 	}
 	if staged && tag.RowsAffected != 1 {
 		// Ноль изменённых строк на пути с этапами означает ровно одно: между

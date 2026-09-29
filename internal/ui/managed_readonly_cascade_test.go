@@ -2,7 +2,6 @@ package ui
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -346,7 +345,7 @@ func TestКаскадУсловногоЗапрета_ТабличнаяЧаст
 	}
 
 	s := &Server{interp: interpreter.New(), reg: runtime.NewRegistry()}
-	states := s.formElementStates(context.Background(), form, ent, map[string]any{"СтадияОформления": "НаОформлении"})
+	states := s.formElementStates(form, ent, map[string]any{"СтадияОформления": "НаОформлении"})
 	сверитьДоступность(t, до, применитьСостоянияВБраузере(t, до, states))
 }
 

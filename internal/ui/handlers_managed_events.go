@@ -1211,12 +1211,6 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		vars["QuestionAnswer"] = qa
 	}
 
-	// Значения редактируемых полей диалога — структура ДиалогПоля.
-	if qf := parseQuestionFields(r.FormValue("_question_fields")); qf != nil {
-		vars["ДиалогПоля"] = qf
-		vars["DialogFields"] = qf
-	}
-
 	if err := addEntityTPEventContext(r, entity, form, tableAuthorities, eventTarget, obj, vars); err != nil {
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
@@ -1646,15 +1640,26 @@ func (s *Server) managedCloseStateDirty(
 			return true
 		}
 	}
-	// Реквизиты формы (save:false) и ValueTable намеренно НЕ сравниваются:
-	// записать их нельзя в принципе, поэтому «несохранённых данных» в них не
-	// бывает. Раньше их изменение поднимало dirty — и обработчик ПриОткрытии,
-	// который проставляет видимость («ПользовательАдмин», «СкрытьХ»), помечал
-	// форму изменённой сразу после отрисовки. Пользователь ничего не трогал,
-	// а крестик спрашивал «Данные были изменены. Сохранить?».
-	//
-	// Формы обработок этим путём не идут: у них нет сущности, и реквизиты
-	// формы — единственные данные, их сравнивает transientManagedStateDirty.
+	for _, attr := range form.Attributes {
+		if attr == nil || attr.MainAttribute || entityField(entity, attr.Name) != nil || entityServiceFieldName(attr.Name) {
+			continue
+		}
+		if strings.EqualFold(attr.TypeRef, "ValueTable") {
+			tp := formAttributeTablePart(attr)
+			if tp == nil || !tpRowsEqual(obj.TablePartRows[attr.Name], tpBefore[attr.Name], *tp) {
+				return true
+			}
+			continue
+		}
+		if !formAttrIsScalar(attr) {
+			continue
+		}
+		before, beforeOK := snapshotValueCI(fieldsBefore, attr.Name)
+		after, afterOK := maskCIKeyValue(obj.Fields, attr.Name)
+		if beforeOK != afterOK || beforeOK && before != snapshotComparableValue(after) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -1760,10 +1765,10 @@ func (st formEventState) response(ok bool) formEventResponse {
 	}
 }
 
-// elementStates — состояние элементов формы с учётом полей записи и роли.
+// elementStates — состояние элементов формы, зависящее от полей записи.
 // В картах присутствует каждый элемент, у которого условие ОБЪЯВЛЕНО, — со
 // значением true или false: клиент должен уметь и снять запрет, а не только
-// поставить. Постоянный запрет editable_admin_only также сохраняется здесь.
+// поставить.
 //
 // Снять получается не всё: элемент, скрытый на момент отрисовки, в разметку не
 // попал, и показать его обратно клиенту нечем — hidden=false для него ничего не
@@ -1776,13 +1781,12 @@ type elementStates struct {
 // formElementStates пересчитывает readonly_when/hidden_when по значениям формы
 // ПОСЛЕ обработчика: команда меняет состояние объекта, и доступность полей
 // должна измениться сразу, а не после перезагрузки страницы. nil, если условий
-// и ролевых запретов в форме нет — клиенту нечего применять.
-func (s *Server) formElementStates(ctx context.Context, form *metadata.FormModule, entity *metadata.Entity, values map[string]any) *elementStates {
+// в форме нет — клиенту нечего применять.
+func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.Entity, values map[string]any) *elementStates {
 	if form == nil || s.interp == nil {
 		return nil
 	}
-	header := managedFormHeaderValues(entity, values)
-	ro, hidden, _ := managedFormElementStates(ctx, form, header, newInterpEvaluator(s.interp))
+	ro, hidden, _ := managedFormElementStates(form, managedFormHeaderValues(entity, values), newInterpEvaluator(s.interp))
 	if len(ro) == 0 && len(hidden) == 0 {
 		return nil
 	}
@@ -1838,7 +1842,7 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 		// Условия readonly_when/hidden_when считаются здесь же, где известны
 		// значения ПОСЛЕ обработчика: команда, изменившая состояние объекта,
 		// сразу меняет доступность полей.
-		ElementStates: s.formElementStates(ctx, form, entity, values),
+		ElementStates: s.formElementStates(form, entity, values),
 	}
 }
 
@@ -2477,6 +2481,20 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		pickerFn := newPickerBuiltin(&picker)
 		vars["ПоказатьПодбор"] = pickerFn
 		vars["ShowPicker"] = pickerFn
+
+		// Вопрос и список значений (#1683): формы обработок получают те же
+		// билтины диалогов, что и формы сущностей — иначе check пропускает
+		// вызов, а рантайм отвечает unknown function.
+		var question questionPayload
+		questionFn := newQuestionBuiltin(&question)
+		vars["ПоказатьВопрос"] = questionFn
+		vars["ShowQuestion"] = questionFn
+
+		var choiceItems []choiceListItem
+		choiceFn := newChoiceListBuiltin(&choiceItems)
+		vars["ДобавитьЗначениеСписка"] = choiceFn
+		vars["AddChoiceItem"] = choiceFn
+
 		condRuntime := newFormConditionalRuntime(form)
 		for k, v := range condRuntime.builtins() {
 			vars[k] = v
@@ -2486,23 +2504,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			vars["ПодборРезультат"] = pr
 			vars["PickResult"] = pr
 		}
-
-		// Вопрос (#1528, #1683): в формах ОБРАБОТОК билтин не регистрировался —
-		// конфигурация получала «unknown function "ПоказатьВопрос"», причём
-		// только в ответе на XHR: check и линтер этого не видят. Обработке
-		// подтверждение нужно ровно так же, как форме документа: «Вы уверены,
-		// что нужна повторная заявка?» перед созданием документа.
-		var question questionPayload
-		questionFn := newQuestionBuiltin(&question)
-		vars["ПоказатьВопрос"] = questionFn
-		vars["ShowQuestion"] = questionFn
-		if qa := strings.TrimSpace(r.FormValue("_question_answer")); qa != "" {
+		// Фаза 2 вопроса (#1683): ответ пользователя — переменная ВопросОтвет
+		// для обработчика события Ответ.
+		if qa, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_question_answer")); strings.TrimSpace(qa) != "" {
 			vars["ВопросОтвет"] = qa
 			vars["QuestionAnswer"] = qa
-		}
-		if qf := parseQuestionFields(r.FormValue("_question_fields")); qf != nil {
-			vars["ДиалогПоля"] = qf
-			vars["DialogFields"] = qf
 		}
 		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars); err != nil {
 			opStatus = "error"
@@ -2531,8 +2537,9 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(false)
 			resp.Error = interpreter.FormatUserError(runErr)
 			resp.PickerData = picker
-			if question.Text != "" {
-				resp.Question = &question
+			if question.Variants != nil {
+				q := question
+				resp.Question = &q
 			}
 			resp.Dirty = boolPtr(transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
 			compactFormCloseDelta(&resp, closeInv)
@@ -2542,9 +2549,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 
 		resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(true)
 		resp.PickerData = picker
-		if question.Text != "" {
-			resp.Question = &question
+		if question.Variants != nil {
+			q := question
+			resp.Question = &q
 		}
+		resp.ChoiceList = choiceItems
 		resp.Dirty = boolPtr(transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
 		compactFormCloseDelta(&resp, closeInv)
 		respondJSON(enc, resp)

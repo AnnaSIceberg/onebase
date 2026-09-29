@@ -449,10 +449,9 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // показывать их редактируемыми. В картах приходит и false — условие могло
   // перестать выполняться, и запрет нужно снять.
   //
-  // Обратный ход есть не у всего: элемент, скрытый ещё серверной отрисовкой, в
-  // DOM отсутствует, якорь data-ob-el не находится, и hidden=false для него —
-  // пустая операция. Снова показать такой элемент может только перезагрузка
-  // страницы; скрыть уже отрисованный — можно.
+  // Обратный ход есть у простых полей, оставленных сервером в DOM. Контейнер,
+  // скрытый ещё серверной отрисовкой, в DOM отсутствует и появится только после
+  // перезагрузки страницы.
   //
   // Клиент НИЧЕГО не выводит сам. Условие на контейнере каскадит на потомков,
   // но считает каскад сервер: в карте лежит готовое состояние каждого
@@ -482,6 +481,10 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         el._obDisplay = d === 'none' ? '' : d;
       }
       el.style.display = hidden[name] ? 'none' : el._obDisplay;
+      // A hidden control must not be submitted or participate in native
+      // required validation. The server renders the same disabled fieldset
+      // for the initial state; update it when hidden_when changes.
+      if (el.getAttribute('data-ob-control-fieldset') === '1') el.disabled = !!hidden[name];
     });
     var ro = st.readonly || {};
     // Свой ли это редактирующий контрол: ближайший якорь элемента формы — сам
@@ -764,31 +767,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       });
       var rows = vts[vtName] || [];
       var readOnly = obManagedTableReadOnly(tbody);
-      // План колонок с сервера: какие скрыты и какие закрыты для правки.
-      // Без него клиент перерисовывал таблицу «как умеет» — всеми колонками,
-      // включая служебные, и без признака строки, то есть щелчок по строке
-      // переставал работать сразу после первого же поиска.
-      var flags = {};
-      (tbody.getAttribute('data-vt-flags') || '').split(',').forEach(function(part){
-        var i = part.lastIndexOf(':');
-        if (i < 0) return;
-        var f = part.slice(i + 1);
-        flags[part.slice(0, i)] = {readonly: f.indexOf('r') >= 0, hidden: f.indexOf('h') >= 0};
-      });
-      var rowsEditable = tbody.getAttribute('data-vt-editable') !== '0';
-      var activate = tbody.getAttribute('data-ob-vt-activate');
       tbody.innerHTML = '';
       rows.forEach(function(row, idx){
         var tr = document.createElement('tr');
         tr.className = obFormRowClass(row);
-        if (activate) {
-          tr.setAttribute('data-ob-vt-row', String(idx));
-          tr.style.cursor = 'pointer';
-        }
         fieldsMeta.forEach(function(f){
-          var flag = flags[f.name] || {};
           var td = document.createElement('td');
-          if (flag.hidden) td.style.display = 'none';
           td.className = obFormCellClass(row, f.name);
           var v = row[f.name];
           var inp = document.createElement('input');
@@ -805,22 +789,17 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
             inp.type = 'text';
             inp.value = (v == null ? '' : v);
           }
-          // Закрытая колонка остаётся успешной: значение обязано вернуться
-          // на сервер, иначе обработчик не узнает, какую строку выбрали.
-          if (flag.readonly && inp.type !== 'checkbox') inp.readOnly = true;
-          else inp.disabled = readOnly || !!flag.readonly;
+          inp.disabled = readOnly;
           td.appendChild(inp);
           tr.appendChild(td);
         });
-        if (rowsEditable) {
-          var tdDel = document.createElement('td');
-          var btn = document.createElement('button');
-          btn.type = 'button'; btn.className = 'del-btn'; btn.textContent = '×';
-          btn.disabled = readOnly;
-          if (!readOnly) btn.setAttribute('data-ob-remove-row', '');
-          tdDel.appendChild(btn);
-          tr.appendChild(tdDel);
-        }
+        var tdDel = document.createElement('td');
+        var btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'del-btn'; btn.textContent = '×';
+        btn.disabled = readOnly;
+        if (!readOnly) btn.setAttribute('data-ob-remove-row', '');
+        tdDel.appendChild(btn);
+        tr.appendChild(tdDel);
         tbody.appendChild(tr);
       });
       });
@@ -1081,13 +1060,14 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         openItemPicker(data.pickerData, elementName, extraParams || null);
         return;
       }
-      // Вопрос фазы 1 (#1528): модал открывается ПОСЛЕ применения ответа —
-      // состояние формы в нём такое же, как без вопроса. Ранний выход здесь
-      // пропускал и dirty, и values: обработчик, записавший документ перед
-      // вопросом, оставлял форму «изменённой» (при закрытии выскакивало
-      // «Данные были изменены. Сохранить?»), а поля, которые он поправил,
-      // не доезжали до формы до самого ответа.
-      var pendingQuestion = data.question || null;
+      // Вопрос фазы 1 (#1528): открыть модал; ответ вернётся событием Ответ
+      // через _question_answer — сервер положит его в ВопросОтвет.
+      if (data.question) {
+        (data.messages || []).forEach(m => flash(m, 'ok'));
+        if (data.error) flash(data.error, 'err');
+        if (window.obOpenQuestion) window.obOpenQuestion(data.question, elementName);
+        return;
+      }
       // dirty=true is an authoritative safety signal and must survive a
       // partially failing renderer. Programmatic response application does
       // not emit input/change, so raise it before touching mutable DOM state.
@@ -1105,7 +1085,6 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	  if (data.dirty === false && (data.savedId || data.version)) window.obSetManagedFormDirty(false);
       (data.messages || []).forEach(m => flash(m, 'ok'));
       if (data.error) flash(data.error, 'err');
-      if (pendingQuestion && window.obOpenQuestion) window.obOpenQuestion(pendingQuestion, elementName);
     } catch (e) {
       // A lost/unparseable response for /new may hide a committed insert and
       // there is no identity with which to issue another safe write. Fence all
@@ -1460,38 +1439,10 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
   window.obRequestFormClose = function(options){
     options = options || {};
-	if (formEventPending && !options.__awaitedFormEvent) {
-	  // Ждём текущее событие вместо немедленного отказа. Два сценария, где
-	  // отказ был ложным: обработчик, закрывающий форму своей же командой
-	  // ui.закрытьФорму (уведомление доставляется по SSE, пока его собственный
-	  // запрос ещё в полёте), и клик по «Закрыть» сразу после правки поля —
-	  // уход фокуса запускает ПриИзменении, и пользователю приходилось жать
-	  // второй раз.
-	  //
-	  // Ждём ровно один круг очереди: если к её концу подоспело новое событие,
-	  // отказываем как прежде — иначе поток событий отложил бы закрытие
-	  // навсегда. Таймаут — тот же, что у самого закрытия.
-	  var waited = new Promise(function(resolve){
-		var done = false;
-		var finish = function(){ if (!done) { done = true; resolve(); } };
-		setTimeout(finish, CLOSE_TIMEOUT_MS);
-		formEventQueue.catch(function(){}).then(finish);
-	  });
-	  return waited.then(function(){
-		if (formEventPending) {
-		  // An embedded adapter may already have raised the handoff flag before
-		  // its parent asks for this decision. This refusal completes that
-		  // handoff; leaving it set would permanently block later form events
-		  // and submits.
-		  closeHandoffPending = false;
-		  flash(closeMessage('operationPending', 'Команда формы ещё выполняется. Дождитесь её завершения и повторите закрытие.'), 'err');
-		  return {allowed: false, intentId: '', error: 'form-event-pending'};
-		}
-		options.__awaitedFormEvent = true;
-		return window.obRequestFormClose(options);
-	  });
-	}
 	if (formEventPending) {
+	  // An embedded adapter may already have raised the handoff flag before its
+	  // parent asks for this decision. This early refusal completes that handoff;
+	  // leaving it set would permanently block later form events and submits.
 	  closeHandoffPending = false;
 	  flash(closeMessage('operationPending', 'Команда формы ещё выполняется. Дождитесь её завершения и повторите закрытие.'), 'err');
 	  return Promise.resolve({allowed: false, intentId: '', error: 'form-event-pending'});
@@ -1521,13 +1472,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         flash(closeMessage('controllerUnavailable', 'Проверка закрытия недоступна. Форма оставлена открытой.'), 'err');
         return {allowed: false, intentId: '', error: 'controller-not-ready'};
       }
-      // Программное закрытие (команда ui.закрытьФорму из обработчика формы)
-      // человека не спрашивает: решение принял код, который сам и записал всё,
-      // что считал нужным. Диалог здесь был не просто лишним — у формы
-      // обработки «сохранить» вдобавок ничего не значит: объекта за ней нет.
-      var mode = options.mode
-        ? String(options.mode)
-        : (reason === 'programmatic' ? 'discard' : await closeChoice());
+      var mode = options.mode ? String(options.mode) : await closeChoice();
       if (mode === 'cancel') return {allowed: false, intentId: '', error: 'user-cancelled'};
       var body = await closeSnapshotBody(reason, mode);
       if (!body) return {allowed: false, intentId: '', error: 'form-state'};
@@ -2075,34 +2020,6 @@ function obManagedAddTpRow(btn) {
   if (table && window.obDOMNotifyMutation) window.obDOMNotifyMutation(table, 'add');
 }
 
-// obManagedVtRowActivated — щелчок по строке ValueTable зовёт
-// ПриАктивизацииСтроки.
-//
-// У «большой» табличной части это делает SlickGrid (data-sg-rowactivate), а
-// ValueTable рисуется простой разметкой, и подписки у неё не было вовсе: форма
-// могла объявить обработчик, а сработать он не мог. Именно такой таблицей
-// удобно показывать результат поиска, где строку выбирают щелчком.
-//
-// Подписываемся только когда обработчик объявлен (атрибут на tbody) — иначе
-// гоняли бы сеть на каждый щелчок по любой таблице формы. Повторный щелчок по
-// той же строке события не шлёт: активизация строки — это смена строки.
-// Scope activation to a concrete table and row node. Repainting replaces the
-// node, so a new result at the same index can be activated again.
-var obManagedVtActiveRow = new WeakMap();
-
-function obManagedVtRowActivated(tr) {
-  if (!tr || !tr.parentNode) return;
-  var tbody = tr.parentNode;
-  var elName = tbody.getAttribute && tbody.getAttribute('data-ob-vt-activate');
-  var vtName = tbody.getAttribute && tbody.getAttribute('data-ob-vt-name');
-  if (!elName || !vtName) return;
-  var row = tr.getAttribute('data-ob-vt-row');
-  if (row === null || row === '') return;
-  if (obManagedVtActiveRow.get(tbody) === tr) return;
-  obManagedVtActiveRow.set(tbody, tr);
-  if (window.obFire) window.obFire(elName, 'ПриАктивизацииСтроки', {_tp: vtName, _tp_row: row});
-}
-
 function obManagedAddVtRow(btn) {
   var vtName = btn.getAttribute('data-ob-add-vt') || '';
   var tbody = obManagedWritableTableBody('vt-body-' + vtName, 'data-vt-fields');
@@ -2188,11 +2105,6 @@ function obManagedInitDelegates() {
     // ui.js (из шаблона "head"), где этот же делегат уже висит на document.
     // Дублирование переключало бы display дважды (none→block→none) за один клик
     // и dropdown «Печать ▾»/«Ввести на основании» не открывался бы — issue #309.
-    // Щелчок по строке ValueTable — не кнопка, поэтому проверяем до выхода:
-    // иначе выбор строки в таблице результатов не доходил бы до обработчика.
-    var vtRow = e.target && e.target.closest ? e.target.closest('tr[data-ob-vt-row]') : null;
-    if (vtRow) obManagedVtRowActivated(vtRow);
-
     var btn = e.target && e.target.closest ? e.target.closest('[data-ob-ref-picker],[data-ob-ref-current],[data-ob-file-trigger],[data-ob-fire-click],[data-ob-grid-add],[data-ob-grid-del],[data-ob-add-tp],[data-ob-add-vt],[data-ob-remove-row],[data-ob-ref-cancel],[data-ob-form-close]') : null;
     if (!btn) return;
     if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
@@ -2658,7 +2570,7 @@ obManagedReady(obManagedInitDelegates);
       if (!refEntity || !window.fetch) return;
       var seq = ++searchSeq;
       var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) +
-                '?limit=1000&q=' + encodeURIComponent(q || '');
+                '?limit=50&q=' + encodeURIComponent(q || '');
       fetch(url, {credentials: 'same-origin', headers: {'Accept': 'application/json'}})
         .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
         .then(function(data) {
