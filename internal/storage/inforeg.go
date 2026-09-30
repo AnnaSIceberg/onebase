@@ -662,9 +662,9 @@ func (db *DB) InfoRegDelete(ctx context.Context, ir *metadata.InfoRegister, dimK
 // регистр periodic — то либо row["Период"], либо общий period из mc.Period.
 // recorder/recorder_type заполняются автоматически из аргументов.
 //
-// При перезаписи строк используется ON CONFLICT по PK — это безопасно
-// для регистров, чья primary key включает (period, dims) и где нет
-// конфликта с другими источниками (например, ручной ввод того же набора).
+// ON CONFLICT по PK обновляет только строки без владельца или строки того же
+// документа (recorder, recorder_type). Условие проверяется самим UPSERT, поэтому
+// параллельное проведение не может перехватить чужой ключ.
 func (db *DB) WriteInfoMovements(ctx context.Context, regName, recorderType string, recorderID uuid.UUID, rows []map[string]any, ir *metadata.InfoRegister, period *time.Time) error {
 	return db.WithTxScope(ctx, func(txCtx context.Context) error {
 		return db.writeInfoMovementsInTx(txCtx, regName, recorderType, recorderID, rows, ir, period)
@@ -718,9 +718,6 @@ func (db *DB) writeInfoMovementsInTx(ctx context.Context, regName, recorderType 
 		if err != nil {
 			return fmt.Errorf("write info movement %s row %d key: %w", regName, i+1, err)
 		}
-		if err := db.checkInfoRegMovementKey(ctx, ir, regName, recorderID, writeKey, dimKey, rowPeriod); err != nil {
-			return err
-		}
 		for _, f := range ir.Dimensions {
 			col := metadata.ColumnName(f)
 			cols = append(cols, col)
@@ -763,41 +760,41 @@ func (db *DB) writeInfoMovementsInTx(ctx context.Context, regName, recorderType 
 		var sql string
 		if len(pk) > 0 {
 			sql = fmt.Sprintf(
-				"INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (%s) DO UPDATE SET %s",
+				"INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (%s) DO UPDATE SET %s WHERE %s",
 				table,
 				strings.Join(cols, ", "),
 				strings.Join(phs, ", "),
 				strings.Join(pk, ", "),
 				strings.Join(updates, ", "),
+				fmt.Sprintf("%s.recorder IS NULL OR CAST(%s.recorder AS TEXT) = '' OR (%s.recorder = EXCLUDED.recorder AND %s.recorder_type = EXCLUDED.recorder_type)",
+					table, table, table, table),
 			)
 		} else {
 			sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 				table, strings.Join(cols, ", "), strings.Join(phs, ", "))
 		}
-		if err := db.exec(ctx, sql, args...); err != nil {
+		tag, err := db.Exec(ctx, sql, args...)
+		if err != nil {
 			return fmt.Errorf("write info movement %s row %d: %w", regName, i+1, err)
+		}
+		if len(pk) > 0 && tag.RowsAffected == 0 {
+			// UPSERT has already rejected a foreign owner atomically. Read it
+			// only to explain the conflict, never to authorize the write.
+			if err := db.checkInfoRegMovementKey(ctx, ir, regName, recorderType, recorderID, writeKey, dimKey, rowPeriod); err != nil {
+				return err
+			}
+			return fmt.Errorf("write info movement %s row %d: ownership conflict", regName, i+1)
 		}
 	}
 	return nil
 }
 
-// checkInfoRegMovementKey не даёт движению документа перехватить чужую запись
-// регистра сведений.
-//
-// У регистра сведений одна запись на ключ (период + измерения), а запись
-// движений идёт через ON CONFLICT DO UPDATE с recorder = EXCLUDED.recorder.
-// Без проверки второй документ с тем же ключом молча забирал запись первого;
-// отмена его проведения удаляла её целиком, и первый документ оставался
-// проведённым без своего значения в регистре. В 1С это ошибка уникальности.
-//
-// Собственные прежние записи документа к этому моменту уже удалены (DELETE по
-// регистратору выше); строка, записанная этим же вызовом раньше, остаётся его
-// собственной — внутри одного проведения последняя строка с ключом побеждает,
-// как и раньше. Запись без регистратора — значение, заданное вручную в
-// независимый регистр, — документ по-прежнему перезаписывает: хозяина у такой
-// записи нет.
+// checkInfoRegMovementKey explains an ownership conflict after UPSERT refused
+// to update the row. A keyless register uses plain INSERT and never calls it.
+// Rows without a recorder remain writable by a document; repeated keys within
+// one posting belong to the same (recorder, recorder_type), so the last wins.
 func (db *DB) checkInfoRegMovementKey(ctx context.Context, ir *metadata.InfoRegister, regName string,
-	recorderID uuid.UUID, writeKey, dimKey map[string]any, period *time.Time,
+	recorderType string, recorderID uuid.UUID, writeKey, dimKey map[string]any, period *time.Time,
 ) error {
 	d := db.dialect
 	where, args := physicalDimWhere(d, ir, writeKey, 1)
@@ -815,7 +812,7 @@ func (db *DB) checkInfoRegMovementKey(ctx context.Context, ir *metadata.InfoRegi
 	if err != nil {
 		return fmt.Errorf("info register %s: чтение владельца ключа: %w", regName, err)
 	}
-	if owner == nil || *owner == "" || strings.EqualFold(*owner, recorderID.String()) {
+	if owner == nil || *owner == "" || (strings.EqualFold(*owner, recorderID.String()) && ownerType != nil && *ownerType == recorderType) {
 		return nil
 	}
 	typ := ""

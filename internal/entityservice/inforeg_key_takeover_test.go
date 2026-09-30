@@ -3,13 +3,13 @@ package entityservice
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/dslvars"
@@ -27,12 +27,11 @@ import (
 // Тест идёт через entityservice.Save с проведением и Service.Unpost — пути формы
 // и REST.
 func TestPostInfoRegister_KeyOwnedByAnotherDocumentIsNotTakenOver(t *testing.T) {
+	dbtest.ForEachDialect(t, testPostInfoRegisterKeyOwnership)
+}
+
+func testPostInfoRegisterKeyOwnership(t *testing.T, db *storage.DB) {
 	ctx := context.Background()
-	db, err := storage.ConnectSQLite(ctx, filepath.Join(t.TempDir(), "ir.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
 
 	doc := &metadata.Entity{
 		Name: "УстановкаЦены", Kind: metadata.KindDocument, Posting: true,
@@ -143,5 +142,20 @@ func TestPostInfoRegister_KeyOwnedByAnotherDocumentIsNotTakenOver(t *testing.T) 
 	// одного документа, перехвата нет.
 	if _, err := post("Шуруп", 20, 2); err != nil {
 		t.Fatalf("две строки одного документа с одним ключом: %v", err)
+	}
+	var lastPrice string
+	if err := db.QueryRow(ctx, "SELECT CAST(цена AS TEXT) FROM "+metadata.InfoRegTableName(ir.Name)+" WHERE товар = 'Шуруп'").Scan(&lastPrice); err != nil {
+		t.Fatal(err)
+	}
+	if lastPrice != "21" {
+		t.Fatalf("последняя строка собственного ключа не обновлена: %s", lastPrice)
+	}
+
+	// A manual value has no owner, so posting can still replace it.
+	if err := db.InfoRegSet(ctx, ir, map[string]any{"Товар": "Болт"}, map[string]any{"Цена": float64(1)}, &day); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := post("Болт", 30, 1); err != nil {
+		t.Fatalf("запись без регистратора: %v", err)
 	}
 }
