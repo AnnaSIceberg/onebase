@@ -493,6 +493,12 @@ const tplManagedForm = `
   {{$cur := index $ctx.Values $fn}}
   {{$hChg := hasHandler $el "ПриИзменении"}}
   {{$enum := and $f (isEnum (str $f.Type))}}
+  {{/* Радиокнопки с одним name — одна группа на всю форму, и браузер оставляет
+       отмеченной последнюю из отмеченных в разметке. Копия, скрытая при
+       отрисовке, поэтому кнопку не отмечает: иначе она снимала бы отметку с
+       видимой копии того же реквизита. Значение ей приходит из ответа
+       события, который её показывает (applyValues, #1759). */}}
+  {{$radioMark := not (elHiddenStyle $ctx $el)}}
   {{if $el.HiddenWhen}}<fieldset class="form-group ob-managed-control{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}" data-ob-control-fieldset="1"{{if elHiddenStyle $ctx $el}} disabled{{end}}{{with elLayoutEx $ctx $el}} style="{{.}}"{{end}}>{{else}}<div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elLayout $el}} style="{{.}}"{{end}}>{{end}}
     <label>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}</label>
     {{if eq $el.View "select"}}
@@ -507,9 +513,9 @@ const tplManagedForm = `
     {{else}}
       <div class="switch-options" style="display:flex;flex-wrap:wrap;gap:12px;padding:4px 0">
         {{if $enum}}
-          {{range $i, $opt := index $ctx.EnumOptions $fn}}<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="{{$fn}}" value="{{$opt.Value}}"{{if and $req (not $ro)}} required{{end}}{{if and (eq $i 0) $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if eq $opt.Value $cur}} checked{{end}}{{if $ro}} disabled{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}> {{$opt.Label}}</label>{{end}}
+          {{range $i, $opt := index $ctx.EnumOptions $fn}}<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="{{$fn}}" value="{{$opt.Value}}"{{if and $req (not $ro)}} required{{end}}{{if and (eq $i 0) $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if and $radioMark (eq $opt.Value $cur)}} checked{{end}}{{if $ro}} disabled{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}> {{$opt.Label}}</label>{{end}}
         {{else}}
-          {{range $i, $opt := $el.Options}}<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="{{$fn}}" value="{{$opt.ValueStr}}"{{if and $req (not $ro)}} required{{end}}{{if and (eq $i 0) $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if eq $opt.ValueStr $cur}} checked{{end}}{{if $ro}} disabled{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}> {{$opt.Label}}</label>{{end}}
+          {{range $i, $opt := $el.Options}}<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="{{$fn}}" value="{{$opt.ValueStr}}"{{if and $req (not $ro)}} required{{end}}{{if and (eq $i 0) $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if and $radioMark (eq $opt.ValueStr $cur)}} checked{{end}}{{if $ro}} disabled{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}> {{$opt.Label}}</label>{{end}}
         {{end}}
       </div>
     {{end}}

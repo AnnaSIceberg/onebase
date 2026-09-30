@@ -1,0 +1,413 @@
+package ui
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"os/exec"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+	"golang.org/x/net/html"
+
+	"github.com/ivantit66/onebase/internal/metadata"
+)
+
+// Реквизит «Улица» стоит на форме дважды: одна копия видна, пока заявка не
+// принята, другая — после. Команда «Принять» на сервере меняет стадию (копии
+// меняются местами) и пишет новую улицу. Скрытая копия остаётся в DOM в
+// disabled fieldset, и после смены видимости отправляется уже она, поэтому ответ
+// события обязан дойти до обеих (#1759).
+//
+// Тест идёт путём пользователя: настоящая разметка формы → то, что браузер
+// отправит при открытии → публичное событие формы → ответ, применённый кодом
+// managed.js → то, что форма отправит теперь → публичная запись → база. Копию,
+// которую покажет команда, ставим и второй, и первой в DOM: раньше ответ доходил
+// только до первого контрола с этим name, а у переключателя браузер держит одну
+// отмеченную кнопку на все копии сразу.
+func TestУсловноеСкрытие_НовоеЗначениеСобытияСохраняетсяИзПоказаннойКопии(t *testing.T) {
+	for _, kind := range []metadata.FormElementType{metadata.FormElementField, metadata.FormElementSwitch} {
+		for _, shownFirst := range []bool{false, true} {
+			order := "показанная копия второй"
+			if shownFirst {
+				order = "показанная копия первой"
+			}
+			t.Run(fmt.Sprintf("%s/%s", kind, order), func(t *testing.T) {
+				ent := заявкаСКопиямиУлицы(t, kind, shownFirst)
+				srv, ctx := newSubmitTestServer(t, []*metadata.Entity{ent})
+				id := uuid.New()
+				if err := srv.store.Upsert(ctx, ent.Name, id, map[string]any{
+					"СтадияОформления": "Черновик", "Улица": "Старая"}, ent); err != nil {
+					t.Fatal(err)
+				}
+				page := parseManagedPage(t, отрисоватьСУсловиями(t, ent, ent.Forms[0], map[string]string{
+					"СтадияОформления": "Черновик", "Улица": "Старая"}))
+
+				opened := submitManagedPage(t, page, nil)
+				if got := opened["Улица"]; !reflect.DeepEqual(got, []string{"Старая"}) {
+					t.Fatalf("при открытии форма отправляет Улица=%q, ожидалось значение базы из одной видимой копии", got)
+				}
+
+				event := url.Values{}
+				for name, values := range opened {
+					event[name] = values
+				}
+				event.Set("_id", id.String())
+				event.Set("_element", "КнопкаПринять")
+				event.Set("_event", string(metadata.FormEventOnClick))
+				event.Set("_kind", "object")
+				response := executeFormEvent(t, srv, ent, event).Body.Bytes()
+				if decoded := decodeFormEventResponse(t, response); !decoded.OK {
+					t.Fatalf("событие формы завершилось ошибкой: %q", decoded.Error)
+				}
+
+				submitted := submitManagedPage(t, page, response)
+				if got := submitted["Улица"]; !reflect.DeepEqual(got, []string{"Новая"}) {
+					t.Fatalf("после события форма отправляет Улица=%q, а обработчик записал «Новая»", got)
+				}
+
+				записатьЗаявку(t, srv, ent, id, submitted)
+				row, err := srv.store.GetByID(ctx, ent.Name, id, ent)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if row["Улица"] != "Новая" || row["СтадияОформления"] != "Принята" {
+					t.Fatalf("в базе Улица=%v СтадияОформления=%v, ожидались «Новая» и «Принята»",
+						row["Улица"], row["СтадияОформления"])
+				}
+			})
+		}
+	}
+}
+
+// заявкаСКопиямиУлицы — справочник с формой, на которой «Улица» нарисована
+// двумя элементами одного вида с взаимоисключающими hidden_when. shownFirst
+// ставит первой в DOM копию, которую покажет команда «Принять».
+func заявкаСКопиямиУлицы(t *testing.T, kind metadata.FormElementType, shownFirst bool) *metadata.Entity {
+	t.Helper()
+	копия := func(name, hiddenWhen string) *metadata.FormElement {
+		el := &metadata.FormElement{Kind: kind, Name: name, DataPath: "Объект.Улица", HiddenWhen: hiddenWhen}
+		if kind == metadata.FormElementSwitch {
+			el.Options = []metadata.FormOption{{Value: "Старая"}, {Value: "Новая"}}
+		}
+		return el
+	}
+	черновика := копия("ПолеУлицаЧерновика", `СтадияОформления = "Принята"`)
+	принятой := копия("ПолеУлицаПринятой", `СтадияОформления <> "Принята"`)
+	elements := []*metadata.FormElement{fieldEl("ПолеСтадии", "Объект.СтадияОформления"), черновика, принятой}
+	if shownFirst {
+		elements = []*metadata.FormElement{fieldEl("ПолеСтадии", "Объект.СтадияОформления"), принятой, черновика}
+	}
+	elements = append(elements, &metadata.FormElement{
+		Kind: metadata.FormElementButton, Name: "КнопкаПринять",
+		Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Принять"},
+	})
+	form := managedObjectForm(elements...)
+	form.ProgramAST = mustParse(t, `
+Процедура Принять()
+	Объект.СтадияОформления = "Принята";
+	Объект.Улица = "Новая";
+КонецПроцедуры
+`)
+	ent := &metadata.Entity{
+		Name: "ЗаявкаСКопиями", Kind: metadata.KindCatalog,
+		Fields: []metadata.Field{
+			{Name: "СтадияОформления", Type: metadata.FieldTypeString},
+			{Name: "Улица", Type: metadata.FieldTypeString},
+		},
+	}
+	ent.Forms = []*metadata.FormModule{form}
+	return ent
+}
+
+// managedPageAnchor — якорь data-ob-el элемента формы: то, что находит и правит
+// applyElementStates.
+type managedPageAnchor struct {
+	Name            string `json:"name"`
+	Fieldset        bool   `json:"fieldset"`
+	ControlFieldset bool   `json:"controlFieldset"`
+	Disabled        bool   `json:"disabled"`
+	Hidden          bool   `json:"hidden"`
+}
+
+// managedPageControl — контрол формы в порядке DOM. Anchors — индексы
+// якорей-предков, ближайший первым.
+type managedPageControl struct {
+	Tag      string            `json:"tag"`
+	Name     string            `json:"name"`
+	Type     string            `json:"type"`
+	Value    string            `json:"value"`
+	Checked  bool              `json:"checked"`
+	Disabled bool              `json:"disabled"`
+	Data     map[string]string `json:"data,omitempty"`
+	Anchors  []int             `json:"anchors"`
+}
+
+type managedPage struct {
+	Anchors  []managedPageAnchor  `json:"anchors"`
+	Controls []managedPageControl `json:"controls"`
+}
+
+// parseManagedPage разбирает настоящую разметку формы: якоря элементов и
+// контролы внутри #main-form в порядке DOM.
+func parseManagedPage(t *testing.T, rendered string) managedPage {
+	t.Helper()
+	doc, err := html.Parse(strings.NewReader(rendered))
+	if err != nil {
+		t.Fatalf("parse managed form HTML: %v", err)
+	}
+	var form *html.Node
+	var find func(*html.Node)
+	find = func(n *html.Node) {
+		if form != nil {
+			return
+		}
+		if n.Type == html.ElementNode && n.Data == "form" {
+			if id, _ := managedHTMLAttr(n, "id"); id == "main-form" {
+				form = n
+				return
+			}
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			find(child)
+		}
+	}
+	find(doc)
+	if form == nil {
+		t.Fatal("managed form has no #main-form")
+	}
+
+	var page managedPage
+	var walk func(n *html.Node, anchors []int)
+	walk = func(n *html.Node, anchors []int) {
+		if n.Type == html.ElementNode {
+			if name, ok := managedHTMLAttr(n, "data-ob-el"); ok {
+				_, disabled := managedHTMLAttr(n, "disabled")
+				style, _ := managedHTMLAttr(n, "style")
+				controlFieldset, _ := managedHTMLAttr(n, "data-ob-control-fieldset")
+				page.Anchors = append(page.Anchors, managedPageAnchor{
+					Name: name, Fieldset: n.Data == "fieldset", ControlFieldset: controlFieldset == "1",
+					Disabled: disabled, Hidden: strings.Contains(strings.ReplaceAll(style, " ", ""), "display:none"),
+				})
+				anchors = append([]int{len(page.Anchors) - 1}, anchors...)
+			}
+			if control, ok := managedPageControlOf(n, anchors); ok {
+				page.Controls = append(page.Controls, control)
+			}
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child, anchors)
+		}
+	}
+	walk(form, nil)
+	return page
+}
+
+func managedPageControlOf(n *html.Node, anchors []int) (managedPageControl, bool) {
+	if n.Data != "input" && n.Data != "select" && n.Data != "textarea" {
+		return managedPageControl{}, false
+	}
+	name, _ := managedHTMLAttr(n, "name")
+	if name == "" {
+		return managedPageControl{}, false
+	}
+	control := managedPageControl{Tag: n.Data, Name: name, Anchors: anchors}
+	_, control.Disabled = managedHTMLAttr(n, "disabled")
+	switch n.Data {
+	case "input":
+		control.Type, _ = managedHTMLAttr(n, "type")
+		if control.Type == "" {
+			control.Type = "text"
+		}
+		switch control.Type {
+		case "button", "submit", "reset", "image", "file":
+			return managedPageControl{}, false
+		}
+		control.Value, _ = managedHTMLAttr(n, "value")
+		_, control.Checked = managedHTMLAttr(n, "checked")
+	case "textarea":
+		control.Type = "textarea"
+		var text strings.Builder
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			if child.Type == html.TextNode {
+				text.WriteString(child.Data)
+			}
+		}
+		control.Value = text.String()
+	case "select":
+		control.Type = "select-one"
+		first := true
+		for option := n.FirstChild; option != nil; option = option.NextSibling {
+			if option.Type != html.ElementNode || option.Data != "option" {
+				continue
+			}
+			value, _ := managedHTMLAttr(option, "value")
+			if _, selected := managedHTMLAttr(option, "selected"); selected || first {
+				control.Value = value
+			}
+			first = false
+		}
+	}
+	for _, attr := range n.Attr {
+		if strings.HasPrefix(attr.Key, "data-") {
+			if control.Data == nil {
+				control.Data = map[string]string{}
+			}
+			control.Data[attr.Key] = attr.Val
+		}
+	}
+	return control, true
+}
+
+// managedPageHarness — модель браузера для одной страницы формы. Разметку она
+// разбирает по правилам браузера (у радиокнопок с одним name отмечена одна, и
+// из нескольких checked в разметке побеждает последняя), ответ события
+// применяет кодом managed.js в порядке клиента и печатает успешные контролы —
+// ровно то, что уйдёт при отправке формы.
+const managedPageHarness = `
+const fs = require('node:fs');
+const source = fs.readFileSync(process.argv[1], 'utf8');
+function region(name) {
+  const begin = '// BEGIN ' + name;
+  const end = '// END ' + name;
+  const start = source.indexOf(begin);
+  const stop = source.indexOf(end, start);
+  if (start < 0 || stop < 0) throw new Error('managed.js has no region ' + name);
+  return source.slice(start, stop + end.length);
+}
+function fn(name) {
+  const start = source.indexOf('function ' + name + '(');
+  if (start < 0) throw new Error('managed.js has no function ' + name);
+  let depth = 0;
+  for (let i = source.indexOf('{', start); i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}' && --depth === 0) return source.slice(start, i + 1);
+  }
+  throw new Error('unterminated function ' + name);
+}
+const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+
+const anchors = payload.page.anchors.map((a) => ({
+  tagName: a.fieldset ? 'FIELDSET' : 'DIV',
+  name: a.name,
+  disabled: a.disabled,
+  style: {display: a.hidden ? 'none' : ''},
+  members: [],
+  getAttribute(attr) { return attr === 'data-ob-control-fieldset' && a.controlFieldset ? '1' : null; },
+  querySelectorAll(selector) {
+    if (selector === 'input, textarea') return this.members.filter((m) => m.tagName !== 'SELECT');
+    if (selector === 'select, button:not([data-ob-ref-current])') return this.members.filter((m) => m.tagName === 'SELECT');
+    throw new Error('anchor.querySelectorAll: unsupported selector ' + selector);
+  },
+}));
+
+// Радиогруппа — все радиокнопки формы с одним name: отмечена не больше одной.
+const radioGroups = new Map();
+const controls = payload.page.controls.map((c) => {
+  const dataset = {};
+  for (const [key, value] of Object.entries(c.data || {})) {
+    dataset[key.slice(5).replace(/-([a-z])/g, (_, ch) => ch.toUpperCase())] = value;
+  }
+  const node = {
+    tagName: c.tag.toUpperCase(), name: c.name, type: c.type, value: c.value,
+    disabled: c.disabled, readOnly: false, dataset,
+    classList: {contains() { return false; }},
+    ancestors: c.anchors.map((i) => anchors[i]),
+    closest(selector) {
+      if (selector === '[data-ob-el]') return this.ancestors[0] || null;
+      if (selector === '[data-ob-tp]') return null;
+      if (selector === 'fieldset[disabled]') {
+        return this.ancestors.find((a) => a.tagName === 'FIELDSET' && a.disabled) || null;
+      }
+      throw new Error('closest: unsupported selector ' + selector);
+    },
+  };
+  if (c.type === 'radio') {
+    Object.defineProperty(node, 'checked', {
+      get() { return radioGroups.get(node.name) === node; },
+      set(on) {
+        if (on) radioGroups.set(node.name, node);
+        else if (radioGroups.get(node.name) === node) radioGroups.delete(node.name);
+      },
+    });
+    if (c.checked) node.checked = true;
+  } else {
+    node.checked = c.checked;
+  }
+  node.ancestors.forEach((a) => a.members.push(node));
+  return node;
+});
+
+const form = {
+  querySelector(selector) {
+    if (selector.startsWith('[data-ob-file-content-for=')) return null;
+    const byName = /^\[name="([^"]*)"\]$/.exec(selector);
+    if (byName) return controls.find((c) => c.name === byName[1]) || null;
+    throw new Error('form.querySelector: unsupported selector ' + selector);
+  },
+  querySelectorAll(selector) {
+    const byName = /^\[name="([^"]*)"\]$/.exec(selector);
+    if (byName) return controls.filter((c) => c.name === byName[1]);
+    const radios = /^input\[type="radio"\]\[name="([^"]*)"\]$/.exec(selector);
+    if (radios) return controls.filter((c) => c.type === 'radio' && c.name === radios[1]);
+    throw new Error('form.querySelectorAll: unsupported selector ' + selector);
+  },
+};
+global.window = {CSS: null};
+global.document = {
+  getElementById(id) { return id === 'main-form' ? form : null; },
+  querySelector(selector) {
+    const match = /^\[data-ob-el="([^"]*)"\]$/.exec(selector);
+    if (!match) throw new Error('document.querySelector: unsupported selector ' + selector);
+    return anchors.find((a) => a.name === match[1]) || null;
+  },
+};
+const client = new Function(
+  fn('managedRefParts') + '\n' + fn('ensureRefOption') + '\n' +
+    region('onebase-ro-apply-states') + '\n' + region('onebase-ro-apply-values') +
+    '\nreturn {applyElementStates, applyValues};'
+)();
+if (payload.response) {
+  // Порядок клиента при ответе события (managed.js): состояния, затем значения.
+  client.applyElementStates(payload.response.elementStates);
+  client.applyValues(payload.response.values, payload.response.refOptions);
+}
+const values = {};
+for (const c of controls) {
+  if (c.disabled || c.closest('fieldset[disabled]')) continue;
+  if ((c.type === 'checkbox' || c.type === 'radio') && !c.checked) continue;
+  (values[c.name] = values[c.name] || []).push(String(c.value));
+}
+process.stdout.write(JSON.stringify(values));
+`
+
+// submitManagedPage возвращает то, что отправит форма: при открытии страницы
+// (response == nil) или после ответа события, применённого кодом managed.js.
+func submitManagedPage(t *testing.T, page managedPage, response json.RawMessage) url.Values {
+	t.Helper()
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for the managed form submission test")
+	}
+	payload, err := json.Marshal(struct {
+		Page     managedPage     `json:"page"`
+		Response json.RawMessage `json:"response,omitempty"`
+	}{Page: page, Response: response})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(t.Context(), node, "-e", managedPageHarness, "static/managed.js") //nolint:gosec // test-only executable resolved by exec.LookPath
+	cmd.Stdin = bytes.NewReader(payload)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("execute managed.js page harness: %v\n%s", err, output)
+	}
+	var values url.Values
+	if err := json.Unmarshal(output, &values); err != nil {
+		t.Fatalf("decode page harness output: %v; output=%s", err, output)
+	}
+	return values
+}

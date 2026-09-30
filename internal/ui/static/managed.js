@@ -327,29 +327,50 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     sel.appendChild(o);
   }
   // BEGIN onebase-ro-apply-values
+  // Радиокнопки с одним name — одна группа на всю форму: браузер держит
+  // отмеченной одну кнопку, даже если реквизит нарисован двумя
+  // переключателями. Отмечаем кнопку той копии, которая сейчас отправляется,
+  // то есть не внутри disabled fieldset скрытой копии. Ответ события
+  // применяет состояния элементов раньше значений, поэтому копию, которую он
+  // показал, эта проверка уже видит отправляемой (#1759).
+  function applyRadioValue(radios, v){
+    var val = (v === null || v === undefined) ? '' : String(v);
+    var target = null;
+    radios.forEach(function(r){
+      if (!target && r.value === val && !(r.closest && r.closest('fieldset[disabled]'))) target = r;
+    });
+    radios.forEach(function(r){
+      if (!target && r.value === val) target = r;
+    });
+    radios.forEach(function(r){ r.checked = (r === target); });
+  }
   function applyValues(values, refOptions){
     if (!values) return;
     const form = document.getElementById('main-form');
     if (!form) return;
     Object.keys(values).forEach(function(k){
       const v = values[k];
+      const key = window.CSS && CSS.escape ? CSS.escape(k) : k;
       // Пропускаем файловые поля: не подставляем содержимое в поле пути
-      const fc = form.querySelector('[data-ob-file-content-for="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
+      const fc = form.querySelector('[data-ob-file-content-for="' + key + '"]');
       if (fc) return;
-      const inp = form.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (!inp) return;
-      if (inp.type === 'radio') {
-        // Радиокнопки: querySelector находит первый input с таким name, но
-        // нужно переключить checked на кнопку с нужным value. Без этого
-        // inp.value = val менял атрибут value первой кнопки, ломая форму.
-        var val = (v === null || v === undefined) ? '' : String(v);
-        form.querySelectorAll('input[type="radio"][name="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]').forEach(function(r) {
-          r.checked = (r.value === val);
-        });
-        return;
-      } else if (inp.type === 'checkbox') {
-        inp.checked = v === true || v === 'true' || v === 1;
-      } else {
+      // Реквизит бывает на форме не один раз: копия, скрытая по hidden_when,
+      // остаётся в DOM (disabled fieldset) рядом с видимой, а после смены
+      // видимости отправляется уже она. Поэтому, как и у табличных частей
+      // (applyTableParts), значение получают ВСЕ представления реквизита:
+      // иначе ответ доходил только до первого контрола, и видимая копия
+      // отправляла старое значение обратно (#1759).
+      const controls = Array.prototype.slice.call(form.querySelectorAll('[name="' + key + '"]'));
+      const radios = controls.filter(function(c){ return c.type === 'radio'; });
+      if (radios.length) applyRadioValue(radios, v);
+      controls.forEach(function(inp){
+        // value радиокнопки — её вариант, а не значение реквизита: запись в
+        // него ломала бы переключатель. Отметку выставил applyRadioValue.
+        if (inp.type === 'radio') return;
+        if (inp.type === 'checkbox') {
+          inp.checked = v === true || v === 'true' || v === 1;
+          return;
+        }
         var ref = managedRefParts(v);
         var val;
         if (ref) {
@@ -366,17 +387,15 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         // запись затирала её в базе.
         if (inp.type === 'date' && val.indexOf('T') > 0) val = val.slice(0, val.indexOf('T'));
         if (inp.tagName === 'SELECT') ensureRefOption(inp, val, refOptions && refOptions[k], ref && ref.label);
+        // Зеркало значения (план 181C/#1672) — скрытый input с тем же name:
+        // у запертого select-поля отправляется оно, и этот же проход держит
+        // его синхронным с select при каждом применении значения.
         if (inp.classList && inp.classList.contains('code-field') && inp._obSetCodeValue) {
           inp._obSetCodeValue(val);
         } else {
           inp.value = val;
         }
-        // Зеркало значения (план 181C/#1672): у запертого select-поля value
-        // меняет обработчик через сам select, а отправляется зеркало — держим
-        // их синхронными при каждом применении значения.
-        var mir = document.getElementById('ro-mirror-' + k);
-        if (mir) mir.value = val;
-      }
+      });
     });
     // A form handler may change a choice_filter source without dispatching a
     // native change event. Re-scan fingerprints after the whole response has
