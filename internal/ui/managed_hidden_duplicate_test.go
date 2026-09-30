@@ -315,7 +315,7 @@ const controls = payload.page.controls.map((c) => {
     tagName: c.tag.toUpperCase(), name: c.name, type: c.type, value: c.value,
     disabled: c.disabled, readOnly: false, dataset,
     classList: {contains() { return false; }},
-    ancestors: c.anchors.map((i) => anchors[i]),
+    ancestors: (c.anchors || []).map((i) => anchors[i]),
     closest(selector) {
       if (selector === '[data-ob-el]') return this.ancestors[0] || null;
       if (selector === '[data-ob-tp]') return null;
@@ -357,6 +357,16 @@ const form = {
   },
 };
 global.window = {CSS: null};
+// Конфиг страницы (ob-managed-config) и sessionStorage — для сохранения
+// реквизитов формы перед отправкой и их восстановления после перезагрузки.
+global.cfg = payload.config || {};
+const storage = new Map(payload.storage == null ? [] : [['stash', payload.storage]]);
+const stashKey = () => 'ob-form-attrs:' + String(global.cfg.entity || '');
+global.sessionStorage = {
+  getItem(k) { return k === stashKey() && storage.has('stash') ? storage.get('stash') : null; },
+  setItem(k, v) { if (k === stashKey()) storage.set('stash', String(v)); },
+  removeItem(k) { if (k === stashKey()) storage.delete('stash'); },
+};
 global.document = {
   getElementById(id) { return id === 'main-form' ? form : null; },
   querySelector(selector) {
@@ -367,21 +377,53 @@ global.document = {
 };
 const client = new Function(
   fn('managedRefParts') + '\n' + fn('ensureRefOption') + '\n' +
-    region('onebase-ro-apply-states') + '\n' + region('onebase-ro-apply-values') +
-    '\nreturn {applyElementStates, applyValues};'
+    region('onebase-ro-apply-states') + '\n' + region('onebase-ro-apply-values') + '\n' +
+    region('onebase-form-attr-stash') +
+    '\nreturn {applyElementStates, applyValues, applyRadioValue, stashFormAttrs, restoreFormAttrs};'
 )();
 if (payload.response) {
   // Порядок клиента при ответе события (managed.js): состояния, затем значения.
   client.applyElementStates(payload.response.elementStates);
   client.applyValues(payload.response.values, payload.response.refOptions);
 }
+const submitted = (c) => !c.disabled && !c.closest('fieldset[disabled]');
+// Действия оператора и клиента по порядку:
+//   {setAll: {name: value}} — значение во всех копиях (как после ответа события);
+//   {edit: {name: value}}   — оператор правит копию, которую видит;
+//   {stash: true}           — «Записать»: реквизиты формы уходят в sessionStorage;
+//   {restore: true}         — загрузка страницы после редиректа.
+for (const action of payload.actions || []) {
+  for (const [name, v] of Object.entries(action.setAll || {})) {
+    const copies = controls.filter((c) => c.name === name);
+    const radios = copies.filter((c) => c.type === 'radio');
+    if (radios.length) client.applyRadioValue(radios, v);
+    copies.forEach((c) => { if (c.type !== 'radio') c.value = v; });
+  }
+  for (const [name, v] of Object.entries(action.edit || {})) {
+    const own = controls.filter((c) => c.name === name && submitted(c));
+    if (!own.length) throw new Error('no visible copy of ' + name);
+    if (own[0].type === 'radio') {
+      const target = own.find((r) => r.value === v);
+      if (!target) throw new Error('no option ' + v + ' in visible copy of ' + name);
+      target.checked = true;
+    } else {
+      own[0].value = v;
+    }
+  }
+  if (action.stash) client.stashFormAttrs();
+  if (action.restore) client.restoreFormAttrs();
+}
 const values = {};
 for (const c of controls) {
-  if (c.disabled || c.closest('fieldset[disabled]')) continue;
+  if (!submitted(c)) continue;
   if ((c.type === 'checkbox' || c.type === 'radio') && !c.checked) continue;
   (values[c.name] = values[c.name] || []).push(String(c.value));
 }
-process.stdout.write(JSON.stringify(values));
+if (payload.actions) {
+  process.stdout.write(JSON.stringify({values, storage: storage.has('stash') ? storage.get('stash') : null}));
+} else {
+  process.stdout.write(JSON.stringify(values));
+}
 `
 
 // submitManagedPage возвращает то, что отправит форма: при открытии страницы
@@ -399,15 +441,20 @@ func submitManagedPage(t *testing.T, page managedPage, response json.RawMessage)
 	if err != nil {
 		t.Fatal(err)
 	}
+	var values url.Values
+	runManagedPageHarness(t, node, payload, &values)
+	return values
+}
+
+func runManagedPageHarness(t *testing.T, node string, payload []byte, out any) {
+	t.Helper()
 	cmd := exec.CommandContext(t.Context(), node, "-e", managedPageHarness, "static/managed.js") //nolint:gosec // test-only executable resolved by exec.LookPath
 	cmd.Stdin = bytes.NewReader(payload)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("execute managed.js page harness: %v\n%s", err, output)
 	}
-	var values url.Values
-	if err := json.Unmarshal(output, &values); err != nil {
+	if err := json.Unmarshal(output, out); err != nil {
 		t.Fatalf("decode page harness output: %v; output=%s", err, output)
 	}
-	return values
 }

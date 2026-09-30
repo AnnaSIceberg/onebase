@@ -198,22 +198,50 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // клиента, и реквизиты запись переживают). Значения кладём в sessionStorage
   // ровно на время перезагрузки: пишем перед отправкой, применяем и СРАЗУ
   // удаляем при следующей загрузке — дольше одной навигации они не живут.
+  // BEGIN onebase-form-attr-stash
   var FORM_ATTRS = Array.isArray(cfg.formAttrs) ? cfg.formAttrs : [];
   var ATTR_STASH_KEY = 'ob-form-attrs:' + String(cfg.entity || '');
+  // Реквизит бывает нарисован несколькими копиями: копия, скрытая по
+  // hidden_when, остаётся в DOM внутри disabled fieldset и не отправляется.
+  // Первый контрол с этим name — не обязательно тот, который правил оператор:
+  // сохранять надо значение отправляемой копии, иначе после перезагрузки
+  // возвращалось старое значение скрытой копии, а видимое поле пустело (#1759).
+  function formAttrControls(form, name){
+    var key = window.CSS && CSS.escape ? CSS.escape(name) : name;
+    return Array.prototype.slice.call(form.querySelectorAll('[name="' + key + '"]'));
+  }
+  // Значение реквизита, которое уйдёт с формой. Флажки не сохраняются (как и
+  // раньше). Нет отправляемой копии или копии расходятся — не сохраняем ничего:
+  // восстановить наугад хуже, чем не восстановить.
+  function formAttrSubmittedValue(controls){
+    var value = null;
+    for (var i = 0; i < controls.length; i++) {
+      var c = controls[i];
+      if (c.type === 'checkbox' || c.disabled || (c.closest && c.closest('fieldset[disabled]'))) continue;
+      if (c.type === 'radio' && !c.checked) continue;
+      var v = String(c.value == null ? '' : c.value);
+      if (value === null) value = v;
+      else if (value !== v) return '';
+    }
+    return value || '';
+  }
   function stashFormAttrs(){
     if (!FORM_ATTRS.length) return;
     var form = document.getElementById('main-form');
     if (!form) return;
     var data = {};
     for (var i = 0; i < FORM_ATTRS.length; i++) {
-      var el = form.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(FORM_ATTRS[i]) : FORM_ATTRS[i]) + '"]');
-      if (el && el.type !== 'checkbox' && el.value) data[FORM_ATTRS[i]] = el.value;
+      var v = formAttrSubmittedValue(formAttrControls(form, FORM_ATTRS[i]));
+      if (v) data[FORM_ATTRS[i]] = v;
     }
     try {
       if (Object.keys(data).length) sessionStorage.setItem(ATTR_STASH_KEY, JSON.stringify(data));
       else sessionStorage.removeItem(ATTR_STASH_KEY);
     } catch (e) { /* приватный режим — просто не восстановим */ }
   }
+  // Восстановленное значение получают все пустые копии реквизита — какая из
+  // них видима, решает hidden_when уже после загрузки, и копии должны
+  // совпадать. Заполненную сервером копию не трогаем.
   function restoreFormAttrs(){
     if (!FORM_ATTRS.length) return;
     var raw = null;
@@ -224,10 +252,17 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var form = document.getElementById('main-form');
     if (!form || !data) return;
     Object.keys(data).forEach(function(k){
-      var el = form.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (el && !el.value) el.value = data[k];
+      if (FORM_ATTRS.indexOf(k) < 0) return;
+      var controls = formAttrControls(form, k);
+      var radios = controls.filter(function(c){ return c.type === 'radio'; });
+      if (radios.length && !radios.some(function(r){ return r.checked; })) applyRadioValue(radios, data[k]);
+      controls.forEach(function(c){
+        if (c.type === 'radio' || c.type === 'checkbox') return;
+        if (!c.value) c.value = data[k];
+      });
     });
   }
+  // END onebase-form-attr-stash
 
   window._tpRefOpts = obManagedReadJSON('ob-managed-tp-ref-opts', window._tpRefOpts || {}) || {};
   window._tpEnumLabels = obManagedReadJSON('ob-managed-tp-enum-labels', window._tpEnumLabels || {}) || {};
