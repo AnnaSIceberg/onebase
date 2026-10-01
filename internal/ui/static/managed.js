@@ -368,11 +368,20 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // то есть не внутри disabled fieldset скрытой копии. Ответ события
   // применяет состояния элементов раньше значений, поэтому копию, которую он
   // показал, эта проверка уже видит отправляемой (#1759).
+  // Отправится ли контрол с формой: не disabled сам (readonly_when отключает
+  // input) и не лежит в disabled fieldset (копия, скрытая по hidden_when).
+  function controlSubmittable(c){
+    return !c.disabled && !(c.closest && c.closest('fieldset[disabled]'));
+  }
+  // Отмечается кнопка, которая уйдёт с формой. Видимая, но readonly копия
+  // переключателя не отправляется: отметь её — и у реквизита не останется
+  // отправляемой отмеченной кнопки, запись потеряет значение (#1759, круг 5).
+  // Отправляемой кнопки с этим value нет — отмечается первая, только для показа.
   function applyRadioValue(radios, v){
     var val = (v === null || v === undefined) ? '' : String(v);
     var target = null;
     radios.forEach(function(r){
-      if (!target && r.value === val && !(r.closest && r.closest('fieldset[disabled]'))) target = r;
+      if (!target && r.value === val && controlSubmittable(r)) target = r;
     });
     radios.forEach(function(r){
       if (!target && r.value === val) target = r;

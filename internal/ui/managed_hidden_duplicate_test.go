@@ -83,6 +83,109 @@ func TestУсловноеСкрытие_НовоеЗначениеСобытия
 	}
 }
 
+// Видимая, но readonly копия переключателя не отправляется: readonly_when
+// отключает сами радиокнопки (applyElementStates ставит disabled), а fieldset
+// при этом уже не disabled. Ответ события обязан отметить кнопку, которая уйдёт
+// с формой. Иначе клиент отмечал «Новая» в readonly-копии, браузер снимал
+// отметку с редактируемой, и у реквизита не оставалось отправляемой отмеченной
+// кнопки — запись теряла значение обработчика (#1759, ревью круга 5).
+//
+// Первая копия скрыта при открытии и после «Принять» показывается только для
+// чтения, вторая остаётся редактируемой. Обратный порядок копий в DOM — тот же
+// контракт с другой стороны.
+func TestУсловноеСкрытие_ReadonlyКопияПереключателяНеЗабираетВыбор(t *testing.T) {
+	for _, readonlyFirst := range []bool{true, false} {
+		order := "readonly-копия первой"
+		if !readonlyFirst {
+			order = "readonly-копия второй"
+		}
+		t.Run(order, func(t *testing.T) {
+			ent := заявкаСReadonlyКопиейПереключателя(t, readonlyFirst)
+			srv, ctx := newSubmitTestServer(t, []*metadata.Entity{ent})
+			id := uuid.New()
+			if err := srv.store.Upsert(ctx, ent.Name, id, map[string]any{
+				"СтадияОформления": "Черновик", "Улица": "Старая"}, ent); err != nil {
+				t.Fatal(err)
+			}
+			page := parseManagedPage(t, отрисоватьСУсловиями(t, ent, ent.Forms[0], map[string]string{
+				"СтадияОформления": "Черновик", "Улица": "Старая"}))
+
+			opened := submitManagedPage(t, page, nil)
+			if got := opened["Улица"]; !reflect.DeepEqual(got, []string{"Старая"}) {
+				t.Fatalf("при открытии форма отправляет Улица=%q, ожидалось значение базы из редактируемой копии", got)
+			}
+
+			event := url.Values{}
+			for name, values := range opened {
+				event[name] = values
+			}
+			event.Set("_id", id.String())
+			event.Set("_element", "КнопкаПринять")
+			event.Set("_event", string(metadata.FormEventOnClick))
+			event.Set("_kind", "object")
+			response := executeFormEvent(t, srv, ent, event).Body.Bytes()
+			decoded := decodeFormEventResponse(t, response)
+			if !decoded.OK {
+				t.Fatalf("событие формы завершилось ошибкой: %q", decoded.Error)
+			}
+
+			submitted := submitManagedPage(t, page, response)
+			if got := submitted["Улица"]; !reflect.DeepEqual(got, []string{"Новая"}) {
+				t.Fatalf("после события форма отправляет Улица=%q, а обработчик записал «Новая»", got)
+			}
+
+			записатьЗаявку(t, srv, ent, id, submitted)
+			row, err := srv.store.GetByID(ctx, ent.Name, id, ent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if row["Улица"] != "Новая" || row["СтадияОформления"] != "Принята" {
+				t.Fatalf("в базе Улица=%v СтадияОформления=%v, ожидались «Новая» и «Принята»",
+					row["Улица"], row["СтадияОформления"])
+			}
+		})
+	}
+}
+
+// заявкаСReadonlyКопиейПереключателя — «Улица» двумя переключателями: одна
+// копия скрыта до «Принять» и после неё только для чтения, другая всегда
+// редактируема. readonlyFirst ставит readonly-копию первой в DOM.
+func заявкаСReadonlyКопиейПереключателя(t *testing.T, readonlyFirst bool) *metadata.Entity {
+	t.Helper()
+	options := []metadata.FormOption{{Value: "Старая"}, {Value: "Новая"}}
+	толькоЧтение := &metadata.FormElement{
+		Kind: metadata.FormElementSwitch, Name: "ПолеУлицаТолькоЧтение", DataPath: "Объект.Улица", Options: options,
+		HiddenWhen: `СтадияОформления <> "Принята"`, ReadOnlyWhen: `СтадияОформления = "Принята"`,
+	}
+	редактируемая := &metadata.FormElement{
+		Kind: metadata.FormElementSwitch, Name: "ПолеУлицаРедактируемая", DataPath: "Объект.Улица", Options: options,
+	}
+	elements := []*metadata.FormElement{fieldEl("ПолеСтадии", "Объект.СтадияОформления"), толькоЧтение, редактируемая}
+	if !readonlyFirst {
+		elements = []*metadata.FormElement{fieldEl("ПолеСтадии", "Объект.СтадияОформления"), редактируемая, толькоЧтение}
+	}
+	elements = append(elements, &metadata.FormElement{
+		Kind: metadata.FormElementButton, Name: "КнопкаПринять",
+		Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Принять"},
+	})
+	form := managedObjectForm(elements...)
+	form.ProgramAST = mustParse(t, `
+Процедура Принять()
+	Объект.СтадияОформления = "Принята";
+	Объект.Улица = "Новая";
+КонецПроцедуры
+`)
+	ent := &metadata.Entity{
+		Name: "ЗаявкаСReadonlyКопией", Kind: metadata.KindCatalog,
+		Fields: []metadata.Field{
+			{Name: "СтадияОформления", Type: metadata.FieldTypeString},
+			{Name: "Улица", Type: metadata.FieldTypeString},
+		},
+	}
+	ent.Forms = []*metadata.FormModule{form}
+	return ent
+}
+
 // заявкаСКопиямиУлицы — справочник с формой, на которой «Улица» нарисована
 // двумя элементами одного вида с взаимоисключающими hidden_when. shownFirst
 // ставит первой в DOM копию, которую покажет команда «Принять».
