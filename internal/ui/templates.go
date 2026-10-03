@@ -1246,13 +1246,14 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// заведомо цифры, и заставлять автора объявлять это второй раз незачем.
 		"inputMaskDigitsOnly": metadata.InputMaskDigitsOnly,
 		// inputMaskHint — шаблон в пустом поле: «(___)___-__-__».
-		"inputMaskHint":       metadata.InputMaskHint,
-		"wcell":               widgetCell,
-		"echartsJSON":         echartsJSON,
-		"stageChartJSON":      stageChartJSON,
-		"stageSourceLabel":    stageSourceLabel,
-		"splitCamel":          splitCamel,
-		"fmtCell":             fmtReportCell,
+		"inputMaskHint":     metadata.InputMaskHint,
+		"inputAutocomplete": inputAutocomplete,
+		"wcell":             widgetCell,
+		"echartsJSON":       echartsJSON,
+		"stageChartJSON":    stageChartJSON,
+		"stageSourceLabel":  stageSourceLabel,
+		"splitCamel":        splitCamel,
+		"fmtCell":           fmtReportCell,
 		// fmtBool нужен там, где шаблон РАЗБИРАЕТ тип колонки: без типа поля
 		// int64(1)-булево неотличимо от числа 1, и bool доезжал до fmtCell,
 		// показываясь как «1» на SQLite против «true» на PostgreSQL (#1076).
@@ -4228,4 +4229,17 @@ func managedRefAllOptions(ctx map[string]any, element *metadata.FormElement, fie
 		}
 	}
 	return nil
+}
+
+// inputAutocomplete — значение autocomplete текстового поля управляемой формы.
+// Обычно "off" (#595). Поле с маской ввода — почти всегда телефон, а
+// автозаполнение Яндекс Браузера на "off" не смотрит и предлагает сохранённые
+// номера из своего профиля. "one-time-code" браузеры не запоминают и не
+// подсказывают (проверено в Яндекс Браузере); "new-password" тоже гасит
+// подсказки, но зовёт менеджер паролей.
+func inputAutocomplete(el *metadata.FormElement) string {
+	if el != nil && el.InputMask != "" {
+		return "one-time-code"
+	}
+	return "off"
 }
