@@ -73,6 +73,24 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 			next++
 			continue
 		}
+		if strings.EqualFold(fieldName, metadata.FormChoiceRootField) {
+			if !entity.Hierarchical {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: is_root requires a hierarchical catalog", i)
+			}
+			if predicate.Op != metadata.FormChoiceOpEqual {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: is_root supports only eq", i)
+			}
+			value, ok := predicate.Value.(bool)
+			if !ok {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: is_root value must be boolean", i)
+			}
+			rootSQL := choiceEmptyRefSQL(d, "parent_id")
+			if !value {
+				rootSQL = "NOT (" + rootSQL + ")"
+			}
+			parts = append(parts, rootSQL)
+			continue
+		}
 
 		field, column := choiceField(entity, fieldName)
 		if field == nil {
@@ -155,7 +173,7 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 	return "(" + strings.Join(parts, " AND ") + ")", args, next, nil
 }
 
-// choiceEmptyRefSQL — «ссылка пуста» для eq_or_empty.
+// choiceEmptyRefSQL — «ссылка пуста» для eq_or_empty и is_root.
 func choiceEmptyRefSQL(d Dialect, column string) string {
 	if d.Name() == "sqlite" {
 		return "(" + column + " IS NULL OR " + column + " = '')"

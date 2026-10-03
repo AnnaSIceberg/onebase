@@ -232,6 +232,10 @@ func applyEditOp(yamlSrc []byte, req editOpRequest) (editOpResult, error) {
 			if sources != 1 {
 				return editOpResult{}, fmt.Errorf("setChoiceFilter: условие %d: укажите ровно одно из from, value и ref", i+1)
 			}
+			if strings.EqualFold(strings.TrimSpace(condition.Field), metadata.FormChoiceRootField) &&
+				(op != metadata.FormChoiceOpEqual || condition.Value == nil) {
+				return editOpResult{}, fmt.Errorf("setChoiceFilter: условие %d: is_root требует eq и boolean value", i+1)
+			}
 			if ref != "" {
 				// Формат проверяется сразу: битый UUID в YAML отклонил бы
 				// onebase check, а редактор не должен его записывать (#1820).

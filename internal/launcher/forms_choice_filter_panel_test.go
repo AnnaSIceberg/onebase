@@ -107,6 +107,22 @@ emptyRef.handlers.change();
 equal(edits[edits.length - 1].choice_filter, JSON.stringify([
   { field: 'parent_id', op: 'eq', ref: folder }
 ]), 'entered UUID is trimmed and written as ref');
+// is_root (#1823) is a boolean pseudo-field and must survive a browser edit.
+const rootPanel = new Element('panel');
+addChoiceFilterEditor(rootPanel, { choiceFilter: [
+  { field: 'is_root', op: 'eq', value: true }
+] });
+const rootMode = all(rootPanel).find(node => node.tag === 'select' &&
+  node.children.some(option => option.value === 'value'));
+equal(rootMode.value, 'value', 'is_root opens in boolean value mode');
+const rootValue = all(rootPanel).find(node => node.tag === 'select' &&
+  node.children.some(option => option.value === 'true') &&
+  node.children.some(option => option.value === 'false'));
+rootValue.value = 'false';
+rootValue.handlers.change();
+equal(edits[edits.length - 1].choice_filter, JSON.stringify([
+  { field: 'is_root', op: 'eq', value: false }
+]), 'is_root false survives browser POST');
 `
 	// eval the function from the page in the same global scope as its DOM stubs.
 	script := testScript[:strings.Index(testScript, "const panel =")] + "\neval(" + strconv.Quote(page[start:start+end]) + ");\n" + testScript[strings.Index(testScript, "const panel ="):]
