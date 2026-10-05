@@ -445,6 +445,8 @@ const controls = payload.page.controls.map((c) => {
 });
 
 const form = {
+  // ensureFormAttrControls дописывает скрытый носитель реквизиту без элемента.
+  appendChild(node) { controls.push(node); },
   querySelector(selector) {
     if (selector.startsWith('[data-ob-file-content-for=')) return null;
     const byName = /^\[name="([^"]*)"\]$/.exec(selector);
@@ -472,6 +474,10 @@ global.sessionStorage = {
 };
 global.document = {
   getElementById(id) { return id === 'main-form' ? form : null; },
+  createElement(tag) {
+    return {tagName: tag.toUpperCase(), name: '', type: '', value: '', disabled: false,
+      classList: {contains() { return false; }}, closest() { return null; }};
+  },
   querySelector(selector) {
     const match = /^\[data-ob-el="([^"]*)"\]$/.exec(selector);
     if (!match) throw new Error('document.querySelector: unsupported selector ' + selector);
@@ -479,6 +485,8 @@ global.document = {
   },
 };
 const client = new Function(
+  // Страница уже «загружена»: готовность DOM наступает сразу.
+  'function obManagedReady(fn) { fn(); }\n' +
   fn('managedRefParts') + '\n' + fn('ensureRefOption') + '\n' +
     region('onebase-ro-apply-states') + '\n' + region('onebase-ro-apply-values') + '\n' +
     region('onebase-form-attr-stash') +
