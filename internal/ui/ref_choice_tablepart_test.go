@@ -54,7 +54,9 @@ func newTablePartChoiceFixture(t *testing.T, db *storage.DB, pii bool) tablePart
 			}},
 		}},
 	}
-	condition := func(c metadata.FormChoiceCondition) []metadata.FormChoiceCondition { return []metadata.FormChoiceCondition{c} }
+	condition := func(c metadata.FormChoiceCondition) []metadata.FormChoiceCondition {
+		return []metadata.FormChoiceCondition{c}
+	}
 	form := &metadata.FormModule{
 		Name: "ФормаОбъекта", EntityName: "Заявка", Kind: "object", LayoutKind: metadata.FormLayoutManaged,
 		Elements: []*metadata.FormElement{
