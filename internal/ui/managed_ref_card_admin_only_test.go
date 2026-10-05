@@ -31,10 +31,10 @@ func refCardProject(t *testing.T, formKeys, elementKeys string) *project.Project
 	write := func(rel, body string) {
 		t.Helper()
 		path := filepath.Join(dir, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { //nolint:gosec // G703: rel — литерал теста, каталог — t.TempDir()
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil { //nolint:gosec // G703: rel — литерал теста, каталог — t.TempDir()
 			t.Fatal(err)
 		}
 	}
