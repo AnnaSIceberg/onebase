@@ -105,6 +105,14 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 					fmt.Sprintf("ключ primary игнорируется — акцентный стиль есть только у kind: %s", metadata.FormElementButton),
 					"Уберите ключ или перенесите его на кнопку."))
 			}
+			// Кнопку «Открыть карточку» рисует только ссылочное поле ввода (#1876).
+			if el.RefCardButton != nil {
+				if el.Kind != metadata.FormElementField || !formRefCardFieldPath(owner, form, el.DataPath, entities) {
+					warns = append(warns, formKeyIssue(owner, form, el, "form.ref-card-button",
+						fmt.Sprintf("ключ ref_card_button игнорируется — data_path %q не выбирает ссылку, кнопки «Открыть карточку» у поля нет", el.DataPath),
+						"Оставьте ключ только у ссылочного поля ввода."))
+				}
+			}
 			if !el.ChoiceFolders && el.ChoiceDropdown == nil {
 				return
 			}
@@ -123,6 +131,17 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 		})
 	})
 	return warns
+}
+
+// formRefCardFieldPath — выбирает ли data_path ссылку, у которой есть кнопка
+// «Открыть карточку»: Объект.<Поле>, Форма.<Реквизит> или голое имя реквизита
+// формы — так managed-шаблон находит реквизит формы по data_path.
+func formRefCardFieldPath(owner *metadata.Entity, form *metadata.FormModule, path string, entities map[string]*metadata.Entity) bool {
+	if name := strings.TrimSpace(path); name != "" && !strings.Contains(name, ".") {
+		path = "Форма." + name
+	}
+	target, ok := formChoiceRefSource(owner, form, path, entities)
+	return ok && target != nil
 }
 
 func formKeyIssue(owner *metadata.Entity, form *metadata.FormModule, el *metadata.FormElement, code, message, fix string) Issue {
