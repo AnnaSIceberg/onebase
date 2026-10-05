@@ -508,6 +508,12 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// attrRefEntity — имя сущности из ссылочного типа реквизита формы
 		// ("CatalogRef.X" → "X"), пусто если тип не ссылочный.
 		"attrRefEntity": func(typeRef string) string { return attrRefEntityName(typeRef) },
+		// refHasCard — есть ли у цели ссылки карточка, которую откроет 🔍.
+		// У системной таблицы учётных записей (reference:_users, #1646) её
+		// нет: адрес давал 404, а вкладка с ним не закрывалась (#1684).
+		"refHasCard": func(refEntity string) bool {
+			return strings.TrimSpace(refEntity) != "" && !metadata.IsSystemRefTarget(refEntity)
+		},
 		// formAttrNames — имена скалярных реквизитов формы (save:false), которых
 		// нет среди полей сущности. Клиент по ним восстанавливает введённое после
 		// полной перезагрузки страницы: «Записать» уходит POST'ом с редиректом, и
