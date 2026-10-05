@@ -16,10 +16,11 @@
 
 Второй патч там же (метод `embed`): выключены встроенное автозаполнение форм и
 сохранение паролей WebView2 (`ICoreWebView2Settings4`:
-`IsGeneralAutofillEnabled`, `IsPasswordAutosaveEnabled`). По умолчанию они
-включены, и окно Предприятия подсказывало оператору телефоны и адреса из прошлых
-звонков. Без `ICoreWebView2Settings4` (старый runtime) окно открывается как
-раньше.
+`IsGeneralAutofillEnabled`, `IsPasswordAutosaveEnabled`). У SDK по умолчанию
+`IsGeneralAutofillEnabled` = TRUE — из-за него окно Предприятия подсказывало
+оператору телефоны и адреса из прошлых звонков; `IsPasswordAutosaveEnabled` =
+FALSE. Патч явно ставит оба свойства в FALSE, не полагаясь на умолчание. Без
+`ICoreWebView2Settings4` (старый runtime) окно открывается как раньше.
 
 Патчи помечены комментарием `onebase patch` — при обновлении vendored-копии
 перенесите их в новую версию.
