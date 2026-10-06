@@ -156,3 +156,49 @@ func TestChoiceFilterTablePartRejects(t *testing.T) {
 		}
 	})
 }
+
+// Имя каталога не должно сталкиваться с тем, как SQL адресует строки его ТЧ:
+// при фиксированном алиасе «choice_tp» каталог с таким именем затенялся, и
+// корреляция parent_id = id сравнивала поля одной строки ТЧ — подходящая
+// запись пропадала из выдачи и total (#1917, ревью круг 1).
+func TestChoiceFilterTablePartCatalogNamedLikeAlias(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		direction := &metadata.Entity{Name: "choice_tp_dir", Kind: metadata.KindCatalog,
+			Fields: []metadata.Field{{Name: "name", Type: metadata.FieldTypeString}}}
+		brand := &metadata.Entity{
+			Name: "choice_tp", Kind: metadata.KindCatalog,
+			Fields: []metadata.Field{{Name: "name", Type: metadata.FieldTypeString}},
+			TableParts: []metadata.TablePart{{Name: "directions", Fields: []metadata.Field{
+				{Name: "direction", Type: metadata.FieldType("reference:choice_tp_dir"), RefEntity: "choice_tp_dir"},
+			}}},
+		}
+		if err := db.Migrate(ctx, []*metadata.Entity{direction, brand}); err != nil {
+			t.Fatalf("Migrate: %v", err)
+		}
+		dir, id := uuid.New(), uuid.New()
+		if err := db.Upsert(ctx, direction.Name, dir, map[string]any{"name": "d"}, direction); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Upsert(ctx, brand.Name, id, map[string]any{"name": "b"}, brand); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.UpsertTablePartRows(ctx, brand.Name, "directions", id, []map[string]any{{"direction": dir.String()}}, brand.TableParts[0]); err != nil {
+			t.Fatal(err)
+		}
+		params := storage.ListParams{ChoicePredicates: []storage.ChoicePredicate{
+			{Field: "directions.direction", Op: metadata.FormChoiceOpEqual, Value: dir},
+		}}
+		rows, err := db.List(ctx, brand.Name, brand, params)
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		total, err := db.CountList(ctx, brand.Name, brand, params)
+		if err != nil {
+			t.Fatalf("CountList: %v", err)
+		}
+		if len(rows) != 1 || total != 1 {
+			t.Fatalf("каталог choice_tp: строк %d, total %d, ожидалось 1/1", len(rows), total)
+		}
+	})
+}

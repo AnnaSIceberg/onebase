@@ -96,8 +96,14 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 			if err != nil {
 				return "", nil, startArg, fmt.Errorf("choice filter %d field %q: %w", i, fieldName, err)
 			}
-			parts = append(parts, fmt.Sprintf("EXISTS (SELECT 1 FROM %s AS choice_tp WHERE choice_tp.parent_id = %s.id AND choice_tp.%s = %s)",
-				metadata.TablePartTableName(entity.Name, tp.Name), metadata.TableName(entity.Name),
+			// Без алиаса: строки ТЧ квалифицируются именем её таблицы
+			// «<цель>_<тч>», которое не совпадает с именем таблицы цели. Любой
+			// фиксированный алиас мог совпасть с именем каталога и затенить
+			// внешнюю таблицу — корреляция parent_id = id тогда сравнивала бы
+			// поля одной строки ТЧ.
+			tpTable := metadata.TablePartTableName(entity.Name, tp.Name)
+			parts = append(parts, fmt.Sprintf("EXISTS (SELECT 1 FROM %s WHERE %s.parent_id = %s.id AND %s.%s = %s)",
+				tpTable, tpTable, metadata.TableName(entity.Name), tpTable,
 				metadata.ColumnName(*column), d.Placeholder(next)))
 			args = append(args, idArg(d, id))
 			next++

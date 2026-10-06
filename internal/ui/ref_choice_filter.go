@@ -238,10 +238,17 @@ func (s *Server) choicePredicates(ctx context.Context, owner *metadata.Entity, f
 		// весь справочник, а закрытый строковым доступом — показал бы, что
 		// лежит у него внутри (разность «всё» и «всё, кроме X»). Ссылку из
 		// браузера сервер не берёт на веру и здесь.
-		if condition.Op == metadata.FormChoiceOpNotInHierarchy {
+		//
+		// Колонка табличной части (#1822): тот же гейт и для eq. Иначе UUID
+		// записи, которую пользователь не видит (нет права чтения справочника,
+		// RLS), отвечал бы, у каких записей цели она стоит в ТЧ, — а через ref
+		// та же запись даёт пустой подбор. Контракт #1822: закрытый источник —
+		// пустая выдача.
+		_, _, isTablePart := strings.Cut(fieldName, ".")
+		if condition.Op == metadata.FormChoiceOpNotInHierarchy || isTablePart {
 			excluded, isRef := value.(uuid.UUID)
 			if !isRef {
-				return nil, false, fmt.Errorf("not_in_hierarchy source %q is not a reference", path)
+				return nil, false, fmt.Errorf("%s source %q is not a reference", condition.Op, path)
 			}
 			visible, err := s.choiceRefVisible(ctx, target, fieldName, excluded)
 			if err != nil {

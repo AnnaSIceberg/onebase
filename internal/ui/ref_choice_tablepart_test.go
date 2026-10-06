@@ -218,3 +218,36 @@ func TestRefOptionsChoiceTablePartProtectedColumnIsClosed(t *testing.T) {
 		}
 	})
 }
+
+// Закрытый источник from (#1917, ревью круг 1): запись направления, которую
+// пользователь не видит, не должна отвечать, у каких брендов она стоит в ТЧ.
+// Тот же гейт, что у ref: нет права чтения справочника источника или строку
+// закрывает RLS — подбор пуст, а видимое направление работает как обычно.
+func TestRefOptionsChoiceTablePartClosedSourceIsClosed(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		f := newTablePartChoiceFixture(t, db, false)
+		noDirectionRead := tablePartChoiceUser(nil)
+		delete(noDirectionRead.Roles[0].Permissions.Catalogs, "Направление")
+		onlySewing := tablePartChoiceUser(nil)
+		onlySewing.Roles[0].Permissions.RowAccess.Catalogs["Направление"] = auth.RowPolicies{
+			"read": {Field: "Наименование", Op: "eq", Value: auth.RowValue{Literal: "ШМ"}},
+		}
+		for _, tc := range []struct {
+			name      string
+			user      *auth.User
+			direction uuid.UUID
+			want      string
+		}{
+			{"нет права чтения направлений", noDirectionRead, f.fridge, ""},
+			{"RLS закрывает направление", onlySewing, f.fridge, ""},
+			{"RLS открывает направление", onlySewing, f.sewing, "Универсальный,Швейный"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				got := f.fetch(t, tc.user, "brand-from", tc.direction.String())
+				if labels := refChoiceLabels(got); labels != tc.want || got.Total != len(got.Items) {
+					t.Fatalf("total=%d items=%q, ожидалось %q", got.Total, labels, tc.want)
+				}
+			})
+		}
+	})
+}
