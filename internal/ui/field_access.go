@@ -418,6 +418,13 @@ func (s *Server) sourceMeta(kind, name string) *metadata.Entity {
 // crafted request. Consistent with «нельзя изменить то, что не видно». Applied on
 // update only; on create the user legitimately enters their own values.
 //
+// Пустое сохранённое значение под маской (mask_*) пользователь видит пустым:
+// скрывать там нечего, поэтому заполнить его можно — иначе роль, которой
+// телефон показывается маской, не могла бы ввести его в записанный документ
+// вовсе (документ, созданный кодом и открытый для оформления), и введённое
+// молча отбрасывалось. Уже заполненное значение по-прежнему не меняется, а
+// поле со стратегией hide не заполняется никогда: его пустоту роль не видит.
+//
 // Возвращает имена ключей, которые были восстановлены или удалены. Вызывающий
 // обязан учесть, что в переданной карте после этого лежит РЕАЛЬНОЕ значение: для
 // DSL-объекта это тот же набор, который читает модуль, и без снятия признака
@@ -432,12 +439,15 @@ func (s *Server) protectMaskedFieldsOnWrite(ctx context.Context, entity *metadat
 		return nil, err
 	}
 	var restored []string
-	for field := range dec {
+	for field, decision := range dec {
 		key, ok := maskCIKey(fields, field)
 		if !ok {
 			continue // field not submitted → nothing to overwrite
 		}
 		if v, present := maskCIKeyValue(row, field); present {
+			if access.MaskedEmptyFillable(decision, v) {
+				continue
+			}
 			fields[key] = v
 		} else {
 			delete(fields, key)
