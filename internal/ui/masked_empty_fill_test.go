@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -204,6 +205,10 @@ func TestUI_ManagedForm_ProtectedInputRenderedAsPassword(t *testing.T) {
 	if strings.Contains(masked, `name="Наименование" value="Иванов" data-ob-protected`) {
 		t.Fatal("обычное поле не должно помечаться")
 	}
+	tail := page(uiMaskUser([]string{"read", "write"}, auth.FieldPolicies{"Телефон": {Read: "mask_tail", Keep: 5}}))
+	if !strings.Contains(tail, `name="Телефон" value="•••••••••22-33"`) || strings.Contains(tail, `value="•••••••••22-33" data-ob-protected`) {
+		t.Fatal("mask_tail показывает часть номера — поле не точками")
+	}
 	full := page(uiMaskUser([]string{"read", "write"}, auth.FieldPolicies{"Телефон": {Read: "full"}}))
 	if !strings.Contains(full, `name="Телефон" value="(916)111-22-33"`) || strings.Contains(full, `value="(916)111-22-33" data-ob-protected`) {
 		t.Fatal("у пользователя без маски значение видно и поле не помечается")
@@ -214,5 +219,17 @@ func maskEventButton(name, handler string) *metadata.FormElement {
 	return &metadata.FormElement{
 		Kind: metadata.FormElementButton, Name: name,
 		Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: handler},
+	}
+}
+
+// Ответ события не стирает набранное за время запроса (managed.js applyValues).
+func TestManagedApplyValuesKeepsTypingInNode(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for the managed applyValues typing regression test")
+	}
+	cmd := exec.Command(node, "--test", "static/managed_apply_typing_test.js") //nolint:gosec // test-only executable resolved by exec.LookPath
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("node managed applyValues typing test: %v\n%s", err, output)
 	}
 }
