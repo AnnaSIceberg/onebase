@@ -109,7 +109,7 @@ func toStringOrEmpty(v any) string {
 func TestUI_FormEvent_EchoesTypedMaskedValue(t *testing.T) {
 	cat := piiClientEntity()
 	form := managedObjectForm(fieldEl("ПолеНаименование", "Объект.Наименование"), fieldEl("ПолеТелефон", "Объект.Телефон"),
-		writeButton("КнПроверить", "КнПроверитьНажатие"), writeButton("КнПодменить", "КнПодменитьНажатие"))
+		maskEventButton("КнПроверить", "КнПроверитьНажатие"), maskEventButton("КнПодменить", "КнПодменитьНажатие"))
 	form.EntityName = cat.Name
 	form.ProgramAST = mustParse(t, `
 Процедура КнПроверитьНажатие()
@@ -207,5 +207,12 @@ func TestUI_ManagedForm_ProtectedInputRenderedAsPassword(t *testing.T) {
 	full := page(uiMaskUser([]string{"read", "write"}, auth.FieldPolicies{"Телефон": {Read: "full"}}))
 	if !strings.Contains(full, `name="Телефон" value="(916)111-22-33"`) || strings.Contains(full, `value="(916)111-22-33" data-ob-protected`) {
 		t.Fatal("у пользователя без маски значение видно и поле не помечается")
+	}
+}
+
+func maskEventButton(name, handler string) *metadata.FormElement {
+	return &metadata.FormElement{
+		Kind: metadata.FormElementButton, Name: name,
+		Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: handler},
 	}
 }
