@@ -105,3 +105,29 @@ elements:
 		t.Fatalf("ref_card_button у строкового поля: ожидалось одно предупреждение про Объект.Номер, получено %v", warned)
 	}
 }
+
+// Голый data_path ссылочного поля сущности (ревью #1915): шаблон берёт имя
+// поля из последнего сегмента и сначала ищет поле сущности, поэтому кнопка у
+// такого поля есть и ключ действует — предупреждать не о чем. У голого имени
+// строкового поля кнопки нет, предупреждение остаётся.
+func TestCheck_RefCardButtonBareDataPath(t *testing.T) {
+	element := func(dataPath string) string {
+		return `schema: onebase.form/v1
+form:
+  name: ФормаОбъекта
+  kind: object
+  entity: Заказ
+elements:
+  - kind: ПолеВвода
+    name: Поле
+    data_path: ` + dataPath + `
+    ref_card_button: false
+`
+	}
+	if warned := refCardPlacementWarned(RunFull(refCardAdminProject(t, element("Клиент")))); len(warned) != 0 {
+		t.Errorf("голый data_path ссылочного поля: ложное предупреждение %v", warned)
+	}
+	if warned := refCardPlacementWarned(RunFull(refCardAdminProject(t, element("Номер")))); len(warned) != 1 {
+		t.Errorf("голый data_path строкового поля: предупреждений %v, ожидалось одно", warned)
+	}
+}

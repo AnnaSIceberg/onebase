@@ -107,7 +107,7 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 			}
 			// Кнопку «Открыть карточку» рисует только ссылочное поле ввода (#1876).
 			if el.RefCardButton != nil {
-				if el.Kind != metadata.FormElementField || !formRefCardFieldPath(owner, form, el.DataPath, entities) {
+				if el.Kind != metadata.FormElementField || !formRefCardFieldPath(owner, form, el.DataPath) {
 					warns = append(warns, formKeyIssue(owner, form, el, "form.ref-card-button",
 						fmt.Sprintf("ключ ref_card_button игнорируется — data_path %q не выбирает ссылку, кнопки «Открыть карточку» у поля нет", el.DataPath),
 						"Оставьте ключ только у ссылочного поля ввода."))
@@ -133,15 +133,35 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 	return warns
 }
 
-// formRefCardFieldPath — выбирает ли data_path ссылку, у которой есть кнопка
-// «Открыть карточку»: Объект.<Поле>, Форма.<Реквизит> или голое имя реквизита
-// формы — так managed-шаблон находит реквизит формы по data_path.
-func formRefCardFieldPath(owner *metadata.Entity, form *metadata.FormModule, path string, entities map[string]*metadata.Entity) bool {
-	if name := strings.TrimSpace(path); name != "" && !strings.Contains(name, ".") {
-		path = "Форма." + name
+// formRefCardFieldPath — рисует ли managed-шаблон у поля с этим data_path
+// кнопку «Открыть карточку». Разбор повторяет шаблон (templates_managed.go):
+// имя — последний сегмент data_path (dpField), затем поле сущности с точно
+// таким именем — оно решает само, ссылочное оно или нет; реквизит формы
+// смотрится, только если такого поля нет. Иначе check советовал бы убрать
+// действующий ключ (голый data_path ссылочного поля сущности, ревью #1915).
+func formRefCardFieldPath(owner *metadata.Entity, form *metadata.FormModule, path string) bool {
+	name := strings.TrimSpace(path)
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
 	}
-	target, ok := formChoiceRefSource(owner, form, path, entities)
-	return ok && target != nil
+	if name == "" {
+		return false
+	}
+	if owner != nil {
+		for _, field := range owner.Fields {
+			if field.Name == name {
+				return metadata.IsReference(field.Type)
+			}
+		}
+	}
+	if form != nil {
+		for _, attr := range form.Attributes {
+			if attr != nil && attr.Name == name {
+				return formChoiceTypeRefEntity(attr.TypeRef) != ""
+			}
+		}
+	}
+	return false
 }
 
 func formKeyIssue(owner *metadata.Entity, form *metadata.FormModule, el *metadata.FormElement, code, message, fix string) Issue {
