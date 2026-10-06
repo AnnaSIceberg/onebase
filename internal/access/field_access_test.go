@@ -244,8 +244,17 @@ func TestMaskedEmptyFillable(t *testing.T) {
 		{access.FieldFull, nil, false},
 	}
 	for _, tc := range cases {
-		if got := access.MaskedEmptyFillable(access.FieldDecision{Strategy: tc.strategy, Keep: 4}, tc.stored); got != tc.want {
+		if got := access.MaskedEmptyFillable(access.FieldDecision{Strategy: tc.strategy, Keep: 4}, tc.stored, "(903)222-33-44"); got != tc.want {
 			t.Errorf("MaskedEmptyFillable(%s, %#v) = %v, ожидалось %v", tc.strategy, tc.stored, got, tc.want)
+		}
+	}
+}
+
+// Маска, вернувшаяся из формы, — не данные: пустое ею не заполняется.
+func TestMaskedEmptyFillable_RejectsMaskValue(t *testing.T) {
+	for _, sent := range []any{"••••••", "•••••••••22-33"} {
+		if access.MaskedEmptyFillable(access.FieldDecision{Strategy: access.FieldMaskAll}, nil, sent) {
+			t.Errorf("маска %q не должна заполнять пустое поле", sent)
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -36,6 +37,8 @@ func TestUI_SaveCard_MaskedEmptyFieldCanBeFilled(t *testing.T) {
 			stored: "(916)111-22-33", sent: "(903)222-33-44", want: "(916)111-22-33"},
 		{name: "mask_all, маска в ответ — не меняется", meta: piiClientEntity,
 			stored: "(916)111-22-33", sent: "••••••", want: "(916)111-22-33"},
+		{name: "mask_all, пусто, в ответ маска — звёздочки не пишутся", meta: piiClientEntity,
+			stored: "", sent: "••••••", want: ""},
 		{name: "hide, пусто — не заполняется", meta: uiClientEntity,
 			policy: auth.FieldPolicies{"Телефон": {Read: "hide"}}, stored: "", sent: "(903)222-33-44", want: ""},
 	}
@@ -95,4 +98,114 @@ func toStringOrEmpty(v any) string {
 		return s
 	}
 	return ""
+}
+
+// Номер, который пользователь только что набрал в поле под маской, ответ
+// события формы возвращает как есть: маска на обратном пути подменяла его
+// звёздочками, и следующее событие или запись присылали на сервер их — номер
+// терялся, а с заполнением пустого поля в базу легли бы сами звёздочки.
+// Значение из базы (клиент прислал маску) и поставленное обработчиком
+// по-прежнему уходят маской.
+func TestUI_FormEvent_EchoesTypedMaskedValue(t *testing.T) {
+	cat := piiClientEntity()
+	form := managedObjectForm(fieldEl("ПолеНаименование", "Объект.Наименование"), fieldEl("ПолеТелефон", "Объект.Телефон"),
+		writeButton("КнПроверить", "КнПроверитьНажатие"), writeButton("КнПодменить", "КнПодменитьНажатие"))
+	form.EntityName = cat.Name
+	form.ProgramAST = mustParse(t, `
+Процедура КнПроверитьНажатие()
+КонецПроцедуры
+
+Процедура КнПодменитьНажатие()
+	Объект.Телефон = "(111)000-00-00";
+КонецПроцедуры
+`)
+	cat.Forms = []*metadata.FormModule{form}
+	s, ctx := newSubmitTestServer(t, []*metadata.Entity{cat})
+	router := chi.NewRouter()
+	s.Mount(router)
+	user := uiMaskUser([]string{"read", "write"}, nil)
+
+	event := func(id uuid.UUID, element, phone string) map[string]any {
+		t.Helper()
+		body := url.Values{"_id": {id.String()}, "_element": {element}, "_event": {"Нажатие"},
+			"Наименование": {"Иванов"}, "Телефон": {phone}}
+		r := httptest.NewRequest(http.MethodPost, "/ui/catalog/"+url.PathEscape(cat.Name)+"/form-event", strings.NewReader(body.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+		r = r.WithContext(auth.ContextWithUser(r.Context(), user))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		var resp struct {
+			Values map[string]any `json:"values"`
+			Error  string         `json:"error"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || resp.Error != "" {
+			t.Fatalf("form-event: %d %s (%v)", w.Code, w.Body.String(), err)
+		}
+		return resp.Values
+	}
+	seed := func(phone string) uuid.UUID {
+		t.Helper()
+		id := uuid.New()
+		fields := map[string]any{"Наименование": "Иванов"}
+		if phone != "" {
+			fields["Телефон"] = phone
+		}
+		if err := s.store.Upsert(ctx, cat.Name, id, fields, cat); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+
+	empty := seed("")
+	if got := event(empty, "КнПроверить", "(903)222-33-44")["Телефон"]; got != "(903)222-33-44" {
+		t.Fatalf("набранный номер должен вернуться как есть, получено %v", got)
+	}
+	if got := event(empty, "КнПодменить", "(903)222-33-44")["Телефон"]; got == "(111)000-00-00" {
+		t.Fatalf("значение, поставленное обработчиком, должно уйти маской, получено %v", got)
+	}
+	filled := seed("(916)111-22-33")
+	if got := event(filled, "КнПроверить", "••••••")["Телефон"]; got == "(916)111-22-33" {
+		t.Fatalf("значение из базы должно уйти маской, получено %v", got)
+	}
+}
+
+// Поле под маской в управляемой форме помечено data-ob-protected и показывается
+// точками, как пароль; у пользователя без маски пометки нет.
+func TestUI_ManagedForm_ProtectedInputRenderedAsPassword(t *testing.T) {
+	cat := piiClientEntity()
+	form := managedObjectForm(fieldEl("ПолеНаименование", "Объект.Наименование"), fieldEl("ПолеТелефон", "Объект.Телефон"))
+	form.EntityName = cat.Name
+	cat.Forms = []*metadata.FormModule{form}
+	s, ctx := newSubmitTestServer(t, []*metadata.Entity{cat})
+	id := uuid.New()
+	if err := s.store.Upsert(ctx, cat.Name, id, map[string]any{"Наименование": "Иванов", "Телефон": "(916)111-22-33"}, cat); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	s.Mount(router)
+	page := func(user *auth.User) string {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodGet, "/ui/catalog/"+url.PathEscape(cat.Name)+"/"+id.String(), nil)
+		r = r.WithContext(auth.ContextWithUser(r.Context(), user))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET формы: %d %s", w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+	masked := page(uiMaskUser([]string{"read", "write"}, nil))
+	if !strings.Contains(masked, `name="Телефон" value="••••••" data-ob-protected`) {
+		t.Fatalf("поле телефона под маской должно быть помечено data-ob-protected")
+	}
+	if strings.Contains(masked, "(916)111-22-33") {
+		t.Fatal("настоящего номера не должно быть в разметке")
+	}
+	if strings.Contains(masked, `name="Наименование" value="Иванов" data-ob-protected`) {
+		t.Fatal("обычное поле не должно помечаться")
+	}
+	full := page(uiMaskUser([]string{"read", "write"}, auth.FieldPolicies{"Телефон": {Read: "full"}}))
+	if !strings.Contains(full, `name="Телефон" value="(916)111-22-33"`) || strings.Contains(full, `value="(916)111-22-33" data-ob-protected`) {
+		t.Fatal("у пользователя без маски значение видно и поле не помечается")
+	}
 }
