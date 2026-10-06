@@ -76,7 +76,7 @@ func (h *handler) protectMaskedFieldsOnWrite(ctx context.Context, entity *metada
 		}
 		if v, present := restCIKey2(row, field); present {
 			// Пустое под маской заполнить можно — как в форме (access.MaskedEmptyFillable).
-			if access.MaskedEmptyFillable(decision, v) {
+			if access.MaskedEmptyFillable(decision, v, fields[key]) {
 				continue
 			}
 			fields[key] = v
