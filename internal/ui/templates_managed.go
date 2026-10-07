@@ -425,7 +425,9 @@ const tplManagedForm = `
   {{$vtRows := index $ctx.TablePartRows $tpName}}
   {{$vtCmds := tpCommandButtons $el}}
   {{$vtLayout := elLayout $el}}
-  {{if $vtLayout}}<div class="managed-vt-layout" data-ob-el="{{$el.Name}}" style="{{$vtLayout}}">{{end}}
+  {{/* Заданная высота у ValueTable — высота блока с прокруткой: без неё
+       строки сверх высоты вылезали за блок поверх соседних элементов. */}}
+  {{if $vtLayout}}<div class="managed-vt-layout{{if elFill $el}} managed-vt-scroll{{end}}" data-ob-el="{{$el.Name}}" style="{{$vtLayout}}">{{end}}
   {{/* Заголовок уже напечатан выше, для ЛЮБОЙ табличной части: здесь он давал
        вторую такую же надпись над ValueTable. */}}
   {{$vtPlan := managedVTColumnPlan $el $vtCols}}
@@ -549,6 +551,12 @@ const tplManagedForm = `
 input[data-ob-protected]{-webkit-text-security:disc}
 /* scroll_x: ряд не переносится, а прокручивается — панель действий остаётся одной полосой. */
 .managed-group-scrollx>.managed-group-body{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding-bottom:4px}
+/* ValueTable с заданной высотой прокручивается внутри своего блока, шапка
+   колонок остаётся на месте. overflow:hidden таблицы (скругление углов)
+   сделал бы её саму контейнером прокрутки, и sticky шапка не держалась бы. */
+.managed-vt-scroll{overflow-y:auto}
+.managed-vt-scroll>.tp-table{overflow:visible;margin-bottom:0}
+.managed-vt-scroll>.tp-table thead th{position:sticky;top:0;z-index:1}
 /* Поле в горизонтальной группе не растягивается на всю строку: иначе одинокое
    поле уезжало во всю ширину, а кнопка рядом с ним — к правому краю экрана. */
 /* Вертикальный шаг полей управляемой формы: у автоформы .form-group отбивается
