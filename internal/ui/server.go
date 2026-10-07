@@ -679,8 +679,18 @@ func (s *Server) buildNav(r *http.Request, sub string) []navGroup {
 		// Глобальная «Главная». Если в config/home_page.yaml задан блок nav —
 		// меню скоупится по нему (как у подсистемы). Иначе — плоский список
 		// всех читаемых объектов («нейтральный старт»).
-		if hp := s.reg.HomePage(); hp != nil && hp.Nav != nil && !hp.Nav.IsEmpty() {
-			return s.buildNavFromContents(r, hp.Nav, "")
+		if hp := s.reg.HomePage(); hp != nil {
+			// nav_by_role: у пользователя роль из блока — меню его ролей вместо
+			// общего nav; пустой состав — пустое меню, а не «все объекты».
+			if byRole, ok := hp.NavForRoles(homeNavRoles(r)); ok {
+				if byRole.IsEmpty() {
+					return nil
+				}
+				return s.buildNavFromContents(r, byRole, "")
+			}
+			if hp.Nav != nil && !hp.Nav.IsEmpty() {
+				return s.buildNavFromContents(r, hp.Nav, "")
+			}
 		}
 		return s.buildFlatNav(r)
 	}
@@ -688,6 +698,22 @@ func (s *Server) buildNav(r *http.Request, sub string) []navGroup {
 		return s.buildNavForSubsystem(r, cur, sub)
 	}
 	return s.buildFlatNav(r)
+}
+
+// homeNavRoles — роли, по которым выбирается меню «Главной». Администратор
+// (и открытый деплой без пользователя) видит общий nav.
+func homeNavRoles(r *http.Request) []string {
+	u := auth.UserFromContext(r.Context())
+	if u == nil || u.IsAdmin {
+		return nil
+	}
+	names := make([]string, 0, len(u.Roles))
+	for _, role := range u.Roles {
+		if role != nil {
+			names = append(names, role.Name)
+		}
+	}
+	return names
 }
 
 func strSet(names []string) map[string]bool {
