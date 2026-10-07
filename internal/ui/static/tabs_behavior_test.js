@@ -62,8 +62,12 @@ class Element {
         readyState: 'complete',
         getElementById() { return null; },
       };
+      // По умолчанию фрейм — обычная страница приложения: ui.js в ней
+      // отвечает на запрос закрытия (#1684). markPlainPage моделирует страницу
+      // вне протокола — текстовую ошибку 404.
       this.contentWindow = {
         document: this.contentDocument,
+        obAnswersFrameClose: true,
         postMessage: (data, origin) => { this._posted.push({data, origin}); },
       };
     }
@@ -218,6 +222,9 @@ function shell(storage, search = '', confirmClose = () => true, requestFrameClos
         getElementById(id) { return id === 'ob-managed-config' ? {} : null; }
       };
       frame.contentWindow.document = frame.contentDocument;
+    },
+    markPlainPage(index) {
+      delete frames()[index].contentWindow.obAnswersFrameClose;
     },
     markLoading(index) {
       const frame = frames()[index];
@@ -676,6 +683,51 @@ test('managed tab without a bridge or finalizer remains open', async () => {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(noFinalize.count(), 1, 'managed tab was removed without dirty finalization');
   assert.equal(noFinalize.alerts(), 1);
+});
+
+// #1684: страница вне протокола закрытия (текстовая 404) не ответит никогда —
+// вкладка закрывается сразу, без запроса и без подтверждения. Несохранённое
+// по-прежнему спрашивается, а загружающаяся и managed-страница без маркера
+// идут обычным путём запроса к фрейму.
+test('a page outside the close protocol closes without a frame request', async () => {
+  const requests = [];
+  const request = (frame, reason) => { requests.push(reason); return new Promise(() => {}); };
+  const plain = shell(new FakeStorage(), '', () => true, request, () => true);
+  plain.open('/ui/catalog/_users/1', 'Ошибка');
+  plain.markPlainPage(0);
+  plain.close(0);
+  assert.equal(plain.count(), 0, 'silent page kept the tab');
+  assert.deepEqual(requests, [], 'shell waited for a page that cannot answer');
+  assert.equal(plain.confirms(), 0);
+  assert.equal(plain.alerts(), 0);
+
+  let answer = false;
+  const dirty = shell(new FakeStorage(), '', () => answer, request, () => true);
+  dirty.open('/ui/catalog/_users/2', 'Ошибка');
+  dirty.markDirty(0);
+  dirty.markPlainPage(0);
+  dirty.close(0);
+  assert.equal(dirty.count(), 1, 'declined confirmation still removed a dirty tab');
+  assert.equal(dirty.confirms(), 1);
+  answer = true;
+  dirty.close(0);
+  assert.equal(dirty.count(), 0);
+  assert.deepEqual(requests, []);
+
+  const loading = shell(new FakeStorage(), '', () => true, request, () => true);
+  loading.open('/ui/document/обращение/4', 'Обращение');
+  loading.markPlainPage(0);
+  loading.markLoading(0);
+  loading.close(0);
+  assert.equal(loading.count(), 1, 'loading page was closed as silent');
+
+  const managed = shell(new FakeStorage(), '', () => true, request, () => true);
+  managed.open('/ui/document/обращение/5', 'Обращение');
+  managed.markPlainPage(0);
+  managed.markManaged(0);
+  managed.close(0);
+  assert.equal(managed.count(), 1, 'managed page without the marker was closed as silent');
+  assert.deepEqual(requests, ['cross', 'cross'], 'loading and managed pages must still be asked');
 });
 
 test('loading tab without a bridge is treated as managed and remains open', () => {
