@@ -2879,12 +2879,14 @@ func (tr *translator) refAttrColumn(qualifier, attr string) (col, refEntity stri
 }
 
 // joinedSourceColumn — колонка БД поля «квалификатор.поле», если квалификатор —
-// присоединённый (не главный) обычный источник текущего SELECT: «ПО М.Склад =
-// О.Склад» у присоединённого регистра сведений даёт «м.склад_id». Раньше поле
-// переводилось по главному источнику: ссылочное измерение без «_id», а
+// обычный (не виртуальный) источник SELECT: «ПО М.Склад = О.Склад» у
+// присоединённого регистра сведений даёт «м.склад_id». Раньше поле переводилось
+// по первому источнику всего запроса: ссылочное измерение без «_id», а
 // одноимённое измерение главной виртуальной таблицы перехватывало перевод —
-// запрос падал «no such column: м.склад». Главный источник и виртуальные
-// таблицы идут прежним путём.
+// запрос падал «no such column: м.склад». То же у главного источника
+// вложенного SELECT (подзапрос в соединении). Виртуальные таблицы колонок
+// здесь не имеют и идут прежним путём; навигацию «А.Ссылка.Реквизит»
+// вызывающий не передаёт.
 func (tr *translator) joinedSourceColumn(pos int, attr string) (string, bool) {
 	if pos < 2 || pos >= len(tr.tokens) {
 		return "", false
@@ -2894,7 +2896,7 @@ func (tr *translator) joinedSourceColumn(pos int, attr string) (string, bool) {
 	}
 	qualifier := lowerFast(tr.tokens[pos-2].val)
 	scope, ok := tr.sourceCtx.qualifierScopeAt(pos, qualifier)
-	if !ok || strings.EqualFold(qualifier, scope.mainTable) {
+	if !ok {
 		return "", false
 	}
 	cols := scope.physicalCols[qualifier]
