@@ -81,6 +81,7 @@ type apiPull struct {
 type apiIssue struct {
 	Number       int          `json:"number"`
 	Title        string       `json:"title"`
+	Body         string       `json:"body"`
 	HTMLURL      string       `json:"html_url"`
 	CreatedAt    string       `json:"created_at"`
 	UpdatedAt    string       `json:"updated_at"`
@@ -92,16 +93,19 @@ type apiIssue struct {
 }
 
 type candidate struct {
-	Number         int    `json:"number"`
-	Title          string `json:"title"`
-	URL            string `json:"url"`
-	Head           string `json:"head"`
-	Depth          int    `json:"review_depth"`
-	Stage          string `json:"stage"`
-	Priority       int    `json:"priority"`
-	PrioritySource string `json:"priority_source"`
-	UpdatedAt      string `json:"updated_at"`
-	IntegrationAt  string `json:"-"`
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	URL    string `json:"url"`
+	Head   string `json:"head"`
+	// EligibilityDigest is a 160-bit prefix of a versioned SHA-256 snapshot.
+	// It reserves an issue in the scheduler; it is never mutation authority.
+	EligibilityDigest string `json:"eligibility_digest,omitempty"`
+	Depth             int    `json:"review_depth"`
+	Stage             string `json:"stage"`
+	Priority          int    `json:"priority"`
+	PrioritySource    string `json:"priority_source"`
+	UpdatedAt         string `json:"updated_at"`
+	IntegrationAt     string `json:"-"`
 }
 
 type finding struct {
@@ -113,23 +117,29 @@ type finding struct {
 }
 
 type report struct {
-	State                   string      `json:"state"`
-	Summary                 string      `json:"summary"`
-	Scope                   string      `json:"scope"`
-	Scheduler               string      `json:"scheduler"`
-	Checked                 int         `json:"checked"`
-	IssuesChecked           int         `json:"issues_checked"`
-	ReviewCandidates        []candidate `json:"review_candidates"`
-	ReviewBacklog           []candidate `json:"review_backlog"`
-	ContentReviewCandidates []candidate `json:"content_review_candidates"`
-	ReviewedWaitingShip     []candidate `json:"reviewed_waiting_ship"`
-	IntegrationOwner        *candidate  `json:"integration_owner,omitempty"`
-	MergeCandidates         []candidate `json:"merge_candidates"`
-	MergeExecutable         []candidate `json:"merge_executable"`
-	PlanCandidates          []candidate `json:"plan_candidates"`
-	FixCandidates           []candidate `json:"fix_candidates"`
-	HumanWaiting            []candidate `json:"human_waiting"`
-	Findings                []finding   `json:"findings"`
+	State            string      `json:"state"`
+	Summary          string      `json:"summary"`
+	Scope            string      `json:"scope"`
+	Scheduler        string      `json:"scheduler"`
+	Checked          int         `json:"checked"`
+	IssuesChecked    int         `json:"issues_checked"`
+	ReviewCandidates []candidate `json:"review_candidates"`
+	// ReviewDispatchCandidates is a wake-up hint, never a mutation allowlist.
+	ReviewDispatchCandidates []candidate `json:"review_dispatch_candidates"`
+	ReviewBacklog            []candidate `json:"review_backlog"`
+	ContentReviewCandidates  []candidate `json:"content_review_candidates"`
+	// ParallelReviewCandidates are ordinary native REVIEW targets that may run
+	// beside an integration-review owner. They never authorize another MERGE or
+	// an integration/full-skill fallback target.
+	ParallelReviewCandidates []candidate `json:"parallel_review_candidates"`
+	ReviewedWaitingShip      []candidate `json:"reviewed_waiting_ship"`
+	IntegrationOwner         *candidate  `json:"integration_owner,omitempty"`
+	MergeCandidates          []candidate `json:"merge_candidates"`
+	MergeExecutable          []candidate `json:"merge_executable"`
+	PlanCandidates           []candidate `json:"plan_candidates"`
+	FixCandidates            []candidate `json:"fix_candidates"`
+	HumanWaiting             []candidate `json:"human_waiting"`
+	Findings                 []finding   `json:"findings"`
 }
 
 func main() {
@@ -243,7 +253,8 @@ func loadPulls(github *githubRESTClient, repo, fixture string) ([]apiPull, error
 					continue
 				}
 				prs[index].Comments = comments
-				if !needsHeadParents(prs[index]) {
+				owner, _, _ := strings.Cut(repo, "/")
+				if !needsHeadParents(prs[index], owner) {
 					continue
 				}
 				var commitResponse struct {
@@ -349,7 +360,7 @@ func analyze(prs []apiPull, owner string) report {
 	result := report{
 		State: "green", Scope: "read-only queue snapshot; mutation gates remain GraphQL",
 		Scheduler: "two-lane-safety-priority-aging-depth-number", Checked: len(prs),
-		ReviewCandidates: []candidate{}, ContentReviewCandidates: []candidate{},
+		ReviewCandidates: []candidate{}, ReviewDispatchCandidates: []candidate{}, ContentReviewCandidates: []candidate{}, ParallelReviewCandidates: []candidate{},
 		ReviewBacklog: []candidate{}, ReviewedWaitingShip: []candidate{}, MergeCandidates: []candidate{}, MergeExecutable: []candidate{}, PlanCandidates: []candidate{}, FixCandidates: []candidate{},
 		HumanWaiting: []candidate{}, Findings: []finding{},
 	}
@@ -369,7 +380,12 @@ func analyze(prs []apiPull, owner string) report {
 		priority, prioritySource := queuePriority(labels, pr.CreatedAt, now)
 		item := candidate{Number: pr.Number, Title: pr.Title, URL: pr.HTMLURL, Head: pr.Head.SHA, Depth: depth, Stage: "review", Priority: priority, PrioritySource: prioritySource, UpdatedAt: pr.UpdatedAt}
 		currentCompletions, latestCompletion, latestOverride := currentProtocolState(pr.Comments, owner, pr.Head.SHA)
+		legacySourceCompletions := 0
+		if headIsBaseSyncMerge(pr) {
+			legacySourceCompletions, _, _ = currentProtocolState(pr.Comments, owner, pr.HeadParents[0])
+		}
 		carryDone, carryIntentOpen, v1AbortCurrent, baseAdvanced, protocolHistory, integrationAt := baseSyncRESTState(pr.Comments, owner, pr.Head.SHA, pr.HeadParents)
+		overrideOpen := latestOverride > latestCompletion
 		item.IntegrationAt = integrationAt
 		if baseAdvanced {
 			result.add("yellow", "base_sync_base_advanced", pr.Number,
@@ -405,7 +421,7 @@ func analyze(prs []apiPull, owner string) report {
 		}
 		if labels["ship"] {
 			switch {
-			case labels["needs-decision"]:
+			case labels["needs-decision"] && !overrideOpen:
 				result.HumanWaiting = append(result.HumanWaiting, item)
 			case carryIntentOpen:
 				item.Stage = "integration-merge-recovery"
@@ -413,6 +429,16 @@ func analyze(prs []apiPull, owner string) report {
 				result.MergeCandidates = append(result.MergeCandidates, item)
 				result.add("yellow", "base_sync_recovery", pr.Number,
 					"есть pp:base-sync-intent без done; MERGE должен восстановить транзакцию")
+			case overrideOpen && carryDone && headIsBaseSyncMerge(pr):
+				// A later trusted human request invalidates the previous review
+				// epoch even when ship is still present. Recheck the integration
+				// HEAD before MERGE may rely on the sticky ship intent.
+				item.Stage = "integration-review"
+				result.ReviewCandidates = append(result.ReviewCandidates, item)
+			case overrideOpen:
+				// For an ordinary HEAD, a new review epoch requires a full
+				// content review; neither ship nor reviewed is proof for it.
+				result.ContentReviewCandidates = append(result.ContentReviewCandidates, item)
 			case carryDone && currentCompletions > 0:
 				item.Stage = "integration-merge-ready"
 				result.ReviewCandidates = append(result.ReviewCandidates, item)
@@ -427,6 +453,22 @@ func analyze(prs []apiPull, owner string) report {
 				result.MergeCandidates = append(result.MergeCandidates, item)
 			case v1AbortCurrent && currentCompletions == 0:
 				result.ContentReviewCandidates = append(result.ContentReviewCandidates, item)
+			case currentCompletions > 0 && depth == currentCompletions && !protocolHistory:
+				// A PR may be opened with a merge commit already at its first HEAD.
+				// With no earlier committed review or base-sync transaction, its
+				// first review is a full content review of that exact HEAD, not a
+				// carried integration review of the merge's first parent. The
+				// independent mutation gate still proves review, ship and CI.
+				item.Stage = "merge"
+				result.MergeCandidates = append(result.MergeCandidates, item)
+			case depth > currentCompletions && headIsBaseSyncMerge(pr) && legacySourceCompletions == 0:
+				// A legacy integration review cannot reconstruct the first parent's
+				// content proof. Do not grant this PR single-flight ownership only to
+				// have the independent GraphQL gate reject it on every retry.
+				item.Stage = "legacy-source-proof-missing"
+				result.HumanWaiting = append(result.HumanWaiting, item)
+				result.add("yellow", "legacy_source_review_missing", pr.Number,
+					"первый родитель merge-коммита не имеет доверенного завершённого REVIEW; требуется восстановление маршрута человеком, остальные PR не блокируются")
 			case currentCompletions > 0 && depth > currentCompletions && headIsBaseSyncMerge(pr):
 				item.Stage = "legacy-integration-merge-ready"
 				result.ReviewCandidates = append(result.ReviewCandidates, item)
@@ -468,12 +510,20 @@ func analyze(prs []apiPull, owner string) report {
 			}
 			continue
 		}
-		overrideOpen := latestOverride > latestCompletion
 		switch {
 		case labels["needs-decision"] && !overrideOpen:
 			result.HumanWaiting = append(result.HumanWaiting, item)
 		case labels["changes-requested"] && !overrideOpen:
 			result.FixCandidates = append(result.FixCandidates, item)
+		case depth > currentCompletions && headIsBaseSyncMerge(pr) && legacySourceCompletions == 0 && !carryDone && !v1AbortCurrent:
+			// A completed review of this HEAD is not enough to turn an earlier
+			// needs-decision review of a different SHA into source proof. Show the
+			// recovery before asking for ship; otherwise the owner is invited into
+			// a merge gate that cannot succeed.
+			item.Stage = "legacy-source-proof-missing"
+			result.HumanWaiting = append(result.HumanWaiting, item)
+			result.add("yellow", "legacy_source_review_missing", pr.Number,
+				"первый родитель merge-коммита не имеет доверенного завершённого REVIEW; ship не поможет: нужен новый обычный content HEAD и полное REVIEW")
 		case labels["reviewed"] && currentCompletions > 0 && !overrideOpen:
 			// Valid-looking current review is waiting for the human ship decision.
 			result.ReviewedWaitingShip = append(result.ReviewedWaitingShip, item)
@@ -488,6 +538,8 @@ func analyze(prs []apiPull, owner string) report {
 	sortCandidates(result.ContentReviewCandidates)
 	sortCandidates(result.ReviewCandidates)
 	applySingleFlight(&result)
+	result.ReviewDispatchCandidates = append(result.ReviewDispatchCandidates, result.ReviewCandidates...)
+	result.ReviewDispatchCandidates = append(result.ReviewDispatchCandidates, result.ParallelReviewCandidates...)
 	setMergeExecutable(&result)
 	result.ReviewBacklog = append(result.ReviewBacklog, result.ContentReviewCandidates...)
 	if result.IntegrationOwner != nil && candidatePriority(result.IntegrationOwner.Stage) == 1 {
@@ -602,6 +654,12 @@ func analyzeIssues(result *report, issues []apiIssue, prs []apiPull, owner strin
 				}
 				continue
 			}
+			if issue.CommentCount > len(issue.Thread) {
+				result.addIssue("yellow", "fix_issue_incomplete_comments", issue.Number,
+					"заявка исключена из FIX-очереди: снимок комментариев неполон")
+				continue
+			}
+			item.EligibilityDigest = fixIssueEligibilityDigest(issue)
 			result.FixCandidates = append(result.FixCandidates, item)
 		case labels["needs-decision"]:
 			item.Stage = "human-decision"
@@ -611,6 +669,33 @@ func analyzeIssues(result *report, issues []apiIssue, prs []apiPull, owner strin
 	sortCandidates(result.PlanCandidates)
 	sortCandidates(result.FixCandidates)
 	sortCandidates(result.HumanWaiting)
+}
+
+// fixIssueEligibilityDigest is an election revision, not authorization to
+// change GitHub. A future FIX gate must re-read eligibility and the canonical
+// project protocol immediately before each mutation. The 160-bit prefix fits
+// the scheduler's existing exact-target reservation key (historically HEAD).
+func fixIssueEligibilityDigest(issue apiIssue) string {
+	labels := make([]string, 0, len(issue.Labels))
+	for _, label := range issue.Labels {
+		labels = append(labels, label.Name)
+	}
+	sort.Strings(labels)
+	comments := append([]apiComment(nil), issue.Thread...)
+	sort.Slice(comments, func(i, j int) bool { return comments[i].ID < comments[j].ID })
+	input := struct {
+		Version   int          `json:"version"`
+		Number    int          `json:"number"`
+		State     string       `json:"state"`
+		Title     string       `json:"title"`
+		Body      string       `json:"body"`
+		UpdatedAt string       `json:"updated_at"`
+		Labels    []string     `json:"labels"`
+		Comments  []apiComment `json:"comments"`
+	}{1, issue.Number, issue.State, issue.Title, issue.Body, issue.UpdatedAt, labels, comments}
+	encoded, _ := json.Marshal(input) // fixed Go types cannot fail to marshal
+	sum := sha256.Sum256(encoded)
+	return fmt.Sprintf("%x", sum[:20])
 }
 
 func openPullsReferencingIssue(number int, prs []apiPull) []int {
@@ -803,6 +888,9 @@ func checkContract(result *report, path string) {
 	mergeData, err := readContract(filepath.Join(skillsRoot, "merge-shepherd", "SKILL.md"))
 	if err != nil || !strings.Contains(text, "pp:base-sync-done") ||
 		!strings.Contains(text, "single-flight-барьер") ||
+		!strings.Contains(text, "Позиция edge нового коммита относительно") ||
+		!strings.Contains(text, "доказывай графом") ||
+		strings.Contains(text, "обязан быть ровно одним `PullRequestCommit` после") ||
 		!strings.Contains(string(mergeData), "pp:base-sync-intent") ||
 		!strings.Contains(string(mergeData), "повторный человеческий `ship` при валидной") ||
 		!strings.Contains(string(mergeData), "single-flight-барьер") {
@@ -898,12 +986,21 @@ func (result *report) addIssue(severity, code string, issue int, message string)
 }
 
 // needsHeadParents limits the extra commit read to pull requests whose stage
-// can depend on it: an open ship candidate targeting main.
-func needsHeadParents(pr apiPull) bool {
+// can depend on it: ship candidates and reviewed heads with older review proof.
+// The latter need their parents before we can safely ask the owner for ship.
+func needsHeadParents(pr apiPull, owner string) bool {
 	if pr.State != "open" || pr.Base.Ref != "main" || pr.Draft || pr.Head.SHA == "" {
 		return false
 	}
-	return labelSet(pr.Labels)["ship"]
+	labels := labelSet(pr.Labels)
+	if labels["ship"] {
+		return true
+	}
+	if !labels["reviewed"] || labels["hold"] || labels["needs-decision"] || labels["changes-requested"] {
+		return false
+	}
+	current, _, _ := currentProtocolState(pr.Comments, owner, pr.Head.SHA)
+	return reviewDepth(pr.Comments, owner) > current
 }
 
 // headIsBaseSyncMerge reports whether the head commit has the shape every
@@ -1247,8 +1344,13 @@ func applySingleFlight(result *report) {
 		return
 	}
 	result.ReviewCandidates = []candidate{owner}
+	for _, item := range result.ContentReviewCandidates {
+		if item.Stage == "review" && item.Depth < 2 {
+			result.ParallelReviewCandidates = append(result.ParallelReviewCandidates, item)
+		}
+	}
 	result.add("yellow", "single_flight_barrier", owner.Number,
-		fmt.Sprintf("владелец интеграционной полосы; REVIEW проверяет только интеграционную дельту этого PR, содержательных кандидатов отложено: %d, следующих интеграционных: %d", len(result.ContentReviewCandidates), deferredIntegration))
+		fmt.Sprintf("владелец интеграционной полосы; канонический REVIEW проверяет его дельту, содержательных кандидатов вне этой очереди: %d (доступно для нативного параллельного REVIEW: %d), следующих интеграционных отложено: %d", len(result.ContentReviewCandidates), len(result.ParallelReviewCandidates), deferredIntegration))
 }
 
 func integrationOwnerLess(left, right candidate) bool {

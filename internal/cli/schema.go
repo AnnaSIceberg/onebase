@@ -143,8 +143,11 @@ func allSchemas() map[string]map[string]any {
 			// бы подчёркивать `default: 12` на числовом реквизите — самое
 			// естественное написание.
 			"default": map[string]any{
-				"type":        []string{"string", "number", "boolean"},
-				"description": "Значение при создании нового объекта: литерал, сегодня|сейчас, текущийпользователь, единственный, константа.<Имя>",
+				"type": []string{"string", "number", "boolean"},
+				// Перечислены все источники, которые принимает metadata.ParseDefault:
+				// русская и английская форма каждого синонима, регистр не важен
+				// (#1568) — контракт читают редакторы и ИИ-клиенты.
+				"description": "Значение при создании нового объекта: литерал, сегодня|today, сейчас|now, текущийпользователь|currentuser, единственный|single, константа.<Имя>|constant.<Имя> — регистр не важен",
 			},
 		},
 	}
@@ -447,14 +450,14 @@ func allSchemas() map[string]map[string]any {
 		"role":      looseNamedSchema("OneBase RBAC role"),
 		"page":      looseNamedSchema("OneBase page"),
 		"service":   looseNamedSchema("OneBase HTTP service"),
-		"subsystem": looseNamedSchema("OneBase subsystem"),
+		"subsystem": navigationContainerSchema(false),
 		"journal":   looseNamedSchema("OneBase document journal"),
 		"scheduled": looseNamedSchema("OneBase scheduled job"),
 		"accounts":  looseNamedSchema("OneBase chart of accounts"),
 		"accountreg": fieldGroupSchema("OneBase accounting register", accountRegField, []string{"resources", "subconto"}, map[string]any{
 			"accounts": stringSchema("Имя плана счетов"),
 		}),
-		"home-page": looseNamedSchema("OneBase home page"),
+		"home-page": navigationContainerSchema(true),
 	}
 }
 
@@ -522,14 +525,21 @@ func managedFormSchema() map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"field", "op"},
 		"properties": map[string]any{
-			"field": stringSchema("Реквизит выбираемого справочника или служебное поле is_folder"),
-			"op":    enumSchema("eq", "in_hierarchy"),
-			"from":  stringSchema("Источник Объект.<Поле>, Форма.<Поле> или Объект.<Поле>.<Реквизит> — один переход по ссылке"),
+			"field": stringSchema("Реквизит выбираемого справочника или служебное поле is_folder / parent_id"),
+			"op":    enumSchema("eq", "eq_or_empty", "in_hierarchy", "not_in_hierarchy"),
+			"from":  stringSchema("Источник Объект.<Поле>, Форма.<Поле> или Объект.<Поле>.<Реквизит> — один переход по ссылке; конец пути — ссылка или, для строкового field и eq, строковый реквизит"),
 			"value": boolSchema("Булев литерал: is_folder или булев реквизит справочника"),
+			"ref": map[string]any{
+				"type":        "string",
+				"format":      "uuid",
+				"pattern":     "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+				"description": "Постоянная ссылка: UUID записи справочника, на который ссылается field (для parent_id — самого справочника). Записи нет или она не видна пользователю — подбор пуст при любом операторе",
+			},
 		},
 		"oneOf": []any{
-			map[string]any{"required": []string{"from"}, "not": map[string]any{"required": []string{"value"}}},
-			map[string]any{"required": []string{"value"}, "not": map[string]any{"required": []string{"from"}}},
+			map[string]any{"required": []string{"from"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"value"}}, map[string]any{"required": []string{"ref"}}}}},
+			map[string]any{"required": []string{"value"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"from"}}, map[string]any{"required": []string{"ref"}}}}},
+			map[string]any{"required": []string{"ref"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"from"}}, map[string]any{"required": []string{"value"}}}}},
 		},
 	}
 	element := map[string]any{

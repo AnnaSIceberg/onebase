@@ -38,6 +38,10 @@ type ListParams struct {
 	ThroughID          *uuid.UUID            // inclusive keyset high-water mark; requires id ASC and Offset=0
 	ExcludeFolders     bool                  // for hierarchical catalogs: only non-folder elements
 	OnlyFolders        bool                  // for hierarchical catalogs: only folder elements
+	// IncludeFolders — явное согласие показать ГРУППЫ там, где подбор их всегда
+	// прятал (choice_folders у элемента формы). Слой UI снимает по нему свой
+	// ExcludeFolders; сам запрос дополнительных условий не получает.
+	IncludeFolders bool
 	// ExcludeMarked отбрасывает помеченные на удаление строки (план 153).
 	// Нужен источнику дефолта `единственный`: помеченный элемент — кандидат
 	// на исчезновение, подставлять его в новый документ нельзя. Обычные
@@ -1190,6 +1194,18 @@ func (db *DB) upsertTablePartRows(ctx context.Context, entityName, tpName string
 // Delete removes an entity record by id. Tablepart rows cascade automatically.
 // Returns an error if the record is a predefined item (_is_predefined = TRUE).
 func (db *DB) Delete(ctx context.Context, entityName string, id uuid.UUID) error {
+	return db.deleteEntity(ctx, entityName, id, nil)
+}
+
+// DeleteVersioned removes an entity record only while its revision still
+// matches expectedVersion. This is the delete-side counterpart of
+// UpsertVersioned: callers that made a decision from a loaded object can avoid
+// deleting a newer state that appeared between that read and the DELETE.
+func (db *DB) DeleteVersioned(ctx context.Context, entityName string, id uuid.UUID, expectedVersion int64) error {
+	return db.deleteEntity(ctx, entityName, id, &expectedVersion)
+}
+
+func (db *DB) deleteEntity(ctx context.Context, entityName string, id uuid.UUID, expectedVersion *int64) error {
 	if err := writeAllowed(ctx); err != nil {
 		return err
 	}
@@ -1222,8 +1238,16 @@ func (db *DB) Delete(ctx context.Context, entityName string, id uuid.UUID) error
 		}
 	}
 
-	err = db.exec(ctx,
-		fmt.Sprintf("DELETE FROM %s WHERE id = %s", tbl, d.Placeholder(1)), idArg(d, id))
+	deleteSQL := fmt.Sprintf("DELETE FROM %s WHERE id = %s", tbl, d.Placeholder(1))
+	args := []any{idArg(d, id)}
+	if expectedVersion != nil {
+		deleteSQL += " AND _version = " + d.Placeholder(2)
+		args = append(args, *expectedVersion)
+	}
+	tag, err := db.Exec(ctx, deleteSQL, args...)
+	if err == nil && expectedVersion != nil && tag.RowsAffected != 1 {
+		return ErrVersionConflict
+	}
 	if err == nil {
 		// План 82: удалённый объект уходит и из полнотекстового индекса, иначе
 		// глобальный поиск отдавал бы битые ссылки на несуществующие карточки.
