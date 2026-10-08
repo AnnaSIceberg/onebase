@@ -3475,7 +3475,7 @@ func (tr *translator) keywordAt(idx int, names ...string) bool {
 // когда активны авто-JOIN'ы (п.48) — иначе одноимённая колонка присоединённого
 // каталога вызывает ambiguous column. Неизвестные идентификаторы не трогаем.
 func (tr *translator) qualifyOwn(col, lower string) string {
-	if _, isAlias := tr.aliases[lower]; isAlias {
+	if tr.sourceCtx.isOutputAliasAt(tr.pos-1, lower) {
 		return col // алиас вывода, не колонка таблицы
 	}
 	if len(tr.refDims) > 0 && tr.mainTable != "" {
