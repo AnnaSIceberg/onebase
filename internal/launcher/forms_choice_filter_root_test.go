@@ -61,10 +61,20 @@ elements:
 			t.Fatalf("typed value missing from YAML: %s", response.YAML)
 		}
 	}
+	combined := post(`[{"field":"is_root","op":"eq","value":false},{"field":"parent_id","op":"not_in_hierarchy","ref":"d4ba641c-70ae-4632-bf99-035f4caaa0af"}]`)
+	if !combined.OK {
+		t.Fatalf("combined filter rejected: %v", combined.Errors)
+	}
+	conditions := combined.Model["elements.0"].ChoiceFilter
+	if len(conditions) != 2 || conditions[0].Value == nil || *conditions[0].Value || conditions[1].Op != string(metadata.FormChoiceOpNotInHierarchy) || conditions[1].Ref != "d4ba641c-70ae-4632-bf99-035f4caaa0af" {
+		t.Fatalf("combined filter lost on HTTP round trip: %+v", conditions)
+	}
+
 	for _, condition := range []string{
 		`[{"field":"is_root","op":"eq","from":"Объект.Город"}]`,
 		`[{"field":"is_root","op":"eq","ref":"d4ba641c-70ae-4632-bf99-035f4caaa0af"}]`,
 		`[{"field":"is_root","op":"in_hierarchy","value":true}]`,
+		`[{"field":"is_root","op":"not_in_hierarchy","value":true}]`,
 	} {
 		if response := post(condition); response.OK {
 			t.Fatalf("invalid is_root saved: %s", condition)

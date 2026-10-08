@@ -68,4 +68,20 @@ func TestRefOptionsIsRoot(t *testing.T) {
 	if closed := fetch(f.dryer); closed.SelectedAllowed == nil || *closed.SelectedAllowed {
 		t.Fatalf("RLS-protected record allowed: %+v", closed.SelectedAllowed)
 	}
+	// Combining the boolean pseudo-field with a reference subtree exclusion
+	// must affect both the paginated list and selected_allowed.
+	element.ChoiceFilter = append(element.ChoiceFilter, metadata.FormChoiceCondition{
+		Field: "parent_id", Op: metadata.FormChoiceOpNotInHierarchy, Ref: f.tech.String(),
+	})
+	outside := fetch(f.lamp)
+	if labels := strings.Join(parentChoiceLabels(outside), ","); labels != "лампа" || outside.Total != 1 {
+		t.Fatalf("nested items outside tech: total=%d items=%s", outside.Total, labels)
+	}
+	if outside.SelectedAllowed == nil || !*outside.SelectedAllowed {
+		t.Fatal("nested item in another subtree rejected")
+	}
+	if excluded := fetch(f.kettle); excluded.SelectedAllowed == nil || *excluded.SelectedAllowed {
+		t.Fatal("nested item in excluded subtree allowed")
+	}
+
 }

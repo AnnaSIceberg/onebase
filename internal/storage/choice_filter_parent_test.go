@@ -216,9 +216,29 @@ func TestChoiceFilterIsRootMatrix(t *testing.T) {
 		if got, want := join(folders), "Прочее,Техника"; got != want {
 			t.Fatalf("root folders: %q, want %q", got, want)
 		}
+		for _, tc := range []struct {
+			root bool
+			op   metadata.FormChoiceOperator
+			want string
+		}{
+			{true, metadata.FormChoiceOpNotInHierarchy, "Прочее,Техника"},
+			{false, metadata.FormChoiceOpNotInHierarchy, "цикл А,цикл Б"},
+			{true, metadata.FormChoiceOpInHierarchy, ""},
+			{false, metadata.FormChoiceOpInHierarchy, "Кухня,Плиты"},
+		} {
+			got := choiceParentNames(t, db, f,
+				storage.ChoicePredicate{Field: "is_root", Op: metadata.FormChoiceOpEqual, Value: tc.root},
+				storage.ChoicePredicate{Field: "is_folder", Op: metadata.FormChoiceOpEqual, Value: true},
+				storage.ChoicePredicate{Field: "parent_id", Op: tc.op, Value: f.tech})
+			if join(got) != tc.want {
+				t.Fatalf("is_root=%v with %s: %v, want %q", tc.root, tc.op, got, tc.want)
+			}
+		}
+
 		for _, bad := range []storage.ChoicePredicate{
 			{Field: "is_root", Op: metadata.FormChoiceOpEqual, Value: f.tech},
 			{Field: "is_root", Op: metadata.FormChoiceOpInHierarchy, Value: true},
+			{Field: "is_root", Op: metadata.FormChoiceOpNotInHierarchy, Value: true},
 		} {
 			if _, err := db.CountList(context.Background(), f.groups.Name, f.groups, storage.ListParams{ChoicePredicates: []storage.ChoicePredicate{bad}}); err == nil {
 				t.Fatalf("invalid is_root accepted: %+v", bad)

@@ -27,6 +27,7 @@ func TestCheckFormChoiceFilterIsRoot(t *testing.T) {
 		{"плоский справочник", metadata.FormChoiceCondition{Field: "is_root", Op: metadata.FormChoiceOpEqual, Value: boolPointer(true)}, func(p *project.Project) { p.Entities[1].Hierarchical = false }, "is_root допустим только у иерархического справочника"},
 		{"from вместо value", metadata.FormChoiceCondition{Field: "is_root", Op: metadata.FormChoiceOpEqual, From: "Объект.Направление"}, nil, "is_root требует boolean value"},
 		{"ref вместо value", metadata.FormChoiceCondition{Field: "is_root", Op: metadata.FormChoiceOpEqual, Ref: choiceRefFolder}, nil, "ref допустим только у ссылочного реквизита"},
+		{"исключение поддерева", metadata.FormChoiceCondition{Field: "is_root", Op: metadata.FormChoiceOpNotInHierarchy, From: "Объект.Направление"}, nil, "not_in_hierarchy требует ссылочный field и from"},
 		{"неверный оператор", metadata.FormChoiceCondition{Field: "is_root", Op: metadata.FormChoiceOpInHierarchy, Value: boolPointer(true)}, nil, "in_hierarchy требует ссылочный field и from"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -50,6 +51,8 @@ func TestRunFullChoiceFilterIsRoot(t *testing.T) {
 	}
 	for _, tc := range []struct{ name, condition, want string }{
 		{"корень", "{field: is_root, op: eq, value: true}, {field: is_folder, op: eq, value: true}", ""},
+		{"совместный отбор", "{field: is_root, op: eq, value: false}, {field: parent_id, op: not_in_hierarchy, ref: " + choiceRefFolder + "}", ""},
+		{"неверное исключение корня", "{field: is_root, op: not_in_hierarchy, from: Объект.Направление}", "not_in_hierarchy требует ссылочный field и from"},
 		{"вложенные", "{field: is_root, op: eq, value: false}", ""},
 		{"неверный источник", "{field: is_root, op: eq, from: Объект.Направление}", "is_root требует boolean value"},
 	} {
