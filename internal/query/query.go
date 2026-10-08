@@ -876,18 +876,19 @@ type sourceEntity struct {
 }
 
 type sourceScope struct {
-	parent         int // ближайший внешний SELECT, -1 у верхнего уровня; UNION — сосед
-	main           sourceClass
-	mainTable      string
-	mainColTypes   map[string]metadata.FieldType
-	entities       map[string]sourceEntity
-	refEntities    map[string]sourceEntity // цели одного перехода от главного источника
-	unionFirst     int                     // SELECT, задающий имена результата всего UNION
-	sourceCount    int
-	qualifiers     map[string]sourceClass
-	derivedAliases map[string]int
-	outputAliases  map[string]struct{}
-	refAliases     map[string]struct{}
+	parent            int // ближайший внешний SELECT, -1 у верхнего уровня; UNION — сосед
+	main              sourceClass
+	mainTable         string
+	mainColTypes      map[string]metadata.FieldType
+	entities          map[string]sourceEntity
+	refEntities       map[string]sourceEntity // цели одного перехода от главного источника
+	unionFirst        int                     // SELECT, задающий имена результата всего UNION
+	sourceCount       int
+	qualifiers        map[string]sourceClass
+	derivedAliases    map[string]int
+	derivedProjection bool // SELECT задаёт результат производной таблицы
+	outputAliases     map[string]struct{}
+	refAliases        map[string]struct{}
 }
 
 func (ctx sourceContext) scopeAt(tokenPos int) (sourceScope, bool) {
@@ -3688,6 +3689,34 @@ func (tr *translator) emitQualifiedColumn(col, lower string) {
 		}
 	}
 	tr.emit(col)
+	tr.emitDerivedReferenceAlias(col, lower)
+}
+
+// emitDerivedReferenceAlias сохраняет логическое имя простой ссылочной
+// проекции производной таблицы. Без КАК SQL называет её физической колонкой
+// *_id, тогда как внешний SELECT обращается к логическому имени поля.
+// Явные алиасы, выражения и проекции вне FROM/JOIN-подзапросов не меняются.
+func (tr *translator) emitDerivedReferenceAlias(col, lower string) {
+	if col == lower || !strings.HasSuffix(col, "_id") {
+		return
+	}
+	pos := tr.pos - 1
+	scope, ok := tr.sourceCtx.scopeAt(pos)
+	if !ok || !tr.sourceCtx.scopes[scope.unionFirst].derivedProjection {
+		return
+	}
+	if kw, ok := sqlKW(tr.peek(0).val); ok && kw == "AS" {
+		return
+	}
+	start := pos
+	for start >= 2 && tr.tokens[start-1].kind == tDot && tr.tokens[start-2].kind == tIdent {
+		start -= 2
+	}
+	if !tr.standaloneSelectItem(start, tr.pos) {
+		return
+	}
+	tr.emit("AS")
+	tr.emit(lower)
 }
 
 func (tr *translator) emitRefAttrColumn(col string, fieldType metadata.FieldType) {
@@ -4026,6 +4055,7 @@ func linkDerivedSourceScopes(tokens []tok, ctx *sourceContext) {
 					if aliasOK && aliasKW == "AS" && tokens[aliasPos+1].kind == tIdent {
 						alias := lowerFast(tokens[aliasPos+1].val)
 						ctx.scopes[parentID].derivedAliases[alias] = childID
+						ctx.scopes[childID].derivedProjection = true
 					}
 				}
 				j = len(tokens)
@@ -5092,6 +5122,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 						// даже если у основного источника есть одноимённое поле.
 						tr.emitRefAttrColumn(col, fieldType)
 						tr.noteRefOutputAs(refEntity, col)
+						tr.emitDerivedReferenceAlias(col, lower)
 					} else if rd := tr.findRefDim(lower); rd != nil {
 						// Двухуровневая навигация: Источник.Ссылка.Реквизит.
 						// LEFT JOIN на связанную таблицу к этому моменту уже
@@ -5109,6 +5140,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 							tr.emit(rd.joinAlias)
 						} else {
 							tr.emit(rd.idCol)
+							tr.emitDerivedReferenceAlias(rd.idCol, lower)
 						}
 					} else if c, ok2 := tr.colMap[lower]; ok2 {
 						tr.emitQualifiedColumn(c, lower)
