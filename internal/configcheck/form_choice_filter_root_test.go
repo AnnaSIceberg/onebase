@@ -1,12 +1,44 @@
 package configcheck
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/project"
 )
+
+func TestRunFullChoiceFilterIsRootAttribute(t *testing.T) {
+	for _, hierarchical := range []bool{false, true} {
+		for _, tc := range []struct{ fieldType, condition string }{
+			{"bool", "{field: IS_ROOT, op: eq, value: true}"},
+			{"bool", "{field: is_root, op: eq, value: false}"},
+			{"reference:Направление", "{field: is_root, op: eq, from: Объект.Направление}"},
+			{"reference:Направление", "{field: is_root, op: not_in_hierarchy, ref: " + choiceRefFolder + "}"},
+			{"string", "{field: is_root, op: eq, from: Объект.Направление.Наименование}"},
+		} {
+			t.Run(fmt.Sprintf("%t/%s/%s", hierarchical, tc.fieldType, tc.condition), func(t *testing.T) {
+				dir := t.TempDir()
+				writeChoiceFilterCheckProject(t, dir, hierarchical, "  - id: fault\n    kind: ПолеВвода\n    data_path: Объект.Неисправность\n    choice_filter: ["+tc.condition+"]")
+				path := filepath.Join(dir, "catalogs", "неисправность.yaml")
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = append(data, []byte("  - {name: is_root, type: \""+tc.fieldType+"\"}\n")...)
+				if err := os.WriteFile(path, data, 0600); err != nil {
+					t.Fatal(err)
+				}
+				if result := RunFull(dir); !result.OK {
+					t.Fatalf("configured is_root rejected: %+v", result.Issues)
+				}
+			})
+		}
+	}
+}
 
 func TestCheckFormChoiceFilterIsRoot(t *testing.T) {
 	for _, value := range []bool{true, false} {

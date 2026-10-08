@@ -240,10 +240,9 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 					}
 
 					isFolder := strings.EqualFold(fieldName, "is_folder")
-					isRoot := strings.EqualFold(fieldName, metadata.FormChoiceRootField)
-					var targetField *metadata.Field
+					targetField := entityFieldFold(target, fieldName)
+					isRoot := targetField == nil && strings.EqualFold(fieldName, metadata.FormChoiceRootField)
 					if !isFolder && !isRoot {
-						targetField = entityFieldFold(target, fieldName)
 						// parent_id — служебная ссылка иерархического справочника на
 						// себя (#1819): дальше проверяется как обычный ссылочный реквизит.
 						if targetField == nil && strings.EqualFold(fieldName, metadata.FormChoiceParentField) {

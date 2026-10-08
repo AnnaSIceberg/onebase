@@ -70,9 +70,28 @@ elements:
 		t.Fatalf("combined filter lost on HTTP round trip: %+v", conditions)
 	}
 
+	// The YAML editor has no target catalog metadata. A real reference
+	// attribute named is_root must retain its sources; check validates whether
+	// that attribute exists (and rejects these sources for the pseudo-field).
 	for _, condition := range []string{
 		`[{"field":"is_root","op":"eq","from":"Объект.Город"}]`,
 		`[{"field":"is_root","op":"eq","ref":"d4ba641c-70ae-4632-bf99-035f4caaa0af"}]`,
+		`[{"field":"is_root","op":"not_in_hierarchy","ref":"d4ba641c-70ae-4632-bf99-035f4caaa0af"}]`,
+	} {
+		response := post(condition)
+		if !response.OK {
+			t.Fatalf("attribute source rejected: %s: %v", condition, response.Errors)
+		}
+		var want []canvasChoiceCondition
+		if err := json.Unmarshal([]byte(condition), &want); err != nil {
+			t.Fatal(err)
+		}
+		got := response.Model["elements.0"].ChoiceFilter
+		if len(got) != 1 || got[0].Field != want[0].Field || got[0].Op != want[0].Op || got[0].From != want[0].From || got[0].Ref != want[0].Ref {
+			t.Fatalf("attribute source lost: %+v, want %+v", got, want)
+		}
+	}
+	for _, condition := range []string{
 		`[{"field":"is_root","op":"in_hierarchy","value":true}]`,
 		`[{"field":"is_root","op":"not_in_hierarchy","value":true}]`,
 	} {

@@ -73,7 +73,10 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 			next++
 			continue
 		}
-		if strings.EqualFold(fieldName, metadata.FormChoiceRootField) {
+		// Existing configuration attributes take precedence over the new
+		// pseudo-field, including in flat catalogs and case-insensitive lookup.
+		field, column := choiceField(entity, fieldName)
+		if field == nil && strings.EqualFold(fieldName, metadata.FormChoiceRootField) {
 			if !entity.Hierarchical {
 				return "", nil, startArg, fmt.Errorf("choice filter %d: is_root requires a hierarchical catalog", i)
 			}
@@ -92,7 +95,6 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 			continue
 		}
 
-		field, column := choiceField(entity, fieldName)
 		if field == nil {
 			return "", nil, startArg, fmt.Errorf("choice filter %d: field %q does not exist", i, fieldName)
 		}

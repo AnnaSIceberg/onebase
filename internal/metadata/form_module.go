@@ -350,7 +350,8 @@ const (
 const FormChoiceParentField = "parent_id"
 
 // FormChoiceRootField — служебный булев признак корня иерархического
-// справочника (#1823). Это условие по parent_id, а не реквизит конфигурации.
+// справочника (#1823). При отсутствии одноимённого реквизита это условие
+// по parent_id; объявленный реквизит сохраняет свой прежний смысл.
 const FormChoiceRootField = "is_root"
 
 // FormChoiceParentFieldOf — parent_id как ссылочный реквизит справочника на
