@@ -45,6 +45,12 @@ type ImportReport struct {
 	// TOTPReset — учётные записи, которым при восстановлении погашен второй
 	// фактор: их секрет зашифрован мастер-ключом другой установки.
 	TOTPReset []string
+	// SkippedTables — таблицы данных архива, которых нет в схеме
+	// восстановленной конфигурации (метаданные убраны, а таблица осталась в
+	// исходной базе): имя → строк в архиве. Их строки не переносятся — так
+	// импорт поступал и раньше, — но теперь это видно, а сверка с манифестом
+	// на таких таблицах не роняет восстановление.
+	SkippedTables map[string]int
 }
 
 // disableUnreadableTOTP гасит второй фактор у учёток, чей секрет не
@@ -1676,6 +1682,12 @@ func verifyImportedTableCounts(manifest map[string]int, report *ImportReport, mo
 			continue
 		}
 		tableName := strings.TrimSuffix(path.Base(key), ".jsonl")
+		// Таблица данных, которой нет в схеме конфигурации, сверке не подлежит:
+		// её строки некуда записать. Служебная (system/) — обязана быть.
+		if _, skipped := report.SkippedTables[tableName]; skipped && strings.HasPrefix(key, "data/") {
+			report.SkippedTables[tableName] = manifest[key]
+			continue
+		}
 		actual, ok := report.Tables[tableName]
 		if !ok {
 			return fmt.Errorf("import: manifest table %s was not imported", tableName)
@@ -2544,6 +2556,20 @@ func importDir(ctx context.Context, db *storage.DB, dir string, report *ImportRe
 		tableName := strings.TrimSuffix(base, ".jsonl")
 
 		if allSkip[strings.ToLower(tableName)] {
+			return nil
+		}
+		// Таблицы нет в схеме конфигурации — данные убранных метаданных.
+		// importTableJSONL её и так пропускает; отмечаем пропуск, чтобы сверка
+		// с манифестом отличила его от потерянных строк существующей таблицы.
+		exists, err := tableExistsChecked(ctx, db, tableName)
+		if err != nil {
+			return fmt.Errorf("inspect table %s: %w", tableName, err)
+		}
+		if !exists {
+			if report.SkippedTables == nil {
+				report.SkippedTables = map[string]int{}
+			}
+			report.SkippedTables[tableName] = 0
 			return nil
 		}
 
