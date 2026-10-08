@@ -3,7 +3,6 @@ package configcheck
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,13 +22,22 @@ func TestRunFullChoiceFilterIsRootAttribute(t *testing.T) {
 			t.Run(fmt.Sprintf("%t/%s/%s", hierarchical, tc.fieldType, tc.condition), func(t *testing.T) {
 				dir := t.TempDir()
 				writeChoiceFilterCheckProject(t, dir, hierarchical, "  - id: fault\n    kind: ПолеВвода\n    data_path: Объект.Неисправность\n    choice_filter: ["+tc.condition+"]")
-				path := filepath.Join(dir, "catalogs", "неисправность.yaml")
-				data, err := os.ReadFile(path)
+				root, err := os.OpenRoot(dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() {
+					if err := root.Close(); err != nil {
+						t.Error(err)
+					}
+				})
+				const path = "catalogs/неисправность.yaml"
+				data, err := root.ReadFile(path)
 				if err != nil {
 					t.Fatal(err)
 				}
 				data = append(data, []byte("  - {name: is_root, type: \""+tc.fieldType+"\"}\n")...)
-				if err := os.WriteFile(path, data, 0600); err != nil {
+				if err := root.WriteFile(path, data, 0600); err != nil {
 					t.Fatal(err)
 				}
 				if result := RunFull(dir); !result.OK {
