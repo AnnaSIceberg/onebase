@@ -140,6 +140,27 @@ func TestLongIdents_Matrix(t *testing.T) {
 				t.Fatalf("в списке колонок осталось короткое имя %q", c)
 			}
 		}
+
+		// Без псевдонимов: метку даёт само физическое имя колонки, которое в
+		// SQL уже короткое. Полное имя обязано вернуться и здесь.
+		star, err := query.Compile(`ВЫБРАТЬ * ИЗ Справочник.А_СтруктураИсточниковДляНомераТелефона`,
+			query.CompileOpts{Entities: entities, Dialect: db.Dialect()})
+		if err != nil {
+			t.Fatalf("компиляция *: %v", err)
+		}
+		starRows, starCols, err := query.Run(ctx, db, &star)
+		if err != nil {
+			t.Fatalf("выполнение *: %v\nSQL: %s", err, star.SQL)
+		}
+		if len(starRows) != 1 {
+			t.Fatalf("ВЫБРАТЬ *: строк %d", len(starRows))
+		}
+		for _, f := range structure.Fields {
+			logical := metadata.LogicalColumnName(f)
+			if _, ok := starRows[0][logical]; !ok {
+				t.Fatalf("ВЫБРАТЬ *: нет колонки %q (колонки %v)", logical, starCols)
+			}
+		}
 	})
 }
 

@@ -136,6 +136,7 @@ func Compile(src string, opts CompileOpts) (Result, error) {
 		return res, err
 	}
 	res.SQL, res.LongIdents = shortenLongIdents(res.SQL)
+	addSourceColumnLabels(&res, opts)
 	if !hasLimit {
 		return res, nil
 	}
