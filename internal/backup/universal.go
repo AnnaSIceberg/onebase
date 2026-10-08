@@ -622,6 +622,20 @@ func detectTypedCols(ctx context.Context, db schemaMetadataDB, tableName string)
 	return result, nil
 }
 
+// pgTextCol — колонка PostgreSQL текстовая: не типизированная, не JSON, не
+// bytea и не boolean. Сюда же попадают колонки, которые импорт добавил сам
+// (AddColumnIfMissing с TEXT): их нет в наборах, снятых до загрузки. SQLite
+// держит в TEXT-колонке и число, и в архив оно уходит числом — например,
+// служебная колонка от прежней конфигурации (_is_predefined = 0). PostgreSQL
+// такое значение в text не принимает («unable to encode 0 into text format
+// for text»), и перенос базы падал. На SQLite значение остаётся как есть.
+func pgTextCol(db *storage.DB, col string, typedCols, jsonCols, byteaCols, boolCols map[string]bool) bool {
+	if db.IsSQLite() {
+		return false
+	}
+	return !typedCols[col] && !jsonCols[col] && !byteaCols[col] && !boolCols[col]
+}
+
 // detectByteaCols returns the set of columns with bytea type in PostgreSQL.
 // Used during import to decide whether to base64-decode btype values:
 // only true bytea columns get decoded; text/jsonb columns keep the original string.
@@ -2786,6 +2800,10 @@ func insertRow(ctx context.Context, db *storage.DB, tableName string, raw map[st
 						goVal = iv != 0
 					}
 				}
+				// Число в текстовой колонке PostgreSQL — строкой (см. pgTextCol).
+				if pgTextCol(db, col, typedCols, jsonCols, byteaCols, boolCols) {
+					goVal = tv.String()
+				}
 			case string:
 				// Raw bytes are already valid UTF-8 here — the line-level
 				// transcode in importTableJSONL has already converted
@@ -2802,6 +2820,9 @@ func insertRow(ctx context.Context, db *storage.DB, tableName string, raw map[st
 				}
 			case bool:
 				goVal = tv
+				if pgTextCol(db, col, typedCols, jsonCols, byteaCols, boolCols) {
+					goVal = strconv.FormatBool(tv)
+				}
 			default:
 				goVal = v
 			}
