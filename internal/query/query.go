@@ -3168,26 +3168,10 @@ func sourceColumnTypes(typeUpper, name string, opts CompileOpts) map[string]meta
 // a nested SELECT or another UNION branch would otherwise be typed by a foreign
 // source. A name that two sources of the same scope type differently is dropped:
 // the compiler must not guess which one the author meant.
-func buildScopedColTypes(tokens []tok, opts CompileOpts, sourceCtx sourceContext) map[int]map[string]metadata.FieldType {
+func buildScopedColTypes(tokens []tok, opts CompileOpts, sourceCtx sourceContext, derived map[int]map[string]map[string]metadata.FieldType) map[int]map[string]metadata.FieldType {
 	scoped := map[int]map[string]metadata.FieldType{}
 	ambiguous := map[int]map[string]bool{}
-
-	for i := 0; i+2 < len(tokens); i++ {
-		if tokens[i].kind != tIdent || tokens[i+1].kind != tDot || tokens[i+2].kind != tIdent {
-			continue
-		}
-		typeUpper := upperFast(tokens[i].val)
-		if !isSourceType(typeUpper) {
-			continue
-		}
-		scopeID, ok := sourceCtx.scopeIDAt(i)
-		if !ok {
-			continue
-		}
-		fields := sourceColTypes(typeUpper, tokens[i+2].val, opts)
-		if fields == nil {
-			continue
-		}
+	add := func(scopeID int, fields map[string]metadata.FieldType) {
 		if scoped[scopeID] == nil {
 			scoped[scopeID] = map[string]metadata.FieldType{}
 			ambiguous[scopeID] = map[string]bool{}
@@ -3204,6 +3188,23 @@ func buildScopedColTypes(tokens []tok, opts CompileOpts, sourceCtx sourceContext
 				continue
 			}
 			scoped[scopeID][name] = typ
+		}
+	}
+	for i := 0; i+2 < len(tokens); i++ {
+		if tokens[i].kind != tIdent || tokens[i+1].kind != tDot || tokens[i+2].kind != tIdent {
+			continue
+		}
+		typeUpper := upperFast(tokens[i].val)
+		if !isSourceType(typeUpper) {
+			continue
+		}
+		if scopeID, ok := sourceCtx.scopeIDAt(i); ok {
+			add(scopeID, sourceColTypes(typeUpper, tokens[i+2].val, opts))
+		}
+	}
+	for scopeID, sources := range derived {
+		for _, fields := range sources {
+			add(scopeID, fields)
 		}
 	}
 	return scoped
@@ -4562,8 +4563,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	// не произвольную строку и не будущий localdate (#1243).
 	colTypes := buildColTypes(tokens, opts)
 	scalarSourceCtx := preScanSourceContext(tokens)
-	qualifiedColTypes := buildQualifiedColTypes(tokens, opts, scalarSourceCtx)
-	scopedColTypes := buildScopedColTypes(tokens, opts, scalarSourceCtx)
+	scopedColTypes, qualifiedColTypes := buildScalarColumnTypes(tokens, opts, scalarSourceCtx)
 	tokens = rewriteGroupingReferenceAliases(tokens)
 	// расширяем НачалоДня/Год/Месяц/ОКР/АБС/ЦЕЛ/... в SQL-эквиваленты
 	// до основной трансляции, чтобы остальные шаги ничего не знали о них.
