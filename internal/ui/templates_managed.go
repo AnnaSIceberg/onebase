@@ -155,11 +155,11 @@ const tplManagedForm = `
         </div>
       {{else if eq (str $el.Type) "file"}}
         <div class="managed-control-row" style="display:flex;gap:6px;align-items:center">
-          <input class="managed-fill-control" type="text" name="{{$fn}}" id="file-path-{{$fn}}" placeholder="Путь к файлу или выберите …" style="flex:1"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}>
+          <input class="managed-fill-control" type="text" name="{{$fn}}" id="file-path-{{$el.Name}}" placeholder="Путь к файлу или выберите …" style="flex:1"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}>
           {{if not $ro}}
-          <textarea name="{{if $ctx.IsProcessor}}{{processorFileContentName $ctx.Processor $fn}}{{else}}_fc_{{$fn}}{{end}}" id="file-content-{{$fn}}" data-ob-file-content-for="{{$fn}}" style="display:none"></textarea>
-          <input type="file" id="file-pick-{{$fn}}" style="display:none" data-ob-file-pick-path="file-path-{{$fn}}" data-ob-file-pick-content="file-content-{{$fn}}">
-          <button type="button" data-ob-file-trigger="file-pick-{{$fn}}" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;white-space:nowrap" title="Выбрать файл">…</button>
+          <textarea name="{{if $ctx.IsProcessor}}{{processorFileContentName $ctx.Processor $fn}}{{else}}_fc_{{$fn}}{{end}}" id="file-content-{{$el.Name}}" data-ob-file-content-for="{{$fn}}" style="display:none"></textarea>
+          <input type="file" id="file-pick-{{$el.Name}}" style="display:none" data-ob-file-pick-path="file-path-{{$el.Name}}" data-ob-file-pick-content="file-content-{{$el.Name}}">
+          <button type="button" data-ob-file-trigger="file-pick-{{$el.Name}}" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;white-space:nowrap" title="Выбрать файл">…</button>
           {{end}}
         </div>
       {{else if $el.Multiline}}
@@ -170,11 +170,11 @@ const tplManagedForm = `
     {{else if eq (str $el.Type) "file"}}
       {{/* Поле не найдено в Entity, но элемент объявлен как file */}}
       <div class="managed-control-row" style="display:flex;gap:6px;align-items:center">
-        <input class="managed-fill-control" type="text" name="{{$fn}}" id="file-path-{{$fn}}" placeholder="Путь к файлу или выберите …" style="flex:1"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}>
+        <input class="managed-fill-control" type="text" name="{{$fn}}" id="file-path-{{$el.Name}}" placeholder="Путь к файлу или выберите …" style="flex:1"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}>
         {{if not $ro}}
-        <textarea name="{{if $ctx.IsProcessor}}{{processorFileContentName $ctx.Processor $fn}}{{else}}_fc_{{$fn}}{{end}}" id="file-content-{{$fn}}" data-ob-file-content-for="{{$fn}}" style="display:none"></textarea>
-        <input type="file" id="file-pick-{{$fn}}" style="display:none" data-ob-file-pick-path="file-path-{{$fn}}" data-ob-file-pick-content="file-content-{{$fn}}">
-        <button type="button" data-ob-file-trigger="file-pick-{{$fn}}" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;white-space:nowrap" title="Выбрать файл">…</button>
+        <textarea name="{{if $ctx.IsProcessor}}{{processorFileContentName $ctx.Processor $fn}}{{else}}_fc_{{$fn}}{{end}}" id="file-content-{{$el.Name}}" data-ob-file-content-for="{{$fn}}" style="display:none"></textarea>
+        <input type="file" id="file-pick-{{$el.Name}}" style="display:none" data-ob-file-pick-path="file-path-{{$el.Name}}" data-ob-file-pick-content="file-content-{{$el.Name}}">
+        <button type="button" data-ob-file-trigger="file-pick-{{$el.Name}}" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;white-space:nowrap" title="Выбрать файл">…</button>
         {{end}}
       </div>
     {{else}}
