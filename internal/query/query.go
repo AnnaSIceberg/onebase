@@ -991,7 +991,10 @@ func (ctx sourceContext) derivedOutputColumn(tokens []tok, scopeID int, name str
 			for start >= 2 && tokens[start-1].kind == tDot && tokens[start-2].kind == tIdent {
 				start -= 2
 			}
-			if projection.standaloneSelectItem(start, i+1) {
+			// При КАК экспортируется алиас, уже учтённый в outputAliases,
+			// а не исходное имя поля. Его может экспортировать звёздочка.
+			kw, _ := sqlKW(tokens[i+1].val)
+			if kw != "AS" && projection.standaloneSelectItem(start, i+1) {
 				return name
 			}
 		}
