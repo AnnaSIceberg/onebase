@@ -292,6 +292,11 @@ window.obUIMessage = function (name, fallback) {
     }
     answerCloseRequest(requester, requesterOrigin, data);
   });
+  // Эта страница отвечает на obRequestFormClose. Оболочка вкладок (tabs.go)
+  // по этому признаку отличает страницу приложения от той, что в протоколе
+  // закрытия не участвует (текстовая ошибка 404 и т. п.): такую ждать
+  // бесполезно, и вкладка с ней иначе не закрывалась (#1684).
+  window.obAnswersFrameClose = true;
 })();
 
 if (window.__obEmbedded) {

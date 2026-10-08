@@ -230,6 +230,7 @@ func заявкаСКопиямиУлицы(t *testing.T, kind metadata.FormElem
 // applyElementStates.
 type managedPageAnchor struct {
 	Name            string `json:"name"`
+	Path            string `json:"path"`
 	Fieldset        bool   `json:"fieldset"`
 	ControlFieldset bool   `json:"controlFieldset"`
 	Disabled        bool   `json:"disabled"`
@@ -291,8 +292,9 @@ func parseManagedPage(t *testing.T, rendered string) managedPage {
 				_, disabled := managedHTMLAttr(n, "disabled")
 				style, _ := managedHTMLAttr(n, "style")
 				controlFieldset, _ := managedHTMLAttr(n, "data-ob-control-fieldset")
+				path, _ := managedHTMLAttr(n, "data-ob-el-path")
 				page.Anchors = append(page.Anchors, managedPageAnchor{
-					Name: name, Fieldset: n.Data == "fieldset", ControlFieldset: controlFieldset == "1",
+					Name: name, Path: path, Fieldset: n.Data == "fieldset", ControlFieldset: controlFieldset == "1",
 					Disabled: disabled, Hidden: strings.Contains(strings.ReplaceAll(style, " ", ""), "display:none"),
 				})
 				anchors = append([]int{len(page.Anchors) - 1}, anchors...)
@@ -479,6 +481,9 @@ global.document = {
       classList: {contains() { return false; }}, closest() { return null; }};
   },
   querySelector(selector) {
+    // Состояния элементов адресуются путём размещения (#1543), имя — запасной путь.
+    const byPath = /^\[data-ob-el-path="([^"]*)"\]$/.exec(selector);
+    if (byPath) return anchors.find((a) => a.path === byPath[1]) || null;
     const match = /^\[data-ob-el="([^"]*)"\]$/.exec(selector);
     if (!match) throw new Error('document.querySelector: unsupported selector ' + selector);
     return anchors.find((a) => a.name === match[1]) || null;

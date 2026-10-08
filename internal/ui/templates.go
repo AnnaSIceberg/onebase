@@ -508,6 +508,12 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// attrRefEntity — имя сущности из ссылочного типа реквизита формы
 		// ("CatalogRef.X" → "X"), пусто если тип не ссылочный.
 		"attrRefEntity": func(typeRef string) string { return attrRefEntityName(typeRef) },
+		// refHasCard — есть ли у цели ссылки карточка, которую откроет 🔍.
+		// У системной таблицы учётных записей (reference:_users, #1646) её
+		// нет: адрес давал 404, а вкладка с ним не закрывалась (#1684).
+		"refHasCard": func(refEntity string) bool {
+			return strings.TrimSpace(refEntity) != "" && !metadata.IsSystemRefTarget(refEntity)
+		},
 		// formAttrNames — имена скалярных реквизитов формы (save:false), которых
 		// нет среди полей сущности. Клиент по ним восстанавливает введённое после
 		// полной перезагрузки страницы: «Записать» уходит POST'ом с редиректом, и
@@ -569,7 +575,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"elLayoutEx": func(ctx map[string]any, el *metadata.FormElement) template.CSS {
 			css := metadata.FormElementLayoutCSS(el)
 			if el != nil && el.HiddenWhen != "" {
-				if set, _ := ctx["ElHidden"].(map[string]bool); set[el.Name] {
+				if set, _ := ctx["ElHidden"].(map[string]bool); set[elementStatePath(ctx, el)] {
 					css = "display:none;" + css
 				}
 			}
@@ -597,7 +603,10 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// elReadOnly / elHidden — итоговое состояние элемента управляемой формы
 		// с учётом условий readonly_when/hidden_when по полям записи. Условия
 		// вычисляются на сервере при отрисовке (и заново после каждого события
-		// формы), а шаблон только читает результат по имени элемента.
+		// формы), а шаблон только читает результат. Ключ карты — путь размещения
+		// элемента, а не имя: пустые и повторяющиеся имена не идентифицируют
+		// конкретное размещение (#1543). Соответствие «указатель → путь» кладёт
+		// в контекст prepareManagedFormData рядом с картами состояний.
 		"elReadOnly": func(ctx map[string]any, el *metadata.FormElement) bool {
 			if el == nil {
 				return false
@@ -606,14 +615,14 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				return true
 			}
 			set, _ := ctx["ElReadOnly"].(map[string]bool)
-			return set[el.Name]
+			return set[elementStatePath(ctx, el)]
 		},
 		"elHidden": func(ctx map[string]any, el *metadata.FormElement) bool {
 			if el == nil {
 				return false
 			}
 			set, _ := ctx["ElHidden"].(map[string]bool)
-			if !set[el.Name] {
+			if !set[elementStatePath(ctx, el)] {
 				return false
 			}
 			if el.HiddenWhen == "" {
@@ -643,10 +652,16 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				return ""
 			}
 			set, _ := ctx["ElHidden"].(map[string]bool)
-			if set[el.Name] {
+			if set[elementStatePath(ctx, el)] {
 				return "display:none;"
 			}
 			return ""
+		},
+		// elPath — путь размещения элемента для якоря data-ob-el-path: по нему
+		// клиент находит свой элемент после события формы, когда имя элемента
+		// пустое или встречается на форме дважды (#1543).
+		"elPath": func(ctx map[string]any, el *metadata.FormElement) string {
+			return elementStatePath(ctx, el)
 		},
 		// visibleFormPages — страницы набора СтраницыФормы, которые надо
 		// отрисовать. Отбор вынесен сюда, а не сделан внутри range, потому что
@@ -666,7 +681,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			hidden, _ := ctx["ElHidden"].(map[string]bool)
 			var out []*metadata.FormElement
 			for _, page := range el.Children {
-				if page == nil || string(page.Kind) != "Страница" || hidden[page.Name] {
+				if page == nil || string(page.Kind) != "Страница" || hidden[elementStatePath(ctx, page)] {
 					continue
 				}
 				out = append(out, page)
