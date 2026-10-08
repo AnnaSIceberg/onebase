@@ -86,32 +86,44 @@ func TestQueryTxGuard_NoTransactionUnaffected(t *testing.T) {
 // страховка не срабатывает на ней ложью: контекст снимается в момент
 // Выполнить и уже содержит транзакцию.
 func TestQueryTxGuard_LiveSourceInsideTransactionUnaffected(t *testing.T) {
-	ctx := context.Background()
-	db, err := storage.ConnectSQLite(ctx, filepath.Join(t.TempDir(), "guard3.db"))
-	require.NoError(t, err)
-	defer db.Close()
+	for _, tc := range []struct {
+		name    string
+		factory func(interpreter.CtxSource, interpreter.QueryDB, interpreter.QueryRegistry) func([]any) any
+	}{
+		{name: "source", factory: interpreter.NewQueryFactorySource},
+		{name: "guarded_source", factory: func(src interpreter.CtxSource, db interpreter.QueryDB, reg interpreter.QueryRegistry) func([]any) any {
+			return interpreter.NewQueryFactoryGuardedSource(src, db, reg, nil, nil)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			db, err := storage.ConnectSQLite(ctx, filepath.Join(t.TempDir(), "guard3.db"))
+			require.NoError(t, err)
+			defer db.Close()
 
-	txState := interpreter.NewTxState(ctx)
-	factory := interpreter.NewQueryFactoryGuardedSource(txState, db, &stubReg{}, nil, nil)
-	src := `Процедура Работа()
+			txState := interpreter.NewTxState(ctx)
+			factory := tc.factory(txState, db, &stubReg{})
+			src := `Процедура Работа()
 	НачатьТранзакцию();
 	Запрос = Новый Запрос;
 	Запрос.Текст = "ВЫБРАТЬ 1 AS Код";
 	Рез = Запрос.Выполнить();
 	ЗафиксироватьТранзакцию();
 КонецПроцедуры`
-	l := lexer.New(src, "txguard3.os")
-	prog, err := parser.New(l).ParseProgram()
-	require.NoError(t, err)
-	interp := interpreter.New()
-	extra := map[string]any{
-		"__factory_Запрос": factory,
-		"__factory_Query":  factory,
+			l := lexer.New(src, "txguard3.os")
+			prog, err := parser.New(l).ParseProgram()
+			require.NoError(t, err)
+			interp := interpreter.New()
+			extra := map[string]any{
+				"__factory_Запрос": factory,
+				"__factory_Query":  factory,
+			}
+			for k, v := range interpreter.NewTxFunctions(txState, db) {
+				extra[k] = v
+			}
+			obj := runtime.NewObject("T", metadata.KindCatalog)
+			require.NoError(t, interp.Run(prog.Procedures[0], obj, extra))
+			require.False(t, txState.HasOpen())
+		})
 	}
-	for k, v := range interpreter.NewTxFunctions(txState, db) {
-		extra[k] = v
-	}
-	obj := runtime.NewObject("T", metadata.KindCatalog)
-	require.NoError(t, interp.Run(prog.Procedures[0], obj, extra))
-	require.False(t, txState.HasOpen())
 }
