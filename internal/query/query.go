@@ -2614,10 +2614,9 @@ func (tr *translator) genInfoSlice(ir *metadata.InfoRegister, args [][]tok, dire
 	dims := dimCols(ir.Dimensions)
 	selDims := dimSelCols(ir.Dimensions)
 
-	var resCols []string
-	for _, r := range ir.Resources {
-		resCols = append(resCols, lowerFast(r.Name))
-	}
+	// Resources, like dimensions, expose logical names outside the slice while
+	// reading physical columns (reference fields are stored as <name>_id).
+	resCols := dimSelCols(ir.Resources)
 
 	periodOp := "<="
 	if direction == "ASC" {
@@ -2717,7 +2716,8 @@ func preScanAllRefDims(tokens []tok, opts CompileOpts) []refDimInfo {
 			} else if isInfoRegType(upper) {
 				for _, ir := range opts.InfoRegs {
 					if strings.EqualFold(ir.Name, regName) {
-						return buildVTRefDimInfos(ir.Dimensions, opts.Entities)
+						fields := append([]metadata.Field(nil), ir.Dimensions...)
+						return buildVTRefDimInfos(append(fields, ir.Resources...), opts.Entities)
 					}
 				}
 			}
@@ -2735,7 +2735,8 @@ func preScanAllRefDims(tokens []tok, opts CompileOpts) []refDimInfo {
 		} else if isInfoRegType(upper) {
 			for _, ir := range opts.InfoRegs {
 				if strings.EqualFold(ir.Name, regName) {
-					return buildRefDimInfosWithEntities(ir.Dimensions, opts.Entities)
+					fields := append([]metadata.Field(nil), ir.Dimensions...)
+					return buildRefDimInfosWithEntities(append(fields, ir.Resources...), opts.Entities)
 				}
 			}
 		}
@@ -3474,7 +3475,7 @@ func (tr *translator) keywordAt(idx int, names ...string) bool {
 // когда активны авто-JOIN'ы (п.48) — иначе одноимённая колонка присоединённого
 // каталога вызывает ambiguous column. Неизвестные идентификаторы не трогаем.
 func (tr *translator) qualifyOwn(col, lower string) string {
-	if _, isAlias := tr.aliases[lower]; isAlias {
+	if tr.sourceCtx.isOutputAliasAt(tr.pos-1, lower) {
 		return col // алиас вывода, не колонка таблицы
 	}
 	if len(tr.refDims) > 0 && tr.mainTable != "" {
@@ -5032,7 +5033,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 						switch tr.section {
 						case sectionSelect:
 							tr.emit(rd.displayCol())
-							if p := upperFast(tr.peek(0).val); p != "КАК" && p != "AS" {
+							// Only a complete projection needs an implicit name;
+							// AS inside COUNT(field) or another expression is invalid SQL.
+							if p := upperFast(tr.peek(0).val); p != "КАК" && p != "AS" && tr.standaloneSelectItem(tr.pos-1, tr.pos) {
 								tr.emit("AS")
 								tr.emit(rd.fieldName)
 								tr.aliases[lowerFast(rd.fieldName)] = struct{}{}
