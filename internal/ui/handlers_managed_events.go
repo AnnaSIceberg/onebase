@@ -2905,7 +2905,8 @@ func withSubmittedFormFields(ctx context.Context, fields map[string]any) context
 // подменяла бы набранный номер звёздочками: следующее событие или запись
 // прислали бы на сервер уже их, и номер терялся. Значение, пришедшее из базы
 // (клиент прислал маску или обработчик поставил другое), маскируется как
-// раньше. Возвращает ключи карты serialized с немаскированными значениями.
+// раньше. Скрытые поля не возвращаются даже при совпадении присланного значения.
+// Возвращает ключи карты serialized с немаскированными значениями.
 func submittedFieldsToEcho(ctx context.Context, decisions map[string]access.FieldDecision, current, serialized map[string]any) map[string]any {
 	submitted, _ := ctx.Value(submittedFormFieldsKey{}).(map[string]any)
 	if len(submitted) == 0 || len(decisions) == 0 {
@@ -2913,7 +2914,7 @@ func submittedFieldsToEcho(ctx context.Context, decisions map[string]access.Fiel
 	}
 	var echo map[string]any
 	for field, decision := range decisions {
-		if !decision.Masked() {
+		if !decision.Masked() || decision.Hidden() {
 			continue
 		}
 		sent, ok := maskCIKeyValue(submitted, field)

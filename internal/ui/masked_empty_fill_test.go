@@ -172,6 +172,73 @@ func TestUI_FormEvent_EchoesTypedMaskedValue(t *testing.T) {
 	}
 }
 
+// hide omits the key even when the client submits a value; only mask_*
+// policies may echo that client's unchanged input through the public event API.
+func TestUI_FormEvent_SubmittedFieldReadPolicy(t *testing.T) {
+	const sent = "(903)222-33-44"
+	cases := []struct {
+		name     string
+		strategy string
+		stored   string
+	}{
+		{name: "hide/arbitrary_submission", strategy: "hide", stored: "(916)111-22-33"},
+		{name: "hide/matching_submission", strategy: "hide", stored: sent},
+		{name: "hide/empty_stored_field", strategy: "hide", stored: ""},
+		{name: "mask_all", strategy: "mask_all"},
+		{name: "mask_tail", strategy: "mask_tail"},
+		{name: "mask_city", strategy: "mask_city"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cat := uiClientEntity()
+			form := managedObjectForm(fieldEl("ПолеНаименование", "Объект.Наименование"),
+				fieldEl("ПолеТелефон", "Объект.Телефон"), maskEventButton("КнПроверить", "КнПроверитьНажатие"))
+			form.EntityName = cat.Name
+			form.ProgramAST = mustParse(t, `
+Процедура КнПроверитьНажатие()
+КонецПроцедуры
+`)
+			cat.Forms = []*metadata.FormModule{form}
+			s, ctx := newSubmitTestServer(t, []*metadata.Entity{cat})
+			id := uuid.New()
+			if err := s.store.Upsert(ctx, cat.Name, id,
+				map[string]any{"Наименование": "Иванов", "Телефон": tc.stored}, cat); err != nil {
+				t.Fatal(err)
+			}
+			router := chi.NewRouter()
+			s.Mount(router)
+			body := url.Values{"_id": {id.String()}, "_element": {"КнПроверить"}, "_event": {"Нажатие"},
+				"Наименование": {"Иванов"}, "Телефон": {sent}}
+			r := httptest.NewRequest(http.MethodPost, "/ui/catalog/"+url.PathEscape(cat.Name)+"/form-event", strings.NewReader(body.Encode()))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+			user := uiMaskUser([]string{"read", "write"}, auth.FieldPolicies{"Телефон": {Read: tc.strategy, Keep: 4}})
+			r = r.WithContext(auth.ContextWithUser(r.Context(), user))
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, r)
+			var resp struct {
+				OK     bool           `json:"ok"`
+				Values map[string]any `json:"values"`
+				Error  string         `json:"error"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || w.Code != http.StatusOK || !resp.OK || resp.Error != "" {
+				t.Fatalf("form-event: %d %s (%v)", w.Code, w.Body.String(), err)
+			}
+			if got := resp.Values["Наименование"]; got != "Иванов" {
+				t.Fatalf("unrestricted field = %v, want Иванов", got)
+			}
+			if tc.strategy == "hide" {
+				for key := range resp.Values {
+					if strings.EqualFold(key, "Телефон") {
+						t.Fatalf("hide must omit the key, got values=%v", resp.Values)
+					}
+				}
+			} else if got := resp.Values["Телефон"]; got != sent {
+				t.Fatalf("%s must echo the submitted value, got %v", tc.strategy, got)
+			}
+		})
+	}
+}
+
 // Поле под маской в управляемой форме помечено data-ob-protected и показывается
 // точками, как пароль; у пользователя без маски пометки нет.
 func TestUI_ManagedForm_ProtectedInputRenderedAsPassword(t *testing.T) {
