@@ -592,6 +592,36 @@ func detectBoolCols(ctx context.Context, db schemaMetadataDB, tableName string) 
 	return result, nil
 }
 
+// detectTypedCols — колонки PostgreSQL, в которых пустая строка недопустима:
+// всё, кроме текстовых, JSON и bytea. На SQLite — пусто: там пустая строка
+// принимается любой колонкой и переносится как есть.
+func detectTypedCols(ctx context.Context, db schemaMetadataDB, tableName string) (map[string]bool, error) {
+	result := make(map[string]bool)
+	if db.IsSQLite() {
+		return result, nil
+	}
+	rows, err := db.Query(ctx,
+		`SELECT column_name FROM information_schema.columns
+		 WHERE table_schema=current_schema() AND table_name=$1
+		   AND data_type NOT IN ('text', 'character varying', 'character', 'json', 'jsonb', 'bytea')`,
+		tableName)
+	if err != nil {
+		return nil, fmt.Errorf("query typed columns for %s: %w", tableName, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err != nil {
+			return nil, fmt.Errorf("scan typed column for %s: %w", tableName, err)
+		}
+		result[col] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate typed columns for %s: %w", tableName, err)
+	}
+	return result, nil
+}
+
 // detectByteaCols returns the set of columns with bytea type in PostgreSQL.
 // Used during import to decide whether to base64-decode btype values:
 // only true bytea columns get decoded; text/jsonb columns keep the original string.
@@ -2572,6 +2602,12 @@ func importTableJSONL(ctx context.Context, db *storage.DB, tableName, filePath s
 	if err != nil {
 		return 0, fmt.Errorf("detect boolean columns for %s: %w", tableName, err)
 	}
+	// Нетекстовые колонки PostgreSQL: пустая строка из архива становится в них
+	// NULL (см. insertRow).
+	typedCols, err := detectTypedCols(ctx, db, tableName)
+	if err != nil {
+		return 0, fmt.Errorf("detect typed columns for %s: %w", tableName, err)
+	}
 
 	// Detect bytea columns so we only base64-decode btypes for actual binary columns.
 	byteaCols, err := detectByteaCols(ctx, db, tableName)
@@ -2625,7 +2661,7 @@ func importTableJSONL(ctx context.Context, db *storage.DB, tableName, filePath s
 			existingCols[col] = true
 		}
 
-		if err := insertRow(ctx, db, tableName, raw, btypes, existingCols, jsonCols, boolCols, byteaCols); err != nil {
+		if err := insertRow(ctx, db, tableName, raw, btypes, existingCols, jsonCols, boolCols, byteaCols, typedCols); err != nil {
 			return n, fmt.Errorf("insert row %d into %s: %w", n+1, tableName, err)
 		}
 		n++
@@ -2640,7 +2676,7 @@ func importTableJSONL(ctx context.Context, db *storage.DB, tableName, filePath s
 // directly so PostgreSQL can parse it as JSON.
 // boolCols is the set of boolean columns — numeric 0/1 values are converted to bool
 // so that the PG driver does not fail with "cannot find encode plan for bool (OID 16)".
-func insertRow(ctx context.Context, db *storage.DB, tableName string, raw map[string]json.RawMessage, btypes map[string]bool, existingCols map[string]bool, jsonCols map[string]bool, boolCols map[string]bool, byteaCols map[string]bool) error {
+func insertRow(ctx context.Context, db *storage.DB, tableName string, raw map[string]json.RawMessage, btypes map[string]bool, existingCols map[string]bool, jsonCols map[string]bool, boolCols map[string]bool, byteaCols map[string]bool, typedCols map[string]bool) error {
 	d := db.Dialect()
 
 	cols := make([]string, 0, len(raw))
@@ -2755,6 +2791,15 @@ func insertRow(ctx context.Context, db *storage.DB, tableName string, raw map[st
 				// transcode in importTableJSONL has already converted
 				// any Windows-1251 source to UTF-8.
 				goVal = stripMonoClock(tv)
+				// SQLite хранит что угодно в колонке любого типа, и пустая
+				// строка в поле даты, числа или булева там — обычное «не
+				// заполнено» (так его пишут загрузчики мимо платформы).
+				// PostgreSQL такое значение отвергает («invalid input syntax for
+				// type timestamp with time zone: ""»), и перенос базы падал на
+				// первой же такой строке. Незаполненное значение — NULL.
+				if tv == "" && typedCols[col] {
+					goVal = nil
+				}
 			case bool:
 				goVal = tv
 			default:
