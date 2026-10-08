@@ -237,6 +237,12 @@ func applyEditOp(yamlSrc []byte, req editOpRequest) (editOpResult, error) {
 			if sources != 1 {
 				return editOpResult{}, fmt.Errorf("setChoiceFilter: условие %d: укажите ровно одно из from, value и ref", i+1)
 			}
+			// Without catalog metadata, the YAML editor cannot distinguish an
+			// is_root attribute from the pseudo-field. Validate boolean syntax
+			// here; onebase check resolves fields and sources against the project.
+			if condition.Value != nil && op != metadata.FormChoiceOpEqual {
+				return editOpResult{}, fmt.Errorf("setChoiceFilter: условие %d: boolean value требует eq", i+1)
+			}
 			if ref != "" {
 				// Формат проверяется сразу: битый UUID в YAML отклонил бы
 				// onebase check, а редактор не должен его записывать (#1820).

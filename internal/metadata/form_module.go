@@ -355,6 +355,11 @@ const (
 // in_hierarchy: всё, что не строго внутри X, включая корневые записи и саму X.
 const FormChoiceParentField = "parent_id"
 
+// FormChoiceRootField — служебный булев признак корня иерархического
+// справочника (#1823). При отсутствии одноимённого реквизита это условие
+// по parent_id; объявленный реквизит сохраняет свой прежний смысл.
+const FormChoiceRootField = "is_root"
+
 // FormChoiceParentFieldOf — parent_id как ссылочный реквизит справочника на
 // самого себя; nil, если справочник не иерархический.
 func FormChoiceParentFieldOf(entity *Entity) *Field {
@@ -367,7 +372,7 @@ func FormChoiceParentFieldOf(entity *Entity) *Field {
 // FormChoiceCondition описывает одно серверно проверяемое условие подбора.
 // Ровно одно из From, Value и Ref обязательно.
 //
-// Value — литерал из конфигурации, boolean: служебное поле is_folder и булев
+// Value — литерал из конфигурации, boolean: служебные поля is_folder/is_root и булев
 // реквизит справочника («только немуниципальные адреса»). Указатель отличает
 // явное false от отсутствующего литерала. Литералов других типов в контракте
 // нет сознательно: строка или число рядом с колонкой — это уже отбор, который
