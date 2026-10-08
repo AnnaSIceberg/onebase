@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -231,5 +233,62 @@ func TestManagedApplyValuesKeepsTypingInNode(t *testing.T) {
 	cmd := exec.Command(node, "--test", "static/managed_apply_typing_test.js") //nolint:gosec // test-only executable resolved by exec.LookPath
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("node managed applyValues typing test: %v\n%s", err, output)
+	}
+}
+
+// The client regression consumes the real saved form-event envelope, then types
+// while that response is pending and closes through the production controller.
+func TestUI_FormEvent_SaveKeepsLateTypingDirtyInNode(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for the saved form-event and close regression")
+	}
+	cat := piiClientEntity()
+	form := managedObjectForm(fieldEl("ПолеТелефон", "Объект.Телефон"),
+		maskEventButton("КнЗаписать", "КнЗаписатьНажатие"))
+	form.EntityName = cat.Name
+	form.ProgramAST = mustParse(t, `
+Процедура КнЗаписатьНажатие()
+	Объект.Записать();
+КонецПроцедуры
+`)
+	cat.Forms = []*metadata.FormModule{form}
+	s, ctx := newSubmitTestServer(t, []*metadata.Entity{cat})
+	id := uuid.New()
+	if err := s.store.Upsert(ctx, cat.Name, id, map[string]any{"Наименование": "Иванов"}, cat); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	s.Mount(router)
+	const phone = "(937)637-32-7"
+	body := url.Values{"_id": {id.String()}, "_element": {"КнЗаписать"}, "_event": {"Нажатие"},
+		"Наименование": {"Иванов"}, "Телефон": {phone}}
+	r := httptest.NewRequest(http.MethodPost, "/ui/catalog/"+url.PathEscape(cat.Name)+"/form-event", strings.NewReader(body.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+	r = r.WithContext(auth.ContextWithUser(r.Context(), uiMaskUser([]string{"read", "write"}, nil)))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, r)
+	var result struct {
+		OK      bool           `json:"ok"`
+		Dirty   *bool          `json:"dirty"`
+		Version int            `json:"version"`
+		Values  map[string]any `json:"values"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != http.StatusOK || !result.OK ||
+		result.Dirty == nil || *result.Dirty || result.Version == 0 || result.Values["Телефон"] != phone {
+		t.Fatalf("saved form-event envelope: %d %s (%v)", w.Code, w.Body.String(), err)
+	}
+	stored, err := s.store.GetByID(ctx, cat.Name, id, cat)
+	if err != nil || stored["Телефон"] != phone {
+		t.Fatalf("handler did not save sent phone: %v (%v)", stored, err)
+	}
+	fixture := filepath.Join(t.TempDir(), "saved-event.json")
+	if err := os.WriteFile(fixture, w.Body.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(node, "--test", "--test-name-pattern", "^ordinary saved form event", "static/managed_close_intent_behavior_test.js") //nolint:gosec // test-only executable resolved by exec.LookPath
+	cmd.Env = append(os.Environ(), "ONEBASE_SAVED_EVENT_RESPONSE="+fixture)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("saved form-event and close regression: %v\n%s", err, output)
 	}
 }

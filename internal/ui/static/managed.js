@@ -1127,8 +1127,11 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       applyFormTables(data.formTables);
 	  // Server events repaint controls programmatically and therefore do not
 	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
-	  // it only when this response proves a successful Object.Write.
-	  if (data.dirty === false && (data.savedId || data.version)) setManagedFormDirty(false);
+	  // it only when this response proves a successful Object.Write and no
+	  // user edits followed the snapshot that was saved.
+	  if (data.dirty === false && (data.savedId || data.version)) {
+		setManagedFormDirty(formEditState.revision !== snapshot.editRevision);
+	  }
       (data.messages || []).forEach(m => flash(m, 'ok'));
       if (data.error) flash(data.error, 'err');
       if (navigationBlocked) flash(closeMessage('navigationDirty', 'Форма содержит несохранённые изменения — переход не выполнен'), 'err');
