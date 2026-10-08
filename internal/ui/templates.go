@@ -508,6 +508,12 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// attrRefEntity — имя сущности из ссылочного типа реквизита формы
 		// ("CatalogRef.X" → "X"), пусто если тип не ссылочный.
 		"attrRefEntity": func(typeRef string) string { return attrRefEntityName(typeRef) },
+		// refHasCard — есть ли у цели ссылки карточка, которую откроет 🔍.
+		// У системной таблицы учётных записей (reference:_users, #1646) её
+		// нет: адрес давал 404, а вкладка с ним не закрывалась (#1684).
+		"refHasCard": func(refEntity string) bool {
+			return strings.TrimSpace(refEntity) != "" && !metadata.IsSystemRefTarget(refEntity)
+		},
 		// formAttrNames — имена скалярных реквизитов формы (save:false), которых
 		// нет среди полей сущности. Клиент по ним восстанавливает введённое после
 		// полной перезагрузки страницы: «Записать» уходит POST'ом с редиректом, и
@@ -585,7 +591,10 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// elReadOnly / elHidden — итоговое состояние элемента управляемой формы
 		// с учётом условий readonly_when/hidden_when по полям записи. Условия
 		// вычисляются на сервере при отрисовке (и заново после каждого события
-		// формы), а шаблон только читает результат по имени элемента.
+		// формы), а шаблон только читает результат. Ключ карты — путь размещения
+		// элемента, а не имя: пустые и повторяющиеся имена не идентифицируют
+		// конкретное размещение (#1543). Соответствие «указатель → путь» кладёт
+		// в контекст prepareManagedFormData рядом с картами состояний.
 		"elReadOnly": func(ctx map[string]any, el *metadata.FormElement) bool {
 			if el == nil {
 				return false
@@ -594,14 +603,20 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				return true
 			}
 			set, _ := ctx["ElReadOnly"].(map[string]bool)
-			return set[el.Name]
+			return set[elementStatePath(ctx, el)]
 		},
 		"elHidden": func(ctx map[string]any, el *metadata.FormElement) bool {
 			if el == nil {
 				return false
 			}
 			set, _ := ctx["ElHidden"].(map[string]bool)
-			return set[el.Name]
+			return set[elementStatePath(ctx, el)]
+		},
+		// elPath — путь размещения элемента для якоря data-ob-el-path: по нему
+		// клиент находит свой элемент после события формы, когда имя элемента
+		// пустое или встречается на форме дважды (#1543).
+		"elPath": func(ctx map[string]any, el *metadata.FormElement) string {
+			return elementStatePath(ctx, el)
 		},
 		// visibleFormPages — страницы набора СтраницыФормы, которые надо
 		// отрисовать. Отбор вынесен сюда, а не сделан внутри range, потому что
@@ -621,7 +636,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			hidden, _ := ctx["ElHidden"].(map[string]bool)
 			var out []*metadata.FormElement
 			for _, page := range el.Children {
-				if page == nil || string(page.Kind) != "Страница" || hidden[page.Name] {
+				if page == nil || string(page.Kind) != "Страница" || hidden[elementStatePath(ctx, page)] {
 					continue
 				}
 				out = append(out, page)
@@ -2580,6 +2595,7 @@ const tplReport = `
 {{$excel := printf "/ui/report/%s/export/excel%s" (lower .Report.Name) $q}}
 {{$pdf := printf "/ui/report/%s/export/pdf%s" (lower .Report.Name) $q}}
 <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px">
+  <a class="btn btn-sm" href="/ui/export-jobs">{{t $.Lang "Мои выгрузки"}}</a>
   {{if eq (lower .Report.OutputFormat) "pdf"}}
   <a class="btn btn-sm" href="{{$pdf}}" style="background:#dc2626;color:#fff" title="{{t $.Lang "Запустить выгрузку PDF"}}">{{t $.Lang "PDF"}}</a>
   <a class="btn btn-sm" href="{{$excel}}" style="background:#16a34a;color:#fff" title="{{t $.Lang "Запустить выгрузку Excel"}}">{{t $.Lang "Excel"}}</a>
@@ -2593,11 +2609,12 @@ const tplReport = `
 {{template "head" .}}{{template "nav" .}}
 <main>
 <h2>{{t $.Lang "Выгрузка отчёта"}}</h2>
+<p><a href="/ui/export-jobs">{{t $.Lang "Мои выгрузки"}}</a></p>
 <div class="card" style="max-width:720px">
   <div style="display:grid;grid-template-columns:140px 1fr;gap:8px 16px;margin-bottom:16px">
     <div style="color:#64748b">{{t $.Lang "Отчёт"}}</div><div>{{.Job.Name}}</div>
     <div style="color:#64748b">{{t $.Lang "Формат"}}</div><div>{{.JobFormatLabel}}</div>
-    <div style="color:#64748b">{{t $.Lang "Статус"}}</div><div>{{.JobStatusLabel}}</div>
+    <div style="color:#64748b">{{t $.Lang "Статус"}}</div><div>{{t $.Lang .JobStatusLabel}}</div>
     <div style="color:#64748b">{{t $.Lang "Создано"}}</div><div>{{.CreatedAtText}}</div>
     {{if .JobDone}}<div style="color:#64748b">{{t $.Lang "Доступно до"}}</div><div>{{.ExpiresAtText}}</div>{{end}}
   </div>
@@ -2615,6 +2632,41 @@ const tplReport = `
     <script>setTimeout(function(){ window.location.reload(); }, 2000);</script>
   {{end}}
 </div>
+</main></body></html>
+{{end}}
+{{define "page-export-jobs"}}
+{{template "head" .}}{{template "nav" .}}
+<main>
+<h2>{{t $.Lang "Мои выгрузки"}}</h2>
+<p>{{t $.Lang "Здесь показаны только доступные выгрузки. Они исчезают после истечения срока или перезапуска сервера."}}</p>
+{{if .Jobs}}
+<div class="card" style="overflow-x:auto">
+<table style="width:100%;border-collapse:collapse">
+  <thead><tr>
+    <th>{{t $.Lang "Отчёт"}}</th>
+    <th>{{t $.Lang "Формат"}}</th>
+    <th>{{t $.Lang "Статус"}}</th>
+    <th>{{t $.Lang "Создано"}}</th>
+    <th>{{t $.Lang "Доступно до"}}</th>
+    <th>{{t $.Lang "Файл"}}</th>
+  </tr></thead>
+  <tbody>
+  {{range .Jobs}}
+  <tr>
+    <td><a href="{{.StatusURL}}">{{.Name}}</a></td>
+    <td>{{.FormatLabel}}</td>
+    <td>{{t $.Lang .StatusLabel}}</td>
+    <td>{{.CreatedText}}</td>
+    <td>{{.ExpiresText}}</td>
+    <td>{{if .Downloadable}}<a href="{{.DownloadURL}}">{{t $.Lang "Скачать файл"}}</a>{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{else}}
+<p>{{t $.Lang "Доступных выгрузок пока нет."}}</p>
+{{end}}
 </main></body></html>
 {{end}}
 {{define "page-report"}}

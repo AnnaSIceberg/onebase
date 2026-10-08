@@ -292,6 +292,11 @@ window.obUIMessage = function (name, fallback) {
     }
     answerCloseRequest(requester, requesterOrigin, data);
   });
+  // Эта страница отвечает на obRequestFormClose. Оболочка вкладок (tabs.go)
+  // по этому признаку отличает страницу приложения от той, что в протоколе
+  // закрытия не участвует (текстовая ошибка 404 и т. п.): такую ждать
+  // бесполезно, и вкладка с ней иначе не закрывалась (#1684).
+  window.obAnswersFrameClose = true;
 })();
 
 if (window.__obEmbedded) {
@@ -5299,6 +5304,7 @@ window.onebaseDevice = {
   var devState = { generation: null };
   function connect() {
     if (typeof EventSource === 'undefined') return;
+    if (window.__obEvents) return;
     var es = new EventSource('/ui/events');
     window.__obEvents = es;
     es.onopen = function () {
@@ -5339,6 +5345,17 @@ window.onebaseDevice = {
   // (Hub.Publish доставляет каждому подписчику). Произвольные onebase:<имя>
   // события оболочка ретранслирует во фреймы через проверенный postMessage.
   if (!window.__obEmbedded) {
+    // Back/forward cache can retain the previous document and its EventSource.
+    // Release the HTTP connection before navigation: six retained streams can
+    // otherwise block the next page on HTTP/1.1. A restored document reconnects
+    // and uses the existing reconnect refresh path to catch up on live data.
+    window.addEventListener('pagehide', function () {
+      if (window.__obEvents) window.__obEvents.close();
+      window.__obEvents = null;
+    });
+    window.addEventListener('pageshow', function (ev) {
+      if (ev.persisted) connect();
+    });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', connect);
     else connect();
   }
