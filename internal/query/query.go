@@ -5033,7 +5033,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 						switch tr.section {
 						case sectionSelect:
 							tr.emit(rd.displayCol())
-							if p := upperFast(tr.peek(0).val); p != "КАК" && p != "AS" {
+							// Only a complete projection needs an implicit name;
+							// AS inside COUNT(field) or another expression is invalid SQL.
+							if p := upperFast(tr.peek(0).val); p != "КАК" && p != "AS" && tr.standaloneSelectItem(tr.pos-1, tr.pos) {
 								tr.emit("AS")
 								tr.emit(rd.fieldName)
 								tr.aliases[lowerFast(rd.fieldName)] = struct{}{}
