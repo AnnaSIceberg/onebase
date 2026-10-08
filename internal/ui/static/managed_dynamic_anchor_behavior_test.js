@@ -8,9 +8,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const test = require('node:test');
 
+const placementPath = process.env.ONEBASE_PLACEMENT_FIXTURE;
+const placement = placementPath ? JSON.parse(fs.readFileSync(placementPath, 'utf8')) : null;
 const domPath = process.env.ONEBASE_DYNAMIC_ANCHORS_DOM;
-assert.ok(domPath, 'ONEBASE_DYNAMIC_ANCHORS_DOM must point to the rendered form tree');
-const tree = JSON.parse(fs.readFileSync(domPath, 'utf8'));
+assert.ok(placement || domPath, 'a production HTTP form fixture is required');
+const tree = placement ? placement.tree : JSON.parse(fs.readFileSync(domPath, 'utf8'));
 
 const source = fs.readFileSync('static/managed.js', 'utf8');
 function extract(name) {
@@ -127,7 +129,7 @@ function pathOf(app, name) {
   return path;
 }
 
-test('event state hides decorations and locks the real command bar', () => {
+test('event state hides decorations and locks the real command bar', {skip: !!placement}, () => {
   const app = boot();
   const decorations = ['НадписьСтатуса', 'КартинкаСФайлом', 'КартинкаБезФайла'];
   const dynamic = decorations.concat('ФлажокСрочно', 'ПанельКоманд');
@@ -168,4 +170,26 @@ test('event state hides decorations and locks the real command bar', () => {
   assert.equal(checkbox.style.display, 'flex');
   assert.equal(panel.style.display, 'flex');
   for (const button of buttons) assert.equal(button.disabled, false);
+});
+
+
+test('HTTP event preserves admin locks on each repeated or unnamed placement', {skip: !placement}, () => {
+  const app = boot();
+  const copies = app.root.descendants().filter((node) => node.getAttribute('name') === 'ТипЗвонка');
+  const open = app.root.descendants().find((node) => node.getAttribute('name') === 'Комментарий');
+  assert.equal(copies.length, 2, 'both placements must render');
+  assert.ok(open, 'neighbor must render');
+  const controls = copies.concat(open);
+  const paths = controls.map((node) => node.closest('[data-ob-el-path]').getAttribute('data-ob-el-path'));
+  assert.ok(paths.every(Boolean));
+  assert.equal(new Set(paths).size, 3);
+  for (let i = 0; i < controls.length; i++) {
+    const expected = i < 2 && placement.locked;
+    assert.equal(controls[i].readOnly, expected, 'initial rendering');
+    assert.equal(placement.states.readonly[paths[i]], expected, 'HTTP event path');
+  }
+  app.applyElementStates(placement.states);
+  for (let i = 0; i < controls.length; i++) {
+    assert.equal(controls[i].readOnly, i < 2 && placement.locked, 'client after actual event');
+  }
 });

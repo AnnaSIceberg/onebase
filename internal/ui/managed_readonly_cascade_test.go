@@ -712,7 +712,7 @@ func TestКаскадУсловногоЗапрета_БезымянныеЭле
 
 	// Пройдено через ту же функцию, что и ответ события формы.
 	s := &Server{interp: interpreter.New(), reg: runtime.NewRegistry()}
-	states := s.formElementStates(form, ent, map[string]any{"СтадияОформления": "Принята"})
+	states := s.formElementStates(form, ent, map[string]any{"СтадияОформления": "Принята"}, true)
 	if states == nil {
 		t.Fatal("карта состояний не рассчитана")
 	}
@@ -767,7 +767,7 @@ func TestКаскадУсловногоЗапрета_ОдноимённыеЭл
 	ent.Forms = []*metadata.FormModule{form}
 
 	s := &Server{interp: interpreter.New(), reg: runtime.NewRegistry()}
-	states := s.formElementStates(form, ent, map[string]any{"СтадияОформления": "Принята"})
+	states := s.formElementStates(form, ent, map[string]any{"СтадияОформления": "Принята"}, true)
 	if states == nil {
 		t.Fatal("карта состояний не рассчитана")
 	}
@@ -844,7 +844,7 @@ func TestКаскадУсловногоЗапрета_СкрытаяСтрани
 	}
 
 	s := &Server{interp: interpreter.New(), reg: runtime.NewRegistry()}
-	states := s.formElementStates(form, ent, map[string]any{"СтадияОформления": "Принята"})
+	states := s.formElementStates(form, ent, map[string]any{"СтадияОформления": "Принята"}, true)
 	if states == nil || !states.ReadOnly[ключ] {
 		t.Fatalf("карта обязана нести запрет поля на видимой странице: %#v", states)
 	}

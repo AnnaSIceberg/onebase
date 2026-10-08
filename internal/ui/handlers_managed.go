@@ -162,21 +162,24 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 	entity, _ := data["Entity"].(*metadata.Entity)
 	header := managedFormHeaderValues(entity, data["Values"])
 
+	// Якори размещений нужны и без интерпретатора: editable_admin_only
+	// вычисляется независимо от DSL и возвращается после события формы.
+	paths := make(map[*metadata.FormElement]string)
+	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+		paths[visit.element] = visit.path
+	})
+	data["ElPaths"] = paths
+
 	// Условная доступность элементов (readonly_when/hidden_when) — по полям
 	// ЗАПИСИ, поэтому считается здесь же, где известны Values, и заново после
 	// каждого события формы.
 	if s.interp != nil {
-		ro, hidden, paths, warns := managedFormElementStates(form, header, newInterpEvaluator(s.interp))
+		ro, hidden, _, warns := managedFormElementStates(form, header, newInterpEvaluator(s.interp))
 		if len(ro) > 0 {
 			data["ElReadOnly"] = ro
 		}
 		if len(hidden) > 0 {
 			data["ElHidden"] = hidden
-		}
-		// Путь размещения каждого элемента (карта указатель → путь) — ключ, по
-		// которому шаблон и клиент ищут состояние вместо имени (#1543).
-		if len(paths) > 0 {
-			data["ElPaths"] = paths
 		}
 		if len(warns) > 0 {
 			data["FormWarnings"] = appendManagedFormWarnings(data["FormWarnings"], warns)

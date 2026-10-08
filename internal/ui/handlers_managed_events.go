@@ -1909,11 +1909,11 @@ func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.E
 	// клиентом целиком, и без этой записи ложное readonly_when сняло бы запрет
 	// с поля, которое неадминистратору редактировать нельзя.
 	if !admin {
-		for _, name := range adminOnlyElementNames(form) {
+		for _, path := range adminOnlyElementPaths(form) {
 			if ro == nil {
 				ro = make(map[string]bool)
 			}
-			ro[name] = true
+			ro[path] = true
 		}
 	}
 	if len(ro) == 0 && len(hidden) == 0 {
@@ -1922,19 +1922,17 @@ func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.E
 	return &elementStates{ReadOnly: ro, Hidden: hidden}
 }
 
-// adminOnlyElementNames — элементы формы, запертые для неадминистратора.
-func adminOnlyElementNames(form *metadata.FormModule) []string {
-	if form == nil {
-		return nil
-	}
-	var names []string
-	form.Walk(func(element *metadata.FormElement) bool {
-		if element != nil && element.EditableAdminOnly && strings.TrimSpace(element.Name) != "" {
-			names = append(names, element.Name)
+// adminOnlyElementPaths — размещения формы, запертые для неадминистратора.
+// Тот же путь используют условные состояния и якоря серверной разметки:
+// пустое или повторяющееся имя не должно снимать запрет после события.
+func adminOnlyElementPaths(form *metadata.FormModule) []string {
+	var paths []string
+	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+		if visit.element.EditableAdminOnly {
+			paths = append(paths, visit.path)
 		}
-		return true
 	})
-	return names
+	return paths
 }
 
 func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metadata.FormModule, entity *metadata.Entity, obj *runtime.Object, rules []metadata.FormCondRule, msgs []string) formEventState {
