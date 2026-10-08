@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/ivantit66/onebase/internal/access"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
@@ -770,6 +771,10 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
 	}
+	// Что прислал клиент — до восстановлений и обработчика: ответ события не
+	// маскирует значение, которое клиент сам только что набрал (см.
+	// serializeManagedFormEventState).
+	r = r.WithContext(withSubmittedFormFields(r.Context(), obj.Fields))
 	// Событие может вызвать Объект.Записать() до обычного submit. Удаляем
 	// присланные значения запертых полей из объекта и POST: последующее
 	// restoreUnsubmittedFields восстановит каноничное значение из БД.
@@ -1951,7 +1956,11 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 	//
 	// serializeFieldsForEntity строит НОВУЮ карту, поэтому obj.Fields остаётся
 	// нетронутым и обработчик продолжает видеть настоящие значения.
+	echo := submittedFieldsToEcho(ctx, s.fieldDecisions(ctx, entity), obj.Fields, fields)
 	s.maskRecord(ctx, entity, fields)
+	for key, value := range echo {
+		fields[key] = value
+	}
 	values := normalizeFormAttrKeys(fields, form, entity)
 	// Псевдо-реквизит «Ссылка» — контекст обработчика, а не значение формы:
 	// в ответ он не едет, чтобы applyValues не искал под него элемент.
@@ -2874,4 +2883,57 @@ func formTablesFromRows(rows map[string][]map[string]any, form *metadata.FormMod
 		return nil
 	}
 	return result
+}
+
+type submittedFormFieldsKey struct{}
+
+// withSubmittedFormFields запоминает в контексте события значения, присланные
+// клиентом (копию: обработчик и восстановления меняют obj.Fields дальше).
+func withSubmittedFormFields(ctx context.Context, fields map[string]any) context.Context {
+	snapshot := make(map[string]any, len(fields))
+	for k, v := range fields {
+		snapshot[k] = v
+	}
+	return context.WithValue(ctx, submittedFormFieldsKey{}, snapshot)
+}
+
+// submittedFieldsToEcho — защищённые поля, которые ответ события отдаёт без
+// маски: в них ровно то, что клиент прислал в этом запросе, и это не маска.
+// Клиент это значение и так знает — он его набрал, — а маска на обратном пути
+// подменяла бы набранный номер звёздочками: следующее событие или запись
+// прислали бы на сервер уже их, и номер терялся. Значение, пришедшее из базы
+// (клиент прислал маску или обработчик поставил другое), маскируется как
+// раньше. Скрытые поля не возвращаются даже при совпадении присланного значения.
+// Возвращает ключи карты serialized с немаскированными значениями.
+func submittedFieldsToEcho(ctx context.Context, decisions map[string]access.FieldDecision, current, serialized map[string]any) map[string]any {
+	submitted, _ := ctx.Value(submittedFormFieldsKey{}).(map[string]any)
+	if len(submitted) == 0 || len(decisions) == 0 {
+		return nil
+	}
+	var echo map[string]any
+	for field, decision := range decisions {
+		if !decision.Masked() || decision.Hidden() {
+			continue
+		}
+		sent, ok := maskCIKeyValue(submitted, field)
+		if !ok || sent == nil || access.LooksMasked(sent) {
+			continue
+		}
+		if s, isString := sent.(string); isString && strings.TrimSpace(s) == "" {
+			continue
+		}
+		now, ok := maskCIKeyValue(current, field)
+		if !ok || fmt.Sprint(now) != fmt.Sprint(sent) {
+			continue
+		}
+		key, ok := maskCIKey(serialized, field)
+		if !ok {
+			continue
+		}
+		if echo == nil {
+			echo = map[string]any{}
+		}
+		echo[key] = serialized[key]
+	}
+	return echo
 }
