@@ -762,25 +762,24 @@ func TestКаскадУсловногоЗапрета_ОдноимённыеЭл
 			Kind: metadata.FormElementField, Name: "Двойник",
 			DataPath: "Объект.Комментарий",
 		},
-		fieldEl("ПолеСтадии", "Объект.СтадияОформления"))
+		fieldEl("ПолеСтадии", "Объект.СтадияОформления"),
+		&metadata.FormElement{
+			Kind: metadata.FormElementButton, Name: "КнопкаОтметить",
+			Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Отметить"},
+		})
 	form.EntityName = ent.Name
+	form.ProgramAST = mustParse(t, `
+Процедура Отметить()
+	Объект.Комментарий = "к";
+КонецПроцедуры
+`)
 	ent.Forms = []*metadata.FormModule{form}
 
-	s := &Server{interp: interpreter.New(), reg: runtime.NewRegistry()}
-	states := s.formElementStates(form, ent, map[string]any{"СтадияОформления": "Принята"}, true)
+	rendered, response := каскадДоИПосле(t, ent, "Принята")
+	states := response.ElementStates
 	if states == nil {
 		t.Fatal("карта состояний не рассчитана")
 	}
-	var путиДвойника []string
-	for ключ := range states.ReadOnly {
-		if ключ == "0.0.0" {
-			путиДвойника = append(путиДвойника, ключ)
-		}
-	}
-	// Один из двух путей двойника в карте — размещения не делят одну строку;
-	// второе размещение без своего условия и предков в карту не попадает.
-	rendered := отрисоватьСУсловиями(t, ent, form, map[string]string{
-		"Улица": "Ленина 1", "Комментарий": "к", "СтадияОформления": "Принята"})
 	якоря := якоряФормы(t, rendered)
 	var пути []string
 	for _, якорь := range якоря {
@@ -788,13 +787,16 @@ func TestКаскадУсловногоЗапрета_ОдноимённыеЭл
 			пути = append(пути, якорь.путь)
 		}
 	}
-	if len(пути) != 2 || пути[0] == пути[1] {
+	if len(пути) != 2 || пути[0] == "" || пути[1] == "" || пути[0] == пути[1] {
 		t.Fatalf("одноимённые размещения обязаны получить разные пути: %v", пути)
 	}
-	for _, якорь := range якоря {
-		if якорь.имя != "Двойник" {
-			continue
-		}
+	// Ответ публичного события использует те же ключи, что и HTML:
+	// запрет есть только у размещения внутри условной группы.
+	if !states.ReadOnly[пути[0]] {
+		t.Fatalf("двойник в группе не получил запрет по пути %q: %#v", пути[0], states.ReadOnly)
+	}
+	if _, есть := states.ReadOnly[пути[1]]; есть {
+		t.Fatalf("двойник вне группы получил чужое состояние по пути %q: %#v", пути[1], states.ReadOnly)
 	}
 	// Разметка расходит их и по состоянию: в замороженной группе поле
 	// нередактируемо, тёзка вне группы — редактируем.
