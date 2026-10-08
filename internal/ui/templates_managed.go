@@ -100,11 +100,13 @@ const tplManagedForm = `
                «Открыть карточку» остаётся и остаётся РАБОЧЕЙ: посмотреть связанный
                объект — не редактирование, и на readonly-поле это как раз то, что
                нужно (открыть звонок, клиента, документ-основание). */}}
+          {{/* Кнопки привязаны к select этой копии элемента: общий ref-{{$fn}}
+               может сначала встретиться у скрытой по hidden_when копии. */}}
           {{if $roUnlockable}}
-          <button type="button" data-ob-ref-picker="ref-{{$fn}}" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">…</button>
+          <button type="button" data-ob-ref-picker="closest" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">…</button>
           {{end}}
           {{if and (or (not $ro) (index $ctx.Values $fn)) (not $ctx.HideRefCard)}}
-          <button type="button" data-ob-ref-current="ref-{{$fn}}" data-ob-readonly-navigation="1" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px" title="Открыть карточку">🔍</button>
+          <button type="button" data-ob-ref-current="closest" data-ob-readonly-navigation="1" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px" title="Открыть карточку">🔍</button>
           {{end}}
           {{if or $ro $el.ReadOnlyWhen}}{{/* план 181C/#1672: disabled select браузер не отправляет — зеркало возит значение записи (см. managed.js) */}}<input type="hidden" name="{{$fn}}" value="{{index $ctx.Values $fn}}" id="ro-mirror-{{$fn}}" data-ob-ro-mirror="1"{{if not $ro}} disabled{{end}}>{{end}}
         </div>
