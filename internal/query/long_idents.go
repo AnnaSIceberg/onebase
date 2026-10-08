@@ -123,6 +123,56 @@ func isIdentPartBefore(sql string, i int) bool {
 	return isIdentPart(r) || r == '$'
 }
 
+// addSourceColumnLabels дополняет карту физическими именами длинных полей
+// источников запроса. Колонка, выбранная без псевдонима, приходит из базы под
+// своим физическим именем — уже коротким (его дал metadata.ColumnName), и
+// shortenLongIdents её не видит: в SQL длинного слова нет. Без этого метка
+// такой колонки зависела бы от того, ставит ли компилятор псевдоним, — то есть
+// от детали, которая меняется вместе с ним.
+func addSourceColumnLabels(res *Result, opts CompileOpts) {
+	add := func(fields []metadata.Field) {
+		for _, f := range fields {
+			logical := metadata.LogicalColumnName(f)
+			if len(logical) <= metadata.MaxSQLIdentBytes {
+				continue
+			}
+			if res.LongIdents == nil {
+				res.LongIdents = make(map[string]string)
+			}
+			res.LongIdents[metadata.SQLIdent(logical)] = logical
+		}
+	}
+	for _, src := range res.Sources {
+		name, _, _ := strings.Cut(src.Name, ".")
+		for _, e := range opts.Entities {
+			if strings.EqualFold(e.Name, name) {
+				add(e.Fields)
+				for _, tp := range e.TableParts {
+					add(tp.Fields)
+				}
+			}
+		}
+		for _, r := range opts.Registers {
+			if strings.EqualFold(r.Name, name) {
+				add(r.Dimensions)
+				add(r.Resources)
+				add(r.Attributes)
+			}
+		}
+		for _, r := range opts.InfoRegs {
+			if strings.EqualFold(r.Name, name) {
+				add(r.Dimensions)
+				add(r.Resources)
+			}
+		}
+		for _, r := range opts.AccountRegs {
+			if strings.EqualFold(r.Name, name) {
+				add(r.Resources)
+			}
+		}
+	}
+}
+
 // RestoreLongLabels возвращает меткам результата полные имена: колонка,
 // которую компилятор сократил (см. shortenLongIdents), приходит из базы под
 // коротким именем, а потребитель — DSL, отчёт, виджет — ищет её по полному,
@@ -137,11 +187,23 @@ func RestoreLongLabels(res *Result, rows []map[string]any, cols []string) {
 			cols[i] = full
 		}
 	}
+	if len(rows) == 0 {
+		return
+	}
+	// У всех строк результата один набор колонок: пары, которые есть в первой
+	// строке, — те, что надо переименовывать во всех.
+	type pair struct{ short, full string }
+	var present []pair
+	for short, full := range res.LongIdents {
+		if _, ok := rows[0][short]; ok && short != full {
+			present = append(present, pair{short, full})
+		}
+	}
 	for _, row := range rows {
-		for short, full := range res.LongIdents {
-			if v, ok := row[short]; ok {
-				delete(row, short)
-				row[full] = v
+		for _, p := range present {
+			if v, ok := row[p.short]; ok {
+				delete(row, p.short)
+				row[p.full] = v
 			}
 		}
 	}
