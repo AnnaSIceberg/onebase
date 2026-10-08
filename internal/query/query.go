@@ -87,6 +87,10 @@ type Result struct {
 	// actual key returned by the SQL driver when the compiler rewrites a system
 	// register field (Период -> period, ВидДвижения -> вид_движения).
 	DSLColumnAliases map[string]string
+	// LongIdents — идентификаторы длиннее предела PostgreSQL, которые компилятор
+	// сократил в SQL: короткое имя → полное (#1946). По ней RestoreLongLabels
+	// возвращает меткам результата полные имена. Пусто почти всегда.
+	LongIdents map[string]string
 	// Projection — поэлементный разбор списка выборки (план 88E). Позволяет
 	// маскировать защищённые поля в колонках результата вместо отказа во всём
 	// запросе; при Projection.Simple == false действует прежний отказ по
@@ -128,8 +132,12 @@ func Compile(src string, opts CompileOpts) (Result, error) {
 		return Result{}, err
 	}
 	res, err := translate(tokens, opts)
-	if err != nil || !hasLimit {
+	if err != nil {
 		return res, err
+	}
+	res.SQL, res.LongIdents = shortenLongIdents(res.SQL)
+	if !hasLimit {
+		return res, nil
 	}
 	// Для простого внешнего SELECT LIMIT можно безопасно дописать к готовому SQL:
 	// он окажется после WHERE/GROUP/HAVING/ORDER BY. Составные запросы выше
@@ -1561,7 +1569,7 @@ func (tr *translator) genAccountBalancesFromTotals(ar *metadata.AccountRegister)
 	totals := metadata.AccountRegTotalsTableName(ar.Name)
 	var resCols []string
 	for _, r := range ar.Resources {
-		col := metadata.ColumnName(r)
+		col := metadata.LogicalColumnName(r)
 		dc, cc := col+"_дт", col+"_кт"
 		resCols = append(resCols,
 			"COALESCE(SUM(t."+dc+"),0) AS "+dc,
@@ -1626,7 +1634,7 @@ func (tr *translator) genAccountBalancesFromTotalsAtMoment(ar *metadata.AccountR
 	mkPH := d.Placeholder(len(tr.args))
 	priorSel := append([]string{"счёт"}, subCols...)
 	for _, res := range ar.Resources {
-		col := metadata.ColumnName(res)
+		col := metadata.LogicalColumnName(res)
 		priorSel = append(priorSel, col+"_дт", col+"_кт")
 	}
 	prior := "SELECT " + strings.Join(priorSel, ", ") + " FROM " + metadata.AccountRegTotalsTableName(ar.Name) +
@@ -1642,7 +1650,7 @@ func (tr *translator) genAccountBalancesFromTotalsAtMoment(ar *metadata.AccountR
 			sel = append(sel, "r."+c+" AS "+c)
 		}
 		for _, res := range ar.Resources {
-			col := metadata.ColumnName(res)
+			col := metadata.LogicalColumnName(res)
 			if debit {
 				sel = append(sel, "r."+col+" AS "+col+"_дт", "0 AS "+col+"_кт")
 			} else {
@@ -1664,7 +1672,7 @@ func (tr *translator) genAccountBalancesFromTotalsAtMoment(ar *metadata.AccountR
 		groupSub = append(groupSub, "u."+c)
 	}
 	for _, res := range ar.Resources {
-		col := metadata.ColumnName(res)
+		col := metadata.LogicalColumnName(res)
 		dc, cc := col+"_дт", col+"_кт"
 		outer += ", COALESCE(SUM(u." + dc + "),0) AS " + dc +
 			", COALESCE(SUM(u." + cc + "),0) AS " + cc +
@@ -1686,7 +1694,7 @@ func accountTurnoversHasFilterArg(args [][]tok) bool {
 func turnoverTotalsSel(ar *metadata.AccountRegister, subCols []string) []string {
 	sel := append([]string{"счёт"}, subCols...)
 	for _, res := range ar.Resources {
-		col := metadata.ColumnName(res)
+		col := metadata.LogicalColumnName(res)
 		sel = append(sel, col+"_дт", col+"_кт")
 	}
 	return sel
@@ -1739,7 +1747,7 @@ func (tr *translator) genAccountTurnoversFromTotals(ar *metadata.AccountRegister
 			sel = append(sel, "r."+c+" AS "+c)
 		}
 		for _, res := range ar.Resources {
-			col := metadata.ColumnName(res)
+			col := metadata.LogicalColumnName(res)
 			if debit {
 				sel = append(sel, "r."+col+" AS "+col+"_дт", "0 AS "+col+"_кт")
 			} else {
@@ -1787,7 +1795,7 @@ func (tr *translator) accountTurnoversOuter(ar *metadata.AccountRegister, subCol
 		groupSub = append(groupSub, "u."+c)
 	}
 	for _, res := range ar.Resources {
-		col := metadata.ColumnName(res)
+		col := metadata.LogicalColumnName(res)
 		out += ", COALESCE(SUM(u." + col + "_дт),0) AS " + col + "_дт" +
 			", COALESCE(SUM(u." + col + "_кт),0) AS " + col + "_кт"
 	}
