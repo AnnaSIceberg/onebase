@@ -929,6 +929,28 @@ func (ctx sourceContext) qualifierScopeAt(tokenPos int, qualifier string) (sourc
 	return sourceScope{}, false
 }
 
+// isDerivedQualifierAt учитывает область SELECT и локальное затенение алиаса.
+// Производная таблица экспортирует имена проекции, а не физические *_id.
+func (ctx sourceContext) isDerivedQualifierAt(tokenPos int, qualifier string) bool {
+	scope, ok := ctx.qualifierScopeAt(tokenPos, qualifier)
+	if !ok {
+		return false
+	}
+	_, derived := scope.derivedAliases[qualifier]
+	return derived
+}
+
+func (tr *translator) isDerivedColumnAt(pos int) bool {
+	if pos < 2 || tr.tokens[pos-1].kind != tDot || tr.tokens[pos-2].kind != tIdent {
+		return false
+	}
+	// В пути Источник.Ссылка.Реквизит среднее имя — ссылка, не алиас таблицы.
+	if pos >= 3 && tr.tokens[pos-3].kind == tDot {
+		return false
+	}
+	return tr.sourceCtx.isDerivedQualifierAt(pos, lowerFast(tr.tokens[pos-2].val))
+}
+
 func (ctx sourceContext) sectionAt(tokenPos int) querySection {
 	if tokenPos < 0 || tokenPos >= len(ctx.tokenSection) {
 		return sectionOther
@@ -5022,6 +5044,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					// как раньше — в том числе рядом с оператором:
 					// «ГДЕ Подобно ПОДОБНО "а%"».
 					tr.emit("LIKE")
+				} else if nextIsDot && !prevDot && tr.sourceCtx.isDerivedQualifierAt(tr.pos-1, lower) {
+					// Явный алиас производной таблицы старше одноимённого поля-ссылки.
+					tr.emit(lower)
 				} else if rd := tr.findRefDim(lower); rd != nil && !prevDot {
 					if nextIsDot {
 						if err := tr.assertSingleHopNavigation(rd); err != nil {
@@ -5060,7 +5085,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				} else if col, ok := tr.colMap[lower]; ok && !prevDot {
 					tr.emitOwnColumn(col, lower)
 				} else if prevDot {
-					if col, refEntity, fieldType := tr.refAttrColumnForPrevQualifier(tr.pos-1, lower); col != "" {
+					if !nextIsDot && tr.isDerivedColumnAt(tr.pos-1) {
+						tr.emitQualifiedColumn(lower, lower)
+					} else if col, refEntity, fieldType := tr.refAttrColumnForPrevQualifier(tr.pos-1, lower); col != "" {
 						// После точки реквизит принадлежит сущности квалификатора,
 						// даже если у основного источника есть одноимённое поле.
 						tr.emitRefAttrColumn(col, fieldType)

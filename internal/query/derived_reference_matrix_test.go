@@ -1,0 +1,154 @@
+package query_test
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/dbtest"
+	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/query"
+	"github.com/ivantit66/onebase/internal/storage"
+)
+
+// #1927: экспортированное имя подзапроса не является физической колонкой
+// одноимённого ссылочного поля главного источника. Проверяем публичный путь
+// Compile → Run, включая фактические строки на обоих движках.
+func TestDerivedReferenceColumnMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		warehouse := &metadata.Entity{
+			Name: "Склады", Kind: metadata.KindCatalog,
+			Fields: []metadata.Field{
+				{Name: "Наименование", Type: metadata.FieldTypeString},
+				{Name: "Склад", Type: metadata.FieldTypeString},
+			},
+		}
+		ref := metadata.Field{Name: "Склад", Type: "reference:Склады", RefEntity: "Склады"}
+		catalog := &metadata.Entity{Name: "Товары", Kind: metadata.KindCatalog, Fields: []metadata.Field{ref}}
+		document := &metadata.Entity{Name: "Поставка", Kind: metadata.KindDocument, Fields: []metadata.Field{ref}}
+		entities := []*metadata.Entity{warehouse, catalog, document}
+		reg := &metadata.Register{
+			Name: "Остатки", Dimensions: []metadata.Field{ref},
+			Resources: []metadata.Field{{Name: "Количество", Type: metadata.FieldTypeNumber}},
+		}
+		if err := db.Migrate(ctx, entities); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.MigrateRegisters(ctx, []*metadata.Register{reg}); err != nil {
+			t.Fatal(err)
+		}
+		selected, other := uuid.New(), uuid.New()
+		period := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+		for i, id := range []uuid.UUID{selected, other} {
+			if err := db.Upsert(ctx, warehouse.Name, id, map[string]any{
+				"Наименование": fmt.Sprintf("Склад %d", i), "Склад": "Текст, а не ссылка",
+			}, warehouse); err != nil {
+				t.Fatal(err)
+			}
+			for _, ent := range []*metadata.Entity{catalog, document} {
+				if err := db.Upsert(ctx, ent.Name, uuid.New(), map[string]any{"Склад": id}, ent); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := db.WriteMovements(ctx, reg.Name, document.Name, uuid.New(), []map[string]any{{
+				"ВидДвижения": "Приход", "Склад": id, "Количество": float64(i + 1),
+			}}, reg, &period); err != nil {
+				t.Fatal(err)
+			}
+		}
+		opts := query.CompileOpts{
+			Entities: entities, Registers: []*metadata.Register{reg}, Dialect: db.Dialect(),
+			Params: map[string]any{"Склад": selected.String()},
+		}
+		derived := `(ВЫБРАТЬ Р.Склад КАК Склад ИЗ РегистрНакопления.Остатки КАК Р СГРУППИРОВАТЬ ПО Р.Склад)`
+		check := func(t *testing.T, text, want string) {
+			t.Helper()
+			compiled, err := query.Compile(text, opts)
+			if err != nil {
+				t.Fatalf("Compile: %v\n%s", err, text)
+			}
+			rows, _, err := query.Run(ctx, db, &compiled)
+			if err != nil {
+				t.Fatalf("Run: %v\nSQL: %s", err, compiled.SQL)
+			}
+			if len(rows) != 1 || fmt.Sprint(rows[0]["значение"]) != want {
+				t.Fatalf("получено %v, ожидалась одна строка со значением %q\nSQL: %s", rows, want, compiled.SQL)
+			}
+		}
+		for _, source := range []string{
+			"Справочник.Товары", "Документ.Поставка", "РегистрНакопления.Остатки", "РегистрНакопления.Остатки.Остатки()",
+		} {
+			t.Run(source, func(t *testing.T) {
+				joined := derived
+				if source == "РегистрНакопления.Остатки.Остатки()" {
+					joined = `(ВЫБРАТЬ Р.Склад КАК Склад ИЗ РегистрНакопления.Остатки.Остатки() КАК Р)`
+				}
+				for _, tc := range []struct{ name, projection, condition string }{
+					{"ON", "Д.Склад", "М.Склад = Д.Склад ГДЕ Д.Склад = &Склад"},
+					{"SELECT", "М.Склад", "М.Склад = Д.Склад ГДЕ Д.Склад = &Склад"},
+					{"WHERE", "Д.Склад", "М.Склад = Д.Склад ГДЕ М.Склад = &Склад"},
+				} {
+					t.Run(tc.name, func(t *testing.T) {
+						check(t, "ВЫБРАТЬ "+tc.projection+" КАК Значение ИЗ "+source+" КАК Д ЛЕВОЕ СОЕДИНЕНИЕ "+joined+" КАК М ПО "+tc.condition, selected.String())
+					})
+				}
+			})
+		}
+		for _, tc := range []struct{ name, text, want string }{
+			{
+				"другое экспортированное имя",
+				`ВЫБРАТЬ М.СкладР КАК Значение ИЗ Справочник.Товары КАК Д
+				ЛЕВОЕ СОЕДИНЕНИЕ (ВЫБРАТЬ Р.Склад КАК СкладР ИЗ РегистрНакопления.Остатки КАК Р) КАК М
+				ПО М.СкладР = Д.Склад ГДЕ М.СкладР = &Склад`, selected.String(),
+			},
+			{
+				"алиас совпадает со ссылочным полем",
+				"ВЫБРАТЬ Склад.Склад КАК Значение ИЗ Справочник.Товары КАК Д ЛЕВОЕ СОЕДИНЕНИЕ " + derived + " КАК Склад ПО Склад.Склад = Д.Склад ГДЕ Д.Склад = &Склад", selected.String(),
+			},
+			{
+				"вложенная область повторно использует физический алиас",
+				`ВЫБРАТЬ М.Склад КАК Значение ИЗ Справочник.Товары КАК Д
+				ЛЕВОЕ СОЕДИНЕНИЕ (ВЫБРАТЬ М.Склад КАК Склад ИЗ Справочник.Товары КАК М) КАК М
+				ПО М.Склад = Д.Склад ГДЕ М.Склад = &Склад`, selected.String(),
+			},
+			{
+				"две вложенные производные таблицы",
+				`ВЫБРАТЬ М.Склад КАК Значение ИЗ Справочник.Товары КАК Д
+				ЛЕВОЕ СОЕДИНЕНИЕ (ВЫБРАТЬ М.Склад КАК Склад ИЗ
+				(ВЫБРАТЬ Р.Склад КАК Склад ИЗ РегистрНакопления.Остатки КАК Р) КАК М) КАК М
+				ПО М.Склад = Д.Склад ГДЕ М.Склад = &Склад`, selected.String(),
+			},
+			{
+				"производная таблица как главный источник",
+				"ВЫБРАТЬ М.Склад КАК Значение ИЗ " + derived + " КАК М ГДЕ М.Склад = &Склад", selected.String(),
+			},
+			{
+				"навигация физического источника рядом с производным",
+				"ВЫБРАТЬ Д.Склад.Наименование КАК Значение ИЗ Справочник.Товары КАК Д ЛЕВОЕ СОЕДИНЕНИЕ " + derived + " КАК М ПО М.Склад = Д.Склад ГДЕ М.Склад = &Склад", "Склад 0",
+			},
+			{
+				"коррелированное обращение к внешнему производному алиасу",
+				"ВЫБРАТЬ М.Склад КАК Значение ИЗ Справочник.Товары КАК Д ЛЕВОЕ СОЕДИНЕНИЕ " + derived + " КАК М ПО М.Склад = Д.Склад ГДЕ М.Склад = &Склад И Д.Склад В (ВЫБРАТЬ Внутр.Склад ИЗ Справочник.Товары КАК Внутр ГДЕ Внутр.Склад = М.Склад)", selected.String(),
+			},
+			{
+				"локальный физический алиас затеняет внешний производный",
+				"ВЫБРАТЬ М.Склад КАК Значение ИЗ Справочник.Товары КАК Д ЛЕВОЕ СОЕДИНЕНИЕ " + derived + " КАК М ПО М.Склад = Д.Склад ГДЕ Д.Склад В (ВЫБРАТЬ М.Склад ИЗ Справочник.Товары КАК М ГДЕ М.Склад = &Склад)", selected.String(),
+			},
+			{
+				"навигация не путает ссылку с алиасом производной таблицы",
+				"ВЫБРАТЬ Д.Склад.Наименование КАК Значение ИЗ Справочник.Товары КАК Д ЛЕВОЕ СОЕДИНЕНИЕ " + derived + " КАК Склад ПО Склад.Склад = Д.Склад ГДЕ Д.Склад = &Склад", "Склад 0",
+			},
+			{
+				"проекция текста с именем ссылочного поля",
+				`ВЫБРАТЬ М.Склад КАК Значение ИЗ Справочник.Товары КАК Д
+				ЛЕВОЕ СОЕДИНЕНИЕ (ВЫБРАТЬ Р.Склад КАК Ключ, "Текст" КАК Склад ИЗ РегистрНакопления.Остатки КАК Р) КАК М
+				ПО М.Ключ = Д.Склад ГДЕ М.Склад = "Текст" И Д.Склад = &Склад`, "Текст",
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) { check(t, tc.text, tc.want) })
+		}
+	})
+}
