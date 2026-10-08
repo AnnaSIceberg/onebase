@@ -225,9 +225,13 @@ Mac/Linux и настоящий Windows runner запускают одни и т
   Новый loader не посылает legacy ETag, создаёт новый namespace, не удаляет
   и не меняет seed. Legacy и новый subprocess одновременно возвращают
   правильные результаты без записи в namespace друг друга.
-- Сохранить имеющиеся 200→304, изменённый 200, corrupt/version/URL envelope,
-  auth isolation, malformed JSON, HTTP error/timeout и invalid 304 tests;
-  отсутствие cached success при ошибке и отсутствие token в output обязательны.
+- Сохранить существующие проверки 200→304, изменённого 200, повреждённых
+  envelope/body, auth isolation, malformed JSON, HTTP 503 и invalid 304.
+- Добавить в срезе B недостающие сценарии через production loaders
+  `loadPulls`/`loadIssues`: неверная `Version` и несовпадающий `URL` в cache
+  envelope, а также HTTP timeout в пределах действующего 45-секундного budget.
+  Невалидный entry не передаёт ETag и требует свежего ответа; timeout возвращает
+  ошибку без cached success. Отсутствие token в output обязательно.
 - Ошибка создания namespace/locks и persist возвращается из loader; очередной
   успешный запуск не принимает повреждённый entry. Нельзя молча использовать
   legacy каталог, другой lock-путь либо unprotected HTTP path.
