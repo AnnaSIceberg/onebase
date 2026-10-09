@@ -17,7 +17,7 @@ import (
 // derived sources, nested SELECTs and independent UNION branches. Execute the
 // compiled query so a wrong cast cannot hide behind a plausible SQL string.
 func TestParameterFieldSourceMatrix(t *testing.T) {
-	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+	dbtest.ForEachDialectWithoutUUIDTextCast(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
 		text := &metadata.Entity{Name: "ТекстПараметра", Kind: metadata.KindCatalog, Fields: []metadata.Field{
 			{Name: "Наименование", Type: metadata.FieldTypeString},
@@ -61,6 +61,9 @@ func TestParameterFieldSourceMatrix(t *testing.T) {
 			rows, err := db.QueryAll(ctx, `SELECT rolsuper FROM pg_roles WHERE rolname = current_user`)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if rows[0]["rolsuper"] != false {
+				t.Fatal("matrix requires an ordinary PostgreSQL role")
 			}
 			t.Logf("PostgreSQL role rolsuper=%v", rows[0]["rolsuper"])
 			rows, err = db.QueryAll(ctx, `SELECT count(*) AS n FROM pg_cast WHERE castsource = 'uuid'::regtype AND casttarget = 'text'::regtype AND castcontext = 'i'`)
