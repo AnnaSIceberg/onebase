@@ -819,8 +819,17 @@ func (tr *translator) standaloneSelectItem(from, to int) bool {
 // идентификатором, по которому присоединена строка.
 func (tr *translator) emitGroupingPresentation(rd *refDimInfo) {
 	from, to := tr.pos-3, tr.pos
-	if tr.section != sectionGroupBy || from < 1 || lowerFast(tr.tokens[from].val) != tr.mainTable ||
-		!tr.standaloneGroupItem(from, to) {
+	if tr.section != sectionGroupBy || from < 1 || !tr.standaloneGroupItem(from, to) {
+		return
+	}
+	// Только в той области SELECT, где выпущены авто-JOIN, и только для её
+	// основного источника: бегущий tr.mainTable к этому месту может указывать
+	// на источник подзапроса из ЛЕВОЕ СОЕДИНЕНИЕ (…).
+	scopeID, ok := tr.sourceCtx.scopeIDAt(from)
+	if !ok || !tr.refJoinScopeSet || scopeID != tr.refJoinScope {
+		return
+	}
+	if scope, ok := tr.sourceCtx.scopeAt(from); !ok || lowerFast(tr.tokens[from].val) != scope.mainTable {
 		return
 	}
 	tr.emit(",")
@@ -923,6 +932,10 @@ type translator struct {
 	refCols      map[string]string             // колонка вывода (lower) → сущность, на которую она ссылается (#1150)
 	derivedAs    map[int]string                // позиция закрывающей скобки → отложенный AS простой ссылки
 	mainRef      mainRefSource                 // главный источник запроса: чья ссылка стоит за голым «Ссылка»
+
+	// refJoinScope — область SELECT, где выпущены авто-JOIN ссылочных полей.
+	refJoinScope    int
+	refJoinScopeSet bool
 }
 
 // mainRefSource — предсканированный главный источник запроса: имя сущности и
@@ -5145,6 +5158,11 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				}
 				if err := tr.addPendingRowFilter(upper, entity.val, sourceAlias); err != nil {
 					return Result{}, err
+				}
+			}
+			if tr.section == sectionFrom && isMain && len(tr.refDims) > 0 {
+				if id, ok := tr.sourceCtx.scopeIDAt(tr.pos - 1); ok {
+					tr.refJoinScope, tr.refJoinScopeSet = id, true
 				}
 			}
 			if tr.section == sectionFrom && isMain {
