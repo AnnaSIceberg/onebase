@@ -862,10 +862,11 @@ func (tr *translator) standaloneGroupItem(from, to int) bool {
 		if nesting > 0 {
 			continue
 		}
-		if i == from-1 && t.kind != tComma && !(t.kind == tIdent && isGroupByWord(t.val)) {
+		groupBy := t.kind == tIdent && isGroupByWord(t.val)
+		if i == from-1 && t.kind != tComma && !groupBy {
 			return false
 		}
-		if t.kind == tIdent && isGroupByWord(t.val) {
+		if groupBy {
 			break
 		}
 		if i == 0 {
