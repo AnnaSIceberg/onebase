@@ -913,7 +913,6 @@ type translator struct {
 	parts        []string
 	prevWasDot   bool                          // true after emitting "." — used to resolve .Ссылка → .id
 	colMap       map[string]string             // lowercase field name → actual column name (for reference dims)
-	refVTFields  map[string]bool               // логические имена ссылочных полей виртуальных таблиц запроса (uuid во внешнем запросе)
 	colTypes     map[string]metadata.FieldType // lowercase field name → type (для квалификации и CAST number)
 	refDims      []refDimInfo                  // reference dimensions with auto-JOIN info
 	mainTable    string                        // main FROM table/alias (set when source is emitted)
@@ -933,6 +932,9 @@ type translator struct {
 	refCols      map[string]string             // колонка вывода (lower) → сущность, на которую она ссылается (#1150)
 	derivedAs    map[int]string                // позиция закрывающей скобки → отложенный AS простой ссылки
 	mainRef      mainRefSource                 // главный источник запроса: чья ссылка стоит за голым «Ссылка»
+
+	paramColTypes       map[int]map[string]metadata.FieldType
+	paramQualifiedTypes map[int]map[string]map[string]metadata.FieldType
 
 	// refJoinScope — область SELECT, где выпущены авто-JOIN ссылочных полей.
 	refJoinScope    int
@@ -1666,34 +1668,14 @@ func (tr *translator) addParam(name string) string {
 	return d.Placeholder(tr.params[name]) + castSuffix(d, v)
 }
 
-// emptyStringAgainstRef: на PostgreSQL параметр — пустая строка, а слева от
-// «=» / «<>» — ссылочная колонка (uuid: «…_id», «id», «recorder»). Так в запрос
-// приходит невыбранное ссылочное поле формы или пустая ссылка из результата
-// запроса на SQLite. uuid с пустой строкой (text) PostgreSQL не сравнивает, а без
-// приведения падает на разборе uuid — ставится NULL: сравнение «не совпало»,
-// как на SQLite против NULL-колонки, условие «(&Все ИЛИ Поле = &П)» работает.
-// Сравнение пустой строки с текстовым полем не трогается.
-func emptyStringAgainstRef(d storage.Dialect, v any, parts []string, refVTFields map[string]bool) bool {
-	if d.Name() != "postgres" {
+// emptyStringAgainstRef preserves the empty-reference contract only when the
+// compared field is proven to be a reference in its own source and SELECT scope.
+func emptyStringAgainstRef(d storage.Dialect, v any, fieldType metadata.FieldType) bool {
+	if d.Name() != "postgres" || !metadata.IsReference(fieldType) {
 		return false
 	}
-	if s, ok := v.(string); !ok || s != "" {
-		return false
-	}
-	n := len(parts)
-	if n < 2 {
-		return false
-	}
-	switch parts[n-1] {
-	case "=", "<>", "!=":
-	default:
-		return false
-	}
-	col := strings.ToLower(parts[n-2])
-	if i := strings.LastIndex(col, "."); i >= 0 {
-		col = col[i+1:]
-	}
-	return strings.HasSuffix(col, "_id") || col == "id" || col == "recorder" || refVTFields[col]
+	s, ok := v.(string)
+	return ok && s == ""
 }
 
 // castSuffix returns the explicit cast suffix for v on the active dialect.
@@ -1740,12 +1722,21 @@ func (tr *translator) parseVTArgs() [][]tok {
 // translateFilterTokens translates a token slice to a SQL expression fragment,
 // resolving &params through the translator's shared state.
 func (tr *translator) translateFilterTokens(tokens []tok) string {
+	return tr.translateTypedFilterTokens(tokens, nil)
+}
+
+func (tr *translator) translateTypedFilterTokens(tokens []tok, fieldTypes map[string]metadata.FieldType) string {
 	var parts []string
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
 		switch t.kind {
 		case tParam:
-			if emptyStringAgainstRef(dialectOrDefault(tr.opts.Dialect), tr.paramValues[t.val], parts, nil) {
+			var typ metadata.FieldType
+			if i >= 2 && tokens[i-2].kind == tIdent &&
+				tokens[i-1].kind == tOp && (tokens[i-1].val == "=" || tokens[i-1].val == "<>" || tokens[i-1].val == "!=") {
+				typ = fieldTypes[lowerFast(tokens[i-2].val)]
+			}
+			if emptyStringAgainstRef(dialectOrDefault(tr.opts.Dialect), tr.paramValues[t.val], typ) {
 				parts = append(parts, "NULL")
 			} else {
 				parts = append(parts, tr.addParam(t.val))
@@ -1912,7 +1903,11 @@ func (tr *translator) translateRegisterFilter(fields []metadata.Field, tokens []
 		}
 		tr.colMap[name] = col
 	}
-	res := tr.translateFilterTokens(tokens)
+	types := make(map[string]metadata.FieldType, len(fields))
+	for _, f := range fields {
+		types[lowerFast(f.Name)] = f.Type
+	}
+	res := tr.translateTypedFilterTokens(tokens, types)
 	for k, v := range saved {
 		if v == nil {
 			delete(tr.colMap, k)
@@ -3260,48 +3255,6 @@ func (tr *translator) emitVTSubquery(subq, defaultAlias string) error {
 // buildColMap creates a mapping from lowercase field name to actual DB column name
 // for reference-type fields. It scans tokens to find the specific source register
 // so that reference dims from one register don't pollute queries against another.
-// buildRefVTFields — логические имена ссылочных полей регистров, чьи виртуальные
-// таблицы есть в запросе. Во внешнем запросе ссылочное измерение ВТ доступно
-// под логическим именем («о.склад»), а не «склад_id», хотя тип колонки — uuid:
-// по нему emptyStringAgainstRef узнаёт сравнение со ссылкой.
-func buildRefVTFields(tokens []tok, opts CompileOpts) map[string]bool {
-	m := map[string]bool{}
-	add := func(fields []metadata.Field) {
-		for _, f := range fields {
-			if f.RefEntity != "" {
-				m[lowerFast(f.Name)] = true
-			}
-		}
-	}
-	for i := 0; i+3 < len(tokens); i++ {
-		t := tokens[i]
-		if t.kind != tIdent || tokens[i+1].kind != tDot || tokens[i+2].kind != tIdent || tokens[i+3].kind != tDot {
-			continue
-		}
-		upper := upperFast(t.val)
-		if !isSourceType(upper) {
-			continue
-		}
-		name := tokens[i+2].val
-		if isAccumRegType(upper) {
-			for _, reg := range opts.Registers {
-				if strings.EqualFold(reg.Name, name) {
-					add(reg.Dimensions)
-					add(reg.Attributes)
-				}
-			}
-		} else if isInfoRegType(upper) {
-			for _, ir := range opts.InfoRegs {
-				if strings.EqualFold(ir.Name, name) {
-					add(ir.Dimensions)
-					add(ir.Resources)
-				}
-			}
-		}
-	}
-	return m
-}
-
 func buildColMap(tokens []tok, opts CompileOpts) map[string]string {
 	m := map[string]string{}
 	addFields := func(fields []metadata.Field) {
@@ -3816,17 +3769,11 @@ func (tr *translator) uuidParamComparedToStringField(idx int) bool {
 		tr.tokens[idx].kind != tParam || !uuidLikeParam(tr.paramValues[tr.tokens[idx].val]) {
 		return false
 	}
-	// Поле слева уже выпущено: его SQL-колонка не должна быть ссылочной —
-	// одноимённое поле производной таблицы или соединения бывает ссылкой.
-	emittedText := func(back int) bool {
-		n := len(tr.parts)
-		return n >= back && !refLikeColumn(tr.parts[n-back])
-	}
-	if tr.stringFieldAt(idx-2) && tr.comparisonOpAt(idx-1) && emittedText(2) {
+	if tr.paramFieldTypeAt(idx-2) == metadata.FieldTypeString && tr.comparisonOpAt(idx-1) {
 		return true
 	}
 	if idx >= 1 && tr.tokens[idx-1].kind == tLParen && tr.keywordAt(idx-2, "В", "IN") &&
-		tr.stringFieldAt(idx-3) && emittedText(3) {
+		tr.paramFieldTypeAt(idx-3) == metadata.FieldTypeString {
 		return true
 	}
 	if !tr.comparisonOpAt(idx + 1) {
@@ -3834,24 +3781,98 @@ func (tr *translator) uuidParamComparedToStringField(idx int) bool {
 	}
 	field := idx + 2
 	if field+2 < len(tr.tokens) && tr.tokens[field+1].kind == tDot {
-		// Только основной источник области: colTypes описывает его поля.
-		q := lowerFast(tr.tokens[field].val)
-		if scope, ok := tr.sourceCtx.scopeAt(field); !ok || q != scope.mainTable ||
-			tr.sourceCtx.isDerivedQualifierAt(field, q) {
-			return false
-		}
 		field += 2
 	}
-	return tr.stringFieldAt(field) && (field+1 >= len(tr.tokens) || tr.tokens[field+1].kind != tDot)
+	return tr.paramFieldTypeAt(field) == metadata.FieldTypeString
 }
 
-// refLikeColumn — SQL-колонка ссылки: «…_id», «id», «recorder».
-func refLikeColumn(col string) bool {
-	col = strings.ToLower(col)
-	if i := strings.LastIndex(col, "."); i >= 0 {
-		col = col[i+1:]
+// paramFieldTypeAt accepts the last token of a direct field expression. A local
+// qualifier shadows outer SELECTs even when the requested field is unknown.
+// Names, suffixes and types from unrelated sources never supply a missing type.
+func (tr *translator) paramFieldTypeAt(idx int) metadata.FieldType {
+	if idx+1 < len(tr.tokens) && idx >= 0 && tr.tokens[idx+1].kind == tDot {
+		return ""
 	}
-	return strings.HasSuffix(col, "_id") || col == "id" || col == "recorder"
+	return tr.paramFieldTypeAtEnd(idx)
+}
+
+func (tr *translator) paramFieldTypeAtEnd(idx int) metadata.FieldType {
+	if idx < 0 || idx >= len(tr.tokens) || tr.tokens[idx].kind != tIdent {
+		return ""
+	}
+	scopeID, ok := tr.sourceCtx.scopeIDAt(idx)
+	if !ok {
+		return ""
+	}
+	name := lowerFast(tr.tokens[idx].val)
+	if idx >= 2 && tr.tokens[idx-1].kind == tDot && tr.tokens[idx-2].kind == tIdent {
+		if idx >= 3 && tr.tokens[idx-3].kind == tDot {
+			return tr.parameterReferenceAttributeType(tr.paramFieldTypeAtEnd(idx-2), name)
+		}
+		qualifier := lowerFast(tr.tokens[idx-2].val)
+		for scopeID >= 0 {
+			scope := tr.sourceCtx.scopes[scopeID]
+			_, source := scope.qualifiers[qualifier]
+			_, derived := scope.derivedAliases[qualifier]
+			if source || derived {
+				if typ, known := tr.paramQualifiedTypes[scopeID][qualifier][name]; known {
+					return typ
+				}
+				return parameterSystemRefType(scope, qualifier, name)
+			}
+			if typ, known := tr.paramQualifiedTypes[scopeID][scope.mainTable][qualifier]; known && metadata.IsReference(typ) {
+				return tr.parameterReferenceAttributeType(typ, name)
+			}
+			scopeID = scope.parent
+		}
+		return ""
+	}
+	if typ, known := tr.paramColTypes[scopeID][name]; known {
+		return typ
+	}
+	scope := tr.sourceCtx.scopes[scopeID]
+	return parameterSystemRefType(scope, scope.mainTable, name)
+}
+
+func (tr *translator) parameterReferenceAttributeType(reference metadata.FieldType, name string) metadata.FieldType {
+	if !metadata.IsReference(reference) {
+		return ""
+	}
+	for _, entity := range tr.opts.Entities {
+		if strings.EqualFold(entity.Name, metadata.RefName(reference)) {
+			for _, field := range entity.Fields {
+				if strings.EqualFold(field.Name, name) {
+					return field.Type
+				}
+			}
+			if isReferenceName(name) {
+				return reference
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+func parameterSystemRefType(scope sourceScope, qualifier, name string) metadata.FieldType {
+	class := scope.qualifiers[qualifier]
+	if (class == sourceClassEntity && isReferenceName(name)) ||
+		(class == sourceClassRegister && name == "регистратор") {
+		return metadata.FieldType("reference:system")
+	}
+	return ""
+}
+
+func (tr *translator) emptyRefParamAt(idx int) bool {
+	if !tr.comparisonOpAt(idx - 1) {
+		return false
+	}
+	switch tr.tokens[idx-1].val {
+	case "=", "<>", "!=":
+		return emptyStringAgainstRef(dialectOrDefault(tr.opts.Dialect),
+			tr.paramValues[tr.tokens[idx].val], tr.paramFieldTypeAt(idx-2))
+	}
+	return false
 }
 
 func uuidLikeParam(v any) bool {
@@ -3888,13 +3909,6 @@ func (tr *translator) addTextParam(name string) string {
 		return "NULL"
 	}
 	return strings.Join(placeholders, ", ")
-}
-
-func (tr *translator) stringFieldAt(idx int) bool {
-	if idx < 0 || idx >= len(tr.tokens) || tr.tokens[idx].kind != tIdent {
-		return false
-	}
-	return tr.colTypes[lowerFast(tr.tokens[idx].val)] == metadata.FieldTypeString
 }
 
 func (tr *translator) dateFieldAt(idx int) bool {
@@ -5095,7 +5109,6 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		paramValues: opts.Params,
 		opts:        opts,
 		colMap:      buildColMap(tokens, opts),
-		refVTFields: buildRefVTFields(tokens, opts),
 		colTypes:    colTypes,
 		mainTable:   preScanMainTable(tokens),
 		refDims:     preScanRefDims(tokens, opts),
@@ -5105,6 +5118,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		unionDepths: map[int]bool{},
 		unionOrders: map[int]bool{},
 		section:     sectionOther,
+	}
+	if len(opts.Params) > 0 {
+		tr.paramColTypes, tr.paramQualifiedTypes = buildScalarColumnTypes(tokens, opts, tr.sourceCtx)
 	}
 	tr.textEqIndex = positiveTextEqualities(tokens, tr.sourceCtx)
 	for {
@@ -5311,7 +5327,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			tr.advance()
 			if normalizeDate {
 				tr.emit(tr.addSQLiteDateParam(t.val))
-			} else if emptyStringAgainstRef(dialectOrDefault(tr.opts.Dialect), tr.paramValues[t.val], tr.parts, tr.refVTFields) {
+			} else if tr.emptyRefParamAt(tr.pos - 1) {
 				tr.emit("NULL")
 			} else if tr.uuidParamComparedToStringField(tr.pos - 1) {
 				tr.emit(tr.addTextParam(t.val))
