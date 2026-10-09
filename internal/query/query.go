@@ -1615,7 +1615,7 @@ func (tr *translator) build() string {
 }
 
 // addParam registers a named parameter and returns its SQL placeholder.
-// If the value is []any (DSL array converted by unwrapArrayParams), it expands
+// If the value is []any (DSL array converted by unwrapParams), it expands
 // to a comma-joined list of placeholders suitable for IN (...) clauses.
 func (tr *translator) addParam(name string) string {
 	v := tr.paramValues[name]

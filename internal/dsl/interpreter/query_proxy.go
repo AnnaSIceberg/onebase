@@ -183,15 +183,12 @@ func (q *queryProxy) CallMethod(name string, args []any) any {
 	panic(userError{Msg: "Объект Запрос не имеет метода " + name})
 }
 
-// unwrapArrayParams converts DSL params for query compilation:
+// unwrapParams converts DSL params for query compilation:
 // - *Array → []any (each item unwrapped)
 // - any reference-like value implementing GetRefUUID → UUID string
 // This ensures pgx receives plain Go types, not interpreter-specific wrappers.
-func unwrapArrayParams(params map[string]any) map[string]any {
-	return unwrapParams(params, false)
-}
-
-// unwrapParams — то же, с выбором для пустой ссылки. emptyRefAsNull: пустая
+//
+// emptyRefAsNull: пустая
 // ссылка уходит NULL, а не пустой строкой. На PostgreSQL пустая строка в сравнении со
 // ссылочной колонкой не приводится к uuid («operator does not exist: uuid =
 // text» / «invalid input syntax for type uuid») — отбор с невыбранным полем
