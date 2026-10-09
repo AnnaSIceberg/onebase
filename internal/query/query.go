@@ -810,6 +810,17 @@ func (tr *translator) standaloneSelectItem(from, to int) bool {
 	return false
 }
 
+// transparentSelectItem расширяет простой путь до окружающих его скобок.
+// Целый элемент SELECT нужен и при разрешении проекции, и при эмиссии AS:
+// скобки функции или составного выражения не становятся частью простого пути.
+func (tr *translator) transparentSelectItem(from, to int) (int, int, bool) {
+	for from > 0 && to < len(tr.tokens) && tr.tokens[from-1].kind == tLParen && tr.tokens[to].kind == tRParen {
+		from--
+		to++
+	}
+	return from, to, tr.standaloneSelectItem(from, to)
+}
+
 type translator struct {
 	tokens       []tok
 	pos          int
@@ -833,9 +844,11 @@ type translator struct {
 	rowApplied   []SourceRef                   // источники, к которым RLS-предикат реально внедрён (для финальной сверки)
 	parenDepth   int                           // глубина незакрытых '(' в основном потоке (VT-аргументы считает parseVTArgs)
 	sourceCtx    sourceContext                 // scoped-типы/классы источников для SELECT-кадров
+	textEqIndex  map[int]bool                  // положительные сравнения ГДЕ с непустым литералом
 	unionDepths  map[int]bool                  // глубины SELECT с UNION для compound ORDER BY
 	unionOrders  map[int]bool                  // ORDER BY относится ко всему UNION, алиасы таблиц там недоступны
 	refCols      map[string]string             // колонка вывода (lower) → сущность, на которую она ссылается (#1150)
+	derivedAs    map[int]string                // позиция закрывающей скобки → отложенный AS простой ссылки
 	mainRef      mainRefSource                 // главный источник запроса: чья ссылка стоит за голым «Ссылка»
 }
 
@@ -876,18 +889,20 @@ type sourceEntity struct {
 }
 
 type sourceScope struct {
-	parent         int // ближайший внешний SELECT, -1 у верхнего уровня; UNION — сосед
-	main           sourceClass
-	mainTable      string
-	mainColTypes   map[string]metadata.FieldType
-	entities       map[string]sourceEntity
-	refEntities    map[string]sourceEntity // цели одного перехода от главного источника
-	unionFirst     int                     // SELECT, задающий имена результата всего UNION
-	sourceCount    int
-	qualifiers     map[string]sourceClass
-	derivedAliases map[string]int
-	outputAliases  map[string]struct{}
-	refAliases     map[string]struct{}
+	parent            int // ближайший внешний SELECT, -1 у верхнего уровня; UNION — сосед
+	main              sourceClass
+	mainTable         string
+	mainColTypes      map[string]metadata.FieldType
+	entities          map[string]sourceEntity
+	refEntities       map[string]sourceEntity // цели одного перехода от главного источника
+	unionFirst        int                     // SELECT, задающий имена результата всего UNION
+	sourceCount       int
+	qualifiers        map[string]sourceClass
+	derivedAliases    map[string]int
+	derivedProjection bool                         // SELECT задаёт результат производной таблицы
+	wildcardColumns   map[string]map[string]string // квалификатор → логическое имя → имя в SELECT *
+	outputAliases     map[string]struct{}
+	refAliases        map[string]struct{}
 }
 
 func (ctx sourceContext) scopeAt(tokenPos int) (sourceScope, bool) {
@@ -927,6 +942,155 @@ func (ctx sourceContext) qualifierScopeAt(tokenPos int, qualifier string) (sourc
 		scopeID = scope.parent
 	}
 	return sourceScope{}, false
+}
+
+// isDerivedQualifierAt учитывает область SELECT и локальное затенение алиаса.
+// Производная таблица экспортирует свою проекцию, независимо от внешнего источника.
+func (ctx sourceContext) isDerivedQualifierAt(tokenPos int, qualifier string) bool {
+	scope, ok := ctx.qualifierScopeAt(tokenPos, qualifier)
+	if !ok {
+		return false
+	}
+	_, derived := scope.derivedAliases[qualifier]
+	return derived
+}
+
+func (tr *translator) isDerivedColumnAt(pos int) bool {
+	if pos < 2 || tr.tokens[pos-1].kind != tDot || tr.tokens[pos-2].kind != tIdent {
+		return false
+	}
+	// В пути Источник.Ссылка.Реквизит среднее имя — ссылка, не алиас таблицы.
+	if pos >= 3 && tr.tokens[pos-3].kind == tDot {
+		return false
+	}
+	return tr.sourceCtx.isDerivedQualifierAt(pos, lowerFast(tr.tokens[pos-2].val))
+}
+
+// derivedColumnAt разрешает имя по реальной проекции подзапроса, включая
+// физические колонки звёздочки и их перенос через вложенные SELECT.
+func (tr *translator) derivedColumnAt(pos int, name string) string {
+	qualifier := lowerFast(tr.tokens[pos-2].val)
+	scope, _ := tr.sourceCtx.qualifierScopeAt(pos, qualifier)
+	childID := scope.derivedAliases[qualifier]
+	return tr.sourceCtx.derivedOutputColumn(tr.tokens, childID, name, map[int]bool{})
+}
+
+func (ctx sourceContext) derivedOutputColumn(tokens []tok, scopeID int, name string, seen map[int]bool) string {
+	scopeID = ctx.scopes[scopeID].unionFirst
+	if seen[scopeID] {
+		return name
+	}
+	seen[scopeID] = true
+	defer delete(seen, scopeID)
+	scope := ctx.scopes[scopeID]
+	if _, explicit := scope.outputAliases[name]; explicit {
+		return name
+	}
+	// Перечисленное поле получает логическое имя (emitDerivedReferenceAlias)
+	// и имеет приоритет над физической колонкой того же поля из звёздочки.
+	wildcards := []string{}
+	projection := translator{tokens: tokens, sourceCtx: ctx}
+	for i, token := range tokens {
+		id, ok := ctx.scopeIDAt(i)
+		if !ok || id != scopeID || ctx.sectionAt(i) != sectionSelect {
+			continue
+		}
+		if token.kind == tIdent && strings.EqualFold(token.val, name) {
+			start := i
+			for start >= 2 && tokens[start-1].kind == tDot && tokens[start-2].kind == tIdent {
+				start -= 2
+			}
+			// При КАК экспортируется алиас, уже учтённый в outputAliases,
+			// а не исходное имя поля. Его может экспортировать звёздочка.
+			_, end, whole := projection.transparentSelectItem(start, i+1)
+			if whole {
+				kw, _ := sqlKW(tokens[end].val)
+				if kw != "AS" {
+					return name
+				}
+			}
+		}
+		if ctx.tokenDepth[i] != ctx.selectDepthAt(tokens, i) {
+			continue
+		}
+		if token.kind == tStar {
+			if i >= 2 && tokens[i-1].kind == tDot && tokens[i-2].kind == tIdent {
+				if projection.standaloneSelectItem(i-2, i+1) {
+					wildcards = append(wildcards, lowerFast(tokens[i-2].val))
+				}
+			} else if projection.standaloneSelectItem(i, i+1) {
+				// Bare * expands every local source, including JOIN sources.
+				for qualifier := range scope.wildcardColumns {
+					wildcards = append(wildcards, qualifier)
+				}
+				for qualifier := range scope.derivedAliases {
+					wildcards = append(wildcards, qualifier)
+				}
+			}
+		}
+	}
+	column := ""
+	for _, qualifier := range wildcards {
+		col := scope.wildcardColumns[qualifier][name]
+		if childID, derived := scope.derivedAliases[qualifier]; derived {
+			col = ctx.derivedOutputColumn(tokens, childID, name, seen)
+		}
+		if col == "" {
+			continue
+		}
+		if column != "" && column != col {
+			return name // Не угадываем источник неоднозначной проекции.
+		}
+		column = col
+	}
+	if column != "" {
+		return column
+	}
+	return name
+}
+
+func sourceWildcardColumns(typeUpper, name string, virtual bool, opts CompileOpts) map[string]string {
+	columns := map[string]string{}
+	add := func(fields []metadata.Field) {
+		for _, field := range fields {
+			logical := lowerFast(field.Name)
+			column := metadata.ColumnName(field)
+			if virtual {
+				column = logical
+			}
+			columns[logical] = column
+		}
+	}
+	switch {
+	case isAccumRegType(typeUpper):
+		for _, reg := range opts.Registers {
+			if strings.EqualFold(reg.Name, name) {
+				add(reg.Dimensions)
+				add(reg.Resources)
+				add(reg.Attributes)
+			}
+		}
+	case isInfoRegType(typeUpper):
+		for _, reg := range opts.InfoRegs {
+			if strings.EqualFold(reg.Name, name) {
+				add(reg.Dimensions)
+				add(reg.Resources)
+			}
+		}
+	case isAccountRegType(typeUpper):
+		for _, reg := range opts.AccountRegs {
+			if strings.EqualFold(reg.Name, name) {
+				add(reg.Resources)
+			}
+		}
+	default:
+		for _, entity := range opts.Entities {
+			if strings.EqualFold(entity.Name, name) {
+				add(entity.Fields)
+			}
+		}
+	}
+	return columns
 }
 
 func (ctx sourceContext) sectionAt(tokenPos int) querySection {
@@ -3589,6 +3753,9 @@ func (tr *translator) needsEmptyTextCoalesce(lower, qualifier string) bool {
 	if !known || (t != metadata.FieldTypeString && !metadata.IsEnum(t)) {
 		return false
 	}
+	if tr.textEqIndex[idx] {
+		return false
+	}
 	left := idx - 1
 	if qualifier != "" {
 		left = idx - 3 // <оператор> алиас . поле
@@ -3668,6 +3835,43 @@ func (tr *translator) emitQualifiedColumn(col, lower string) {
 		}
 	}
 	tr.emit(col)
+	tr.emitDerivedReferenceAlias(col, lower)
+}
+
+// emitDerivedReferenceAlias сохраняет логическое имя простой ссылочной
+// проекции производной таблицы. Без КАК SQL называет её физической колонкой
+// *_id, тогда как внешний SELECT обращается к логическому имени поля.
+// Прозрачные скобки получают AS после всего выражения. Явные алиасы,
+// составные выражения и проекции вне FROM/JOIN-подзапросов не меняются.
+func (tr *translator) emitDerivedReferenceAlias(col, lower string) {
+	if col == lower || !strings.HasSuffix(col, "_id") {
+		return
+	}
+	pos := tr.pos - 1
+	scope, ok := tr.sourceCtx.scopeAt(pos)
+	if !ok || !tr.sourceCtx.scopes[scope.unionFirst].derivedProjection {
+		return
+	}
+	start := pos
+	for start >= 2 && tr.tokens[start-1].kind == tDot && tr.tokens[start-2].kind == tIdent {
+		start -= 2
+	}
+	_, end, whole := tr.transparentSelectItem(start, tr.pos)
+	if !whole {
+		return
+	}
+	if kw, ok := sqlKW(tr.tokens[end].val); ok && kw == "AS" {
+		return
+	}
+	if end > tr.pos {
+		if tr.derivedAs == nil {
+			tr.derivedAs = map[int]string{}
+		}
+		tr.derivedAs[end-1] = lower
+		return
+	}
+	tr.emit("AS")
+	tr.emit(lower)
 }
 
 func (tr *translator) emitRefAttrColumn(col string, fieldType metadata.FieldType) {
@@ -3765,13 +3969,14 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 				}
 				scopeID := len(ctx.scopes)
 				ctx.scopes = append(ctx.scopes, sourceScope{
-					parent:         parent,
-					entities:       map[string]sourceEntity{},
-					unionFirst:     unionFirst,
-					qualifiers:     map[string]sourceClass{},
-					derivedAliases: map[string]int{},
-					outputAliases:  map[string]struct{}{},
-					refAliases:     map[string]struct{}{},
+					parent:          parent,
+					entities:        map[string]sourceEntity{},
+					unionFirst:      unionFirst,
+					qualifiers:      map[string]sourceClass{},
+					derivedAliases:  map[string]int{},
+					wildcardColumns: map[string]map[string]string{},
+					outputAliases:   map[string]struct{}{},
+					refAliases:      map[string]struct{}{},
 				})
 				sections = append(sections, sectionSelect)
 				active = append(active, scopeFrame{id: scopeID, depth: depth})
@@ -3903,7 +4108,14 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 			}
 		}
 
+		// Обычная таблица экспортирует физические имена ссылок через *,
+		// виртуальная таблица уже задаёт логические SQL-алиасы.
+		virtual := i+3 < len(tokens) && tokens[i+3].kind == tDot
+		wildcardColumns := sourceWildcardColumns(typeUpper, tokens[i+2].val, virtual, opts)
+
 		entityName := lowerFast(tokens[i+2].val)
+		scope.wildcardColumns[entityName] = wildcardColumns
+		scope.wildcardColumns[sourceToTable(typeUpper, tokens[i+2].val)] = wildcardColumns
 		scope.qualifiers[entityName] = class
 		scope.qualifiers[sourceToTable(typeUpper, tokens[i+2].val)] = class
 		// Для источника-объекта запоминаем вид и собственные реквизиты: по ним
@@ -3928,6 +4140,7 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 			if (aliasUpper == "КАК" || aliasUpper == "AS") && tokens[aliasPos+1].kind == tIdent {
 				alias := lowerFast(tokens[aliasPos+1].val)
 				scope.qualifiers[alias] = class
+				scope.wildcardColumns[alias] = wildcardColumns
 				if entityInfo != nil {
 					scope.entities[alias] = *entityInfo
 				}
@@ -3957,6 +4170,7 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 						if (aliasUpper == "КАК" || aliasUpper == "AS") && tokens[aliasPos+1].kind == tIdent {
 							alias := lowerFast(tokens[aliasPos+1].val)
 							scope.qualifiers[alias] = class
+							scope.wildcardColumns[alias] = wildcardColumns
 							if isMain {
 								scope.mainTable = alias
 							}
@@ -4006,6 +4220,7 @@ func linkDerivedSourceScopes(tokens []tok, ctx *sourceContext) {
 					if aliasOK && aliasKW == "AS" && tokens[aliasPos+1].kind == tIdent {
 						alias := lowerFast(tokens[aliasPos+1].val)
 						ctx.scopes[parentID].derivedAliases[alias] = childID
+						ctx.scopes[childID].derivedProjection = true
 					}
 				}
 				j = len(tokens)
@@ -4585,6 +4800,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		unionOrders: map[int]bool{},
 		section:     sectionOther,
 	}
+	tr.textEqIndex = positiveTextEqualities(tokens, tr.sourceCtx)
 	for {
 		t := tr.peek(0)
 		if t.kind == tEOF {
@@ -4831,6 +5047,11 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			}
 			tr.advance()
 			tr.emit(t.val)
+			if alias, ok := tr.derivedAs[tr.pos-1]; ok {
+				tr.emit("AS")
+				tr.emit(alias)
+				delete(tr.derivedAs, tr.pos-1)
+			}
 			continue
 		}
 
@@ -5023,6 +5244,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					// как раньше — в том числе рядом с оператором:
 					// «ГДЕ Подобно ПОДОБНО "а%"».
 					tr.emit("LIKE")
+				} else if nextIsDot && !prevDot && tr.sourceCtx.isDerivedQualifierAt(tr.pos-1, lower) {
+					// Явный алиас производной таблицы старше одноимённого поля-ссылки.
+					tr.emit(lower)
 				} else if rd := tr.findRefDim(lower); rd != nil && !prevDot {
 					if nextIsDot {
 						if err := tr.assertSingleHopNavigation(rd); err != nil {
@@ -5063,11 +5287,14 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				} else if col, ok := tr.colMap[lower]; ok && !prevDot {
 					tr.emitOwnColumn(col, lower)
 				} else if prevDot {
-					if col, refEntity, fieldType := tr.refAttrColumnForPrevQualifier(tr.pos-1, lower); col != "" {
+					if !nextIsDot && tr.isDerivedColumnAt(tr.pos-1) {
+						tr.emitQualifiedColumn(tr.derivedColumnAt(tr.pos-1, lower), lower)
+					} else if col, refEntity, fieldType := tr.refAttrColumnForPrevQualifier(tr.pos-1, lower); col != "" {
 						// После точки реквизит принадлежит сущности квалификатора,
 						// даже если у основного источника есть одноимённое поле.
 						tr.emitRefAttrColumn(col, fieldType)
 						tr.noteRefOutputAs(refEntity, col)
+						tr.emitDerivedReferenceAlias(col, lower)
 					} else if rd := tr.findRefDim(lower); rd != nil {
 						// Двухуровневая навигация: Источник.Ссылка.Реквизит.
 						// LEFT JOIN на связанную таблицу к этому моменту уже
@@ -5085,6 +5312,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 							tr.emit(rd.joinAlias)
 						} else {
 							tr.emit(rd.idCol)
+							tr.emitDerivedReferenceAlias(rd.idCol, lower)
 						}
 					} else if c, ok2 := tr.colMap[lower]; ok2 {
 						tr.emitQualifiedColumn(c, lower)
