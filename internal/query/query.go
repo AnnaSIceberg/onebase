@@ -831,6 +831,7 @@ type translator struct {
 	parts        []string
 	prevWasDot   bool                          // true after emitting "." — used to resolve .Ссылка → .id
 	colMap       map[string]string             // lowercase field name → actual column name (for reference dims)
+	refVTFields  map[string]bool               // логические имена ссылочных полей виртуальных таблиц запроса (uuid во внешнем запросе)
 	colTypes     map[string]metadata.FieldType // lowercase field name → type (для квалификации и CAST number)
 	refDims      []refDimInfo                  // reference dimensions with auto-JOIN info
 	mainTable    string                        // main FROM table/alias (set when source is emitted)
@@ -1579,6 +1580,36 @@ func (tr *translator) addParam(name string) string {
 	return d.Placeholder(tr.params[name]) + castSuffix(d, v)
 }
 
+// emptyStringAgainstRef: на PostgreSQL параметр — пустая строка, а слева от
+// «=» / «<>» — ссылочная колонка (uuid: «…_id», «id», «recorder»). Так в запрос
+// приходит невыбранное ссылочное поле формы или пустая ссылка из результата
+// запроса на SQLite. uuid с пустой строкой (text) PostgreSQL не сравнивает, а без
+// приведения падает на разборе uuid — ставится NULL: сравнение «не совпало»,
+// как на SQLite против NULL-колонки, условие «(&Все ИЛИ Поле = &П)» работает.
+// Сравнение пустой строки с текстовым полем не трогается.
+func emptyStringAgainstRef(d storage.Dialect, v any, parts []string, refVTFields map[string]bool) bool {
+	if d.Name() != "postgres" {
+		return false
+	}
+	if s, ok := v.(string); !ok || s != "" {
+		return false
+	}
+	n := len(parts)
+	if n < 2 {
+		return false
+	}
+	switch parts[n-1] {
+	case "=", "<>", "!=":
+	default:
+		return false
+	}
+	col := strings.ToLower(parts[n-2])
+	if i := strings.LastIndex(col, "."); i >= 0 {
+		col = col[i+1:]
+	}
+	return strings.HasSuffix(col, "_id") || col == "id" || col == "recorder" || refVTFields[col]
+}
+
 // castSuffix returns the explicit cast suffix for v on the active dialect.
 // PG benefits from "::text"/"::numeric" hints; SQLite ignores types so we
 // return "".
@@ -1628,7 +1659,11 @@ func (tr *translator) translateFilterTokens(tokens []tok) string {
 		t := tokens[i]
 		switch t.kind {
 		case tParam:
-			parts = append(parts, tr.addParam(t.val))
+			if emptyStringAgainstRef(dialectOrDefault(tr.opts.Dialect), tr.paramValues[t.val], parts, nil) {
+				parts = append(parts, "NULL")
+			} else {
+				parts = append(parts, tr.addParam(t.val))
+			}
 		case tIdent:
 			upper := upperFast(t.val)
 			if kw, ok := kwMap[upper]; ok {
@@ -1760,6 +1795,57 @@ func (tr *translator) accountChartCond(ar *metadata.AccountRegister, alias strin
 	d := dialectOrDefault(tr.opts.Dialect)
 	tr.args = append(tr.args, ar.Accounts)
 	return alias + ".plan = " + d.Placeholder(len(tr.args))
+}
+
+// translateRegisterFilter переводит отбор виртуальной таблицы регистра
+// накопления или сведений («Остатки(, Склад = &С)», «СрезПоследних(, ТипЦен =
+// &Т)»). Отбор встаёт в WHERE подзапроса над таблицей регистра, где ссылочное
+// измерение — физическая колонка «склад_id»: логическое «склад» — лишь
+// псевдоним списка SELECT. SQLite видит псевдонимы в WHERE и прощал это,
+// PostgreSQL — нет («column "склад" does not exist»). Имена полей регистра на
+// время перевода разрешаются в колонки; изменения colMap откатываются.
+func (tr *translator) translateRegisterFilter(fields []metadata.Field, tokens []tok) string {
+	if tr.colMap == nil {
+		tr.colMap = make(map[string]string)
+	}
+	saved := make(map[string]*string)
+	for _, f := range fields {
+		name := lowerFast(f.Name)
+		col := metadata.ColumnName(f)
+		if col == name {
+			continue
+		}
+		if _, done := saved[name]; done {
+			continue
+		}
+		if old, ok := tr.colMap[name]; ok {
+			s := old
+			saved[name] = &s
+		} else {
+			saved[name] = nil
+		}
+		tr.colMap[name] = col
+	}
+	res := tr.translateFilterTokens(tokens)
+	for k, v := range saved {
+		if v == nil {
+			delete(tr.colMap, k)
+		} else {
+			tr.colMap[k] = *v
+		}
+	}
+	return res
+}
+
+func registerFields(reg *metadata.Register) []metadata.Field {
+	out := append([]metadata.Field{}, reg.Dimensions...)
+	out = append(out, reg.Resources...)
+	return append(out, reg.Attributes...)
+}
+
+func infoRegisterFields(ir *metadata.InfoRegister) []metadata.Field {
+	out := append([]metadata.Field{}, ir.Dimensions...)
+	return append(out, ir.Resources...)
 }
 
 // translateAccountFilter переводит токены фильтра виртуальной таблицы регистра
@@ -2324,7 +2410,7 @@ func (tr *translator) genBalances(reg *metadata.Register, args [][]tok) (string,
 		}
 	}
 	if len(args) > 1 && len(args[1]) > 0 {
-		if s := tr.translateFilterTokens(args[1]); s != "" {
+		if s := tr.translateRegisterFilter(registerFields(reg), args[1]); s != "" {
 			conds = append(conds, s)
 		}
 	}
@@ -2585,7 +2671,7 @@ func (tr *translator) genTurnovers(reg *metadata.Register, args [][]tok) (string
 	// when periodicity was detected in args[2].
 	filterTokens := filterArg(filterArgIdx, periodLevel, args)
 	if len(filterTokens) > 0 {
-		if s := tr.translateFilterTokens(filterTokens); s != "" {
+		if s := tr.translateRegisterFilter(registerFields(reg), filterTokens); s != "" {
 			conds = append(conds, s)
 		}
 	}
@@ -2733,7 +2819,7 @@ func (tr *translator) genBalancesAndTurnovers(reg *metadata.Register, args [][]t
 		conds = append(conds, "period <= "+end())
 	}
 	if hasFilter {
-		conds = append(conds, tr.translateFilterTokens(args[2]))
+		conds = append(conds, tr.translateRegisterFilter(registerFields(reg), args[2]))
 	}
 	if s, err := tr.rowFilterCondition("register", reg.Name, storage.RegisterPredicateEntity(reg), ""); err != nil {
 		return "", "", fmt.Errorf("row filter %s: %w", reg.Name, err)
@@ -2805,7 +2891,7 @@ func (tr *translator) genInfoSlice(ir *metadata.InfoRegister, args [][]tok, dire
 		filterIdx = 0
 	}
 	if len(args) > filterIdx && len(args[filterIdx]) > 0 {
-		if s := tr.translateFilterTokens(args[filterIdx]); s != "" {
+		if s := tr.translateRegisterFilter(infoRegisterFields(ir), args[filterIdx]); s != "" {
 			conds = append(conds, s)
 		}
 	}
@@ -3088,6 +3174,48 @@ func (tr *translator) emitVTSubquery(subq, defaultAlias string) error {
 // buildColMap creates a mapping from lowercase field name to actual DB column name
 // for reference-type fields. It scans tokens to find the specific source register
 // so that reference dims from one register don't pollute queries against another.
+// buildRefVTFields — логические имена ссылочных полей регистров, чьи виртуальные
+// таблицы есть в запросе. Во внешнем запросе ссылочное измерение ВТ доступно
+// под логическим именем («о.склад»), а не «склад_id», хотя тип колонки — uuid:
+// по нему emptyStringAgainstRef узнаёт сравнение со ссылкой.
+func buildRefVTFields(tokens []tok, opts CompileOpts) map[string]bool {
+	m := map[string]bool{}
+	add := func(fields []metadata.Field) {
+		for _, f := range fields {
+			if f.RefEntity != "" {
+				m[lowerFast(f.Name)] = true
+			}
+		}
+	}
+	for i := 0; i+3 < len(tokens); i++ {
+		t := tokens[i]
+		if t.kind != tIdent || tokens[i+1].kind != tDot || tokens[i+2].kind != tIdent || tokens[i+3].kind != tDot {
+			continue
+		}
+		upper := upperFast(t.val)
+		if !isSourceType(upper) {
+			continue
+		}
+		name := tokens[i+2].val
+		if isAccumRegType(upper) {
+			for _, reg := range opts.Registers {
+				if strings.EqualFold(reg.Name, name) {
+					add(reg.Dimensions)
+					add(reg.Attributes)
+				}
+			}
+		} else if isInfoRegType(upper) {
+			for _, ir := range opts.InfoRegs {
+				if strings.EqualFold(ir.Name, name) {
+					add(ir.Dimensions)
+					add(ir.Resources)
+				}
+			}
+		}
+	}
+	return m
+}
+
 func buildColMap(tokens []tok, opts CompileOpts) map[string]string {
 	m := map[string]string{}
 	addFields := func(fields []metadata.Field) {
@@ -4790,6 +4918,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		paramValues: opts.Params,
 		opts:        opts,
 		colMap:      buildColMap(tokens, opts),
+		refVTFields: buildRefVTFields(tokens, opts),
 		colTypes:    colTypes,
 		mainTable:   preScanMainTable(tokens),
 		refDims:     preScanRefDims(tokens, opts),
@@ -5000,6 +5129,8 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			tr.advance()
 			if normalizeDate {
 				tr.emit(tr.addSQLiteDateParam(t.val))
+			} else if emptyStringAgainstRef(dialectOrDefault(tr.opts.Dialect), tr.paramValues[t.val], tr.parts, tr.refVTFields) {
+				tr.emit("NULL")
 			} else {
 				tr.emit(tr.addParam(t.val))
 			}
@@ -5981,8 +6112,12 @@ func pgCast(v any) string {
 	case time.Time:
 		return "::timestamptz"
 	case string:
+		// Строка, похожая на UUID, — без приведения: PostgreSQL выводит тип
+		// параметра из колонки сравнения. «::uuid» ломал сравнение со строковым
+		// полем, где лежит UUID («text = uuid», ivanarama/onebase#1981), а у
+		// ссылочной колонки тип выводится тот же uuid.
 		if isUUID(v) {
-			return "::uuid"
+			return ""
 		}
 		return "::text"
 	case float64, float32, decimal.Decimal:
