@@ -525,10 +525,10 @@ func managedFormSchema() map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"field", "op"},
 		"properties": map[string]any{
-			"field": stringSchema("Реквизит выбираемого справочника или служебное поле is_folder / parent_id"),
+			"field": stringSchema("Реквизит выбираемого справочника или служебное поле is_folder / is_root / parent_id"),
 			"op":    enumSchema("eq", "eq_or_empty", "in_hierarchy", "not_in_hierarchy"),
 			"from":  stringSchema("Источник Объект.<Поле>, Форма.<Поле> или Объект.<Поле>.<Реквизит> — один переход по ссылке; конец пути — ссылка или, для строкового field и eq, строковый реквизит"),
-			"value": boolSchema("Булев литерал: is_folder или булев реквизит справочника"),
+			"value": boolSchema("Булев литерал: is_folder, is_root или булев реквизит справочника"),
 			"ref": map[string]any{
 				"type":        "string",
 				"format":      "uuid",
