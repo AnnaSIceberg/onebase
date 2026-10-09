@@ -833,6 +833,7 @@ type translator struct {
 	rowApplied   []SourceRef                   // источники, к которым RLS-предикат реально внедрён (для финальной сверки)
 	parenDepth   int                           // глубина незакрытых '(' в основном потоке (VT-аргументы считает parseVTArgs)
 	sourceCtx    sourceContext                 // scoped-типы/классы источников для SELECT-кадров
+	textEqIndex  map[int]bool                  // положительные сравнения ГДЕ с непустым литералом
 	unionDepths  map[int]bool                  // глубины SELECT с UNION для compound ORDER BY
 	unionOrders  map[int]bool                  // ORDER BY относится ко всему UNION, алиасы таблиц там недоступны
 	refCols      map[string]string             // колонка вывода (lower) → сущность, на которую она ссылается (#1150)
@@ -3589,6 +3590,9 @@ func (tr *translator) needsEmptyTextCoalesce(lower, qualifier string) bool {
 	if !known || (t != metadata.FieldTypeString && !metadata.IsEnum(t)) {
 		return false
 	}
+	if tr.textEqIndex[idx] {
+		return false
+	}
 	left := idx - 1
 	if qualifier != "" {
 		left = idx - 3 // <оператор> алиас . поле
@@ -4585,6 +4589,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		unionOrders: map[int]bool{},
 		section:     sectionOther,
 	}
+	tr.textEqIndex = positiveTextEqualities(tokens, tr.sourceCtx)
 	for {
 		t := tr.peek(0)
 		if t.kind == tEOF {
