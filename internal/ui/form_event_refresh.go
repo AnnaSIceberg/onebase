@@ -375,18 +375,6 @@ func tpCellNorm(f metadata.Field, v any) string {
 		if t, ok := dateCellInstant(v); ok {
 			return t.UTC().Format(time.RFC3339Nano)
 		}
-	case metadata.FieldTypeNumber:
-		switch t := v.(type) {
-		case float64:
-			return strconv.FormatFloat(t, 'f', -1, 64)
-		case int64:
-			return strconv.FormatInt(t, 10)
-		case string:
-			if x, err := strconv.ParseFloat(strings.TrimSpace(t), 64); err == nil {
-				return strconv.FormatFloat(x, 'f', -1, 64)
-			}
-		}
-	case metadata.FieldTypeDate:
 		// Форма отдаёт локальное настенное время («2026-09-26T00:00»), база —
 		// UTC («2026-09-25T21:00:00Z»). Без приведения к одному моменту любая
 		// заполненная дата делает форму «изменённой»: при закрытии выскакивает
@@ -397,6 +385,17 @@ func tpCellNorm(f metadata.Field, v any) string {
 		case string:
 			if parsed, ok := storage.ParseRegPeriod(t); ok {
 				return parsed.UTC().Format(time.RFC3339)
+			}
+		}
+	case metadata.FieldTypeNumber:
+		switch t := v.(type) {
+		case float64:
+			return strconv.FormatFloat(t, 'f', -1, 64)
+		case int64:
+			return strconv.FormatInt(t, 10)
+		case string:
+			if x, err := strconv.ParseFloat(strings.TrimSpace(t), 64); err == nil {
+				return strconv.FormatFloat(x, 'f', -1, 64)
 			}
 		}
 	case metadata.FieldTypeBool:
