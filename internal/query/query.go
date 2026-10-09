@@ -3805,6 +3805,97 @@ func (tr *translator) addSQLiteDateParam(name string) string {
 	return dialectOrDefault(tr.opts.Dialect).Placeholder(len(tr.args))
 }
 
+// uuidParamComparedToStringField: на PostgreSQL параметр — строка, похожая на
+// UUID (или список таких), а сравнивается он со строковым полем: «Р.Объект =
+// &Объект», «&Объект = Р.Объект», «Р.Объект В (&Объекты)». Так хранят ссылки
+// внешней системы (реестр соответствий). Обычное приведение «::uuid» давало
+// «text = uuid» (ivanarama/onebase#1981) — здесь параметр уходит текстом.
+func (tr *translator) uuidParamComparedToStringField(idx int) bool {
+	if dialectOrDefault(tr.opts.Dialect).Name() != "postgres" || idx < 0 || idx >= len(tr.tokens) ||
+		tr.tokens[idx].kind != tParam || !uuidLikeParam(tr.paramValues[tr.tokens[idx].val]) {
+		return false
+	}
+	// Поле слева уже выпущено: его SQL-колонка не должна быть ссылочной —
+	// одноимённое поле производной таблицы или соединения бывает ссылкой.
+	emittedText := func(back int) bool {
+		n := len(tr.parts)
+		return n >= back && !refLikeColumn(tr.parts[n-back])
+	}
+	if tr.stringFieldAt(idx-2) && tr.comparisonOpAt(idx-1) && emittedText(2) {
+		return true
+	}
+	if idx >= 1 && tr.tokens[idx-1].kind == tLParen && tr.keywordAt(idx-2, "В", "IN") &&
+		tr.stringFieldAt(idx-3) && emittedText(3) {
+		return true
+	}
+	if !tr.comparisonOpAt(idx + 1) {
+		return false
+	}
+	field := idx + 2
+	if field+2 < len(tr.tokens) && tr.tokens[field+1].kind == tDot {
+		// Только основной источник области: colTypes описывает его поля.
+		q := lowerFast(tr.tokens[field].val)
+		if scope, ok := tr.sourceCtx.scopeAt(field); !ok || q != scope.mainTable ||
+			tr.sourceCtx.isDerivedQualifierAt(field, q) {
+			return false
+		}
+		field += 2
+	}
+	return tr.stringFieldAt(field) && (field+1 >= len(tr.tokens) || tr.tokens[field+1].kind != tDot)
+}
+
+// refLikeColumn — SQL-колонка ссылки: «…_id», «id», «recorder».
+func refLikeColumn(col string) bool {
+	col = strings.ToLower(col)
+	if i := strings.LastIndex(col, "."); i >= 0 {
+		col = col[i+1:]
+	}
+	return strings.HasSuffix(col, "_id") || col == "id" || col == "recorder"
+}
+
+func uuidLikeParam(v any) bool {
+	switch v := v.(type) {
+	case string:
+		return isUUID(v)
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok && isUUID(s) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// addTextParam — параметр с приведением «::text» и своим номером: тот же
+// параметр в другом месте запроса может сравниваться со ссылкой как uuid.
+func (tr *translator) addTextParam(name string) string {
+	d := dialectOrDefault(tr.opts.Dialect)
+	items, isList := tr.paramValues[name].([]any)
+	if !isList {
+		items = []any{tr.paramValues[name]}
+	}
+	var placeholders []string
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		tr.args = append(tr.args, item)
+		placeholders = append(placeholders, d.Placeholder(len(tr.args))+"::text")
+	}
+	if len(placeholders) == 0 {
+		return "NULL"
+	}
+	return strings.Join(placeholders, ", ")
+}
+
+func (tr *translator) stringFieldAt(idx int) bool {
+	if idx < 0 || idx >= len(tr.tokens) || tr.tokens[idx].kind != tIdent {
+		return false
+	}
+	return tr.colTypes[lowerFast(tr.tokens[idx].val)] == metadata.FieldTypeString
+}
+
 func (tr *translator) dateFieldAt(idx int) bool {
 	if idx < 0 || idx >= len(tr.tokens) || tr.tokens[idx].kind != tIdent {
 		return false
@@ -5221,6 +5312,8 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				tr.emit(tr.addSQLiteDateParam(t.val))
 			} else if emptyStringAgainstRef(dialectOrDefault(tr.opts.Dialect), tr.paramValues[t.val], tr.parts, tr.refVTFields) {
 				tr.emit("NULL")
+			} else if tr.uuidParamComparedToStringField(tr.pos - 1) {
+				tr.emit(tr.addTextParam(t.val))
 			} else {
 				tr.emit(tr.addParam(t.val))
 			}
@@ -6203,12 +6296,12 @@ func pgCast(v any) string {
 	case time.Time:
 		return "::timestamptz"
 	case string:
-		// Строка, похожая на UUID, — без приведения: PostgreSQL выводит тип
-		// параметра из колонки сравнения. «::uuid» ломал сравнение со строковым
-		// полем, где лежит UUID («text = uuid», ivanarama/onebase#1981), а у
-		// ссылочной колонки тип выводится тот же uuid.
+		// Строка, похожая на UUID, — ссылка. Приведение нужно: без него
+		// «(&Склад ЕСТЬ ПУСТО ИЛИ …)» не типизируется («could not determine
+		// data type of parameter»). Сравнение со строковым полем — отдельно,
+		// см. uuidParamComparedToStringField.
 		if isUUID(v) {
-			return ""
+			return "::uuid"
 		}
 		return "::text"
 	case float64, float32, decimal.Decimal:
