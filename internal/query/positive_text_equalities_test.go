@@ -159,7 +159,11 @@ func TestPositiveTextEqualityPreservesRows(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer tx.Rollback(txCtx)
+			defer func() {
+				if err := tx.Rollback(txCtx); err != nil {
+					t.Errorf("rollback EXPLAIN transaction: %v", err)
+				}
+			}()
 			prefix := "EXPLAIN QUERY PLAN "
 			if db.Dialect().Name() == "postgres" {
 				prefix = "EXPLAIN "
