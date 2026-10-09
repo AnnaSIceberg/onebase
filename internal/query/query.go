@@ -810,6 +810,78 @@ func (tr *translator) standaloneSelectItem(from, to int) bool {
 	return false
 }
 
+// emitGroupingPresentation дописывает к группировке по ссылке основного
+// источника («СГРУППИРОВАТЬ ПО Д.Склад» → «д.склад_id») её представление.
+// В списке выборки и в «УПОРЯДОЧИТЬ ПО Склад» та же ссылка читается
+// наименованием из авто-JOIN, и SQLite это прощал, а PostgreSQL отвергал
+// весь запрос: «column "ref_склад.наименование" must appear in the GROUP BY
+// clause». Группы от этого не меняются: представление однозначно определено
+// идентификатором, по которому присоединена строка.
+func (tr *translator) emitGroupingPresentation(rd *refDimInfo) {
+	from, to := tr.pos-3, tr.pos
+	if tr.section != sectionGroupBy || from < 1 || lowerFast(tr.tokens[from].val) != tr.mainTable ||
+		!tr.standaloneGroupItem(from, to) {
+		return
+	}
+	tr.emit(",")
+	tr.emit(rd.displayCol())
+}
+
+// standaloneGroupItem — токены [from, to) составляют целый элемент списка
+// СГРУППИРОВАТЬ ПО, а не аргумент функции или часть выражения: перед ними
+// «ПО» или запятая списка на той же глубине скобок, после — запятая, конец
+// вложенного запроса или следующее предложение.
+func (tr *translator) standaloneGroupItem(from, to int) bool {
+	toks := tr.tokens
+	if from < 1 || to > len(toks) {
+		return false
+	}
+	nesting := 0
+	for i := from - 1; i >= 0; i-- {
+		t := toks[i]
+		switch t.kind {
+		case tRParen:
+			nesting++
+			continue
+		case tLParen:
+			if nesting == 0 {
+				return false
+			}
+			nesting--
+			continue
+		}
+		if nesting > 0 {
+			continue
+		}
+		if i == from-1 && t.kind != tComma && !(t.kind == tIdent && isGroupByWord(t.val)) {
+			return false
+		}
+		if t.kind == tIdent && isGroupByWord(t.val) {
+			break
+		}
+		if i == 0 {
+			return false
+		}
+	}
+	next := tok{kind: tEOF}
+	if to < len(toks) {
+		next = toks[to]
+	}
+	switch next.kind {
+	case tComma, tRParen, tEOF:
+		return true
+	case tIdent:
+		kw, ok := sqlKW(next.val)
+		return ok && (kw == "HAVING" || kw == "ORDER" || kw == "UNION")
+	}
+	return false
+}
+
+func isGroupByWord(s string) bool {
+	u := upperFast(s)
+	return u == "ПО" || u == "BY"
+}
+
 // transparentSelectItem расширяет простой путь до окружающих его скобок.
 // Целый элемент SELECT нужен и при разрешении проекции, и при эмиссии AS:
 // скобки функции или составного выражения не становятся частью простого пути.
@@ -5444,6 +5516,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 						} else {
 							tr.emit(rd.idCol)
 							tr.emitDerivedReferenceAlias(rd.idCol, lower)
+							tr.emitGroupingPresentation(rd)
 						}
 					} else if c, ok2 := tr.colMap[lower]; ok2 {
 						tr.emitQualifiedColumn(c, lower)
