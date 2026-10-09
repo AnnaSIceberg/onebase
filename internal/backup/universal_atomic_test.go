@@ -130,7 +130,7 @@ func TestImportUniversalReplacesCompleteSnapshot(t *testing.T) {
 func TestImportUniversalLateFailureRollsBackDatabaseAndFiles(t *testing.T) {
 	ctx := context.Background()
 	archive := buildUniversalAtomicFixture(t, map[string]string{
-		"META.txt":            "onebase_full_export\nversion=2\nformat=universal\nhas_exchange_state=false\n",
+		"META.txt": "onebase_full_export\nversion=2\nformat=universal\nhas_exchange_state=false\n",
 		// Таблица есть, но строк в архиве меньше, чем требует манифест: поздняя
 		// ошибка сверки. (Таблица, которой нет в схеме, теперь пропускается и
 		// попадает в ImportReport.SkippedTables — сбоем она больше не служит.)
