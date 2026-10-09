@@ -5,6 +5,3 @@ titles:
 params:
   - name: Номер
     type: string
-    title: Номер наряда
-    titles:
-      en: Work order number

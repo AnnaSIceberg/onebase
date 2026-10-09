@@ -74,7 +74,7 @@ func TestAddressExample_SavePrintAndExchange(t *testing.T) {
 				}
 				return rec
 			}
-			rec := save("/ui/document/Наряд/new")
+			save("/ui/document/Наряд/new")
 			rows, err := db.List(ctx, "Наряд", proj.Entities[0], storage.ListParams{})
 			if err != nil {
 				t.Fatal(err)
@@ -117,7 +117,7 @@ func TestAddressExample_SavePrintAndExchange(t *testing.T) {
 			}
 			id := row["id"].(string)
 			target := "/ui/document/Наряд/" + id + "/print/НарядНаВыезд"
-			rec = httptest.NewRecorder()
+			rec := httptest.NewRecorder()
 			router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
 			if rec.Code != http.StatusOK {
 				t.Fatalf("print: %d %s", rec.Code, rec.Body.String())
