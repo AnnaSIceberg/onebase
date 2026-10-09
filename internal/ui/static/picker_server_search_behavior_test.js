@@ -691,3 +691,39 @@ test('при серверном поиске отборы переживают �
   ctx.open({columns: masterColumns, rows: masterRows, config}, 'КнВыбратьМастера', null);
   assert.equal(filterSelect(ctx, 'Филиал').value, '', 'закрытое окно передало отбор следующему');
 });
+
+for (const phase of ['debounce', 'in-flight', 'pending', 'newer-debounce', 'failed']) {
+  test('ОдинВыбор: Enter ждёт актуальную серверную выдачу — ' + phase, () => {
+    const ctx = pickerContext();
+    const config = {single: true, serverSearch: true};
+    const payload = (row) => ({columns: masterColumns, rows: [row], config});
+    const picker = ctx.open(payload(masterRows[0]), 'КнВыбратьМастера', null);
+    key(picker.search, 'ArrowDown'); // Ранее отмеченный Смирнов тоже не должен уйти.
+    picker.search.value = 'Петров';
+    picker.search.dispatch('input');
+    if (phase !== 'debounce') ctx.flush();
+    if (phase === 'pending' || phase === 'newer-debounce') {
+      picker.search.value = 'Сидоров';
+      picker.search.dispatch('input');
+      if (phase === 'pending') ctx.flush();
+      // Приходит Петров, но поле поиска уже содержит Сидоров.
+      ctx.respond(payload(masterRows[2]), 'КнВыбратьМастера', null);
+    }
+    if (phase === 'failed') {
+      ctx.window.obPickerSearchFinished(ctx.fired[0].request);
+      assert.equal(ctx.state().inFlight, null);
+    }
+    key(ctx.search(), 'Enter');
+    assert.ok(ctx.modal(), 'Enter закрыл диалог до актуального ответа');
+    assert.equal(ctx.fired.filter((f) => f.event === 'Выбор').length, 0, 'ушла устаревшая строка');
+
+    // Точный актуальный ответ разрешает обычный Enter; после ошибки — повтор поиска.
+    if (phase === 'failed') ctx.search().dispatch('input');
+    ctx.flush();
+    const row = phase === 'pending' || phase === 'newer-debounce' ? masterRows[3] : masterRows[2];
+    ctx.respond(payload(row), 'КнВыбратьМастера', null);
+    key(ctx.search(), 'Enter');
+    assert.deepEqual(picked(ctx), [row.id]);
+    assert.equal(ctx.modal(), null);
+  });
+}

@@ -3564,6 +3564,7 @@ var obPickerSearch = {
   element: '',     // элемент, чей диалог открыт; пусто — диалога нет
   context: null,   // контекст события, с которым диалог открыли
   query: '',       // что набрано в строке поиска
+  appliedQuery: '', // запрос, которому соответствует показанная выдача
   timer: null,     // таймер debounce
   inFlight: null,  // конкретный запрос отправлен, ответ ещё не применён
   pending: null,   // запрос, набранный пока предыдущий в пути (строка) либо null
@@ -3582,6 +3583,7 @@ function obPickerForget() {
   obPickerSearch.element = '';
   obPickerSearch.context = null;
   obPickerSearch.query = '';
+  obPickerSearch.appliedQuery = '';
   obPickerSearch.picked = {};
   obPickerSearch.order = [];
   obPickerSearch.filters = {};
@@ -3609,7 +3611,7 @@ function obPickerSendSearch(q) {
   if (obPickerSearch.inFlight) { obPickerSearch.pending = q; return; }
   if (!document.getElementById('_item-picker-modal')) { obPickerForget(); return; }
   if (typeof obFire !== 'function') return;
-  var request = {generation: obPickerSearch.generation, search: true};
+  var request = {generation: obPickerSearch.generation, search: true, query: q};
   obPickerSearch.inFlight = request;
   var params = {};
   var ctx = obPickerSearch.context;
@@ -3646,6 +3648,7 @@ function obPickerFirePending() {
 // ответ на новый запрос.
 window.obPickerSearchEmpty = function (request) {
   if (!request || !request.search || !obPickerSearchApplied(request)) return;
+  obPickerSearch.appliedQuery = null;
   var modal = document.getElementById('_item-picker-modal');
   var tb = modal ? modal.querySelector('tbody') : null;
   if (!tb) { obPickerFirePending(); return; }
@@ -3708,6 +3711,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
       obPickerSearch.order = [];
       obPickerSearch.filters = {};
     }
+    obPickerSearch.appliedQuery = searchResponse ? request.query : '';
     obPickerSearch.element = elementName;
     obPickerSearch.context = eventContext || null;
     search.value = obPickerSearch.query;
@@ -4042,6 +4046,10 @@ function openItemPicker(payload, elementName, eventContext, request) {
     var key = e.key;
     if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'Enter') return;
     if (e.preventDefault) e.preventDefault();
+    // Поле уже изменилось, а строки могут быть от предыдущего запроса —
+    // включая ошибку поиска, после которой inFlight уже освобождён.
+    if (serverSearch && (obPickerSearch.timer || obPickerSearch.inFlight ||
+        obPickerSearch.pending !== null || search.value !== obPickerSearch.appliedQuery)) return;
     var visible = Array.prototype.filter.call(tbody.rows, function (tr) { return tr.style.display !== 'none'; });
     if (!visible.length) return;
     var at = -1;

@@ -62,6 +62,16 @@ func TestPicker_FiltersFromArray(t *testing.T) {
 	}
 }
 
+func TestPicker_FiltersFromEmptyArray(t *testing.T) {
+	resp := pickerFiltersResponse(t, `Конфиг.Вставить("Отборы", Новый Массив);`)
+	if resp.PickerData == nil || resp.Error != "" {
+		t.Fatalf("пустой Массив должен открыть подбор; error=%q", resp.Error)
+	}
+	if len(resp.PickerData.Config.Filters) != 0 {
+		t.Errorf("пустой Массив создал отборы: %v", resp.PickerData.Config.Filters)
+	}
+}
+
 func TestPicker_NoFiltersByDefault(t *testing.T) {
 	resp := pickerFiltersResponse(t, "")
 	if resp.PickerData == nil {

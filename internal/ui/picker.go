@@ -156,11 +156,13 @@ func pickerFilters(v any, cols []pickerColumn) ([]string, error) {
 		return nil, nil
 	}
 	var names []string
-	if items := iterateAny(v); items != nil {
-		for _, it := range items {
+	// Пустой Массив имеет nil-срез элементов, но остаётся коллекцией.
+	switch v.(type) {
+	case *interpreter.Array, []any:
+		for _, it := range iterateAny(v) {
 			names = append(names, pickStr(it))
 		}
-	} else {
+	default:
 		names = strings.Split(pickStr(v), ",")
 	}
 	var out []string
