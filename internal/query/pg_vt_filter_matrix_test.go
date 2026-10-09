@@ -22,6 +22,10 @@ import (
 // «склад» (псевдоним списка SELECT): SQLite видит псевдонимы в WHERE и прощал,
 // PostgreSQL падал «column "склад" does not exist».
 //
+// Группировка по ссылке «СГРУППИРОВАТЬ ПО Д.Склад» шла по одному «склад_id»,
+// а сортировка «УПОРЯДОЧИТЬ ПО Склад» — по наименованию из авто-JOIN: SQLite
+// прощал, PostgreSQL требовал наименование в GROUP BY.
+//
 // Там же — строковое поле, в котором лежит UUID (реестр соответствий внешней
 // системе): параметр-строку, похожую на UUID, платформа слала как «::uuid», и
 // PostgreSQL не сравнивал «text = uuid» (#1981).
@@ -148,6 +152,15 @@ func TestVirtualTableRefFilterAndUUIDStringMatrix(t *testing.T) {
 				want:   nil,
 			},
 			{
+				// УПОРЯДОЧИТЬ ПО Склад сортирует по наименованию из авто-JOIN, а
+				// группировка по Д.Склад шла только по «склад_id»: PostgreSQL
+				// отвергал запрос («must appear in the GROUP BY clause»).
+				name:   "группировка по ссылке с сортировкой по её представлению",
+				src:    `ВЫБРАТЬ СУММА(Д.Количество) КАК Метка, Д.Склад КАК Место ИЗ РегистрНакопления.ОстаткиВТО КАК Д СГРУППИРОВАТЬ ПО Д.Склад УПОРЯДОЧИТЬ ПО Склад`,
+				params: map[string]any{},
+				want:   []string{"2:" + otherID.String(), "5:" + mainID.String()},
+			},
+			{
 				name:   "пустая строка против строкового поля — по-прежнему находит пустое",
 				src:    `ВЫБРАТЬ Р.ГУИДВнешний КАК Метка, Р.Объект КАК Место ИЗ РегистрСведений.РеестрВТО КАК Р ГДЕ Р.Объект = &Пусто`,
 				params: map[string]any{"Пусто": ""},
@@ -174,7 +187,7 @@ func TestVirtualTableRefFilterAndUUIDStringMatrix(t *testing.T) {
 				for _, r := range rows {
 					got = append(got, vtoLabel(r["метка"])+":"+vtoLabel(r["место"]))
 				}
-				if len(got) != len(tc.want) || (len(got) > 0 && got[0] != tc.want[0]) {
+				if strings.Join(got, "|") != strings.Join(tc.want, "|") {
 					t.Fatalf("строки %v, ожидалось %v\nSQL: %s", got, tc.want, res.SQL)
 				}
 			})
