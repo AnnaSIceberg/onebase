@@ -780,7 +780,9 @@ func (h *handler) startResult(r *http.Request, b *Base, result map[string]any) m
 		resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/healthz", b.Port))
 		if err == nil {
 			current = resp.Header.Get("X-OneBase-Version")
-			closeRead("ответ версии базы", resp.Body)
+			if err := resp.Body.Close(); err != nil {
+				respondLog().Debug("не удалось закрыть ответ версии базы", "err", err)
+			}
 		}
 	}
 	if warning := version.MinimumWarningFor(current, cfg.MinEngineVersion); warning != nil {

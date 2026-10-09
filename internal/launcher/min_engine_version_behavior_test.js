@@ -3,8 +3,24 @@ const fs = require('node:fs');
 const test = require('node:test');
 const vm = require('node:vm');
 const html = fs.readFileSync(process.env.ONEBASE_START_ERROR_HTML, 'utf8');
-const start = html.slice(html.indexOf('function startBase(el, id)'), html.indexOf('// Esc закрывает'));
-const isolated = html.slice(html.indexOf('function startIsolated('), html.indexOf('function cleanProfiles('));
+// html/template removes JavaScript comments. Bound each fragment by the
+// rendered script element and, when needed, the next function declaration.
+function scriptFrom(startMarker, endMarker) {
+  const start = html.indexOf(startMarker);
+  assert.ok(start >= 0, `missing script start: ${startMarker}`);
+  const scriptStart = html.lastIndexOf('<script>', start);
+  const previousScriptEnd = html.lastIndexOf('</script>', start);
+  assert.ok(scriptStart >= 0 && scriptStart > previousScriptEnd,
+    `script start is outside a script element: ${startMarker}`);
+  const scriptEnd = html.indexOf('</script>', start);
+  assert.ok(scriptEnd > start, `missing script end: ${startMarker}`);
+  const end = endMarker ? html.indexOf(endMarker, start) : scriptEnd;
+  assert.ok(end > start && end <= scriptEnd,
+    `missing or out-of-script boundary: ${endMarker || '</script>'}`);
+  return html.slice(start, end);
+}
+const start = scriptFrom('function startBase(el, id)');
+const isolated = scriptFrom('function startIsolated(', 'function cleanProfiles(');
 for (const mode of ['startBase', 'startBaseNative', 'startIsolated']) {
   for (const warning of [false, true]) {
     test(`${mode}: successful launch returns to ${warning ? 'warning banner' : 'base list'}`, async () => {
@@ -15,7 +31,7 @@ for (const mode of ['startBase', 'startBaseNative', 'startIsolated']) {
       const context = {
         _nativeOK: false,
         window: launcherWindow,
-        document: {getElementById() { return null; }},
+        document: {getElementById() { return null; }, addEventListener() {}},
         suppressEvent() {}, startButton() { return null; }, setStartButtonHTML() {},
         setTimeout(fn) { fn(); }, fetch() { return Promise.resolve({json: () => Promise.resolve(result)}); },
         showStartError() { throw new Error('warning became a startup error'); },
