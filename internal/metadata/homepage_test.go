@@ -190,4 +190,3 @@ nav_by_role:
 		t.Error("роль не из nav_by_role — должен действовать общий nav")
 	}
 }
-
