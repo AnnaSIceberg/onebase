@@ -3503,8 +3503,7 @@ func (tr *translator) uuidParamComparedToStringField(idx int) bool {
 	if field+2 < len(tr.tokens) && tr.tokens[field+1].kind == tDot {
 		// Только основной источник области: colTypes описывает его поля.
 		q := lowerFast(tr.tokens[field].val)
-		if scope, ok := tr.sourceCtx.scopeAt(field); !ok || q != scope.mainTable ||
-			tr.sourceCtx.isDerivedQualifierAt(field, q) {
+		if scope, ok := tr.sourceCtx.scopeAt(field); !ok || q != scope.mainTable {
 			return false
 		}
 		field += 2
