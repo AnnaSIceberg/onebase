@@ -28,7 +28,8 @@ import (
 //
 // Там же — строковое поле, в котором лежит UUID (реестр соответствий внешней
 // системе): параметр-строку, похожую на UUID, платформа слала как «::uuid», и
-// PostgreSQL не сравнивал «text = uuid» (#1981).
+// PostgreSQL не сравнивал «text = uuid» (#1981). Приведение «::uuid» при этом
+// нужно остальным местам: без него «(&Склад ЕСТЬ ПУСТО ИЛИ …)» не типизируется.
 func TestVirtualTableRefFilterAndUUIDStringMatrix(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
@@ -140,6 +141,21 @@ func TestVirtualTableRefFilterAndUUIDStringMatrix(t *testing.T) {
 				src:    `ВЫБРАТЬ Р.ГУИДВнешний КАК Метка, Р.Объект КАК Место ИЗ РегистрСведений.РеестрВТО КАК Р ГДЕ Р.Объект = &Объект`,
 				params: map[string]any{"Объект": itemID.String()},
 				want:   []string{"ext-1:" + itemID.String()},
+			},
+			{
+				name:   "параметр-UUID первым против строкового поля (#1981)",
+				src:    `ВЫБРАТЬ Р.ГУИДВнешний КАК Метка, Р.Объект КАК Место ИЗ РегистрСведений.РеестрВТО КАК Р ГДЕ &Объект = Р.Объект`,
+				params: map[string]any{"Объект": itemID.String()},
+				want:   []string{"ext-1:" + itemID.String()},
+			},
+			{
+				// Без приведения PostgreSQL не типизирует «$1 IS NULL»: «could not
+				// determine data type of parameter» — так падали все отчёты с
+				// необязательным отбором по ссылке.
+				name:   "необязательный отбор по ссылке: (&Склад ЕСТЬ ПУСТО ИЛИ Д.Склад = &Склад)",
+				src:    `ВЫБРАТЬ СУММА(Д.Количество) КАК Метка, Д.Склад КАК Место ИЗ РегистрНакопления.ОстаткиВТО КАК Д ГДЕ (&Склад ЕСТЬ ПУСТО ИЛИ Д.Склад = &Склад) СГРУППИРОВАТЬ ПО Д.Склад`,
+				params: map[string]any{"Склад": mainID.String()},
+				want:   []string{"5:" + mainID.String()},
 			},
 			{
 				name:   "строковое поле с UUID против списка UUID (#1981)",
