@@ -666,8 +666,17 @@ func (rd refDimInfo) displayCol() string {
 // идентификатором, по которому присоединена строка.
 func (tr *translator) emitGroupingPresentation(rd *refDimInfo) {
 	from, to := tr.pos-3, tr.pos
-	if tr.section != sectionGroupBy || from < 1 || lowerFast(tr.tokens[from].val) != tr.mainTable ||
-		!tr.standaloneGroupItem(from, to) {
+	if tr.section != sectionGroupBy || from < 1 || !tr.standaloneGroupItem(from, to) {
+		return
+	}
+	// Только в той области SELECT, где выпущены авто-JOIN, и только для её
+	// основного источника: бегущий tr.mainTable к этому месту может указывать
+	// на источник подзапроса из ЛЕВОЕ СОЕДИНЕНИЕ (…).
+	scopeID, ok := tr.sourceCtx.scopeIDAt(from)
+	if !ok || !tr.refJoinScopeSet || scopeID != tr.refJoinScope {
+		return
+	}
+	if scope, ok := tr.sourceCtx.scopeAt(from); !ok || lowerFast(tr.tokens[from].val) != scope.mainTable {
 		return
 	}
 	tr.emit(",")
@@ -757,6 +766,10 @@ type translator struct {
 	unionOrders  map[int]bool                  // ORDER BY относится ко всему UNION, алиасы таблиц там недоступны
 	refCols      map[string]string             // колонка вывода (lower) → сущность, на которую она ссылается (#1150)
 	mainRef      mainRefSource                 // главный источник запроса: чья ссылка стоит за голым «Ссылка»
+
+	// refJoinScope — область SELECT, где выпущены авто-JOIN ссылочных полей.
+	refJoinScope    int
+	refJoinScopeSet bool
 }
 
 // mainRefSource — предсканированный главный источник запроса: имя сущности и
@@ -4632,6 +4645,11 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					return Result{}, err
 				}
 			}
+			if tr.section == sectionFrom && isMain && len(tr.refDims) > 0 {
+				if id, ok := tr.sourceCtx.scopeIDAt(tr.pos - 1); ok {
+					tr.refJoinScope, tr.refJoinScopeSet = id, true
+				}
+			}
 			if tr.section == sectionFrom && isMain {
 				// ON ссылается на источник через tr.mainTable: это имя таблицы
 				// либо её алиас (КАК р). Использование сырого tableName при
@@ -4920,6 +4938,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				} else if prevDot {
 					if col, ok := tr.joinedSourceColumn(tr.pos-1, lower); ok && !nextIsDot {
 						tr.emitQualifiedColumn(col, lower)
+						if rd := tr.findRefDim(lower); rd != nil && col == rd.idCol {
+							tr.emitGroupingPresentation(rd)
+						}
 					} else if rd := tr.findRefDim(lower); rd != nil {
 						// Двухуровневая навигация: Источник.Ссылка.Реквизит.
 						// LEFT JOIN на связанную таблицу к этому моменту уже

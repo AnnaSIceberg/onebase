@@ -41,7 +41,8 @@ func TestVirtualTableRefFilterAndUUIDStringMatrix(t *testing.T) {
 		item := &metadata.Entity{Name: "ТоварВТО", Kind: metadata.KindCatalog, Fields: []metadata.Field{str("Наименование")}}
 		kind := &metadata.Entity{Name: "ТипЦенВТО", Kind: metadata.KindCatalog, Fields: []metadata.Field{str("Наименование")}}
 		doc := &metadata.Entity{Name: "ПриходВТО", Kind: metadata.KindDocument, Fields: []metadata.Field{str("Номер")}}
-		entities := []*metadata.Entity{store, item, kind, doc}
+		master := &metadata.Entity{Name: "МастерВТО", Kind: metadata.KindCatalog, Fields: []metadata.Field{str("Наименование")}}
+		entities := []*metadata.Entity{store, item, kind, doc, master}
 		reg := &metadata.Register{
 			Name:       "ОстаткиВТО",
 			Dimensions: []metadata.Field{ref("Склад", store.Name), ref("Номенклатура", item.Name)},
@@ -79,6 +80,7 @@ func TestVirtualTableRefFilterAndUUIDStringMatrix(t *testing.T) {
 			{kind, retailID, map[string]any{"Наименование": "Розничная"}},
 			{kind, masterID, map[string]any{"Наименование": "Мастера"}},
 			{doc, docID, map[string]any{"Номер": "П-1"}},
+			{master, uuid.New(), map[string]any{"Наименование": "Иванов"}},
 		} {
 			if err := db.Upsert(ctx, row.e.Name, row.id, row.f, row.e); err != nil {
 				t.Fatal(err)
@@ -157,6 +159,17 @@ func TestVirtualTableRefFilterAndUUIDStringMatrix(t *testing.T) {
 				// отвергал запрос («must appear in the GROUP BY clause»).
 				name:   "группировка по ссылке с сортировкой по её представлению",
 				src:    `ВЫБРАТЬ СУММА(Д.Количество) КАК Метка, Д.Склад КАК Место ИЗ РегистрНакопления.ОстаткиВТО КАК Д СГРУППИРОВАТЬ ПО Д.Склад УПОРЯДОЧИТЬ ПО Склад`,
+				params: map[string]any{},
+				want:   []string{"2:" + otherID.String(), "5:" + mainID.String()},
+			},
+			{
+				// Как в отчётах: подзапрос в соединении стоит между FROM и
+				// группировкой, основной источник берётся из области SELECT.
+				name: "группировка по ссылке рядом с подзапросом в соединении",
+				src: `ВЫБРАТЬ СУММА(Д.Количество) КАК Метка, Д.Склад КАК Место ИЗ РегистрНакопления.ОстаткиВТО КАК Д
+					ЛЕВОЕ СОЕДИНЕНИЕ (ВЫБРАТЬ РАЗЛИЧНЫЕ СМ.Наименование КАК Имя ИЗ Справочник.МастерВТО КАК СМ) КАК М
+					ПО М.Имя = "Петров"
+					ГДЕ М.Имя ЕСТЬ NULL СГРУППИРОВАТЬ ПО Д.Склад УПОРЯДОЧИТЬ ПО Склад`,
 				params: map[string]any{},
 				want:   []string{"2:" + otherID.String(), "5:" + mainID.String()},
 			},
