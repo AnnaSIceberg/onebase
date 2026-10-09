@@ -113,8 +113,10 @@ func TestCompile_WithUUIDParam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(r.SQL, "::uuid") {
-		t.Errorf("expected ::uuid cast for UUID param, got: %s", r.SQL)
+	// Без приведения: тип параметра PostgreSQL выводит из колонки сравнения.
+	// «::uuid» ломал сравнение со строковым полем, где лежит UUID (#1981).
+	if strings.Contains(r.SQL, "::uuid") {
+		t.Errorf("UUID-строка не должна приводиться к uuid, got: %s", r.SQL)
 	}
 	if len(r.Args) != 1 || r.Args[0] != "4e582af9-cd26-4af0-a244-d282e02a5603" {
 		t.Errorf("expected UUID arg, got %v", r.Args)
