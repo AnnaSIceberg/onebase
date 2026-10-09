@@ -181,6 +181,9 @@ func BuildSchemaDB(proj *project.Project) (*storage.DB, func(), error) {
 	}
 	closer := func() { db.Close(); oblog.RemoveQuiet("configcheck", path) }
 	steps := []func() error{
+		// System user references need the same auth schema as a running base.
+		// Create it before application tables, without seeding any user accounts.
+		func() error { return auth.NewRepo(db).EnsureSchema(ctx) },
 		func() error { return db.Migrate(ctx, proj.Entities) },
 		func() error { return db.MigrateRegisters(ctx, proj.Registers) },
 		func() error { return db.MigrateInfoRegisters(ctx, proj.InfoRegisters) },
