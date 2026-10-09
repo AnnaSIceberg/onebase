@@ -810,6 +810,17 @@ func (tr *translator) standaloneSelectItem(from, to int) bool {
 	return false
 }
 
+// transparentSelectItem расширяет простой путь до окружающих его скобок.
+// Целый элемент SELECT нужен и при разрешении проекции, и при эмиссии AS:
+// скобки функции или составного выражения не становятся частью простого пути.
+func (tr *translator) transparentSelectItem(from, to int) (int, int, bool) {
+	for from > 0 && to < len(tr.tokens) && tr.tokens[from-1].kind == tLParen && tr.tokens[to].kind == tRParen {
+		from--
+		to++
+	}
+	return from, to, tr.standaloneSelectItem(from, to)
+}
+
 type translator struct {
 	tokens       []tok
 	pos          int
@@ -836,6 +847,7 @@ type translator struct {
 	unionDepths  map[int]bool                  // глубины SELECT с UNION для compound ORDER BY
 	unionOrders  map[int]bool                  // ORDER BY относится ко всему UNION, алиасы таблиц там недоступны
 	refCols      map[string]string             // колонка вывода (lower) → сущность, на которую она ссылается (#1150)
+	derivedAs    map[int]string                // позиция закрывающей скобки → отложенный AS простой ссылки
 	mainRef      mainRefSource                 // главный источник запроса: чья ссылка стоит за голым «Ссылка»
 }
 
@@ -982,10 +994,6 @@ func (ctx sourceContext) derivedOutputColumn(tokens []tok, scopeID int, name str
 		if !ok || id != scopeID || ctx.sectionAt(i) != sectionSelect {
 			continue
 		}
-		depth := ctx.selectDepthAt(tokens, i)
-		if ctx.tokenDepth[i] != depth {
-			continue
-		}
 		if token.kind == tIdent && strings.EqualFold(token.val, name) {
 			start := i
 			for start >= 2 && tokens[start-1].kind == tDot && tokens[start-2].kind == tIdent {
@@ -993,10 +1001,16 @@ func (ctx sourceContext) derivedOutputColumn(tokens []tok, scopeID int, name str
 			}
 			// При КАК экспортируется алиас, уже учтённый в outputAliases,
 			// а не исходное имя поля. Его может экспортировать звёздочка.
-			kw, _ := sqlKW(tokens[i+1].val)
-			if kw != "AS" && projection.standaloneSelectItem(start, i+1) {
-				return name
+			_, end, whole := projection.transparentSelectItem(start, i+1)
+			if whole {
+				kw, _ := sqlKW(tokens[end].val)
+				if kw != "AS" {
+					return name
+				}
 			}
+		}
+		if ctx.tokenDepth[i] != ctx.selectDepthAt(tokens, i) {
+			continue
 		}
 		if token.kind == tStar {
 			if i >= 2 && tokens[i-1].kind == tDot && tokens[i-2].kind == tIdent {
@@ -3821,7 +3835,8 @@ func (tr *translator) emitQualifiedColumn(col, lower string) {
 // emitDerivedReferenceAlias сохраняет логическое имя простой ссылочной
 // проекции производной таблицы. Без КАК SQL называет её физической колонкой
 // *_id, тогда как внешний SELECT обращается к логическому имени поля.
-// Явные алиасы, выражения и проекции вне FROM/JOIN-подзапросов не меняются.
+// Прозрачные скобки получают AS после всего выражения. Явные алиасы,
+// составные выражения и проекции вне FROM/JOIN-подзапросов не меняются.
 func (tr *translator) emitDerivedReferenceAlias(col, lower string) {
 	if col == lower || !strings.HasSuffix(col, "_id") {
 		return
@@ -3831,14 +3846,22 @@ func (tr *translator) emitDerivedReferenceAlias(col, lower string) {
 	if !ok || !tr.sourceCtx.scopes[scope.unionFirst].derivedProjection {
 		return
 	}
-	if kw, ok := sqlKW(tr.peek(0).val); ok && kw == "AS" {
-		return
-	}
 	start := pos
 	for start >= 2 && tr.tokens[start-1].kind == tDot && tr.tokens[start-2].kind == tIdent {
 		start -= 2
 	}
-	if !tr.standaloneSelectItem(start, tr.pos) {
+	_, end, whole := tr.transparentSelectItem(start, tr.pos)
+	if !whole {
+		return
+	}
+	if kw, ok := sqlKW(tr.tokens[end].val); ok && kw == "AS" {
+		return
+	}
+	if end > tr.pos {
+		if tr.derivedAs == nil {
+			tr.derivedAs = map[int]string{}
+		}
+		tr.derivedAs[end-1] = lower
 		return
 	}
 	tr.emit("AS")
@@ -5018,6 +5041,11 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			}
 			tr.advance()
 			tr.emit(t.val)
+			if alias, ok := tr.derivedAs[tr.pos-1]; ok {
+				tr.emit("AS")
+				tr.emit(alias)
+				delete(tr.derivedAs, tr.pos-1)
+			}
 			continue
 		}
 
