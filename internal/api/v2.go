@@ -399,7 +399,7 @@ func (h *handler) runReportV2() http.HandlerFunc {
 		if limit > restMaxLimit {
 			limit = restMaxLimit
 		}
-		params, err := reportParamsFromQuery(r.URL.Query(), rep)
+		params, err := reportParamsFromQuery(r.URL.Query(), rep, scheduler.NewConstantResolver(r.Context(), h.store, h.reg))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
 			return
@@ -646,7 +646,7 @@ func totalPages(total, limit int) int {
 	return (total + limit - 1) / limit
 }
 
-func reportParamsFromQuery(q url.Values, rep *reportpkg.Report) (map[string]any, error) {
+func reportParamsFromQuery(q url.Values, rep *reportpkg.Report, res scheduler.ConstantResolver) (map[string]any, error) {
 	params := make(map[string]any, len(rep.Params))
 	for _, p := range rep.Params {
 		raw := q.Get(p.Name)
@@ -657,7 +657,11 @@ func reportParamsFromQuery(q url.Values, rep *reportpkg.Report) (map[string]any,
 			// необязательной датой приходит пустым, потому что «Срок < NULL» не
 			// выбирает ничего. Явно переданное пустое значение — выбор клиента,
 			// его умолчание не перебивает.
-			raw = scheduler.ResolveParamTemplateText(p.Default, p.Type)
+			d, derr := scheduler.ResolveParamTemplateText(p.Default, p.Type, res)
+			if derr != nil {
+				return nil, derr
+			}
+			raw = d
 		}
 		v, err := reportpkg.ParseParamValue(raw, p, reportpkg.ParamParseAPI)
 		if err != nil {
@@ -1249,6 +1253,14 @@ func reportParamOpenAPISchema(p reportpkg.Param) map[string]any {
 	switch strings.ToLower(p.Type) {
 	case "date":
 		return map[string]any{"type": "string", "format": "date"}
+	case "datetime":
+		return map[string]any{
+			"type": "string",
+			"description": "Local date and time in the server's local time zone, without a time zone suffix: " +
+				"YYYY-MM-DDTHH:MM[:SS] (for example, 2026-09-28T12:30 or 2026-09-28T12:30:41). " +
+				"A date alone, YYYY-MM-DD (for example, 2026-09-28), is also accepted and interpreted as midnight.",
+			"example": "2026-09-28T12:30:41",
+		}
 	case "number":
 		return map[string]any{"type": "number"}
 	case "bool", "boolean":

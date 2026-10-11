@@ -72,7 +72,7 @@ type formInfo struct {
 // (чекбоксы панели свойств шлют "true"/"" — пишем в YAML булев скаляр, не строку).
 var boolProps = map[string]bool{
 	"required": true, "readonly": true, "choice": true,
-	"visible": true, "enabled": true, "no_grid": true, "auto_sum": true,
+	"visible": true, "enabled": true, "no_grid": true, "auto_sum": true, "equal_columns": true,
 	// Кнопка «Открыть карточку»: у поля и у формы (#1876).
 	"ref_card_button": true, "ref_card_button_admin_only": true,
 }
