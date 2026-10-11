@@ -187,7 +187,7 @@ func TestRefOptionsChoiceTablePart(t *testing.T) {
 // Колонка ТЧ под полевой политикой или ПДн: выдача и total отвечали бы на
 // вопрос «есть ли у бренда строка с этим направлением», поэтому условие
 // закрывается так же, как у замаскированного реквизита шапки. Явное read: full
-// открывает, администратору маска не применяется.
+// открывает; администратору маска не применяется по умолчанию, при mask_admin=false.
 func TestRefOptionsChoiceTablePartProtectedColumnIsClosed(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		for _, tc := range []struct {
