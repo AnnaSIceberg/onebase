@@ -66,7 +66,6 @@ func RunFullWithOptions(dir string, opts Options) Result {
 		issues = append(issues, CheckFormChoiceFolders(proj)...)
 		issues = append(issues, CheckFormVirtualColumns(proj)...)
 		issues = append(issues, CheckFormTablePartColumns(proj)...)
-		issues = append(issues, CheckFormChoiceFilter(proj)...)
 		issues = append(issues, CheckReportOutputFormat(proj)...)
 		roles, rolesErr := auth.LoadRolesYAML(filepath.Join(dir, "roles"))
 		if rolesErr != nil && !AlreadyReported(issues, rolesErr.Error()) {
@@ -80,6 +79,7 @@ func RunFullWithOptions(dir string, opts Options) Result {
 		warnings = append(warnings, CheckFormLayout(proj)...)
 		warnings = append(warnings, CheckFormKeyPlacement(proj)...)
 		warnings = append(warnings, CheckFormProps(proj)...)
+		warnings = append(warnings, CheckFormReadonlyConflict(proj)...)
 		warnings = append(warnings, CheckFormBackground(proj)...)
 		warnings = append(warnings, CheckFormPlacement(dir, proj)...)
 		warnings = append(warnings, CheckSecretHygiene(appCfg, proj)...)
