@@ -1181,9 +1181,13 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 	}
 	// Признак объекта следует за транзакцией, как saved и версия: откат
 	// проведения возвращает прежнее значение.
-	wasPosted := w.posted
+	wasPosted, wasXDTOPosted := w.posted, w.obj.Posted
 	w.posted = true
-	storage.DeferUntilTxRollback(ctx, func() { w.posted = wasPosted })
+	w.obj.Posted = true
+	storage.DeferUntilTxRollback(ctx, func() {
+		w.posted = wasPosted
+		w.obj.Posted = wasXDTOPosted
+	})
 	if err := exchange.RegisterOnSave(ctx, w.s.store, w.s.reg.ExchangePlans(), w.entity, w.obj.ID, false); err != nil {
 		return err
 	}
