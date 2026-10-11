@@ -222,26 +222,18 @@ func countImportSharedStrings(parts map[string]*zip.File) (int, error) {
 	if part == nil {
 		return 0, nil
 	}
-	r, err := part.Open()
-	if err != nil {
+	// Match excelize's direct-child xml:"si" decoding. An <si> inside an
+	// extension or another item is not an indexed entry of the string table.
+	// Decode the complete part to reject malformed XML or additional roots
+	// before a partial result can reach the processor's DSL.
+	var table struct {
+		XMLName xml.Name   `xml:"sst"`
+		Items   []struct{} `xml:"si"`
+	}
+	if err := decodeImportPart(part, &table); err != nil {
 		return 0, err
 	}
-	defer func() { _ = r.Close() }() // чтение; ошибка закрытия не влияет на результат подсчёта
-	decoder := xml.NewDecoder(r)
-	decoder.CharsetReader = charset.NewReaderLabel
-	count := 0
-	for {
-		token, err := decoder.Token()
-		if err == io.EOF {
-			return count, nil
-		}
-		if err != nil {
-			return 0, fmt.Errorf("%w: %v", errImportXML, err)
-		}
-		if el, ok := token.(xml.StartElement); ok && el.Name.Local == "si" {
-			count++
-		}
-	}
+	return len(table.Items), nil
 }
 
 type importRelationships struct {
