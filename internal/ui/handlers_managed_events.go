@@ -771,7 +771,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// Построить объект из текущих form-values.
 	obj, err := buildObjectFromForm(r, entity, form, canWrite)
 	if err != nil {
-		respondJSON(enc, formEventResponse{Error: err.Error()})
+		respondJSON(enc, formEventResponse{Error: s.errText(r, err)})
 		return
 	}
 	// Что прислал клиент — до восстановлений и обработчика: ответ события не
