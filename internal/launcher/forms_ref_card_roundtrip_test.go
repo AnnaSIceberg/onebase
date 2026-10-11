@@ -112,3 +112,58 @@ elements:
 		t.Fatalf("панель не видит ref_card_button: false формы:\n%s", hidden.YAML)
 	}
 }
+
+// Язык редактора проходит через публичный HTTP-запрос и локализует
+// подписи панели управления кнопкой ссылочного поля.
+func TestConfiguratorFormRefCardButton_HTTPLocalizedEditor(t *testing.T) {
+	i18nBundleForTest(t)
+	store := newTestStore(t)
+	if err := store.Add(&Base{ID: "ref-card-i18n", ConfigSource: "file", Path: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(CloseAuthPools)
+	h := &handler{store: store, runner: NewRunner()}
+	for _, tc := range []struct {
+		lang   string
+		labels []string
+	}{
+		{"en", []string{"Open card button", "Show for reference fields", "Administrators only"}},
+		{"ru", []string{"Кнопка «Открыть карточку»", "Показывать у ссылочных полей", "Только администратору"}},
+	} {
+		t.Run(tc.lang, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet,
+				"/bases/ref-card-i18n/configurator/forms/edit?entity=Контрагент&name=ФормаОбъекта", nil)
+			req.Header.Set("Accept-Language", tc.lang)
+			req = requestWithBaseID(req, "ref-card-i18n")
+			rec := httptest.NewRecorder()
+			h.configuratorFormsEdit(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("editor: status=%d body=%s", rec.Code, rec.Body.String())
+			}
+			body := rec.Body.String()
+			if !strings.Contains(body, `lang="`+tc.lang+`"`) {
+				t.Fatalf("editor language is not %q", tc.lang)
+			}
+			_, panel, ok := strings.Cut(body, "function addFormRefCardSection(")
+			if !ok {
+				t.Fatal("reference card panel missing")
+			}
+			panel, _, ok = strings.Cut(panel, "function addFormActionsSection(")
+			if !ok {
+				t.Fatal("reference card panel boundary missing")
+			}
+			for _, label := range tc.labels {
+				if !strings.Contains(panel, label) {
+					t.Errorf("reference card panel does not contain %q", label)
+				}
+			}
+			if tc.lang == "en" {
+				for _, label := range []string{"Кнопка «Открыть карточку»", "Показывать у ссылочных полей", "Только администратору"} {
+					if strings.Contains(panel, label) {
+						t.Errorf("untranslated reference card label %q", label)
+					}
+				}
+			}
+		})
+	}
+}
