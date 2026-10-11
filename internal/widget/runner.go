@@ -212,7 +212,18 @@ func (r *Runner) RunWithOptions(ctx context.Context, w *metadata.Widget, opts Ru
 	for k, v := range w.Params {
 		params[k] = v
 	}
-	params = scheduler.ResolveParamTemplates(params)
+	// Only configuration params contain templates. Caller params are already
+	// typed literals and must keep their whitespace and template-like text.
+	switch w.Type {
+	case metadata.WidgetTypeKPI, metadata.WidgetTypeList, metadata.WidgetTypeChart:
+		resolved, err := scheduler.ResolveParamTemplates(params, scheduler.NewConstantResolver(ctx, r.Store, r.Reg))
+		if err != nil {
+			res := Result{Name: w.Name, Type: string(w.Type), Title: w.Title, Link: safeWidgetLink(w.Link)}
+			setResultError(&res, err)
+			return res
+		}
+		params = resolved
+	}
 	for k, v := range opts.Params {
 		params[k] = v
 	}

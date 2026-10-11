@@ -1,4 +1,7 @@
 {
+  "%q не булево значение": "%q is not a boolean value",
+  "реквизит %q": "field %q",
+  "таблица %q": "table %q",
   "min_engine_version %q: ожидается версия major.minor.patch; работа продолжается": "min_engine_version %q: expected major.minor.patch; operation continues",
   "Нельзя сравнить версию платформы %q с min_engine_version %q; работа продолжается": "Cannot compare platform version %q with min_engine_version %q; operation continues",
   "Конфигурации требуется платформа не ниже %s, установлена %s; работа продолжается": "Configuration requires platform version %s or later; installed version is %s; operation continues",
@@ -249,6 +252,7 @@
   "Документы:": "Documents:",
   "Доступных выгрузок пока нет.": "No exports are available yet.",
   "Доступ запрещён": "Access denied",
+  "доступ запрещён": "access denied",
   "Доступ запрещён. Только для администраторов.": "Access denied. Administrators only.",
   "Доступно до": "Available until",
   "Доступные виджеты": "Available widgets",
