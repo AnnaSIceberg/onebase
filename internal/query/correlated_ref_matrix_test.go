@@ -114,17 +114,51 @@ func TestCorrelatedRefNavigationMatrix(t *testing.T) {
 			{"derived shadow", `ВЫБРАТЬ Д.Номер ИЗ Документ.ЗаказПроба КАК Д ГДЕ Д.Ссылка В
     (ВЫБРАТЬ Д.Ссылка ИЗ (ВЫБРАТЬ П.Ссылка, П.Клиент ИЗ Справочник.ВнутренняяПроба КАК П) КАК Д
      ГДЕ Д.Клиент.deletion_mark = Ложь)`},
-			{"other source in outer scope", `ВЫБРАТЬ Д.Номер ИЗ Документ.ЗаказПроба КАК Д
-    ЛЕВОЕ СОЕДИНЕНИЕ Справочник.ВнутренняяПроба КАК П ПО 1 = 1
-    ГДЕ Д.Ссылка В (ВЫБРАТЬ К.Ссылка ИЗ Документ.ЗаказПроба КАК К ГДЕ П.Клиент.deletion_mark = Ложь)`},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				r := compile(t, tc.src)
+				r, err := query.Compile(tc.src, query.CompileOpts{Entities: entities, Dialect: db.Dialect()})
+				if err != nil {
+					if !strings.Contains(err.Error(), "нет ссылочного реквизита") {
+						t.Fatal(err)
+					}
+					return
+				}
 				if rows, _, err := query.Run(ctx, db, &r); err == nil {
 					t.Fatalf("invalid path returned rows: %#v\nSQL: %s", rows, r.SQL)
 				}
 			})
 		}
+		// #1385 разрешает незатенённую корреляцию и к явному JOIN внешнего
+		// SELECT. Этот сценарий прежде был в списке неподдержанных путей.
+		t.Run("joined source in outer scope", func(t *testing.T) {
+			for _, deleted := range []bool{false, true} {
+				value := "Ложь"
+				wantRows := 0
+				if deleted {
+					value = "Истина"
+					wantRows = 2
+				}
+				r := compile(t, `ВЫБРАТЬ Д.Номер ИЗ Документ.ЗаказПроба КАК Д
+                    ЛЕВОЕ СОЕДИНЕНИЕ Справочник.ВнутренняяПроба КАК П ПО 1 = 1
+                    ГДЕ Д.Ссылка В (ВЫБРАТЬ К.Ссылка ИЗ Документ.ЗаказПроба КАК К ГДЕ П.Клиент.deletion_mark = `+value+`) УПОРЯДОЧИТЬ ПО Д.Номер`)
+				rows, _, err := query.Run(ctx, db, &r)
+				if err != nil {
+					t.Fatalf("Run: %v\nSQL: %s", err, r.SQL)
+				}
+				if len(rows) != wantRows || deleted && (rows[0]["номер"] != "001" || rows[1]["номер"] != "002") {
+					t.Fatalf("rows: %v", rows)
+				}
+				found := false
+				for _, source := range r.Sources {
+					if source == (query.SourceRef{Kind: "catalog", Name: other.Name}) {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("target missing from RBAC sources: %v", r.Sources)
+				}
+			}
+		})
 		t.Run("single hop limit", func(t *testing.T) {
 			_, err := query.Compile(`ВЫБРАТЬ Д.Номер ИЗ Документ.ЗаказПроба КАК Д ГДЕ Д.Ссылка В
     (ВЫБРАТЬ П.Ссылка ИЗ Документ.ЗаказПроба КАК П ГДЕ Д.Клиент.Владелец.Наименование = "x")`,

@@ -1,4 +1,5 @@
 {
+  "у локального источника %s нет ссылочного реквизита %s; внешняя ссылка затенена": "Local source %s has no reference field %s; the outer reference is shadowed",
   "%q не булево значение": "%q is not a boolean value",
   "реквизит %q": "field %q",
   "таблица %q": "table %q",

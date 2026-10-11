@@ -905,7 +905,16 @@ const (
 	sourceClassRegister
 )
 
+// sourcePosition задаётся общим предсканом FROM/JOIN, включая производные
+// таблицы. Роль источника не зависит от глубины скобок выражений.
+type sourcePosition struct {
+	scopeID int
+	main    bool
+	alias   string
+}
+
 type sourceContext struct {
+	sources      map[int]sourcePosition // позиция первого токена источника → его роль
 	scopes       []sourceScope
 	tokenScope   []int
 	tokenSection []querySection
@@ -983,6 +992,18 @@ func (ctx sourceContext) qualifierScopeIDAt(tokenPos int, qualifier string) (int
 		scopeID = scope.parent
 	}
 	return 0, false
+}
+
+// sectionInScopeAt возвращает секцию владельца квалификатора, даже когда
+// использование находится внутри коррелированного SELECT. Его собственное ПО
+// ещё не завершено при обработке дочернего подзапроса.
+func (ctx sourceContext) sectionInScopeAt(tokenPos, scopeID int) querySection {
+	for i := tokenPos; i >= 0; i-- {
+		if id, ok := ctx.scopeIDAt(i); ok && id == scopeID {
+			return ctx.sectionAt(i)
+		}
+	}
+	return sectionOther
 }
 
 // isDerivedQualifierAt учитывает область SELECT и локальное затенение алиаса.
@@ -3086,20 +3107,7 @@ type joinedRefSource struct {
 // больше нуля, и дефект выживал внутри производной таблицы).
 func preScanJoinedRefSources(tokens []tok, opts CompileOpts, sourceCtx sourceContext) []joinedRefSource {
 	var out []joinedRefSource
-	depth := 0
-	mainSeen := map[int]bool{} // первый источник скобочной группы — её main; на верхнем уровне main один
 	for i := 0; i+2 < len(tokens); i++ {
-		switch tokens[i].kind {
-		case tLParen:
-			depth++
-			mainSeen[depth] = false
-			continue
-		case tRParen:
-			if depth > 0 {
-				depth--
-			}
-			continue
-		}
 		if tokens[i].kind != tIdent {
 			continue
 		}
@@ -3108,20 +3116,17 @@ func preScanJoinedRefSources(tokens []tok, opts CompileOpts, sourceCtx sourceCon
 			continue
 		}
 		isVT := i+3 < len(tokens) && tokens[i+3].kind == tDot
-		if !mainSeen[depth] {
+		position, source := sourceCtx.sources[i]
+		if !source || position.main {
 			// Главный источник идёт прежним путём (tr.refDims на верхнем
 			// уровне): его авто-JOIN встаёт сразу за таблицей, а не после
 			// чужого ПО. У вложенного scope — прежнее поведение подзапроса.
-			mainSeen[depth] = true
 			continue
 		}
 		if isVT {
 			continue
 		}
-		scopeID, ok := sourceCtx.scopeIDAt(i)
-		if !ok {
-			continue
-		}
+		scopeID := position.scopeID
 		var ent *metadata.Entity
 		for _, e := range opts.Entities {
 			if strings.EqualFold(e.Name, tokens[i+2].val) {
@@ -3153,7 +3158,7 @@ func preScanJoinedRefSources(tokens []tok, opts CompileOpts, sourceCtx sourceCon
 }
 
 // qualifiedRefDims оставляет ссылочные поля, использованные именно с этим
-// источником (`П.ГлавныйУзел`) в его SELECT-scope, и отмечает те, где за полем
+// источником (`П.ГлавныйУзел`), включая корреляцию из дочерних SELECT, и отмечает те, где за полем
 // идёт навигация (`П.ГлавныйУзел.Наименование`) — только им нужен авто-JOIN.
 // Псевдоним JOIN'а содержит алиас источника: `ref_<поле>` уже может занимать
 // главная таблица.
@@ -3170,9 +3175,9 @@ func qualifiedRefDims(dims []refDimInfo, quals map[string]bool, alias string, to
 		if !quals[lowerFast(tokens[i].val)] {
 			continue
 		}
-		// Одноимённый квалификатор чужого scope — другой источник: его
-		// использование не помечает поля этого.
-		if sid, ok := sourceCtx.scopeIDAt(i); !ok || sid != scopeID {
+		// Незатенённая корреляция использует ссылку внешнего владельца.
+		// Локальное объявление того же квалификатора останавливает поиск.
+		if sid, ok := sourceCtx.qualifierScopeIDAt(i, lowerFast(tokens[i].val)); !ok || sid != scopeID {
 			continue
 		}
 		field := lowerFast(tokens[i+2].val)
@@ -3197,17 +3202,18 @@ func qualifiedRefDims(dims []refDimInfo, quals map[string]bool, alias string, to
 
 // findJoinedSource возвращает присоединённый источник по квалификатору перед
 // точкой и его ссылочное поле, если имя — ссылочный реквизит этого источника.
-// Источник сопоставляется в пределах своего SELECT-scope: одноимённый
-// квалификатор вложенного или внешнего запроса — другой источник.
+// Владелец — ближайший SELECT с этим квалификатором. Локальный источник
+// останавливает поиск даже без нужного поля; незатенённый внешний доступен
+// для корреляции, а его авто-JOIN остаётся в области владельца.
 func (tr *translator) findJoinedSource(qualifierPos int, name string) (*joinedRefSource, *refDimInfo) {
 	if qualifierPos < 0 || qualifierPos >= len(tr.tokens) || tr.tokens[qualifierPos].kind != tIdent {
 		return nil, nil
 	}
-	qualifierScope, ok := tr.sourceCtx.scopeIDAt(qualifierPos)
+	qualifier := lowerFast(tr.tokens[qualifierPos].val)
+	qualifierScope, ok := tr.sourceCtx.qualifierScopeIDAt(qualifierPos, qualifier)
 	if !ok {
 		return nil, nil
 	}
-	qualifier := lowerFast(tr.tokens[qualifierPos].val)
 	for i := range tr.joinedRefs {
 		if tr.joinedRefs[i].scopeID != qualifierScope || !tr.joinedRefs[i].qualifiers[qualifier] {
 			continue
@@ -3220,6 +3226,38 @@ func (tr *translator) findJoinedSource(qualifierPos int, name string) (*joinedRe
 		return &tr.joinedRefs[i], nil
 	}
 	return nil, nil
+}
+
+// shadowedRefNavigation запрещает заимствовать ссылочный реквизит внешнего
+// источника у локального источника без такого поля. Производный alias экспортирует
+// только свою проекцию; наличие внешней ссылки не добавляет ему навигацию.
+func (tr *translator) shadowedRefNavigation(qualifierPos int, field string) bool {
+	if qualifierPos < 0 || tr.tokens[qualifierPos].kind != tIdent {
+		return false
+	}
+	qualifier := lowerFast(tr.tokens[qualifierPos].val)
+	owner, ok := tr.sourceCtx.qualifierScopeIDAt(qualifierPos, qualifier)
+	if !ok {
+		return false
+	}
+	scope := tr.sourceCtx.scopes[owner]
+	if entity, known := scope.entities[qualifier]; known && strings.HasPrefix(string(entity.fields[field]), "reference:") {
+		return false
+	}
+	for id := scope.parent; id >= 0; id = tr.sourceCtx.scopes[id].parent {
+		outer := tr.sourceCtx.scopes[id]
+		if entity, known := outer.entities[qualifier]; known && strings.HasPrefix(string(entity.fields[field]), "reference:") {
+			return true
+		}
+		// Не перескакиваем через промежуточное затенение без такого поля.
+		if _, declared := outer.qualifiers[qualifier]; declared {
+			return false
+		}
+		if _, derived := outer.derivedAliases[qualifier]; derived {
+			return false
+		}
+	}
+	return false
 }
 
 // queueJoinedRefJoins откладывает авто-JOIN'ы присоединённого источника: они
@@ -4238,6 +4276,7 @@ func preScanSourceContext(tokens []tok) sourceContext {
 
 func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext {
 	ctx := sourceContext{
+		sources:      map[int]sourcePosition{},
 		tokenScope:   make([]int, len(tokens)),
 		tokenSection: make([]querySection, len(tokens)),
 		tokenDepth:   make([]int, len(tokens)),
@@ -4334,6 +4373,7 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 					scope := &ctx.scopes[active[len(active)-1].id]
 					isMain := scope.sourceCount == 0
 					scope.sourceCount++
+					position := sourcePosition{scopeID: active[len(active)-1].id, main: isMain}
 					nesting := 0
 					for j := i + 1; j < len(tokens); j++ {
 						switch tokens[j].kind {
@@ -4347,6 +4387,7 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 									aliasUpper := upperFast(tokens[aliasPos].val)
 									if (aliasUpper == "КАК" || aliasUpper == "AS") && tokens[aliasPos+1].kind == tIdent {
 										alias := lowerFast(tokens[aliasPos+1].val)
+										position.alias = alias
 										if isMain {
 											scope.mainTable = alias
 										}
@@ -4356,6 +4397,7 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 							}
 						}
 					}
+					ctx.sources[i+1] = position
 				}
 			}
 		}
@@ -4395,6 +4437,7 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 		scope := &ctx.scopes[active[len(active)-1].id]
 		isMain := scope.sourceCount == 0
 		scope.sourceCount++
+		ctx.sources[i] = sourcePosition{scopeID: active[len(active)-1].id, main: isMain, alias: sourceToTable(typeUpper, tokens[i+2].val)}
 
 		class := sourceClassEntity
 		if isAccumRegType(typeUpper) || isInfoRegType(typeUpper) || isAccountRegType(typeUpper) {
@@ -4444,6 +4487,9 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 			aliasUpper := upperFast(tokens[aliasPos].val)
 			if (aliasUpper == "КАК" || aliasUpper == "AS") && tokens[aliasPos+1].kind == tIdent {
 				alias := lowerFast(tokens[aliasPos+1].val)
+				position := ctx.sources[i]
+				position.alias = alias
+				ctx.sources[i] = position
 				scope.qualifiers[alias] = class
 				scope.wildcardColumns[alias] = wildcardColumns
 				if entityInfo != nil {
@@ -5227,6 +5273,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			// таблицы) — иначе авто-JOIN вклинивается между присоединяемой таблицей
 			// и её ON, ломая SQL (план 143, п.50).
 			isMain := !tr.mainEmitted
+			if position, source := tr.sourceCtx.sources[sourcePos]; source && !position.main {
+				isMain = false
+			}
 			if isMain {
 				tr.mainTable = tableName
 			}
@@ -5278,7 +5327,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					return Result{}, err
 				}
 			}
-			if tr.section == sectionFrom && !isMain {
+			if tr.sourceCtx.sectionAt(sourcePos) == sectionFrom && !isMain {
 				// Присоединённый источник: его авто-JOIN'ы ждут конца ПО (#1385).
 				if scopeID, ok := tr.sourceCtx.scopeIDAt(sourcePos); ok {
 					if err := tr.queueJoinedRefJoins(sourceAlias, scopeID); err != nil {
@@ -5286,7 +5335,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					}
 				}
 			}
-			if tr.section == sectionFrom && isMain {
+			if tr.sourceCtx.sectionAt(sourcePos) == sectionFrom && isMain {
 				// ON ссылается на источник через tr.mainTable: это имя таблицы
 				// либо её алиас (КАК р). Использование сырого tableName при
 				// наличии алиаса давало `no such column: таблица.col`.
@@ -5385,6 +5434,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			// (Скобки виртуальных таблиц регистров съедает parseVTArgs — сюда не
 			// попадают, баланс не нарушают.)
 			if t.kind == tLParen {
+				if position, source := tr.sourceCtx.sources[tr.pos]; source {
+					tr.onSourceAliases[position.scopeID] = position.alias
+				}
 				tr.parenDepth++
 			} else if t.kind == tRParen && tr.parenDepth > 0 {
 				// Авто-JOIN'ы закрывающегося scope обязаны остаться внутри его
@@ -5436,6 +5488,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 						"«%s» — служебное имя соединения с учётными записями, в запросе оно недоступно: реквизиты учётной записи читаются через точку от ссылки — Ссылка, Наименование, Логин и ПолноеИмя",
 						t.val)
 				}
+			}
+			if prevDot && nextIsDot && (tr.pos < 4 || tr.tokens[tr.pos-4].kind != tDot) && tr.shadowedRefNavigation(tr.pos-3, lower) {
+				return Result{}, i18nerr.Errorf("у локального источника %s нет ссылочного реквизита %s; внешняя ссылка затенена", tr.tokens[tr.pos-3].val, t.val)
 			}
 			// Булевы литералы Истина/Ложь. Без этой ветки они уезжали в SQL как
 			// имена колонок, и естественный отбор `ГДЕ Активен = Истина` падал
@@ -5651,7 +5706,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					// Авто-JOIN для навигации нельзя безопасно дописать внутри
 					// собственного ON: его псевдоним оказался бы использован до
 					// объявления. Явно отклоняем такую форму вместо невалидного SQL.
-					if jrd != nil && nextIsDot && tr.sourceCtx.sectionAt(tr.pos-1) == sectionFrom && src.alias == tr.onSourceAliases[src.scopeID] {
+					if jrd != nil && nextIsDot && tr.sourceCtx.sectionInScopeAt(tr.pos-1, src.scopeID) == sectionFrom && src.alias == tr.onSourceAliases[src.scopeID] {
 						return Result{}, i18nerr.Errorf(
 							"навигация по ссылке присоединённого источника внутри ПО не поддерживается; соедини %s явно через СОЕДИНЕНИЕ",
 							jrd.refEntity)
