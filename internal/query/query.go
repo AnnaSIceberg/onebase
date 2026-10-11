@@ -831,7 +831,7 @@ type translator struct {
 	parts        []string
 	prevWasDot   bool                          // true after emitting "." — used to resolve .Ссылка → .id
 	colMap       map[string]string             // lowercase field name → actual column name (for reference dims)
-	colTypes     map[string]metadata.FieldType // lowercase field name → type (для квалификации и CAST number)
+	colTypes     map[string]metadata.FieldType // legacy-типы первого источника для проекции и ссылок
 	refDims      []refDimInfo                  // reference dimensions with auto-JOIN info
 	refScope     int                           // SELECT, которому принадлежат авто-JOIN
 	refSources   map[string]bool               // имена и алиас источника этих JOIN
@@ -852,6 +852,9 @@ type translator struct {
 	refCols      map[string]string             // колонка вывода (lower) → сущность, на которую она ссылается (#1150)
 	derivedAs    map[int]string                // позиция закрывающей скобки → отложенный AS простой ссылки
 	mainRef      mainRefSource                 // главный источник запроса: чья ссылка стоит за голым «Ссылка»
+
+	columnSources   map[int][]columnSource
+	textComparisons map[int]bool
 }
 
 // mainRefSource — предсканированный главный источник запроса: имя сущности и
@@ -3552,10 +3555,13 @@ func sourceColTypes(typeUpper, name string, opts CompileOpts) map[string]metadat
 // в позициях сравнения/сортировки (WHERE/HAVING/ORDER BY). В ВЫБРАТЬ не кастим —
 // вывод остаётся точным TEXT.
 func (tr *translator) needsNumberCast(lower string) bool {
-	if _, isAlias := tr.aliases[lower]; isAlias {
-		return false // ссылка на алиас вывода (КАК ...), а не сырая колонка
+	idx := tr.pos - 1
+	qualifier := tr.columnQualifierAt(idx)
+	if qualifier == "" && (tr.inUnionOrder() || tr.sourceCtx.isOutputAliasAt(idx, lower)) {
+		return false
 	}
-	return tr.needsNumberCastForType(tr.colTypes[lower])
+	typ, _, known := tr.columnTypeAt(idx, lower, qualifier)
+	return known && tr.needsNumberCastForType(typ)
 }
 
 // Квалифицированный реквизит получает тип от своего источника, независимо
@@ -3567,7 +3573,7 @@ func (tr *translator) needsNumberCastForType(fieldType metadata.FieldType) bool 
 	if dialectOrDefault(tr.opts.Dialect).Name() != "sqlite" {
 		return false
 	}
-	switch tr.section {
+	switch tr.sourceCtx.sectionAt(tr.pos - 1) {
 	case sectionWhere, sectionHaving, sectionOrderBy:
 		return true
 	}
@@ -3660,13 +3666,13 @@ func (tr *translator) keywordAt(idx int, names ...string) bool {
 // когда активны авто-JOIN'ы (п.48) — иначе одноимённая колонка присоединённого
 // каталога вызывает ambiguous column. Неизвестные идентификаторы не трогаем.
 func (tr *translator) qualifyOwn(col, lower string) string {
-	if tr.sourceCtx.isOutputAliasAt(tr.pos-1, lower) {
-		return col // алиас вывода, не колонка таблицы
+	idx := tr.pos - 1
+	if tr.sourceCtx.isOutputAliasAt(idx, lower) || tr.inUnionOrder() {
+		return col
 	}
-	if len(tr.refDims) > 0 && tr.mainTable != "" {
-		_, own := tr.colTypes[lower]
-		if own {
-			return tr.mainTable + "." + col
+	if len(tr.refDims) > 0 {
+		if _, owner, known := tr.columnTypeAt(idx, lower, ""); known && owner != "" {
+			return owner + "." + col
 		}
 	}
 	return col
@@ -3741,8 +3747,8 @@ func (tr *translator) emitOwnColumn(col, lower string) {
 //     (ПО), а обёртка склеила бы в нём все незаполненные строки друг с другом.
 //     Неквалифицированная колонка в этой секции и так уходит в SQL как есть,
 //     так что правило одинаково для обеих записей.
-//   - только ОСНОВНОЙ источник запроса (см. isMainSourceColumn). Поле
-//     присоединённой таблицы обёртки не получает.
+//   - присоединённые источники: только ГДЕ и сравнение с литералом/параметром;
+//     сравнения между колонками и секция ПО сохраняют семантику SQL NULL.
 //
 // Секция берётся из пред-скана (sourceCtx), а не из бегущей tr.section. Бегущая —
 // одно поле на весь запрос: подзапрос в ИЗ переключает её своим ГДЕ и обратно уже
@@ -3762,15 +3768,15 @@ func (tr *translator) needsEmptyTextCoalesce(lower, qualifier string) bool {
 	if tr.sourceCtx.sectionAt(idx) == sectionFrom {
 		return false
 	}
-	if !tr.isMainSourceColumn(idx, qualifier) {
-		return false
-	}
-	scope, ok := tr.sourceCtx.scopeAt(idx)
-	if !ok {
-		return false
-	}
-	t, known := scope.mainColTypes[lower]
+	t, _, known := tr.columnTypeAt(idx, lower, qualifier)
 	if !known || (t != metadata.FieldTypeString && !metadata.IsEnum(t)) {
+		return false
+	}
+	// Расширение на присоединённый источник разрешено только в ГДЕ и
+	// при сравнении с литералом/параметром. Колонка = колонка может быть
+	// соединением через запятую: NULL с NULL там по-прежнему не совпадает.
+	if !tr.isMainSourceColumn(idx, qualifier) &&
+		(tr.sourceCtx.sectionAt(idx) != sectionWhere || !tr.textComparisons[idx]) {
 		return false
 	}
 	if tr.textEqIndex[idx] {
@@ -3783,42 +3789,16 @@ func (tr *translator) needsEmptyTextCoalesce(lower, qualifier string) bool {
 	return tr.equalityOpAt(idx+1) || tr.equalityOpAt(left)
 }
 
-// isMainSourceColumn — принадлежит ли колонка ОСНОВНОМУ источнику своего
-// SELECT-scope.
-//
-// Граница нужна потому, что sourceScope.mainColTypes намеренно знает типы только
-// основного источника своего SELECT. Для колонки присоединённой таблицы поиск по
-// одному имени мог бы вернуть тип одноимённой колонки основного источника.
-// Второе хуже отсутствующего типа: `Заявка.Код` строка, `Клиент.Код` число, и
-// отбор `ГДЕ К.Код <> 0` уезжал бы в
-//
-//	COALESCE(к.код, '') <> 0
-//
-// На SQLite это безвредно (number хранится как TEXT), а на PostgreSQL number —
-// NUMERIC, нетипизированный литерал пустой строки приводится к нему, и запрос
-// падает на этапе плана: работавший до правила отбор переставал работать совсем.
-//
-// (Литерал пустой строки стоит блоком кода намеренно: в обычной строке
-// док-комментария gofmt заменяет две одиночные кавычки одной типографской.)
-//
-// Тем же ограничением снимается склейка в соединении, записанном запятой
-// (ИЗ A КАК Т, B КАК К ГДЕ Т.Поле = К.Поле): секция там ГДЕ, а не ИЗ, поэтому
-// по секции такое условие не отсекалось, и обёртка с обеих сторон приравнивала
-// незаполненное к незаполненному.
-//
-// Цена границы названа честно: отбор по текстовому полю ПРИСОЕДИНЁННОЙ таблицы
-// незаполненные значения по-прежнему теряет (#1183). Закрыть это можно только
-// типизацией колонок по алиасу источника — отдельная работа по компилятору,
-// которая заодно чинит ту же дырку в needsNumberCast.
+// isMainSourceColumn сохраняет прежнюю границу вне доказанного расширения
+// ГДЕ. Источник и его тип определяются отдельно по columnSources.
 func (tr *translator) isMainSourceColumn(idx int, qualifier string) bool {
-	if qualifier == "" {
-		return true // колонка без квалификатора относится к основному источнику
-	}
 	scope, ok := tr.sourceCtx.scopeAt(idx)
-	if !ok || scope.mainTable == "" {
+	if !ok {
 		return false
 	}
-	return strings.EqualFold(qualifier, scope.mainTable)
+	_, owner, known := tr.columnTypeAt(idx, lowerFast(tr.tokens[idx].val), qualifier)
+	return known && ((owner != "" && strings.EqualFold(owner, scope.mainTable)) ||
+		(owner == "" && scope.sourceCount == 1))
 }
 
 func (tr *translator) equalityOpAt(idx int) bool {
@@ -4838,6 +4818,8 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		}
 		break
 	}
+	tr.columnSources = indexColumnSources(tokens, opts, tr.sourceCtx)
+	tr.textComparisons = scalarTextComparisons(tokens, tr.sourceCtx)
 	tr.textEqIndex = positiveTextEqualities(tokens, tr.sourceCtx)
 	for {
 		t := tr.peek(0)
