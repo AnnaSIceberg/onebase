@@ -327,8 +327,8 @@ func allSchemas() map[string]map[string]any {
 					},
 				}),
 				"list_mode":     stringSchema("pages|feed"),
-				"fulltext":      arrayOf(stringSchema("Реквизит, попадающий в полнотекстовый поиск (по умолчанию — все строковые)")),
-				"search_fields": arrayOf(stringSchema("Реквизит для поиска по строке в списке и подборе (по умолчанию — все строковые)")),
+				"fulltext":      arrayOf(stringSchema("Реквизит шапки для полнотекстового поиска (по умолчанию — все строковые шапки; пути ТЧ пока отклоняются)")),
+				"search_fields": arrayOf(stringSchema("Реквизит шапки или ТабличнаяЧасть.Поле для поиска подстроки в списке и подборе; без ключа — только строковые шапки, [] выключает поиск; ссылки, служебные колонки и дубликаты запрещены")),
 				// Схема принимает обе формы записи: `presentation: Артикул` и
 				// `presentation: [Артикул, Наименование]` — иначе редактор
 				// подчёркивал бы как ошибку ровно тот вариант, который в
@@ -525,7 +525,7 @@ func managedFormSchema() map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"field", "op"},
 		"properties": map[string]any{
-			"field": stringSchema("Реквизит выбираемого справочника или служебное поле is_folder / is_root / parent_id"),
+			"field": stringSchema("Реквизит выбираемого справочника, служебное поле is_folder / is_root / parent_id или <ТЧ>.<Колонка> — ссылочная колонка его табличной части (только eq)"),
 			"op":    enumSchema("eq", "eq_or_empty", "in_hierarchy", "not_in_hierarchy"),
 			"from":  stringSchema("Источник Объект.<Поле>, Форма.<Поле> или Объект.<Поле>.<Реквизит> — один переход по ссылке; конец пути — ссылка или, для строкового field и eq, строковый реквизит"),
 			"value": boolSchema("Булев литерал: is_folder, is_root или булев реквизит справочника"),
