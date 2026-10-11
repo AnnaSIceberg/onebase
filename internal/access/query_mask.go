@@ -245,14 +245,25 @@ func containsString(list []string, v string) bool {
 // ambiguousMaskedOutput ищет защищённое имя выходной колонки, встречающееся в
 // списке выборки больше одного раза. «*» считается за все защищённые колонки
 // своих источников, поэтому «ВЫБРАТЬ *, Телефон» тоже попадает сюда. Элемент
-// выборки учитывается и под выходным именем, и под физическими колонками своих
-// полей: защищённая ссылка выводится под логическим именем (`секрет`), а «*» и
-// auto-JOIN адресуют ту же колонку по физическому имени (`секрет_id`) — без
-// сопоставления их дубль не обнаруживался бы вовсе (круг 4 #1428). Дубль
+// выборки учитывается под выходным именем: разные алиасы одного физического
+// поля адресуются независимо и получают каждый свою маску. Отдельно проверяем
+// пересечение явной проекции со «*» по физическим колонкам: защищённая ссылка
+// выводится под логическим именем (`секрет`), а «*» и auto-JOIN адресуют ту же
+// колонку по физическому имени (`секрет_id`) — без сопоставления их опасное
+// сочетание не обнаруживалось бы вовсе (круг 4 #1428). Дубль
 // НЕзащищённого имени к отказу не ведёт: маску он не трогает.
 func ambiguousMaskedOutput(p query.ProjectionPlan, masked, columns map[string]FieldDecision, fieldColumns map[string][]string) (string, bool) {
 	counts := map[string]int{}
 	protected := map[string]bool{}
+	starColumns := map[string]bool{}
+	ambiguous := map[string]bool{}
+	for _, col := range p.Columns {
+		if col.Star {
+			for name := range columns {
+				starColumns[fieldKey(name)] = true
+			}
+		}
+	}
 	for _, col := range p.Columns {
 		if col.Star {
 			for name := range columns {
@@ -266,29 +277,26 @@ func ambiguousMaskedOutput(p query.ProjectionPlan, masked, columns map[string]Fi
 			continue
 		}
 		_, isProtected := mostRestrictive(masked, col.Fields)
-		seen := map[string]bool{}
-		add := func(key string) {
-			if seen[key] {
-				return
-			}
-			seen[key] = true
-			counts[key]++
-			if isProtected {
-				protected[key] = true
-			}
+		key := fieldKey(col.Output)
+		counts[key]++
+		if isProtected {
+			protected[key] = true
 		}
-		add(fieldKey(col.Output))
 		for _, field := range col.Fields {
 			for _, colKey := range fieldColumns[fieldKey(field)] {
-				add(colKey)
+				if starColumns[colKey] {
+					ambiguous[colKey] = true
+				}
 			}
 		}
 	}
 	denied := ""
 	for key := range protected {
-		if counts[key] < 2 {
-			continue
+		if counts[key] > 1 {
+			ambiguous[key] = true
 		}
+	}
+	for key := range ambiguous {
 		// Имя выбирается детерминированно, чтобы текст отказа не плясал от
 		// обхода карты.
 		if denied == "" || key < denied {

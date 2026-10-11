@@ -49,6 +49,9 @@ func TestAPIV2_ReportMaskDuplicateColumnsMatrix(t *testing.T) {
 			{Name: "ОдинТелефон", Query: `ВЫБРАТЬ Телефон ИЗ Справочник.КлиентМаски`},
 			{Name: "ДваТелефона", Query: `ВЫБРАТЬ Телефон, Телефон ИЗ Справочник.КлиентМаски`},
 			{Name: "ДваАлиаса", Query: `ВЫБРАТЬ Телефон КАК Контакт, Телефон КАК Контакт ИЗ Справочник.КлиентМаски`},
+			{Name: "РазныеАлиасы", Query: `ВЫБРАТЬ Телефон КАК Контакт, Телефон КАК Резерв ИЗ Справочник.КлиентМаски`},
+			{Name: "ПолеИАлиас", Query: `ВЫБРАТЬ Телефон, Телефон КАК Контакт ИЗ Справочник.КлиентМаски`},
+			{Name: "КоллизияАлиасов", Query: `ВЫБРАТЬ Телефон КАК Контакт, Наименование КАК Контакт ИЗ Справочник.КлиентМаски`},
 			{Name: "Звёздочка", Query: `ВЫБРАТЬ * ИЗ Справочник.КлиентМаски`},
 			{Name: "ЗвёздочкаИТелефон", Query: `ВЫБРАТЬ *, Телефон ИЗ Справочник.КлиентМаски`},
 			{Name: "ДваИмени", Query: `ВЫБРАТЬ Телефон, Наименование, Наименование КАК Наименование ИЗ Справочник.КлиентМаски`},
@@ -86,10 +89,13 @@ func TestAPIV2_ReportMaskDuplicateColumnsMatrix(t *testing.T) {
 				{"ОдинТелефон", http.StatusOK},
 				{"Звёздочка", http.StatusOK},
 				{"ДваИмени", http.StatusOK},
+				{"РазныеАлиасы", http.StatusOK},
+				{"ПолеИАлиас", http.StatusOK},
 				// Неоднозначная выдача отклоняется целиком, а не отдаётся
 				// частично замаскированной.
 				{"ДваТелефона", http.StatusForbidden},
 				{"ДваАлиаса", http.StatusForbidden},
+				{"КоллизияАлиасов", http.StatusForbidden},
 				{"ЗвёздочкаИТелефон", http.StatusForbidden},
 			} {
 				target := "/api/v2/report/" + url.PathEscape(c.report) + "?limit=1"
@@ -111,6 +117,23 @@ func TestAPIV2_ReportMaskDuplicateColumnsMatrix(t *testing.T) {
 				}
 				if len(response.Data) != 1 {
 					t.Fatalf("%s/%s: строк %d, ожидалась одна", policy.Read, c.report, len(response.Data))
+				}
+				var maskedKeys []string
+				switch c.report {
+				case "РазныеАлиасы":
+					maskedKeys = []string{"контакт", "резерв"}
+				case "ПолеИАлиас":
+					maskedKeys = []string{"телефон", "контакт"}
+				}
+				for _, key := range maskedKeys {
+					var want any
+					if policy.Read == "mask_tail" {
+						want = "••••••7890"
+					}
+					if value, present := response.Data[0][key]; !present || value != want {
+						t.Fatalf("%s/%s: колонка %q = %#v, present=%v; ожидалось %#v",
+							policy.Read, c.report, key, value, present, want)
+					}
 				}
 				for key, value := range response.Data[0] {
 					if text, ok := value.(string); ok && strings.Contains(text, raw) {
@@ -164,6 +187,9 @@ func TestAPIV2_ReportMaskDuplicateReferenceColumnsMatrix(t *testing.T) {
 
 		reports := []*reportpkg.Report{
 			{Name: "СсылкаОдна", Query: `ВЫБРАТЬ Секрет ИЗ Справочник.Скрытые`},
+			{Name: "РазныеАлиасыСсылки", Query: `ВЫБРАТЬ Секрет КАК Контакт, Секрет КАК Резерв ИЗ Справочник.Скрытые`},
+			{Name: "ДублиАлиасовСсылки", Query: `ВЫБРАТЬ Секрет КАК Контакт, Секрет КАК Контакт ИЗ Справочник.Скрытые`},
+			{Name: "ЗвёздочкаИАлиасСсылки", Query: `ВЫБРАТЬ *, Секрет КАК Контакт ИЗ Справочник.Скрытые`},
 			{Name: "ЗвёздочкаСсылки", Query: `ВЫБРАТЬ * ИЗ Справочник.Скрытые`},
 			{Name: "ЗвёздочкаИСсылка", Query: `ВЫБРАТЬ *, Секрет ИЗ Справочник.Скрытые`},
 		}
@@ -191,10 +217,13 @@ func TestAPIV2_ReportMaskDuplicateReferenceColumnsMatrix(t *testing.T) {
 		}{
 			// Однозначная выдача обслуживается, ссылка под маской обнуляется.
 			{"СсылкаОдна", http.StatusOK},
+			{"РазныеАлиасыСсылки", http.StatusOK},
 			{"ЗвёздочкаСсылки", http.StatusOK},
 			// «*» и явная ссылка — дубль одной защищённой колонки: отказ до
 			// выполнения запроса, а не частично замаскированный ответ с id:1.
 			{"ЗвёздочкаИСсылка", http.StatusForbidden},
+			{"ЗвёздочкаИАлиасСсылки", http.StatusForbidden},
+			{"ДублиАлиасовСсылки", http.StatusForbidden},
 		} {
 			target := "/api/v2/report/" + url.PathEscape(c.report) + "?limit=1"
 			req := withUser(httptest.NewRequest(http.MethodGet, target, nil), user)
@@ -215,12 +244,17 @@ func TestAPIV2_ReportMaskDuplicateReferenceColumnsMatrix(t *testing.T) {
 			if len(response.Data) != 1 {
 				t.Fatalf("%s: строк %d, ожидалась одна", c.report, len(response.Data))
 			}
-			maskedKey := "секрет"
-			if c.report == "ЗвёздочкаСсылки" {
-				maskedKey = "секрет_id"
+			maskedKeys := []string{"секрет"}
+			switch c.report {
+			case "ЗвёздочкаСсылки":
+				maskedKeys = []string{"секрет_id"}
+			case "РазныеАлиасыСсылки":
+				maskedKeys = []string{"контакт", "резерв"}
 			}
-			if value, present := response.Data[0][maskedKey]; !present || value != nil {
-				t.Fatalf("%s: hidden reference %q = %#v, present=%v; want null", c.report, maskedKey, value, present)
+			for _, key := range maskedKeys {
+				if value, present := response.Data[0][key]; !present || value != nil {
+					t.Fatalf("%s: hidden reference %q = %#v, present=%v; want null", c.report, key, value, present)
+				}
 			}
 
 			for key, value := range response.Data[0] {
