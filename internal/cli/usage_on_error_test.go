@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -36,14 +37,25 @@ func executeRootArgs(t *testing.T, args ...string) (string, error) {
 			value, changed := flag.Value.String(), flag.Changed
 			slice, isSlice := flag.Value.(pflag.SliceValue)
 			var items []string
+			var sliceState reflect.Value
 			if isSlice {
 				items = slices.Clone(slice.GetSlice())
+				// У списочных pflag.Value приватный changed независим от
+				// Flag.Changed. Копируем весь value, сохраняя его указатель
+				// на хранилище; элементы по нему восстанавливаем отдельно.
+				value := reflect.ValueOf(slice)
+				if value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Struct {
+					t.Fatalf("неподдерживаемый списочный Value --%s: %T", flag.Name, slice)
+				}
+				sliceState = reflect.New(value.Elem().Type()).Elem()
+				sliceState.Set(value.Elem())
 			}
 			t.Cleanup(func() {
 				var err error
 				if isSlice {
 					// String() списка не является входом Set(): скобки и CSV
 					// могут исказить пустые значения и элементы с запятыми.
+					reflect.ValueOf(slice).Elem().Set(sliceState)
 					err = slice.Replace(items)
 				} else {
 					err = flag.Value.Set(value)
@@ -191,6 +203,83 @@ func TestExecuteRootArgsRestoresFlagState(t *testing.T) {
 			}
 			if noGUI || inherited.Changed != changed {
 				t.Errorf("унаследованный --no-gui после cleanup: value=%v, Changed=%v", noGUI, inherited.Changed)
+			}
+		})
+	}
+}
+
+// Повторный Execute той же команды должен разбирать списки как до первого
+// запуска, включая приватный признак changed в pflag.Value (#2061).
+func TestExecuteRootArgsRestoresRepeatedSliceParsing(t *testing.T) {
+	for _, defaults := range []struct {
+		name  string
+		items []string
+	}{
+		{name: "defaults", items: []string{"default-item"}},
+		{name: "empty", items: []string{}},
+		{name: "commas", items: []string{"default,item", ""}},
+	} {
+		t.Run(defaults.name, func(t *testing.T) {
+			for _, state := range []struct {
+				name            string
+				parsed, changed bool
+			}{
+				{name: "first-parse"},
+				{name: "already-parsed", parsed: true, changed: true},
+				{name: "only-public-changed", changed: true},
+				{name: "only-private-changed", parsed: true},
+			} {
+				t.Run(state.name, func(t *testing.T) {
+					cmd := addFailingCommand(t)
+					var items, entries []string
+					cmd.Flags().StringSliceVar(&items, "probe-items", slices.Clone(defaults.items), "")
+					cmd.Flags().StringArrayVar(&entries, "probe-entries", slices.Clone(defaults.items), "")
+					if state.parsed {
+						for _, flagName := range []string{"probe-items", "probe-entries"} {
+							if err := cmd.Flags().Set(flagName, "seed"); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+					for _, flagName := range []string{"probe-items", "probe-entries"} {
+						cmd.Flags().Lookup(flagName).Changed = state.changed
+					}
+					previousItems, previousEntries := slices.Clone(items), slices.Clone(entries)
+					itemValue := cmd.Flags().Lookup("probe-items").Value
+					entryValue := cmd.Flags().Lookup("probe-entries").Value
+					for _, arg := range []string{"first", "second"} {
+						t.Run(arg, func(t *testing.T) {
+							_, err := executeRootArgs(t, cmd.Name(), "--probe-items="+arg+",value", "--probe-entries="+arg+",value")
+							if err == nil {
+								t.Fatal("команда обязана вернуть ошибку")
+							}
+							wantItems, wantEntries := []string{arg, "value"}, []string{arg + ",value"}
+							if state.parsed {
+								wantItems = append(slices.Clone(previousItems), wantItems...)
+								wantEntries = append(slices.Clone(previousEntries), wantEntries...)
+							}
+							// Проверяем исходные переменные String*Var: восстановление
+							// не должно отвязать Value от хранилища команды.
+							if !slices.Equal(items, wantItems) || !slices.Equal(entries, wantEntries) {
+								t.Errorf("Execute: items=%q, entries=%q; ожидались %q, %q", items, entries, wantItems, wantEntries)
+							}
+							if !cmd.Flags().Lookup("probe-items").Changed || !cmd.Flags().Lookup("probe-entries").Changed {
+								t.Error("Execute не выставил Changed")
+							}
+						})
+						if !slices.Equal(items, previousItems) || !slices.Equal(entries, previousEntries) {
+							t.Errorf("cleanup изменил исходные списки: items=%q, entries=%q", items, entries)
+						}
+						for _, flagName := range []string{"probe-items", "probe-entries"} {
+							if cmd.Flags().Lookup(flagName).Changed != state.changed {
+								t.Errorf("cleanup изменил Changed у --%s", flagName)
+							}
+						}
+						if cmd.Flags().Lookup("probe-items").Value != itemValue || cmd.Flags().Lookup("probe-entries").Value != entryValue {
+							t.Error("cleanup заменил исходный Value")
+						}
+					}
+				})
 			}
 		})
 	}
