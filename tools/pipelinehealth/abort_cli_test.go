@@ -89,11 +89,13 @@ func TestV1AbortPublicCLITransports(t *testing.T) {
 						w.Header().Set("Content-Type", "application/json")
 						switch {
 						case strings.Contains(r.URL.Path, "/pulls"):
-							//nolint:errcheck // Test fixture response; command failure is asserted below.
-							json.NewEncoder(w).Encode([]apiPull{item})
+							if err := json.NewEncoder(w).Encode([]apiPull{item}); err != nil {
+								t.Errorf("encode pulls fixture response: %v", err)
+							}
 						case strings.Contains(r.URL.Path, "/comments"):
-							//nolint:errcheck // Test fixture response.
-							json.NewEncoder(w).Encode(item.Comments)
+							if err := json.NewEncoder(w).Encode(item.Comments); err != nil {
+								t.Errorf("encode comments fixture response: %v", err)
+							}
 						case strings.Contains(r.URL.Path, "/commits/"):
 							mu.Lock()
 							parentReads++
@@ -102,8 +104,9 @@ func TestV1AbortPublicCLITransports(t *testing.T) {
 								http.Error(w, "injected commit read failure", http.StatusInternalServerError)
 								return
 							}
-							//nolint:errcheck // Test fixture response.
-							json.NewEncoder(w).Encode(map[string]any{"parents": restParents})
+							if err := json.NewEncoder(w).Encode(map[string]any{"parents": restParents}); err != nil {
+								t.Errorf("encode commit parents fixture response: %v", err)
+							}
 						default:
 							http.Error(w, "unexpected endpoint", http.StatusNotFound)
 						}
