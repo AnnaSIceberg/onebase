@@ -681,7 +681,13 @@ func (tr *translator) systemRefQualifierAt(pos int) *refDimInfo {
 	if pos < 0 || pos >= len(tr.tokens) || tr.tokens[pos].kind != tIdent {
 		return nil
 	}
-	rd := tr.findRefDim(lowerFast(tr.tokens[pos].val))
+	name := lowerFast(tr.tokens[pos].val)
+	// A qualified joined field belongs to that SELECT's source, even when
+	// the main source has a field with the same name.
+	_, rd := tr.findJoinedSource(pos-2, name)
+	if rd == nil {
+		rd = tr.findRefDim(name)
+	}
 	if rd == nil || !metadata.IsSystemRefTarget(rd.refEntity) {
 		return nil
 	}
@@ -760,6 +766,20 @@ func (tr *translator) systemRefPathStart(qpos int) int {
 // транслятора: через «ref_автор.<колонка>» читалась бы вся строка _users,
 // включая хеш пароля, мимо проверки объявленных реквизитов.
 func (tr *translator) systemRefByJoinAlias(name string) *refDimInfo {
+	for scopeID, ok := tr.sourceCtx.scopeIDAt(tr.pos - 1); ok && scopeID >= 0; scopeID = tr.sourceCtx.scopes[scopeID].parent {
+		for i := range tr.joinedRefs {
+			src := &tr.joinedRefs[i]
+			if src.scopeID != scopeID {
+				continue
+			}
+			for j := range src.dims {
+				rd := &src.dims[j]
+				if rd.joinAlias == name && metadata.IsSystemRefTarget(rd.refEntity) {
+					return rd
+				}
+			}
+		}
+	}
 	for i := range tr.refDims {
 		rd := &tr.refDims[i]
 		if rd.joinAlias == name && metadata.IsSystemRefTarget(rd.refEntity) {
@@ -854,7 +874,7 @@ type translator struct {
 	mainRef         mainRefSource                 // главный источник запроса: чья ссылка стоит за голым «Ссылка»
 	joinedRefs      []joinedRefSource             // ссылочные поля присоединённых источников (#1385)
 	pendingRefJoins []pendingRefJoin              // авто-JOIN'ы присоединённого источника, ждущие конца его ПО
-	fromSourceAlias string                        // последняя source-алиас в секции ПО (для проверки dot-в ON)
+	onSourceAliases map[int]string                // текущий источник ПО в каждом SELECT-scope
 }
 
 // pendingRefJoin — отложенный авто-JOIN с глубиной скобок своего SELECT-scope:
@@ -1494,8 +1514,16 @@ func (tr *translator) dropSourceQualifier(rd *refDimInfo) bool {
 	// Поиск останавливается на ближайшем alias, даже если у него нет нужной
 	// ссылки. Авто-JOIN принадлежит одному источнику одного SELECT: одинаковые
 	// имена полей во вложенной или присоединённой таблице его не заимствуют.
-	if !ok || scopeID != tr.refScope || !tr.refSources[qualifier] {
+	if !ok {
 		return false
+	}
+	if scopeID != tr.refScope || !tr.refSources[qualifier] {
+		// Explicit JOIN references have their own owner in this SELECT.
+		// They must not borrow the main source's auto-JOIN, or another scope's.
+		src, joinedDim := tr.findJoinedSource(tr.pos-3, rd.fieldName)
+		if src == nil || src.scopeID != scopeID || joinedDim != rd {
+			return false
+		}
 	}
 	// Даже верно найденный внешний источник нельзя читать через alias JOIN,
 	// затенённый явным источником вложенного SELECT.
@@ -3155,7 +3183,10 @@ func qualifiedRefDims(dims []refDimInfo, quals map[string]bool, alias string, to
 	}
 	var out []refDimInfo
 	for _, rd := range dims {
-		if !used[rd.fieldName] {
+		// Keep system references even without a declared path: a query may
+		// name the reserved auto-JOIN alias directly. No JOIN is queued unless
+		// navigation actually uses this field.
+		if !used[rd.fieldName] && !metadata.IsSystemRefTarget(rd.refEntity) {
 			continue
 		}
 		rd.joinAlias = "ref_" + alias + "_" + rd.fieldName
@@ -3217,7 +3248,7 @@ func (tr *translator) queueJoinedRefJoins(alias string, scopeID int) error {
 				joinCond += " AND " + s
 			}
 			tr.pendingRefJoins = append(tr.pendingRefJoins, pendingRefJoin{
-				sql:   fmt.Sprintf("LEFT JOIN %s %s ON %s", rd.joinTable, rd.joinAlias, joinCond),
+				sql:   fmt.Sprintf("LEFT JOIN %s %s ON %s", rd.joinSource(), rd.joinAlias, joinCond),
 				depth: tr.parenDepth,
 			})
 			// #14: чтение наименования связанной сущности — источник для RBAC.
@@ -5060,21 +5091,22 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	tokens = rewriteStrftime(tokens, dialectName(opts.Dialect))
 	sctx := preScanSourceContextWithOpts(tokens, opts)
 	tr := &translator{
-		tokens:      tokens,
-		params:      map[string]int{},
-		paramValues: opts.Params,
-		opts:        opts,
-		colMap:      buildColMap(tokens, opts),
-		colTypes:    colTypes,
-		mainTable:   preScanMainTable(tokens),
-		refDims:     preScanRefDims(tokens, opts),
-		mainRef:     preScanMainRefSource(tokens, opts),
-		joinedRefs:  preScanJoinedRefSources(tokens, opts, sctx),
-		sourceCtx:   sctx,
-		aliases:     map[string]struct{}{},
-		unionDepths: map[int]bool{},
-		unionOrders: map[int]bool{},
-		section:     sectionOther,
+		tokens:          tokens,
+		params:          map[string]int{},
+		paramValues:     opts.Params,
+		opts:            opts,
+		colMap:          buildColMap(tokens, opts),
+		colTypes:        colTypes,
+		mainTable:       preScanMainTable(tokens),
+		refDims:         preScanRefDims(tokens, opts),
+		mainRef:         preScanMainRefSource(tokens, opts),
+		joinedRefs:      preScanJoinedRefSources(tokens, opts, sctx),
+		onSourceAliases: map[int]string{},
+		sourceCtx:       sctx,
+		aliases:         map[string]struct{}{},
+		unionDepths:     map[int]bool{},
+		unionOrders:     map[int]bool{},
+		section:         sectionOther,
 	}
 	tr.refScope = -1
 	// Тот же первый источник, что preScanRefDims: сохраняем его область и
@@ -5219,8 +5251,10 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					}
 				}
 			}
-			if tr.section == sectionFrom {
-				tr.fromSourceAlias = sourceAlias
+			if tr.sourceCtx.sectionAt(sourcePos) == sectionFrom {
+				if scopeID, ok := tr.sourceCtx.scopeIDAt(sourcePos); ok {
+					tr.onSourceAliases[scopeID] = sourceAlias
+				}
 			}
 			if !isMain || tr.parenDepth > 0 {
 				filtered, ok, err := tr.rowFilteredSourceSQL(upper, entity.val, tableName, sourceAlias)
@@ -5617,14 +5651,13 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					// Авто-JOIN для навигации нельзя безопасно дописать внутри
 					// собственного ON: его псевдоним оказался бы использован до
 					// объявления. Явно отклоняем такую форму вместо невалидного SQL.
-					qualifier := lowerFast(tr.tokens[tr.pos-3].val)
-					if jrd != nil && nextIsDot && tr.section == sectionFrom && qualifier == tr.fromSourceAlias {
+					if jrd != nil && nextIsDot && tr.sourceCtx.sectionAt(tr.pos-1) == sectionFrom && src.alias == tr.onSourceAliases[src.scopeID] {
 						return Result{}, i18nerr.Errorf(
 							"навигация по ссылке присоединённого источника внутри ПО не поддерживается; соедини %s явно через СОЕДИНЕНИЕ",
 							jrd.refEntity)
 					}
 					switch {
-					case jrd != nil && nextIsDot && tr.dropSourceQualifier():
+					case jrd != nil && nextIsDot && tr.dropSourceQualifier(jrd):
 						if err := tr.assertSingleHopNavigation(jrd); err != nil {
 							return Result{}, err
 						}
