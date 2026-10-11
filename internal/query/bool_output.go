@@ -6,7 +6,7 @@ import "github.com/ivantit66/onebase/internal/metadata"
 // SELECT sources. A nested filter does not invalidate the outer projection;
 // derived tables export only proven types, while UNION and expressions remain
 // untyped. Normalization uses the actual SQL key, preserving explicit aliases.
-func scopedBoolOutputColumns(tokens []tok, ctx sourceContext,
+func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 	scoped map[int]map[string]metadata.FieldType,
 	qualified map[int]map[string]map[string]metadata.FieldType,
 ) []string {
@@ -41,10 +41,14 @@ func scopedBoolOutputColumns(tokens []tok, ctx sourceContext,
 	}
 	var candidates []string
 	counts := map[string]int{}
+	hasStar := false
 	add := func(from, to int) {
 		item := trimProjectionItem(tokens[from:to])
 		from = to - len(item)
 		col, _ := parseProjectionItem(item)
+		if col.Star {
+			hasStar = true
+		}
 		if col.Output == "" {
 			return
 		}
@@ -54,7 +58,11 @@ func scopedBoolOutputColumns(tokens []tok, ctx sourceContext,
 		// Prove the expression independently: two logical names can emit
 		// distinct SQL keys and must not erase each other's source types.
 		if len(col.Path) > 0 {
-			if scalarProjectionFieldTypeAt(tokens, ctx, from, fieldEnd, scoped[scopeID], qualified[scopeID]) == metadata.FieldTypeBool {
+			typ := scalarProjectionFieldTypeAt(tokens, ctx, from, fieldEnd, scoped[scopeID], qualified[scopeID])
+			if typ == "" {
+				typ = referenceProjectionFieldType(tokens, opts, ctx, scopeID, col.Path)
+			}
+			if typ == metadata.FieldTypeBool {
 				candidates = append(candidates, output)
 			}
 		}
@@ -74,6 +82,9 @@ func scopedBoolOutputColumns(tokens []tok, ctx sourceContext,
 		}
 	}
 	add(from, end)
+	if hasStar {
+		return nil
+	}
 	var out []string
 	for _, output := range candidates {
 		// Different DSL names can emit the same SQL key (Проведен ->
@@ -83,4 +94,62 @@ func scopedBoolOutputColumns(tokens []tok, ctx sourceContext,
 		}
 	}
 	return out
+}
+
+// Prove one reference hop against the main source whose auto-JOIN is emitted
+// by the translator. A qualifier of an explicit/derived source takes priority
+// over a reference name. Unknown qualifiers and further hops stay untyped.
+func referenceProjectionFieldType(tokens []tok, opts CompileOpts, ctx sourceContext, scopeID int, path []string) metadata.FieldType {
+	if len(path) != 2 && len(path) != 3 {
+		return ""
+	}
+	scope := ctx.scopes[scopeID]
+	if _, derived := scope.derivedAliases[scope.mainTable]; derived {
+		return ""
+	}
+	if len(path) == 2 {
+		qualifier := lowerFast(path[0])
+		if _, source := scope.qualifiers[qualifier]; source {
+			return ""
+		}
+		if _, derived := scope.derivedAliases[qualifier]; derived {
+			return ""
+		}
+	}
+	for i := 0; i+2 < len(tokens); i++ {
+		id, ok := ctx.scopeIDAt(i)
+		if !ok || id != scopeID || tokens[i].kind != tIdent || !isSourceType(upperFast(tokens[i].val)) ||
+			tokens[i+1].kind != tDot || tokens[i+2].kind != tIdent {
+			continue
+		}
+		if len(path) == 3 {
+			qualifier := lowerFast(path[0])
+			if qualifier != scope.mainTable && qualifier != lowerFast(tokens[i+2].val) &&
+				qualifier != sourceToTable(upperFast(tokens[i].val), tokens[i+2].val) {
+				return ""
+			}
+		}
+		ref, attr := lowerFast(path[len(path)-2]), lowerFast(path[len(path)-1])
+		if isReferenceName(attr) {
+			// Ссылка/Reference/Ref emit the target UUID, even if metadata has
+			// a same-named own bool field. Its declared type cannot prove id.
+			return ""
+		}
+		for _, rd := range preScanAllRefDims(tokens[i:], opts) {
+			if rd.fieldName != ref {
+				continue
+			}
+			if target, found := scopeEntityInfo(rd.refEntity, opts); found {
+				if typ, own := target.fields[attr]; own {
+					return typ
+				}
+				if _, system := target.systemColumn(attr); system {
+					return metadata.FieldTypeBool
+				}
+			}
+			return ""
+		}
+		return ""
+	}
+	return ""
 }

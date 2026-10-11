@@ -4807,7 +4807,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	colTypes := buildColTypes(tokens, opts)
 	scalarSourceCtx := preScanSourceContextWithOpts(tokens, opts)
 	scopedColTypes, qualifiedColTypes := buildScalarColumnTypes(tokens, opts, scalarSourceCtx)
-	boolColumns := scopedBoolOutputColumns(tokens, scalarSourceCtx, scopedColTypes, qualifiedColTypes)
+	boolColumns := scopedBoolOutputColumns(tokens, opts, scalarSourceCtx, scopedColTypes, qualifiedColTypes)
 	tokens = rewriteGroupingReferenceAliases(tokens)
 	// расширяем НачалоДня/Год/Месяц/ОКР/АБС/ЦЕЛ/... в SQL-эквиваленты
 	// до основной трансляции, чтобы остальные шаги ничего не знали о них.

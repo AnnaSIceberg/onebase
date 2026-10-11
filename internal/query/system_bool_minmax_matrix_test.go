@@ -132,13 +132,14 @@ func TestRunSystemBoolAndMinMaxMatrix(t *testing.T) {
 						require.IsType(t, row["п"], row["у"])
 						_, isBool := row["п"].(bool)
 						require.False(t, isBool, "colliding SQL key must not be normalized")
-						if projection[0] == '"' {
+						switch projection[0] {
+						case '"':
 							require.Equal(t, "1", row["п"])
 							require.Equal(t, "0", row["у"])
-						} else if projection[0] == '4' {
+						case '4':
 							require.EqualValues(t, 42, row["п"])
 							require.EqualValues(t, 43, row["у"])
-						} else {
+						default:
 							require.EqualValues(t, i == 0, row["п"].(int64) != 0)
 							require.EqualValues(t, i == 1, row["у"].(int64) != 0)
 						}

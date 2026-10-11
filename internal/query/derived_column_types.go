@@ -79,10 +79,14 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 			}
 		}
 	}
+	hasStar := false
 	add := func(from, to int) {
 		item := trimProjectionItem(tokens[from:to])
 		from = to - len(item)
 		column, _ := parseProjectionItem(item)
+		if column.Star {
+			hasStar = true
+		}
 		if column.Output == "" || column.Star {
 			return
 		}
@@ -118,6 +122,14 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		}
 	}
 	add(from, end)
+	if hasStar {
+		// Until every SQL column of the wildcard is known, any explicit output
+		// may collide with it, in either order. Keep the names reserved but do
+		// not let an unproven type trigger normalization or a numeric CAST.
+		for key := range output {
+			output[key] = ""
+		}
+	}
 	return output
 }
 
