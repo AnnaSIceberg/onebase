@@ -231,3 +231,103 @@ func TestRunSystemBoolAndMinMaxMatrix(t *testing.T) {
 		})
 	})
 }
+
+// #2034: logical reference aliases all emit the SQL name id. Type proof must
+// follow that name, including collisions, before normalization or numeric CAST.
+func TestRunReservedProjectionSQLKeysMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		doc := &metadata.Entity{Name: "ReservedProjection", Kind: metadata.KindDocument, Fields: []metadata.Field{
+			{Name: "Номер", Type: metadata.FieldTypeString},
+			{Name: "Активен", Type: metadata.FieldTypeBool},
+			{Name: "Число", Type: metadata.FieldTypeNumber},
+			{Name: "Текст", Type: metadata.FieldTypeString},
+		}}
+		entities := []*metadata.Entity{doc}
+		require.NoError(t, db.Migrate(ctx, entities))
+		for i, value := range []string{"100", "20"} {
+			id := uuid.New()
+			require.NoError(t, db.Upsert(ctx, doc.Name, id, map[string]any{
+				"Номер": fmt.Sprint(i), "Активен": true, "Число": value, "Текст": value,
+			}, doc))
+			require.NoError(t, db.SetPosted(ctx, doc.Name, id, true))
+		}
+		run := func(t *testing.T, src string, ambiguous bool) []map[string]any {
+			t.Helper()
+			res, err := query.Compile(src, query.CompileOpts{Entities: entities, Dialect: db.Dialect()})
+			require.NoError(t, err, src)
+			rows, _, err := query.Run(ctx, db, &res)
+			if ambiguous && db.Dialect().Name() == "postgres" {
+				require.ErrorContains(t, err, "ambiguous", res.SQL)
+				return nil
+			}
+			require.NoError(t, err, res.SQL)
+			return rows
+		}
+		for _, alias := range []string{"Ссылка", "Reference", "Ref"} {
+			for _, field := range []string{"Проведен", "Активен"} {
+				flag := field + " КАК " + alias
+				for _, tc := range []struct {
+					projection string
+					want       int64
+				}{
+					{"42 КАК id, " + flag, 42},
+					{flag + ", 42 КАК id", 1},
+					{"42 КАК id, " + flag + ", " + flag, 42},
+					{flag + ", 42 КАК id, " + flag, 1},
+					{flag + ", " + flag + ", 42 КАК id", 1},
+				} {
+					t.Run("derived bool collision/"+alias+"/"+tc.projection, func(t *testing.T) {
+						rows := run(t, "ВЫБРАТЬ X."+alias+" КАК Значение ИЗ (ВЫБРАТЬ "+tc.projection+" ИЗ Документ.ReservedProjection) КАК X", true)
+						if db.Dialect().Name() == "postgres" {
+							return
+						}
+						require.Len(t, rows, 2)
+						for _, row := range rows {
+							require.Equal(t, tc.want, row["значение"])
+						}
+					})
+				}
+			}
+			for _, projection := range []string{
+				"Текст КАК id, Число КАК " + alias,
+				"Текст КАК id, Число КАК " + alias + ", Число КАК " + alias,
+			} {
+				t.Run("string aggregates/"+alias+"/"+projection, func(t *testing.T) {
+					rows := run(t, "ВЫБРАТЬ МИН(X."+alias+") КАК Мин, МАКС(X."+alias+") КАК Макс ИЗ (ВЫБРАТЬ "+projection+" ИЗ Документ.ReservedProjection) КАК X", true)
+					if db.Dialect().Name() == "postgres" {
+						return
+					}
+					require.Len(t, rows, 1)
+					require.Equal(t, "100", rows[0]["мин"])
+					require.Equal(t, "20", rows[0]["макс"])
+				})
+			}
+			t.Run("proven system bool/"+alias, func(t *testing.T) {
+				for _, src := range []string{
+					"ВЫБРАТЬ Проведен КАК " + alias + " ИЗ Документ.ReservedProjection",
+					"ВЫБРАТЬ X." + alias + " ИЗ (ВЫБРАТЬ Проведен КАК " + alias + " ИЗ Документ.ReservedProjection) КАК X",
+					"ВЫБРАТЬ Y." + alias + " ИЗ (ВЫБРАТЬ X." + alias + " ИЗ (ВЫБРАТЬ Проведен КАК " + alias + " ИЗ Документ.ReservedProjection) КАК X) КАК Y",
+				} {
+					rows := run(t, src, false)
+					require.Len(t, rows, 2)
+					for _, row := range rows {
+						require.Equal(t, true, row["id"], src)
+					}
+				}
+			})
+			t.Run("proven derived number/"+alias, func(t *testing.T) {
+				rows := run(t, "ВЫБРАТЬ МИН(X."+alias+") КАК Мин, МАКС(X."+alias+") КАК Макс ИЗ (ВЫБРАТЬ Число КАК "+alias+" ИЗ Документ.ReservedProjection) КАК X", false)
+				require.Len(t, rows, 1)
+				require.Equal(t, "20", fmt.Sprint(rows[0]["мин"]))
+				require.Equal(t, "100", fmt.Sprint(rows[0]["макс"]))
+			})
+		}
+		t.Run("ordinary alias", func(t *testing.T) {
+			rows := run(t, "ВЫБРАТЬ Проведен КАК Флаг ИЗ Документ.ReservedProjection", false)
+			for _, row := range rows {
+				require.Equal(t, map[string]any{"флаг": true}, row)
+			}
+		})
+	})
+}
