@@ -605,7 +605,7 @@ func (r *Runner) navigationIDs(w *metadata.Widget, cols []string, rows []map[str
 
 // runQuery is the shared back-end for kpi/list/chart widgets.
 func (r *Runner) runQuery(ctx context.Context, w *metadata.Widget, params map[string]any) ([]map[string]any, []string, *query.Result, error) {
-	rowFilters, err := access.QueryRowFiltersWithLookup(r.User, r.Reg.Entities(), r.Reg.Registers(), r.Reg.InfoRegisters(), r.Reg.AccountRegisters(), r.Reg)
+	rowFilters, err := access.QueryRowFiltersWithContext(ctx, r.User, r.Reg.Entities(), r.Reg.Registers(), r.Reg.InfoRegisters(), r.Reg.AccountRegisters(), access.RuntimeContext(r.Reg, r.Store))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -680,7 +680,7 @@ func (r *Runner) canWrite(kind, name string) bool {
 }
 
 func (r *Runner) rowAllowedID(ctx context.Context, entity *metadata.Entity, op string, id uuid.UUID) bool {
-	dec, err := access.DecideWithLookup(r.User, string(entity.Kind), entity.Name, op, entity, r.Reg)
+	dec, err := access.DecideWithContext(ctx, r.User, string(entity.Kind), entity.Name, op, entity, access.RuntimeContext(r.Reg, r.Store))
 	if err != nil || !dec.Allowed {
 		return false
 	}

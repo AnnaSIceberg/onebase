@@ -447,7 +447,7 @@ func allSchemas() map[string]map[string]any {
 			},
 		},
 		"form":      managedFormSchema(),
-		"role":      looseNamedSchema("OneBase RBAC role"),
+		"role":      roleRowAccessSchema(),
 		"page":      looseNamedSchema("OneBase page"),
 		"service":   looseNamedSchema("OneBase HTTP service"),
 		"subsystem": navigationContainerSchema(false),
