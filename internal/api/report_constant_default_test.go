@@ -50,16 +50,24 @@ func TestAPIV2_ReportStoredDateConstant(t *testing.T) {
 		router := chi.NewRouter()
 		h.mountV2(router)
 		for _, tc := range []struct {
-			name   string
-			stored any
-			status int
+			name      string
+			stored    any
+			status    int
+			paramType string
+			wantRows  int
 		}{
 			{name: "migration default", status: http.StatusOK},
 			{name: "form date", stored: "2026-05-05", status: http.StatusOK},
 			{name: "serialized time", stored: time.Date(2026, 5, 5, 0, 0, 0, 0, time.Local), status: http.StatusOK},
+			{name: "date keeps midnight", stored: time.Date(2026, 5, 5, 18, 0, 0, 0, time.Local), status: http.StatusOK},
+			{name: "datetime keeps constant time", stored: time.Date(2026, 5, 5, 18, 0, 0, 0, time.Local), status: http.StatusOK, paramType: "datetime", wantRows: 2},
 			{name: "invalid date", stored: "не дата", status: http.StatusBadRequest},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
+				rep.Params[0].Type = tc.paramType
+				if rep.Params[0].Type == "" {
+					rep.Params[0].Type = "date"
+				}
 				if tc.stored != nil {
 					if err := db.SetConstant(ctx, constant.Name, tc.stored); err != nil {
 						t.Fatal(err)
@@ -84,7 +92,11 @@ func TestAPIV2_ReportStoredDateConstant(t *testing.T) {
 				if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 					t.Fatal(err)
 				}
-				if len(result.Data) != 1 || result.Data[0]["наименование"] != "Просрочена" {
+				wantRows := tc.wantRows
+				if wantRows == 0 {
+					wantRows = 1
+				}
+				if len(result.Data) != wantRows || (wantRows == 1 && result.Data[0]["наименование"] != "Просрочена") {
 					t.Fatalf("неверная граница отчёта: %s", response.Body.String())
 				}
 			})

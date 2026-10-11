@@ -233,6 +233,14 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		queryValues[k] = v
 	}
 	for _, p := range rep.Params {
+		// Числовые параметры констант сохраняют принятый тип и на экране:
+		// строка меняет сравнение на SQLite и не сравнима с числом на PG.
+		if p.Type == "number" {
+			if str, ok := queryValues[p.Name].(string); ok {
+				queryValues[p.Name] = parseParamValue(str, "number")
+			}
+			continue
+		}
 		str, _ := queryValues[p.Name].(string)
 		v, perr := reportpkg.ParseParamValue(str, p, reportpkg.ParamParseForm)
 		if perr != nil {
@@ -663,6 +671,10 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 				return nil, nil, derr
 			}
 			val = d
+		}
+		if p.Type == "number" {
+			paramValues[p.Name] = parseParamValue(val, "number")
+			continue
 		}
 		v, perr := reportpkg.ParseParamValue(val, p, reportpkg.ParamParseForm)
 		if perr != nil {
