@@ -90,6 +90,7 @@ query: ВЫБРАТЬ 1 КАК Один
 				form := browserSubmit(t, get.Body.String(), "/configurator/report")
 				form.Set("title", "Новый заголовок")
 				want := map[string]string{"Дата": "{{today}}", "Количество": "0", "Флаг": "false", "Текст": "Умолчание", "Пустой": ""}
+				wantTypes := map[string]string{"Дата": "date", "Количество": "number", "Флаг": "bool", "Текст": "string", "Пустой": "string", "НоваяДата": "date"}
 				switch action {
 				case "reorder":
 					form.Set("param.0.name", "Текст")
@@ -125,6 +126,9 @@ query: ВЫБРАТЬ 1 КАК Один
 					t.Fatalf("сохранённый отчёт: %+v", after)
 				}
 				for _, p := range after.Params {
+					if p.Type != wantTypes[p.Name] {
+						t.Errorf("параметр %s: type=%q, нужен %q", p.Name, p.Type, wantTypes[p.Name])
+					}
 					expected, exists := want[p.Name]
 					if !exists || p.Default != expected {
 						t.Errorf("параметр %s: default=%q, нужен %q (exists=%v)", p.Name, p.Default, expected, exists)
@@ -133,6 +137,19 @@ query: ВЫБРАТЬ 1 КАК Один
 				}
 				if len(want) != 0 {
 					t.Errorf("потерянные параметры: %v", want)
+				}
+				// Повторное открытие тоже должно выбрать сохранённый тип, а не
+				// первый option. В частности, default=false не доказывает type=bool.
+				get = httptest.NewRecorder()
+				router.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/bases/test/configurator?tab=tree", nil))
+				if get.Code != http.StatusOK {
+					t.Fatalf("повторный GET: %d %s", get.Code, get.Body.String())
+				}
+				reopened := browserSubmit(t, get.Body.String(), "/configurator/report")
+				for i, p := range after.Params {
+					if got := reopened.Get(fmt.Sprintf("param.%d.type", i)); got != wantTypes[p.Name] {
+						t.Errorf("повторное открытие параметра %s: type=%q, нужен %q", p.Name, got, wantTypes[p.Name])
+					}
 				}
 				var fields struct {
 					Params []struct {
