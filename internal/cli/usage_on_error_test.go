@@ -3,10 +3,12 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // Ошибка исполнения не должна тащить за собой справку по флагам.
@@ -18,6 +20,41 @@ import (
 // этого пути не проходит.
 func executeRootArgs(t *testing.T, args ...string) (string, error) {
 	t.Helper()
+	cmd, _, err := rootCmd.Find(args)
+	if err != nil {
+		cmd = rootCmd
+	}
+	// Execute переиспользует значения локальных и унаследованных флагов.
+	// Возвращаем снимок, а не DefValue: соседний тест мог задать свои значения.
+	seen := make(map[*pflag.Flag]bool)
+	for _, flags := range []*pflag.FlagSet{cmd.Flags(), cmd.PersistentFlags(), cmd.InheritedFlags()} {
+		flags.VisitAll(func(flag *pflag.Flag) {
+			if seen[flag] {
+				return
+			}
+			seen[flag] = true
+			value, changed := flag.Value.String(), flag.Changed
+			slice, isSlice := flag.Value.(pflag.SliceValue)
+			var items []string
+			if isSlice {
+				items = slices.Clone(slice.GetSlice())
+			}
+			t.Cleanup(func() {
+				var err error
+				if isSlice {
+					// String() списка не является входом Set(): скобки и CSV
+					// могут исказить пустые значения и элементы с запятыми.
+					err = slice.Replace(items)
+				} else {
+					err = flag.Value.Set(value)
+				}
+				flag.Changed = changed
+				if err != nil {
+					t.Errorf("восстановление --%s: %v", flag.Name, err)
+				}
+			})
+		})
+	}
 	var out bytes.Buffer
 	rootCmd.SetOut(&out)
 	rootCmd.SetErr(&out)
@@ -34,7 +71,7 @@ func executeRootArgs(t *testing.T, args ...string) (string, error) {
 		rootCmd.SetErr(nil)
 		rootCmd.SilenceUsage = prevSilence
 	})
-	err := rootCmd.Execute()
+	err = rootCmd.Execute()
 	return out.String(), err
 }
 
@@ -89,5 +126,72 @@ func TestRunCommandErrorHasNoUsage(t *testing.T) {
 	}
 	if strings.Contains(out, "Usage:") || strings.Contains(out, "Global Flags:") {
 		t.Errorf("`onebase run` печатает справку вместо причины:\n%s", out)
+	}
+}
+
+func TestExecuteRootArgsRestoresFlagState(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		name := "unchanged"
+		if changed {
+			name = "changed"
+		}
+		t.Run(name, func(t *testing.T) {
+			cmd := addFailingCommand(t)
+			cmd.Flags().String("label", "default", "")
+			cmd.Flags().Int("count", 1, "")
+			cmd.Flags().Bool("enabled", true, "")
+			cmd.Flags().StringSlice("items", []string{"a,b", "c"}, "")
+			cmd.Flags().StringArray("entries", []string{"x,y", "z"}, "")
+			for flagName, value := range map[string]string{"label": "original", "count": "7", "enabled": "false"} {
+				if err := cmd.Flags().Lookup(flagName).Value.Set(value); err != nil {
+					t.Fatal(err)
+				}
+			}
+			previous := make(map[string]string)
+			cmd.Flags().VisitAll(func(flag *pflag.Flag) {
+				flag.Changed = changed
+				previous[flag.Name] = flag.Value.String()
+			})
+			inherited := rootCmd.PersistentFlags().Lookup("no-gui")
+			previousValue, previousChanged := inherited.Value.String(), inherited.Changed
+			t.Cleanup(func() {
+				if err := inherited.Value.Set(previousValue); err != nil {
+					t.Error(err)
+				}
+				inherited.Changed = previousChanged
+			})
+			if err := inherited.Value.Set("false"); err != nil {
+				t.Fatal(err)
+			}
+			inherited.Changed = changed
+
+			t.Run("execute", func(t *testing.T) {
+				_, err := executeRootArgs(t, cmd.Name(), "--label=new", "--count=42",
+					"--enabled", "--items=new,values", "--entries=new,value", "--no-gui")
+				if err == nil {
+					t.Fatal("команда обязана вернуть ошибку")
+				}
+				label, _ := cmd.Flags().GetString("label")
+				if label != "new" || !noGUI {
+					t.Fatal("флаги не прошли через настоящий разбор cobra")
+				}
+			})
+
+			for _, flagName := range []string{"label", "count", "enabled", "items", "entries"} {
+				flag := cmd.Flags().Lookup(flagName)
+				if flag.Value.String() != previous[flagName] || flag.Changed != changed {
+					t.Errorf("--%s после cleanup: value=%s, Changed=%v; ожидались %s, %v",
+						flagName, flag.Value.String(), flag.Changed, previous[flagName], changed)
+				}
+			}
+			items, _ := cmd.Flags().GetStringSlice("items")
+			entries, _ := cmd.Flags().GetStringArray("entries")
+			if !slices.Equal(items, []string{"a,b", "c"}) || !slices.Equal(entries, []string{"x,y", "z"}) {
+				t.Errorf("cleanup изменил элементы списков: items=%q, entries=%q", items, entries)
+			}
+			if noGUI || inherited.Changed != changed {
+				t.Errorf("унаследованный --no-gui после cleanup: value=%v, Changed=%v", noGUI, inherited.Changed)
+			}
+		})
 	}
 }
