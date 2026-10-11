@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/dbtest"
+	"github.com/ivantit66/onebase/internal/i18n"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/storage"
 )
@@ -21,6 +23,19 @@ import (
 // returns INTEGER booleans; PostgreSQL returns bools. Both must reach the browser
 // as booleans, and older grids posting 1/0 must still preserve their checkboxes.
 func TestTablePartBoolHTTP1743(t *testing.T) {
+	testTablePartBoolHTTP(t, "ru")
+}
+
+func TestTablePartBoolHTTP2030English(t *testing.T) {
+	testTablePartBoolHTTP(t, "en")
+}
+
+func testTablePartBoolHTTP(t *testing.T, lang string) {
+	t.Helper()
+	bundle, err := i18n.Load(i18n.EmbeddedLocales, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		entity := &metadata.Entity{
 			Name: "Флаги" + uuid.New().String()[:8], Kind: metadata.KindCatalog,
@@ -55,7 +70,7 @@ func TestTablePartBoolHTTP1743(t *testing.T) {
 		}
 		form.ProgramAST = mustParse(t, fmt.Sprintf(eventSource, "Ложь", "Истина"))
 		entity.Forms = []*metadata.FormModule{form}
-		ts := tpw1074Server(t, db, []*metadata.Entity{entity})
+		ts := tpw1074ServerWithConfig(t, db, []*metadata.Entity{entity}, Config{Bundle: bundle, Lang: lang})
 		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		seed := func(t *testing.T) uuid.UUID {
 			t.Helper()
@@ -265,14 +280,24 @@ func TestTablePartBoolHTTP1743(t *testing.T) {
 							}
 							id := seed(t)
 							status, data := post(t, id, []map[string]any{{"Имя": "а", "Флаг": bad}}, event, path != "grid")
+							wantError := fmt.Sprintf("таблица %q: реквизит %q: %q не булево значение", "Строки", "Флаг", fmt.Sprint(bad))
+							if lang == "en" {
+								wantError = fmt.Sprintf("table %q: field %q: %q is not a boolean value", "Строки", "Флаг", fmt.Sprint(bad))
+							}
 							if event == "" {
 								if status != http.StatusBadRequest {
 									t.Errorf("invalid flag %v save status=%d: %s", bad, status, data)
+								}
+								if !strings.Contains(html.UnescapeString(string(data)), wantError) {
+									t.Errorf("save error missing %q", wantError)
 								}
 							} else {
 								response := decodeFormEventResponse(t, data)
 								if status != http.StatusOK || response.OK || response.Error == "" || len(response.Messages) != 0 {
 									t.Errorf("invalid flag %v event status=%d: %s", bad, status, data)
+								}
+								if response.Error != wantError {
+									t.Errorf("event error=%q, want %q", response.Error, wantError)
 								}
 							}
 							checkStored(t, id, []bool{true, false})

@@ -43,6 +43,7 @@ func (h *handler) configuratorSaveReport(w http.ResponseWriter, r *http.Request)
 		Label   string            `yaml:"label,omitempty"`
 		Labels  map[string]string `yaml:"labels,omitempty"`
 		Default *string           `yaml:"default,omitempty"`
+		Options *[]string         `yaml:"options,omitempty"`
 	}
 	type saveReport struct {
 		Name        string              `yaml:"name"`
@@ -96,20 +97,23 @@ func (h *handler) configuratorSaveReport(w http.ResponseWriter, r *http.Request)
 			return nil, fmt.Errorf("updateReportFile: ожидалось YAML-отображение в корне отчёта")
 		}
 		doc := root.Content[0]
-		// Умолчания не редактируются формой. Сохраняем их по имени, чтобы
-		// перестановка строк не переносила значение на другой параметр,
-		// а новые и переименованные параметры не наследовали чужой default.
+		// Умолчания и варианты выбора не редактируются формой. Сохраняем
+		// их по имени: перестановка не переносит их на другой параметр,
+		// а новые и переименованные параметры не наследуют чужие значения.
+		// Указатель Options отличает отсутствующий список от явного options: [].
 		var existing saveReport
 		if err := doc.Decode(&existing); err != nil {
 			return nil, err
 		}
-		defaults := make(map[string]*string, len(existing.Params))
+		byName := make(map[string]saveParam, len(existing.Params))
 		for _, p := range existing.Params {
-			defaults[p.Name] = p.Default
+			byName[p.Name] = p
 		}
 		params := append([]saveParam(nil), newParams...)
 		for i := range params {
-			params[i].Default = defaults[params[i].Name]
+			previous := byName[params[i].Name]
+			params[i].Default = previous.Default
+			params[i].Options = previous.Options
 		}
 		if err := setYAMLMapField(doc, "query", query); err != nil {
 			return nil, err

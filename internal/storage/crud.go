@@ -27,17 +27,20 @@ type ListParams struct {
 	// чокпоинтом в List как признак «фильтр не забыли», иначе fail-closed.
 	RowFilterEvaluated bool
 	JournalRowFilters  map[string]*Predicate // per document name row-level predicates for journal UNIONs
-	Sort               string                // field Name (empty = default sort by id)
-	Dir                string                // "asc" or "desc"
-	ParentStr          string                // "" = no filter; "root" = parent IS NULL; "<uuid>" = parent = uuid
-	Search             string                // full-text search: ILIKE across all string fields
-	ActivityScope      string                // "", "active", "inactive", "all"; applied only for opt-in catalogs
-	Limit              int                   // 0 = no limit
-	Offset             int                   // for pagination
-	AfterID            *uuid.UUID            // exclusive keyset cursor; requires id ASC and Offset=0
-	ThroughID          *uuid.UUID            // inclusive keyset high-water mark; requires id ASC and Offset=0
-	ExcludeFolders     bool                  // for hierarchical catalogs: only non-folder elements
-	OnlyFolders        bool                  // for hierarchical catalogs: only folder elements
+	// Sort is a metadata field name. Empty selects the default: keyset by id ASC;
+	// otherwise entity.OrderBy, folders then first string for hierarchical lists,
+	// first document date DESC, flat catalog name/first string ASC, or id (using Dir).
+	Sort           string
+	Dir            string     // "asc" or "desc"
+	ParentStr      string     // "" = no filter; "root" = parent IS NULL; "<uuid>" = parent = uuid
+	Search         string     // full-text search: ILIKE across all string fields
+	ActivityScope  string     // "", "active", "inactive", "all"; applied only for opt-in catalogs
+	Limit          int        // 0 = no limit
+	Offset         int        // for pagination
+	AfterID        *uuid.UUID // exclusive keyset cursor; requires id ASC and Offset=0
+	ThroughID      *uuid.UUID // inclusive keyset high-water mark; requires id ASC and Offset=0
+	ExcludeFolders bool       // for hierarchical catalogs: only non-folder elements
+	OnlyFolders    bool       // for hierarchical catalogs: only folder elements
 	// IncludeFolders — явное согласие показать ГРУППЫ там, где подбор их всегда
 	// прятал (choice_folders у элемента формы). Слой UI снимает по нему свой
 	// ExcludeFolders; сам запрос дополнительных условий не получает.
@@ -84,10 +87,27 @@ func (db *DB) UpsertProvisional(ctx context.Context, entityName string, id uuid.
 		bumpVersion:      true,
 		validateRequired: false,
 		auditMode:        upsertAuditSkip,
+		transient:        true,
 	}); err != nil {
 		return err
 	}
 	return armWriteLifecycle(ctx, state)
+}
+
+// UpdateProvisional makes a new parent's post-OnWrite snapshot visible to
+// OnPost without closing its create lifecycle, advancing the version or
+// publishing durable effects. Only the final UpsertPreserveVersion may commit it.
+func (db *DB) UpdateProvisional(ctx context.Context, entityName string, id uuid.UUID, fields map[string]any, entity *metadata.Entity) error {
+	if !HasTx(ctx) {
+		return errors.New("storage: UpdateProvisional requires an active transaction")
+	}
+	if _, err := pendingWriteLifecycle(ctx, entityWriteLifecycleKey(db, "provisional-create", entityName, id)); err != nil {
+		return err
+	}
+	return db.upsert(ctx, entityName, id, fields, entity, upsertWriteOptions{
+		auditMode: upsertAuditSkip,
+		transient: true,
+	})
 }
 
 // UpsertPreserveVersion updates fields without advancing _version on conflict.
@@ -148,6 +168,9 @@ const (
 
 type upsertWriteOptions struct {
 	bumpVersion bool
+	// transient writes are visible only to hooks in the active lifecycle.
+	// Stage validation/history, FTS and audit belong to its final snapshot.
+	transient bool
 	// validateRequired is false only for an active provisional-create
 	// lifecycle. Audit policy is deliberately independent of this invariant.
 	validateRequired  bool
@@ -217,6 +240,11 @@ func (db *DB) upsertInTx(ctx context.Context, entityName string, id uuid.UUID, f
 		oldRow = existing
 	}
 	effectOldRow := oldRow
+	if options.auditMode == upsertAuditCreate {
+		// A provisional create has no original logical row. Validate and record
+		// the initial stage only once, using the final object.
+		effectOldRow = nil
+	}
 	if options.effectOldOverride != nil {
 		// A posting prelude already made the OnWrite snapshot visible inside the
 		// transaction and bumped the version. Durable effects belong to the one
@@ -248,9 +276,13 @@ func (db *DB) upsertInTx(ctx context.Context, entityName string, id uuid.UUID, f
 	// Compare against the persisted final snapshot, not just raw incoming keys.
 	// A posting final may omit the stage and thereby retain the transient prelude
 	// value; that retained value still has to pass the original-to-final route.
-	stageTr, err := db.checkStageTransition(ctx, entityName, entity, effectOldRow, effectiveFields)
-	if err != nil {
-		return err
+	var stageTr *stageTransition
+	if !options.transient {
+		var err error
+		stageTr, err = db.checkStageTransition(ctx, entityName, entity, effectOldRow, effectiveFields)
+		if err != nil {
+			return err
+		}
 	}
 
 	table := metadata.TableName(entityName)
@@ -391,27 +423,14 @@ func (db *DB) upsertInTx(ctx context.Context, entityName string, id uuid.UUID, f
 		return ErrStageConcurrentWrite
 	}
 
-	// Полнотекстовый индекс (план 82) — в той же транзакции, что и запись:
-	// откат записи откатывает и индекс, поэтому разъехаться они не могут.
-	// Здесь, а не в entityservice, потому что путей записи несколько
-	// (entityservice.Save, ui/dsl_documents, обмен, приёмка) — общий у них
-	// только этот upsert.
-	if err := db.IndexObject(ctx, entity, id, effectiveFields); err != nil {
-		return err
-	}
-
-	// История переходов (план 121) — в той же транзакции, что и запись, и
-	// безусловно: журнал регистрации ниже выключается настройкой, а отчёт «где
-	// застряло» обязан работать всегда.
-	//
-	// Режим аудита здесь СОЗНАТЕЛЬНО не учитывается. Провизорная вставка нового
-	// объекта (upsertAuditSkip) — это и есть момент, когда «» → начальный этап;
-	// её запись в истории откатится вместе с транзакцией, если хук упадёт.
-	// Audit mode intentionally does not affect stage history: a provisional
-	// insert is still the real transition from no stage to the initial stage,
-	// and its history row is committed or rolled back with the transaction.
-	if err := db.logStageTransition(ctx, entityName, id, stageTr); err != nil {
-		return err
+	// Only the final logical snapshot contributes FTS and stage history.
+	if !options.transient {
+		if err := db.IndexObject(ctx, entity, id, effectiveFields); err != nil {
+			return err
+		}
+		if err := db.logStageTransition(ctx, entityName, id, stageTr); err != nil {
+			return err
+		}
 	}
 
 	// Audit (best-effort, non-blocking)
@@ -690,7 +709,7 @@ func ListEntityColumns(entity *metadata.Entity) []string {
 // listWhere builds the complete predicate shared by List and CountList. Count
 // deliberately omits keyset cursors because its public contract reports the
 // total before pagination; every other filter must be byte-for-byte identical.
-func (db *DB) listWhere(entity *metadata.Entity, params ListParams, includeKeyset bool) (string, []any, error) {
+func (db *DB) listWhere(entityName string, entity *metadata.Entity, params ListParams, includeKeyset bool) (string, []any, error) {
 	d := db.dialect
 	var whereParts []string
 	var args []any
@@ -763,13 +782,48 @@ func (db *DB) listWhere(entity *metadata.Entity, params ListParams, includeKeyse
 	if params.Search != "" {
 		var searchParts []string
 		pattern := "%" + params.Search + "%"
-		// SQLite placeholders are positional, so bind the pattern once per
-		// searchable field rather than reusing a numbered placeholder.
-		for _, field := range metadata.SearchFields(entity) {
-			column := metadata.ColumnName(field)
-			searchParts = append(searchParts, d.LowerLike(column)+" LIKE "+d.LowerLike(d.Placeholder(argIdx)))
-			args = append(args, pattern)
-			argIdx++
+		paths, err := metadata.SearchFieldPaths(entity)
+		if err != nil {
+			return "", nil, err
+		}
+		// Group each table part into one correlated EXISTS. Bind every LIKE
+		// separately because SQLite placeholders are positional.
+		type tableSearch struct {
+			name    string
+			columns []string
+		}
+		var tables []tableSearch
+		tableIndex := make(map[string]int)
+		for _, path := range paths {
+			if path.TablePart == nil {
+				column := metadata.ColumnName(path.Field)
+				searchParts = append(searchParts, d.LowerLike(column)+" LIKE "+d.LowerLike(d.Placeholder(argIdx)))
+				args = append(args, pattern)
+				argIdx++
+				continue
+			}
+			name := path.TablePart.Name
+			index, ok := tableIndex[name]
+			if !ok {
+				index = len(tables)
+				tableIndex[name] = index
+				tables = append(tables, tableSearch{name: name})
+			}
+			tables[index].columns = append(tables[index].columns, metadata.ColumnName(path.Field))
+		}
+		for i, tp := range tables {
+			alias := fmt.Sprintf("ob_search_tp_%d", i)
+			for strings.EqualFold(alias, metadata.TableName(entityName)) {
+				alias += "_"
+			}
+			var matches []string
+			for _, column := range tp.columns {
+				matches = append(matches, d.LowerLike(alias+"."+column)+" LIKE "+d.LowerLike(d.Placeholder(argIdx)))
+				args = append(args, pattern)
+				argIdx++
+			}
+			searchParts = append(searchParts, fmt.Sprintf("EXISTS (SELECT 1 FROM %s AS %s WHERE %s.parent_id = %s.id AND (%s))",
+				metadata.TablePartTableName(entityName, tp.name), alias, alias, metadata.TableName(entityName), strings.Join(matches, " OR ")))
 		}
 		if len(searchParts) > 0 {
 			whereParts = append(whereParts, "("+strings.Join(searchParts, " OR ")+")")
@@ -835,7 +889,7 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 	table := metadata.TableName(entityName)
 	cols := ListEntityColumns(entity)
 	hasPredefined := entity.Kind == metadata.KindCatalog && len(entity.Predefined) > 0
-	whereClause, args, err := db.listWhere(entity, params, true)
+	whereClause, args, err := db.listWhere(entityName, entity, params, true)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", entityName, err)
 	}
@@ -918,6 +972,10 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 		query += fmt.Sprintf(" ORDER BY is_folder DESC, %s ASC", firstStrCol)
 	} else {
 		orderCol := "id"
+		orderDir := "ASC"
+		if strings.EqualFold(params.Dir, "desc") {
+			orderDir = "DESC"
+		}
 		if params.Sort != "" {
 			for _, f := range entity.Fields {
 				if f.Name == params.Sort {
@@ -925,12 +983,48 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 					break
 				}
 			}
+		} else {
+			// Без заданной сортировки показываем документы по дате, а плоские
+			// справочники — по Наименованию либо первому строковому реквизиту.
+			// Если подходящего поля нет, сохраняем прежний fallback по id.
+			switch entity.Kind {
+			case metadata.KindDocument:
+				for _, f := range entity.Fields {
+					if f.Type == metadata.FieldTypeDate {
+						orderCol = metadata.ColumnName(f)
+						orderDir = "DESC"
+						break
+					}
+				}
+			case metadata.KindCatalog:
+				// Код может быть синтезирован нумератором перед Наименованием.
+				// Список должен идти по видимому имени, а не по коду.
+				for _, f := range entity.Fields {
+					if f.Type == metadata.FieldTypeString && strings.EqualFold(f.Name, "Наименование") {
+						orderCol = metadata.ColumnName(f)
+						orderDir = "ASC"
+						break
+					}
+				}
+				if orderCol == "id" {
+					for _, f := range entity.Fields {
+						if f.Type == metadata.FieldTypeString {
+							orderCol = metadata.ColumnName(f)
+							orderDir = "ASC"
+							break
+						}
+					}
+				}
+			}
 		}
-		orderDir := "ASC"
-		if strings.ToLower(params.Dir) == "desc" {
-			orderDir = "DESC"
+		if params.Sort == "" && orderCol != "id" {
+			// PostgreSQL и SQLite по-разному располагают NULL при ASC/DESC.
+			// Пустые значения оставляем в конце на обоих диалектах.
+			query += fmt.Sprintf(" ORDER BY CASE WHEN %s IS NULL THEN 1 ELSE 0 END ASC, %s %s, id ASC",
+				orderCol, orderCol, orderDir)
+		} else {
+			query += fmt.Sprintf(" ORDER BY %s %s", orderCol, orderDir)
 		}
-		query += fmt.Sprintf(" ORDER BY %s %s", orderCol, orderDir)
 	}
 
 	if params.Limit > 0 {
@@ -984,7 +1078,7 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 // (ignoring pagination: Limit, Offset, AfterID and ThroughID).
 func (db *DB) CountList(ctx context.Context, entityName string, entity *metadata.Entity, params ListParams) (int, error) {
 	table := metadata.TableName(entityName)
-	whereClause, args, err := db.listWhere(entity, params, false)
+	whereClause, args, err := db.listWhere(entityName, entity, params, false)
 	if err != nil {
 		return 0, fmt.Errorf("count %s: %w", entityName, err)
 	}
@@ -1007,7 +1101,7 @@ func (db *DB) ListContainsID(ctx context.Context, entityName string, entity *met
 		return false, fmt.Errorf("strict RLS: membership of %q requested without row access evaluation (fail-closed, plan 79F)", entityName)
 	}
 	table := metadata.TableName(entityName)
-	whereClause, args, err := db.listWhere(entity, params, false)
+	whereClause, args, err := db.listWhere(entityName, entity, params, false)
 	if err != nil {
 		return false, fmt.Errorf("list contains %s: %w", entityName, err)
 	}
