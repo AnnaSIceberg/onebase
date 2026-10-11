@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -115,7 +114,7 @@ func (s *Server) constantResolver(ctx context.Context) scheduler.ConstantResolve
 // подстановками ({{today}} и прочие) — той же грамматикой, что у виджетов и
 // регламентных заданий. Пусто, если умолчание не задано.
 func reportParamDefault(p reportpkg.Param, res scheduler.ConstantResolver) (string, error) {
-	return scheduler.ResolveParamTemplateText(p.Default, res)
+	return scheduler.ResolveParamTemplateText(p.Default, p.Type, res)
 }
 
 // reportParamDefaults — значения параметров для ПЕРВОГО показа формы, пока
@@ -234,21 +233,15 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		queryValues[k] = v
 	}
 	for _, p := range rep.Params {
-		switch p.Type {
-		case "date":
-			if str, ok := queryValues[p.Name].(string); ok && str != "" {
-				if t, err2 := time.ParseInLocation("2006-01-02", str, time.Local); err2 == nil {
-					queryValues[p.Name] = t
-				}
-			}
-		case "bool":
-			str, _ := queryValues[p.Name].(string)
-			queryValues[p.Name] = parseParamValue(str, "bool")
-		case "number":
-			if str, ok := queryValues[p.Name].(string); ok {
-				queryValues[p.Name] = parseParamValue(str, "number")
-			}
+		str, _ := queryValues[p.Name].(string)
+		v, perr := reportpkg.ParseParamValue(str, p, reportpkg.ParamParseForm)
+		if perr != nil {
+			// Экран прощает негодное значение: поле остаётся строкой, человек
+			// правит его и строит снова. API на том же значении отвечает 400 —
+			// расхождение намеренное, см. report.ParamParseMode.
+			continue
 		}
+		queryValues[p.Name] = v
 	}
 	compiled, err := s.compileQueryWithRowAccess(opCtx, rep.Query, queryValues)
 	reportParams := s.buildReportParams(opCtx, s.resolveLang(r), rep.Params, paramValues)
@@ -538,16 +531,18 @@ func applyResolvedLabels(rows []map[string]any, uuidToLabel map[string]string, s
 
 // reportParamUI is a template-friendly wrapper around a report parameter.
 type reportParamUI struct {
-	Name    string
-	Label   string
-	Type    string // raw type string
-	IsDate  bool
-	IsNum   bool
-	IsBool  bool
-	IsSel   bool
-	IsRef   bool
-	Options []string         // for IsSel
-	Opts    []map[string]any // for IsRef: [{id, _label}]
+	Name   string
+	Label  string
+	Type   string // raw type string
+	IsDate bool
+	// IsDateTime — тип datetime: поле принимает время суток, а не только дату.
+	IsDateTime bool
+	IsNum      bool
+	IsBool     bool
+	IsSel      bool
+	IsRef      bool
+	Options    []string         // for IsSel
+	Opts       []map[string]any // for IsRef: [{id, _label}]
 	// RefEntity — имя сущности (для IsRef), используется на UI для лупы
 	// в picker'е (открытие карточки через /ui/_ref-open/<entity>/<id>).
 	RefEntity string
@@ -565,6 +560,8 @@ func (s *Server) buildReportParams(ctx context.Context, lang string, params []re
 		switch {
 		case p.Type == "date":
 			ui.IsDate = true
+		case p.Type == "datetime":
+			ui.IsDateTime = true
 		case p.Type == "number":
 			ui.IsNum = true
 		case p.Type == "bool":
@@ -667,21 +664,11 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 			}
 			val = d
 		}
-		if p.Type == "bool" || p.Type == "number" {
-			paramValues[p.Name] = parseParamValue(val, p.Type)
-			continue
+		v, perr := reportpkg.ParseParamValue(val, p, reportpkg.ParamParseForm)
+		if perr != nil {
+			v = val // как на экране: негодное значение остаётся строкой
 		}
-		if val == "" {
-			paramValues[p.Name] = nil
-		} else if p.Type == "date" {
-			if t, perr := time.ParseInLocation("2006-01-02", val, time.Local); perr == nil {
-				paramValues[p.Name] = t
-			} else {
-				paramValues[p.Name] = val
-			}
-		} else {
-			paramValues[p.Name] = val
-		}
+		paramValues[p.Name] = v
 	}
 	compiled, err := s.compileQueryWithRowAccess(ctx, rep.Query, paramValues)
 	if err != nil {

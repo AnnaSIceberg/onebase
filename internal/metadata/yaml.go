@@ -90,11 +90,21 @@ type rawEntity struct {
 	Numerator          *rawNumerator     `yaml:"numerator"`
 	// Presentation принимает и строку, и список: «одно поле» — частый случай,
 	// а список задаёт запасной вариант, если основной реквизит пуст.
-	Presentation  stringOrList    `yaml:"presentation"`
-	Predefined    []rawPredefined `yaml:"predefined"`
-	Hierarchical  bool            `yaml:"hierarchical"`
-	HierarchyKind string          `yaml:"hierarchy_kind"`
-	ListForm      []string        `yaml:"list_form"`
+	Presentation stringOrList `yaml:"presentation"`
+	// OrderBy — порядок списка по умолчанию (см. Entity.OrderBy). Принимает и
+	// строку, и список: «одно поле» — частый случай.
+	OrderBy stringOrList `yaml:"order_by"`
+	// ChoicePreview — реквизит, показываемый в области просмотра формы выбора.
+	ChoicePreview string `yaml:"choice_preview"`
+	// ChoicePreviewProc — «Модуль.Функция», собирающая тексты просмотра с учётом
+	// контекста подбора (Entity.ChoicePreviewProc).
+	ChoicePreviewProc string          `yaml:"choice_preview_proc"`
+	Predefined        []rawPredefined `yaml:"predefined"`
+	// Owner — справочник-владелец (1С: подчинённый справочник). См. Entity.Owner.
+	Owner         string   `yaml:"owner"`
+	Hierarchical  bool     `yaml:"hierarchical"`
+	HierarchyKind string   `yaml:"hierarchy_kind"`
+	ListForm      []string `yaml:"list_form"`
 	// ItemForm принимает и строку, и запись {name: X, readonly: true} —
 	// см. rawItemFormField.
 	ItemForm      []rawItemFormField `yaml:"item_form"`
@@ -260,11 +270,11 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 		e.DetailPanel = dp
 	}
 	if raw.FullText != nil {
-		e.FullText = trimStringList(*raw.FullText)
+		e.FullText = trimFieldPathList(*raw.FullText)
 		e.FullTextSet = true
 	}
 	if raw.Search != nil {
-		e.Search = trimStringList(*raw.Search)
+		e.Search = trimFieldPathList(*raw.Search)
 		e.SearchSet = true
 	}
 	if raw.Stages != nil {
@@ -296,6 +306,9 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 		e.Stages = st
 	}
 	e.Presentation = raw.Presentation.values()
+	e.OrderBy = raw.OrderBy.values()
+	e.ChoicePreview = strings.TrimSpace(raw.ChoicePreview)
+	e.ChoicePreviewProc = strings.TrimSpace(raw.ChoicePreviewProc)
 	if raw.Numerator != nil {
 		n := &Numerator{
 			Prefix:     raw.Numerator.Prefix,
@@ -361,6 +374,31 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 			}}, e.Fields...)
 		}
 	}
+	// Подчинённый справочник (1С: «Владелец»). Реквизит синтезируем, если его не
+	// объявили руками: подчинение задаётся ОДНОЙ строкой `owner:`, а не строкой
+	// плюс ссылочным реквизитом, который легко назвать иначе и потерять отбор.
+	// Объявленный явно реквизит «Владелец» не трогаем — у него могут быть свои
+	// подпись и обязательность, а тип всё равно проверит Validate.
+	if strings.TrimSpace(raw.Owner) != "" {
+		// Owner ставим независимо от вида: «owner у документа» должен падать на
+		// Validate с внятным текстом, а не молча ничего не делать.
+		e.Owner = strings.TrimSpace(raw.Owner)
+		hasOwner := kind != KindCatalog
+		for _, f := range e.Fields {
+			if strings.EqualFold(f.Name, StandardOwnerField) {
+				hasOwner = true
+				break
+			}
+		}
+		if !hasOwner {
+			e.Fields = append([]Field{{
+				ID:        StandardOwnerFieldID,
+				Name:      StandardOwnerField,
+				Type:      FieldType("reference:" + e.Owner),
+				RefEntity: e.Owner,
+			}}, e.Fields...)
+		}
+	}
 	for _, ri := range raw.Indexes {
 		idx := IndexSpec{Fields: trimStringList(ri.Fields), Unique: ri.Unique}
 		if len(idx.Fields) > 0 {
@@ -382,6 +420,16 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 		e.Predefined = append(e.Predefined, &PredefinedItem{Name: rp.Name, Fields: fields})
 	}
 	return e, nil
+}
+
+// Preserve empty entries so path validation can report them instead of
+// silently converting an invalid list into a disabled search.
+func trimFieldPathList(in []string) []string {
+	out := make([]string, len(in))
+	for i, path := range in {
+		out[i] = strings.TrimSpace(path)
+	}
+	return out
 }
 
 func trimStringList(in []string) []string {

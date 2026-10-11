@@ -516,12 +516,35 @@ func TestResolveTemplate_NoTemplate(t *testing.T) {
 // 00:00:00 +0000 UTC» и браузер покажет пустое поле даты.
 func TestResolveParamTemplateText(t *testing.T) {
 	now := time.Date(2026, 5, 5, 0, 0, 0, 0, time.UTC)
-	assert.Equal(t, "2026-05-05", mustResolveText(t, "{{today}}", now))
-	assert.Equal(t, "2026-04-28", mustResolveText(t, "{{today | minus_days:7}}", now))
-	assert.Equal(t, "ВРаботе", mustResolveText(t, "ВРаботе", now))
-	assert.Equal(t, "", mustResolveText(t, "   ", now))
+	assert.Equal(t, "2026-05-05", mustResolveTextType(t, "{{today}}", "date", now))
+	assert.Equal(t, "2026-04-28", mustResolveTextType(t, "{{today | minus_days:7}}", "date", now))
+	assert.Equal(t, "ВРаботе", mustResolveTextType(t, "ВРаботе", "string", now))
+	assert.Equal(t, "", mustResolveTextType(t, "   ", "date", now))
 	// Нераспознанная подстановка остаётся текстом — прежний контракт грамматики.
-	assert.Equal(t, "{{неизвестно}}", mustResolveText(t, "{{неизвестно}}", now))
+	assert.Equal(t, "{{неизвестно}}", mustResolveTextType(t, "{{неизвестно}}", "date", now))
+}
+
+// Формат результата задаёт ТИП параметра. Ровно случай #1204: у `date`
+// minus_hours меняет результат только через полночь, у `datetime` — всегда.
+func TestResolveParamTemplateText_TypeDrivesFormat(t *testing.T) {
+	now := time.Date(2026, 5, 5, 18, 30, 41, 0, time.UTC)
+	assert.Equal(t, "2026-05-05", mustResolveTextType(t, "{{now}}", "date", now))
+	assert.Equal(t, "2026-05-05T18:30:41", mustResolveTextType(t, "{{now}}", "datetime", now))
+	assert.Equal(t, "2026-05-05T12:30:41", mustResolveTextType(t, "{{now | minus_hours:6}}", "datetime", now))
+	// У `date` тот же вход по-прежнему даёт одну и ту же дату — усечение стало
+	// правилом типа, а не потерей точности.
+	assert.Equal(t,
+		mustResolveTextType(t, "{{now}}", "date", now),
+		mustResolveTextType(t, "{{now | minus_hours:6}}", "date", now))
+	// Тот же пример, что в заявке: у заданий end_of_month даёт конец суток.
+	assert.Equal(t, "2026-05-31T23:59:59", mustResolveTextType(t, "{{today | end_of_month}}", "datetime", now))
+	assert.Equal(t, "2026-05-31", mustResolveTextType(t, "{{today | end_of_month}}", "date", now))
+	// Имя типа нормализуется: пробелы и регистр не должны менять формат.
+	assert.Equal(t, "2026-05-05T18:30:41", mustResolveTextType(t, "{{now}}", " DateTime ", now))
+	// Обратная совместимость: всё, кроме datetime, форматируется как раньше.
+	for _, typ := range []string{"", "date", "string", "select", "number", "bool", "reference:Клиент", "звездолёт"} {
+		assert.Equal(t, "2026-05-05", mustResolveTextType(t, "{{now}}", typ, now), "тип %q", typ)
+	}
 }
 
 func TestResolveParamTemplates_Mixed(t *testing.T) {
@@ -550,9 +573,9 @@ func mustResolveTemplate(t *testing.T, s string, now time.Time) any {
 	return v
 }
 
-func mustResolveText(t *testing.T, raw string, now time.Time) string {
+func mustResolveTextType(t *testing.T, raw, typ string, now time.Time) string {
 	t.Helper()
-	v, err := resolveParamTemplateTextAt(raw, now, nil)
+	v, err := resolveParamTemplateTextAt(raw, typ, now, nil)
 	if err != nil {
 		t.Fatalf("resolveParamTemplateTextAt(%q): %v", raw, err)
 	}
