@@ -100,7 +100,7 @@ func TestApplyFieldEdits_HierarchicalToggle(t *testing.T) {
 		Fields:        []saveField{{Name: "Наименование", Type: "string"}},
 	}
 	off := false
-	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, &off, nil, nil, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, &off, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if ent.Hierarchical {
@@ -111,7 +111,7 @@ func TestApplyFieldEdits_HierarchicalToggle(t *testing.T) {
 	}
 
 	on := true
-	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, &on, nil, nil, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, &on, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !ent.Hierarchical {
@@ -128,7 +128,7 @@ func TestApplyFieldEdits_NilPtrPreserves(t *testing.T) {
 		Posting:      false,
 		Fields:       []saveField{{Name: "X", Type: "string"}},
 	}
-	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !ent.Hierarchical {
@@ -151,7 +151,7 @@ func TestApplyFieldEdits_BasedOn(t *testing.T) {
 	}
 
 	// nil basedOn-ptr → сохраняется как было.
-	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(ent.BasedOn) != 2 {
@@ -160,7 +160,7 @@ func TestApplyFieldEdits_BasedOn(t *testing.T) {
 
 	// Явный пустой slice → очистка based_on.
 	empty := []string{}
-	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, nil, nil, nil, &empty, nil, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, nil, nil, nil, nil, &empty, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(ent.BasedOn) != 0 {
@@ -169,7 +169,7 @@ func TestApplyFieldEdits_BasedOn(t *testing.T) {
 
 	// Новый список перетирает старый.
 	newList := []string{"ОдинТолько"}
-	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, nil, nil, nil, &newList, nil, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, nil, nil, nil, nil, &newList, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(ent.BasedOn) != 1 || ent.BasedOn[0] != "ОдинТолько" {
@@ -284,7 +284,7 @@ func TestApplyFieldEdits_PostCaption(t *testing.T) {
 
 	caption := "Создать начисление"
 	hide := true
-	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, &caption, &hide, nil, nil, nil, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, &caption, &hide, nil, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if ent.PostCaption != "Создать начисление" {
@@ -295,7 +295,7 @@ func TestApplyFieldEdits_PostCaption(t *testing.T) {
 	}
 
 	// nil-указатели не трогают поля.
-	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if ent.PostCaption != "Создать начисление" || !ent.PostAndCloseHidden {
@@ -304,7 +304,7 @@ func TestApplyFieldEdits_PostCaption(t *testing.T) {
 
 	// Пустая подпись очищает поле.
 	empty := ""
-	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, &empty, nil, nil, nil, nil, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindDocument, ent.Fields, nil, nil, &empty, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if ent.PostCaption != "" {
@@ -357,5 +357,33 @@ func TestSaveEntity_Roundtrip_СохраняетFulltext(t *testing.T) {
 	}
 	if strings.Contains(string(out), "fulltext") {
 		t.Fatalf("появился ключ fulltext, которого не было:\n%s", out)
+	}
+}
+
+// Подчинение справочника (owner:) правится из конфигуратора и переживает
+// round-trip: пустая строка снимает его, а не оставляет фантомный ключ.
+func TestApplyFieldEdits_Owner(t *testing.T) {
+	ent := &saveEntity{Name: "Договор"}
+	owner := "Контрагент"
+	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, nil, &owner, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if ent.Owner != "Контрагент" {
+		t.Fatalf("Owner = %q, ждали Контрагент", ent.Owner)
+	}
+	empty := ""
+	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, nil, &empty, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if ent.Owner != "" {
+		t.Fatalf("Owner = %q, ждали снятое подчинение", ent.Owner)
+	}
+	// nil означает «поля не было на форме» — прежнее значение не трогаем.
+	ent.Owner = "Контрагент"
+	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if ent.Owner != "Контрагент" {
+		t.Fatalf("Owner = %q — подчинение потеряно при правке без поля владельца", ent.Owner)
 	}
 }

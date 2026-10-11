@@ -20,7 +20,7 @@ func TestApplyFieldEdits_Activity(t *testing.T) {
 	target := &saveActivity{Field: "Активный", DefaultScope: "active", HideFromChoice: &hide}
 	activity := &target
 
-	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, nil, nil, activity, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, nil, nil, nil, activity, nil); err != nil {
 		t.Fatal(err)
 	}
 	if ent.Activity == nil {
@@ -31,7 +31,7 @@ func TestApplyFieldEdits_Activity(t *testing.T) {
 	}
 
 	target = nil
-	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, nil, nil, activity, nil); err != nil {
+	if err := applyFieldEdits(ent, metadata.KindCatalog, ent.Fields, nil, nil, nil, nil, nil, nil, nil, activity, nil); err != nil {
 		t.Fatal(err)
 	}
 	if ent.Activity != nil {

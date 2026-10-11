@@ -62,11 +62,7 @@ func CheckFormLayout(proj *project.Project) []Issue {
 			if form == nil {
 				continue
 			}
-			name := form.Name
-			if name == "" {
-				name = "объекта"
-			}
-			report("forms/"+strings.ToLower(proc.Name)+"/"+name+".form.yaml", proc.Name, form)
+			report(procFormFileLabel(proc.Name, form), proc.Name, form)
 		}
 	}
 	return warns
@@ -76,6 +72,13 @@ type layoutDiagnostic struct{ code, msg, fix string }
 
 func layoutDiagnostics(el *metadata.FormElement) []layoutDiagnostic {
 	var out []layoutDiagnostic
+	if el.EqualColumns && !el.UsesEqualColumns() {
+		out = append(out, layoutDiagnostic{
+			code: "form.equal-columns",
+			msg:  "equal_columns применяется только к горизонтальной ГруппаФормы без scroll_x",
+			fix:  "Задайте kind: ГруппаФормы, orientation: horizontal и уберите scroll_x либо equal_columns.",
+		})
+	}
 
 	if _, ok := metadata.NormalizeFormHAlign(el.HorizontalAlign); !ok {
 		out = append(out, layoutDiagnostic{

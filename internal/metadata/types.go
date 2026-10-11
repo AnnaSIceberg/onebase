@@ -238,6 +238,13 @@ const (
 	// ChangeDrop, и --allow-destructive сносит все номера документов.
 	StandardNumberField   = "Номер"
 	StandardNumberFieldID = "std_number"
+	// «Владелец» подчинённого справочника (owner: в YAML) синтезируется той же
+	// логикой и по той же причине нуждается в устойчивом ID: без него миграция
+	// приняла бы синтезированную колонку за новую и запланировала снос старой
+	// вместе со связями. Имя фиксировано — по нему подбор отбирает элементы
+	// владельца, а DSL пишет и читает Эл.Владелец.
+	StandardOwnerField   = "Владелец"
+	StandardOwnerFieldID = "std_owner"
 )
 
 // PredefinedItem describes a catalog record that is always present in the DB
@@ -298,8 +305,16 @@ type Entity struct {
 	Numerator          *Numerator        // nil if auto-numbering is disabled
 	Predefined         []*PredefinedItem // nil for most entities; populated from YAML
 	Hierarchical       bool              // catalog with parent_id / is_folder tree support
-	HierarchyKind      string            // "folders_and_items" (default) | "items_only"
-	ListForm           []string          // visible fields in list form (nil = all)
+	// Owner — имя справочника-ВЛАДЕЛЬЦА (1С: «подчинённый справочник»). Пусто —
+	// справочник самостоятельный. Непусто — у каждого элемента есть реквизит
+	// «Владелец» (синтезируется, если не объявлен явно), а подбор ссылки на этот
+	// справочник ОТБИРАЕТСЯ по владельцу, известному вызывающей форме: товарная
+	// группа выбирается из групп своего направления, а не из всех тринадцати
+	// сотен. Подчинение — свойство справочника, а не формы: отбор появляется сам
+	// везде, где выбирают этот справочник, и его нельзя забыть настроить.
+	Owner         string
+	HierarchyKind string   // "folders_and_items" (default) | "items_only"
+	ListForm      []string // visible fields in list form (nil = all)
 	// ItemForm — состав формы элемента: какие реквизиты видны и в каком
 	// порядке (nil = все). Запись может быть помечена «только просмотр»
 	// (#1011): служебный реквизит, который пересобирает модуль при записи,
@@ -382,13 +397,14 @@ type Entity struct {
 	DetailPanel *DetailPanel
 	// FullText — реквизиты шапки, попадающие в полнотекстовый индекс (план 82).
 	// Nil (блока нет в YAML) означает умолчание: все строковые реквизиты, см.
-	// FullTextFields. Явный пустой список — объект исключён из глобального поиска.
+	// HeaderFullTextFields. Явный пустой список — объект исключён из глобального поиска.
 	FullText []string
 	// FullTextSet отличает отсутствующий ключ fulltext от явного «fulltext: []».
 	FullTextSet bool
-	// Search — реквизиты, по которым ищет строка поиска списка и подбор ссылки
+	// Search — реквизиты шапки или пути ТабличнаяЧасть.Поле, по которым ищет
+	// строка поиска списка и подбор ссылки
 	// (ввод по строке в ячейке ТЧ, форма выбора). Nil означает умолчание: все
-	// строковые реквизиты, как было всегда, — см. SearchFields. Отдельно от
+	// строковые реквизиты, как было всегда, — см. SearchFieldPaths. Отдельно от
 	// FullText: тот управляет ГЛОБАЛЬНЫМ индексом, и `fulltext: []` (объект вне
 	// глобального поиска) не должен заодно ломать подбор в форме.
 	Search []string
@@ -427,66 +443,6 @@ func (e *Entity) ItemFormNames() []string {
 		names = append(names, f.Name)
 	}
 	return names
-}
-
-// SearchFields возвращает реквизиты, по которым идёт поиск подстроки в списке и
-// в подборе ссылки. Без блока `search_fields:` это все строковые реквизиты
-// шапки — историческое поведение, менять которое молча нельзя.
-//
-// Явный список снимает ограничение по типу: артикул или штрихкод часто хранят
-// числом, и по умолчанию такой реквизит в поиск не попадал — ровно этого и не
-// хватало, чтобы набирать позицию не по наименованию. Приведение к тексту берёт
-// на себя диалект (LowerLike), поэтому отдельный CAST не нужен.
-//
-// Ссылочные реквизиты не участвуют никогда: в колонке лежит UUID, искать по нему
-// подстроку бессмысленно (валидация такой список отклоняет).
-func SearchFields(e *Entity) []Field {
-	if e == nil {
-		return nil
-	}
-	if e.SearchSet {
-		out := make([]Field, 0, len(e.Search))
-		for _, name := range e.Search {
-			if f := findEntityFieldFold(e, name); f != nil && f.RefEntity == "" {
-				out = append(out, *f)
-			}
-		}
-		return out
-	}
-	var out []Field
-	for _, f := range e.Fields {
-		if f.Type == FieldTypeString && f.RefEntity == "" {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
-// FullTextFields возвращает реквизиты шапки, которые индексируются глобальным
-// поиском (план 82). Без блока `fulltext:` в YAML это все строковые реквизиты —
-// у документа сюда попадает и синтезированный Номер. Явный `fulltext: []`
-// выключает объект из индекса, поэтому пустой результат — валидное состояние,
-// а не «список не задан».
-func FullTextFields(e *Entity) []Field {
-	if e == nil {
-		return nil
-	}
-	if e.FullTextSet {
-		out := make([]Field, 0, len(e.FullText))
-		for _, name := range e.FullText {
-			if f := findEntityFieldFold(e, name); f != nil {
-				out = append(out, *f)
-			}
-		}
-		return out
-	}
-	var out []Field
-	for _, f := range e.Fields {
-		if f.Type == FieldTypeString {
-			out = append(out, f)
-		}
-	}
-	return out
 }
 
 // findEntityFieldFold ищет реквизит шапки по имени без учёта регистра: DSL и
@@ -712,6 +668,37 @@ func (e *Entity) StageField() *Field {
 	}
 	for i := range e.Fields {
 		if strings.EqualFold(e.Fields[i].Name, e.Stages.Field) {
+			return &e.Fields[i]
+		}
+	}
+	return nil
+}
+
+// documentDateNames — имена реквизита «дата документа» в порядке
+// предпочтения; тот же набор ищет МоментВремени() (runtime.Object).
+var documentDateNames = []string{"Дата", "Date", "Период", "Period"}
+
+// DocumentDateField возвращает реквизит «дата документа»: реквизит-дату с
+// именем Дата (Date, Период, Period), а без такого — первый реквизит-дату в
+// порядке объявления; nil, если дат нет вовсе.
+//
+// По этой дате ложатся движения, работает дата запрета проведения и свёртка.
+// Раньше все они брали первый реквизит-дату, и документ, где СрокОплаты
+// объявлен раньше Дата, писал движения на срок оплаты, а проверку запрета
+// проходил по нему же — документ закрытого периода проводился.
+func (e *Entity) DocumentDateField() *Field {
+	if e == nil {
+		return nil
+	}
+	for _, name := range documentDateNames {
+		for i := range e.Fields {
+			if e.Fields[i].Type == FieldTypeDate && strings.EqualFold(e.Fields[i].Name, name) {
+				return &e.Fields[i]
+			}
+		}
+	}
+	for i := range e.Fields {
+		if e.Fields[i].Type == FieldTypeDate {
 			return &e.Fields[i]
 		}
 	}

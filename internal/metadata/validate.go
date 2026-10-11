@@ -33,8 +33,10 @@ func ValidateConstants(constants []*Constant, entities []*Entity, enums []*Enum)
 
 func Validate(entities []*Entity, enums []*Enum) error {
 	entityNames := make(map[string]bool, len(entities))
+	entityKinds := make(map[string]Kind, len(entities))
 	for _, e := range entities {
 		entityNames[e.Name] = true
+		entityKinds[e.Name] = e.Kind
 	}
 	enumNames := make(map[string]bool, len(enums))
 	for _, en := range enums {
@@ -69,6 +71,32 @@ func Validate(entities []*Entity, enums []*Enum) error {
 			}
 			if f.Type != FieldTypeString {
 				return fmt.Errorf("entity %s: presentation реквизит %s должен быть строковым (сейчас %s)", e.Name, name, f.Type)
+			}
+		}
+		// Подчинённый справочник: владелец обязан существовать, быть справочником
+		// и не быть самим собой. Опечатка иначе выглядела бы как «отбор в подборе
+		// не работает» — а это не отличить от «данные не заполнены».
+		if owner := strings.TrimSpace(e.Owner); owner != "" {
+			if e.Kind != KindCatalog {
+				return fmt.Errorf("entity %s: owner допустим только у справочника (сейчас %s)", e.Name, e.Kind)
+			}
+			if owner == e.Name {
+				return fmt.Errorf("entity %s: owner ссылается на сам справочник", e.Name)
+			}
+			if !entityNames[owner] {
+				return fmt.Errorf("entity %s: owner ссылается на несуществующую сущность %s", e.Name, owner)
+			}
+			// Владельцем бывает только справочник — как в 1С. Документ-владелец
+			// означал бы, что состав НСИ зависит от оперативных данных.
+			if entityKinds[owner] != KindCatalog {
+				return fmt.Errorf("entity %s: владельцем может быть только справочник, а %s — %s", e.Name, owner, entityKinds[owner])
+			}
+			f := findEntityFieldFold(e, StandardOwnerField)
+			if f == nil {
+				return fmt.Errorf("entity %s: owner объявлен, но реквизита %s нет", e.Name, StandardOwnerField)
+			}
+			if f.RefEntity != owner {
+				return fmt.Errorf("entity %s: реквизит %s ссылается на %s, а owner — на %s", e.Name, StandardOwnerField, f.RefEntity, owner)
 			}
 		}
 		// order_by меняет порядок СРАЗУ ВЕЗДЕ — список, подбор, REST. Опечатка иначе
@@ -278,62 +306,23 @@ func validateTileView(e *Entity) error {
 	return nil
 }
 
-// validateFullText проверяет блок `fulltext:` (план 82): перечисленные поля
-// должны существовать в шапке и нести текст. Ссылочные и перечислимые поля
-// хранят UUID/код — индексировать их бессмысленно, а молча пропустить значит
-// оставить пользователя с пустой выдачей и без объяснения.
+// validateFullText rejects table-part indexing until the atomic FTS writer is shipped.
 func validateFullText(e *Entity) error {
-	if !e.FullTextSet {
-		return nil
+	paths, err := FullTextFieldPaths(e)
+	if err != nil {
+		return err
 	}
-	seen := make(map[string]bool, len(e.FullText))
-	for _, name := range e.FullText {
-		f := findEntityFieldFold(e, name)
-		if f == nil {
-			return fmt.Errorf("entity %s: fulltext ссылается на неизвестный реквизит %s", e.Name, name)
+	for i, path := range paths {
+		if path.TablePart != nil {
+			return fmt.Errorf("entity %s: fulltext путь %q пока не поддерживается; поиск по табличным частям доступен только в search_fields", e.Name, e.FullText[i])
 		}
-		if f.RefEntity != "" || f.EnumName != "" || (f.Type != FieldTypeString && !IsRichText(f.Type)) {
-			return fmt.Errorf("entity %s: реквизит %s нельзя индексировать полнотекстовым поиском — нужен тип string или richtext",
-				e.Name, f.Name)
-		}
-		key := strings.ToLower(f.Name)
-		if seen[key] {
-			return fmt.Errorf("entity %s: реквизит %s указан в fulltext дважды", e.Name, f.Name)
-		}
-		seen[key] = true
 	}
 	return nil
 }
 
-// validateSearchFields проверяет блок `search_fields:`: перечисленные реквизиты
-// должны существовать в шапке и не быть ссылками. Тип здесь, в отличие от
-// fulltext, не ограничен строкой — смысл блока как раз в том, чтобы добавить в
-// поиск артикул или штрихкод, которые часто хранят числом.
-//
-// Ссылка отклоняется: в колонке лежит UUID, поиск подстроки по нему всегда даёт
-// пустую выдачу. Молча пропустить такой реквизит значит оставить автора
-// конфигурации с неработающим поиском и без объяснения причины.
 func validateSearchFields(e *Entity) error {
-	if !e.SearchSet {
-		return nil
-	}
-	seen := make(map[string]bool, len(e.Search))
-	for _, name := range e.Search {
-		f := findEntityFieldFold(e, name)
-		if f == nil {
-			return fmt.Errorf("entity %s: search_fields ссылается на неизвестный реквизит %s", e.Name, name)
-		}
-		if f.RefEntity != "" {
-			return fmt.Errorf("entity %s: реквизит %s — ссылка, искать по ней подстроку нельзя (в колонке UUID); укажите реквизит справочника-владельца",
-				e.Name, f.Name)
-		}
-		key := strings.ToLower(f.Name)
-		if seen[key] {
-			return fmt.Errorf("entity %s: реквизит %s указан в search_fields дважды", e.Name, f.Name)
-		}
-		seen[key] = true
-	}
-	return nil
+	_, err := SearchFieldPaths(e)
+	return err
 }
 
 // validateNumerator проверяет блок `numerator:` (план 117B). У справочника он

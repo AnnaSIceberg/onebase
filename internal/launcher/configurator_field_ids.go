@@ -268,3 +268,10 @@ func newFieldID(used map[string]bool) string {
 		}
 	}
 }
+
+func withStandardFieldSeed(prev []saveField, name, id string) []saveField {
+	if name == "" || id == "" {
+		return prev
+	}
+	return append([]saveField{{ID: id, Name: name}}, prev...)
+}

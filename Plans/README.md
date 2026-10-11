@@ -69,11 +69,14 @@
 из проекции остатков, поэтому такие регистры считаются на лету. Снять ограничение —
 это развитие плана 80, а не исправление ошибки.
 
-**Ограничение движка, вскрытое при работе над Д2:** точный денежный агрегат на
-SQLite недостижим — `SUM()` над TEXT-колонкой возвращает `float64` при любом
-`CAST` (проверено на `NUMERIC` и `DECIMAL(38,10)`). `decimal` даёт точность на
-PostgreSQL; для SQLite потребовалось бы суммирование в Go — отдельное решение
-с влиянием на производительность.
+**Ограничение движка, вскрытое при работе над Д2:** встроенный `SUM()` SQLite
+над TEXT-колонкой возвращает `float64` при любом `CAST` (проверено на `NUMERIC`
+и `DECIMAL(38,10)`). `decimal` даёт точность на PostgreSQL. **Снято 29.09.2026:**
+встроенный `sum()` на SQLite перекрыт точной десятичной суммой в Go
+(`internal/storage/sqlite_sum.go`) — одной регистрацией для всех запросов,
+виртуальных таблиц, итогов и проверок doctor. Цена — около 1 мкс на строку
+агрегата; вычисления внутри SQL до суммирования (`Количество * Цена`) остаются
+в double.
 
 ### Текущий приоритет
 
@@ -207,6 +210,8 @@ PostgreSQL; для SQLite потребовалось бы суммировани
 | 27 | [27-web-configurator.md](27-web-configurator.md) | Веб-конфигуратор (редактирование схемы в браузере) | 5–6 дней | ✅ Реализовано (в `internal/launcher/`, `/bases/{id}/configurator/` — перекрыт сверх плана) |
 | 28 | [28-auto-backup.md](28-auto-backup.md) | Автобэкап по расписанию с ротацией | 3 дня | 🟡 Ядро реализовано: `backup:` в `app.yaml`, задание `AutoBackup`, ротация `keep_last`, атомарная запись дампов; отдельная `_backups`-таблица не вводилась |
 | 29 | [29-webhooks.md](29-webhooks.md) | Webhook-уведомления на события | 4–5 дней | 🟡 Ядро закрыто; **DSL-путь записи событий не публикует** (дефект Д3), нет события `report.run`, в журнале нет фильтров и кнопки «Повторить» |
+| 176 | [176-write-context-and-load-mode.md](176-write-context-and-load-mode.md) | Контекст записи и явный режим загрузки для DSL/REST без пропуска `ПриЗаписи` (#1435) | 5–6.5 дней | 📋 Проектирование |
+| 202 | [202-vibe-init.md](202-vibe-init.md) | Автонастройка OneBase: bootstrap и проектные MCP-конфиги Claude Code, Cursor, OpenCode/ZCode; add-only, бэкап и отчёт (#1636) | ~7–10 дней | 📋 Проектирование |
 
 ### Направление Д — Интерфейс и доступность
 
@@ -265,6 +270,7 @@ PostgreSQL; для SQLite потребовалось бы суммировани
 | 70 | [70-report-runtime-settings.md](70-report-runtime-settings.md) | СКД C3 — рантайм-настройки отчёта пользователем: панель группировок/показателей/отборов на форме отчёта, сохранение per-user в `_settings` | 1.5–2 недели | ✅ Реализовано (`compform`, `UserReportSettings`, `_settings`, отборы, UI-панель, Excel) |
 | 60 | [60-config-versioning-marketplace.md](60-config-versioning-marketplace.md) | Версионирование конфигурации в БД (история/diff/откат) + marketplace конфигураций | 2–3 недели | 🟢 Часть A реализована: `_config_versions`, снимки, diff, rollback, UI истории, export ZIP/OBZ; marketplace — нет |
 | 61 | [61-http-services.md](61-http-services.md) | HTTP-сервисы: публикация REST-эндпоинтов на DSL (/hs/*, OpenAPI/RapiDoc); поглотил план 58 | 1 день | ✅ Реализовано |
+| 179 | [179-onec-code-compat.md](179-onec-code-compat.md) | Совместимость с прикладным кодом 1С: замеры на УТ 10.3 и УТ 11.5 с полной БСП (7,45 млн строк) — зависимость от библиотеки сконцентрирована, 20 функций дают 47 % вызовов; инструмент замера, матрица совместимости, слой помощников, уточнение совместимости `НСтр`/`СтрШаблон` и конверсия подтверждённых расхождений (заявка #1479) | предварительно до ~17 дней | 📋 Проектирование |
 
 ### Направление Д — Торговое оборудование
 
@@ -424,13 +430,18 @@ PostgreSQL; для SQLite потребовалось бы суммировани
 | 165 | [165-standard-field-canonical-storage-and-id-recovery.md](165-standard-field-canonical-storage-and-id-recovery.md) | Каноничное хранение стандартных «Кода»/«Номера» в `numerator.field` и атомарное восстановление `std_code`/`std_number` без DDL (#1358, #1359) | ~6–8.5 дней | 📋 Проектирование |
 | 167 | [167-multiline-plain-text-fields.md](167-multiline-plain-text-fields.md) | Многострочный обычный `string`: field-level `multiline`, наследование и override в managed-форме, `height` в строках, автоформы сущности и регистра сведений (#1390) | ~4.5–6 дней | 📋 Проектирование |
 | 168 | [168-choice-preview-context.md](168-choice-preview-context.md) | Пояснение в форме выбора: статический реквизит, пакетная DSL-функция и ограниченный контекст вызывающей формы с RBAC (#1391) | ~5.5–8 дней | 📋 Проект 2026-09-08 |
-| 169 | [169-semantic-navigation-settings.md](169-semantic-navigation-settings.md) | Смысловое mixed-kind меню: YAML-база, общая настройка администратора и персональная дельта пользователя с безопасным наследованием (#1362) | ~13–19 дней после bootstrap плана 163 | 📋 Проект 2026-09-08 |
+| 169 | [169-semantic-navigation-settings.md](169-semantic-navigation-settings.md) | Смысловое mixed-kind меню: YAML-база, общая настройка администратора и персональная дельта пользователя с безопасным наследованием (#1362) | ~13–19 дней после bootstrap плана 163 | ✅ Реализован срезами A–F, 2026-10-02 |
 | 170 | [170-dependent-reference-choice-filters.md](170-dependent-reference-choice-filters.md) | Зависимый отбор ссылочного picker: server-authoritative `eq`, `in_hierarchy`, `is_folder`, одинаковый `List`/`CountList` и защита от stale browser responses (#1303) | ~6–8 дней | 📋 Проектирование |
+| 197 | [197-user-card-row-access.md](197-user-card-row-access.md) | Строковый доступ по карточке сотрудника: явная связь с `_users`, скаляр и набор из ТЧ, безопасный отказ и общий HTTP/DSL resolver (#1911) | ~6–9 дней | 📋 Проектирование |
 | 172 | [172-managed-form-runtime-structure.md](172-managed-form-runtime-structure.md) | Динамическая структура managed-форм: `ЭтаФорма.Элементы`, серверный instance/revision, безопасные DOM-патчи и lifecycle SlickGrid (#1263) | ~12–17 дней | 📋 Проектирование |
 | 178 | [178-attachment-link-mode.md](178-attachment-link-mode.md) | Вложения: режим `link` — платформа хранит путь, а не копию; открытие файла в программе ОС на стороне клиента, выбор режима на уровне базы и сущности, открытие из списка и inline-просмотр хранимых вложений (заявка #1480) | ~11 дней | 📋 Проектирование |
 | 181 | [181-managed-form-close-intent.md](181-managed-form-close-intent.md) | Единый async close-intent: `ПередЗакрытием(Отказ)`, fail-closed shell/standalone/popup, «Записать / ОК / Закрыть» и runtime `РазрешитьЗакрытие` (#1530, #1558, #1559, #1621) | ~8–12 дней + 1–2 дня после runtime-instance 172 | 📋 Проектирование |
 | 182 | [182-interactive-dashboard-widgets.md](182-interactive-dashboard-widgets.md) | Интерактивные виджеты: точечный fresh refresh и live-события для data-widget, безопасная навигация строк и типизированные фильтры list (#1617–#1620) | ~7.5–11.5 дней | 📋 Проектирование |
 | 183 | [183-choice-filter-v2-deep-source-and-table-parts.md](183-choice-filter-v2-deep-source-and-table-parts.md) | choice_filter v2: источник через один переход по ссылке и отбор ссылочных колонок ТЧ (уровень формы и row-local) для каскада #1552 | ~4.5–6.5 дней | 📋 Проектирование |
+| 187 | [187-reference-combobox-and-autocomplete.md](187-reference-combobox-and-autocomplete.md) | Поиск прямо в верхнеуровневом ссылочном поле с UUID-инвариантом, затем диспетчер `АвтоПодбор` и проверка остатка #1303 (#1529) | ~6–11 дней | 📋 Проектирование |
+| 198 | [198-inforeg-safe-record-edit.md](198-inforeg-safe-record-edit.md) | Редактирование независимого регистра из списка: точный ключ, версия записи, атомарный перенос без перезаписи, RLS/маски и обмен (#1921) | ~9–13 дней | 📋 Проектирование |
+| 201 | [201-unified-write-and-post.md](201-unified-write-and-post.md) | Общая транзакционная запись и проведение: OnWrite → видимая шапка/ТЧ → OnPost → финальная запись, один CAS/version и сохранение контекста плана 176 (#1887) | ~6–9.5 дней | 📋 Проектирование |
+| 205 | [205-image-viewer.md](205-image-viewer.md) | Общий просмотрщик image-полей: формы, панель и карточки, масштаб/галерея, безопасное скачивание и изоляция Esc (#1744) | ~5–7.5 дней | 📋 Проектирование |
 
 Повод — вопрос с внедрения «одна организация в базе, почему её не подставляют».
 Граница проведена так: в движок идёт механизм (объявление дефолта, его
@@ -447,20 +458,43 @@ PostgreSQL; для SQLite потребовалось бы суммировани
 
 | № | Файл | Фича | Эстимейт | Статус |
 |---|---|---|---|---|
+| 196 | [196-pr-identity-and-fork-isolation.md](196-pr-identity-and-fork-isolation.md) | Identity-bound REVIEW/FIX/MERGE/TAIL и безопасный fork-маршрут: repository/ref/SHA lease, exact fetch, доверенный CI без локального исполнения fork-кода (#1245) | ~10–16 дней | 📋 Проектирование |
 | 163 | [163-next-slice-handoff.md](163-next-slice-handoff.md) | Crash-safe handoff между последовательными PR-срезами одной issue: committed merge boundary, уникальный branch-claim, recovery и наблюдаемость (#1379) | ~10–15 дней | 📋 Проектирование |
 | 180 | [180-base-sync-head-transition-proof.md](180-base-sync-head-transition-proof.md) | Доказательство перехода HEAD при base-sync без зависимости от даты commit: точный to, CAS, recovery и миграция carry (#1561) | ~7–11 дней | 📋 Проектирование |
+| 195 | [195-review-technical-handoff.md](195-review-technical-handoff.md) | Типизированные блокеры REVIEW, конечный технический handoff под флагом и отдельные продуктовые/инженерные статусы в OneBase и PromptPilot (#1836) | ~11–17 дней | 📋 Проектирование |
+| 200 | [200-rest-cache-bounded-lock-slots.md](200-rest-cache-bounded-lock-slots.md) | REST-кэш pipelinehealth: 256 постоянных lock-слотов в новом namespace, межпроцессные Unix/Windows проверки и холодная миграция без очистки старых файлов (#1721) | ~4.5–6.5 дней | 📋 Проектирование |
 
 ### Направление У — надёжность развёртывания и восстановления
 
 | № | Файл | Фича | Эстимейт | Статус |
 |---|---|---|---|---|
 | 166 | [166-durable-files-and-clean-restore-rollback.md](166-durable-files-and-clean-restore-rollback.md) | Долговечный каталог файлов PostgreSQL без temp-fallback и чистый rollback/FK при ошибке `DemoReset`; независимая маршрутизация остальных регрессий #1268 | ~2–3 дня для ведущего среза | 📋 Проектирование |
+| 184 | [184-mode-aware-files-root-and-recovery.md](184-mode-aware-files-root-and-recovery.md) | PostgreSQL без обязательного home для db/S3: проверяемый disk root по операции, отдельные временные копии S3 и единое открытие recovery (#1523, #1525) | ~6–9 дней | 📋 Проектирование |
 
 ### Направление У — совместимость встроенного языка 1С
 
 | № | Файл | Фича | Эстимейт | Статус |
 |---|---|---|---|---|
 | 173 | [173-dynamic-new-constructor.md](173-dynamic-new-constructor.md) | Динамический конструктор `Новый(<Тип>, <Параметры>)`: явный AST, общий runtime-dispatch, массив параметров и сквозная regression #1366 | ~2.5–3.5 дня | 📋 Проектирование |
+
+### Направление Ф — корректность запросов и пустые значения
+
+| № | Файл | Фича | Эстимейт | Статус |
+|---|---|---|---|---|
+| 185 | [185-query-empty-values-and-indexes.md](185-query-empty-values-and-indexes.md) | Общий план для #1534, #1535 и #1183: индексируемый положительный отбор, типы источников, явный контракт `В` | ~7–11 дней | 📋 Проектирование |
+| 204 | [204-stable-order-by-pagination-and-explicit-dir.md](204-stable-order-by-pagination-and-explicit-dir.md) | Полный порядок `order_by` с `id ASC` и восстановление явного `dir` без `sort`: общий контракт страниц SQLite/PostgreSQL (#1713, #1714) | ~2.25–3.75 дня | 📋 Проектирование |
+
+### Направление Х — целостность ссылок на учётные записи
+
+| № | Файл | Фича | Эстимейт | Статус |
+|---|---|---|---|---|
+| 203 | [203-users-reference-fk-reconciliation.md](203-users-reference-fk-reconciliation.md) | FK на `_users` при эволюции схемы: read-only preflight, PostgreSQL, безопасная перестройка SQLite и публичная матрица (#1712; предварительная #1711 отдельно) | ~8–13 дней | 📋 Проектирование |
+
+### Направление Ф — согласование управляемых индексов
+
+| № | Файл | Фича | Эстимейт | Статус |
+|---|---|---|---|---|
+| 186 | [186-managed-index-reconciliation.md](186-managed-index-reconciliation.md) | Учёт владения индексами сущностей, атомарное согласование `indexes:` с YAML и явное принятие legacy-индексов (#1566) | ~8–11 дней | 📋 Проектирование |
 
 ## Граф зависимостей (архив)
 

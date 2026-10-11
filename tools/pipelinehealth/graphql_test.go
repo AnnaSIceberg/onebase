@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +19,37 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if base := os.Getenv("PIPELINEHEALTH_TEST_REST_CLI"); base != "" {
+		endpoint, err := url.Parse(base)
+		if err != nil {
+			os.Exit(3)
+		}
+		http.DefaultTransport = restCLITestTransport{endpoint: endpoint, transport: http.DefaultTransport}
+		os.Args = []string{os.Args[0], "-transport", "rest", "-json"}
+		if owner := os.Getenv("PIPELINEHEALTH_TEST_REST_OWNER"); owner != "" {
+			os.Args = append(os.Args, "-owner", owner)
+		}
+		main()
+		os.Exit(0)
+	}
 	if os.Getenv("PIPELINEHEALTH_TEST_GH_HELPER") == "1" {
+		if path := os.Getenv("PIPELINEHEALTH_TEST_GH_SEQUENCE"); path != "" {
+			data, err := os.ReadFile(path) //nolint:gosec // G703: this subprocess fixture path is supplied by the parent test under t.TempDir.
+			var pages []json.RawMessage
+			if err != nil || json.Unmarshal(data, &pages) != nil {
+				os.Exit(3)
+			}
+			counter, _ := os.ReadFile(path + ".index") //nolint:gosec // G703: adjacent counter belongs to the same isolated test fixture.
+			index, _ := strconv.Atoi(string(counter))
+			if index >= len(pages) {
+				os.Exit(4)
+			}
+			if os.WriteFile(path+".index", []byte(strconv.Itoa(index+1)), 0o600) != nil { //nolint:gosec // G703: only the parent test's fixture counter is written.
+				os.Exit(5)
+			}
+			_, _ = os.Stdout.Write(pages[index])
+			os.Exit(0)
+		}
 		_, _ = io.WriteString(os.Stdout, os.Getenv("PIPELINEHEALTH_TEST_GH_RESPONSE"))
 		os.Exit(0)
 	}
@@ -111,6 +143,7 @@ func gqlTestIssueNode(nodeID string, number int, comments []any) map[string]any 
 		"id":        nodeID,
 		"number":    number,
 		"title":     "Issue title",
+		"body":      "Issue body",
 		"url":       "https://example.test/issue",
 		"createdAt": "2026-09-01T00:00:00Z",
 		"updatedAt": "2026-09-02T00:00:00Z",
@@ -232,7 +265,7 @@ func TestGraphQLProductionIngressRejectsIncompleteSnapshots(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			client := rawGraphQLClient(t, test.data())
-			pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "", "")
+			pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "ivanarama", "", "")
 			if err == nil || pulls != nil || issues != nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("incomplete production response was accepted: pulls=%+v issues=%+v err=%v", pulls, issues, err)
 			}
@@ -242,7 +275,7 @@ func TestGraphQLProductionIngressRejectsIncompleteSnapshots(t *testing.T) {
 
 func TestGraphQLProductionIngressAcceptsCompleteEmptySnapshot(t *testing.T) {
 	client := rawGraphQLClient(t, snapshotResult(0, nil, false, nil, 0, nil, false, nil))
-	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "", "")
+	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "ivanarama", "", "")
 	if err != nil || len(pulls) != 0 || len(issues) != 0 {
 		t.Fatalf("complete empty snapshot was rejected: pulls=%+v issues=%+v err=%v", pulls, issues, err)
 	}
@@ -257,7 +290,7 @@ func TestGraphQLProductionIngressPreservesNullableAuthor(t *testing.T) {
 	pullConnection["nodes"] = []any{pull}
 
 	client := rawGraphQLClient(t, data)
-	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "", "")
+	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "ivanarama", "", "")
 	if err != nil || len(pulls) != 1 || len(issues) != 0 || pulls[0].Comments[0].User.Login != "" {
 		t.Fatalf("valid nullable fields were rejected: pulls=%+v issues=%+v err=%v", pulls, issues, err)
 	}
@@ -370,7 +403,7 @@ func TestGraphQLSnapshotMapsRESTSemanticsAndLargeDatabaseID(t *testing.T) {
 		}}},
 	}}
 
-	pulls, issues, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, true)
+	pulls, issues, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, true)
 	if err != nil {
 		t.Fatalf("load GraphQL snapshot: %v", err)
 	}
@@ -386,8 +419,9 @@ func TestGraphQLSnapshotMapsRESTSemanticsAndLargeDatabaseID(t *testing.T) {
 	if pulls[1].HeadParents != nil {
 		t.Fatalf("non-ship PR unexpectedly received head parents: %+v", pulls[1].HeadParents)
 	}
-	if len(issues) != 1 || issues[0].Number != 20 || issues[0].CommentCount != 1 || issues[0].Thread[0].ID != 5702456240 {
-		t.Fatalf("issue mapping/filter changed REST semantics: %+v", issues)
+	if len(issues) != 2 || issues[0].Number != 20 || issues[0].CommentCount != 1 || issues[0].Thread[0].ID != 5702456240 ||
+		issues[1].Number != 21 || issues[1].CommentCount != 0 || len(issues[1].Thread) != 0 {
+		t.Fatalf("issue mapping changed REST semantics: %+v", issues)
 	}
 	if len(client.calls) != 3 || !strings.Contains(client.calls[1].query, "nodes(ids: $ids)") ||
 		!strings.Contains(client.calls[2].query, "PipelineHealthPullHeads") {
@@ -396,6 +430,80 @@ func TestGraphQLSnapshotMapsRESTSemanticsAndLargeDatabaseID(t *testing.T) {
 	ids, ok := client.calls[1].variables["ids"].([]string)
 	if !ok || len(ids) != 1 || ids[0] != "commit-pr-1" {
 		t.Fatalf("unexpected parent batch: %#v", client.calls[1].variables["ids"])
+	}
+}
+
+func TestGraphQLCLILoadsUnshippedReviewedMergeParentsBeforeAskingForShip(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporary := t.TempDir()
+	name := "pipelinehealth"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	binary := filepath.Join(temporary, name)
+	//nolint:gosec // executable/output paths are fixed by this test
+	build := exec.Command("go", "build", "-o", binary, "./tools/pipelinehealth")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v %s", err, output)
+	}
+	helper, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, owner := range []string{"ivanarama", "reviewerbot"} {
+		t.Run(owner, func(t *testing.T) {
+			oldReview := gqlTestComment("30")
+			oldReview["body"] = completion(headC, 20, 25)
+			oldReview["author"] = map[string]any{"login": owner}
+			currentReview := gqlTestComment("40")
+			currentReview["body"] = completion(headB, 35, 36)
+			currentReview["author"] = map[string]any{"login": owner}
+			pull := gqlTestPullNode("pr-1", 1321, headB,
+				[]any{map[string]any{"name": "reviewed"}}, []any{oldReview, currentReview})
+			pages := []any{
+				map[string]any{"data": snapshotResult(1, []any{pull}, false, nil, 0, nil, false, nil)},
+				map[string]any{"data": map[string]any{"nodes": []any{map[string]any{
+					"__typename": "Commit", "id": "commit-pr-1", "oid": headB,
+					"parents": connection(2, []any{map[string]any{"oid": headA}, map[string]any{"oid": headD}}, false, nil),
+				}}}},
+				map[string]any{"data": map[string]any{"nodes": []any{map[string]any{
+					"__typename": "PullRequest", "id": "pr-1", "headRefOid": headB,
+				}}}},
+			}
+			data, err := json.Marshal(pages)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sequence := filepath.Join(t.TempDir(), "pages.json")
+			if err := os.WriteFile(sequence, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			//nolint:gosec // binary is built by this test
+			command := exec.Command(binary, "-transport", "graphql", "-repo", "ivanarama/onebase", "-owner", owner, "-json")
+			command.Dir = root
+			command.Env = append(os.Environ(), "GH_EXE="+helper, "PIPELINEHEALTH_TEST_GH_HELPER=1", "PIPELINEHEALTH_TEST_GH_SEQUENCE="+sequence)
+			output, err := command.Output()
+			if err != nil {
+				t.Fatalf("CLI failed: %v", err)
+			}
+			var got report
+			if err := json.Unmarshal(output, &got); err != nil {
+				t.Fatal(err)
+			}
+			if len(got.ReviewedWaitingShip) != 0 || len(got.HumanWaiting) != 1 ||
+				got.HumanWaiting[0].Number != 1321 || got.HumanWaiting[0].Stage != "legacy-source-proof-missing" ||
+				!hasFinding(got, "legacy_source_review_missing") {
+				t.Fatalf("CLI asked for ship without source proof: %+v", got)
+			}
+			counter, err := os.ReadFile(sequence + ".index")
+			if err != nil || string(counter) != "3" {
+				t.Fatalf("parent lookup or stable HEAD recheck missing: calls=%q err=%v", counter, err)
+			}
+		})
 	}
 }
 
@@ -411,7 +519,7 @@ func TestGraphQLSnapshotPaginatesOuterConnections(t *testing.T) {
 		}},
 	}}
 
-	pulls, issues, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+	pulls, issues, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 	if err != nil {
 		t.Fatalf("load paginated snapshot: %v", err)
 	}
@@ -443,7 +551,7 @@ func TestGraphQLSnapshotPaginatesAllLabelsAndComments(t *testing.T) {
 		}},
 	}}
 
-	pulls, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+	pulls, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 	if err != nil {
 		t.Fatalf("load nested pages: %v", err)
 	}
@@ -482,7 +590,7 @@ func TestGraphQLSnapshotRejectsDuplicateNestedNodes(t *testing.T) {
 					"pullRequests": connection(1, []any{pull}, false, nil),
 				}},
 			}}
-			_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+			_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("duplicate %s did not fail closed: %v", test.name, err)
 			}
@@ -497,7 +605,7 @@ func TestGraphQLSnapshotRejectsPaginationWithoutCursor(t *testing.T) {
 			"pullRequests": connection(2, []any{pull}, true, nil),
 		}},
 	}}
-	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 	if err == nil || !strings.Contains(err.Error(), "without endCursor") {
 		t.Fatalf("missing pagination cursor did not fail closed: %v", err)
 	}
@@ -510,7 +618,7 @@ func TestGraphQLSnapshotRejectsEmptyAdvancingPages(t *testing.T) {
 				"pullRequests": connection(1, nil, true, "next"),
 			}},
 		}}
-		_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+		_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 		if err == nil || !strings.Contains(err.Error(), "empty advancing page") {
 			t.Fatalf("empty outer page did not fail closed: %v", err)
 		}
@@ -528,7 +636,7 @@ func TestGraphQLSnapshotRejectsEmptyAdvancingPages(t *testing.T) {
 				"labels":     connection(2, nil, false, nil),
 			}},
 		}}
-		_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+		_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 		if err == nil || !strings.Contains(err.Error(), "empty advancing page") {
 			t.Fatalf("empty nested page did not fail closed: %v", err)
 		}
@@ -543,7 +651,7 @@ func TestGraphQLSnapshotRejectsAccumulatedNodesAboveTotalCount(t *testing.T) {
 			"pullRequests": connection(1, []any{first, second}, false, nil),
 		}},
 	}}
-	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 	if err == nil || !strings.Contains(err.Error(), "exceeds totalCount") {
 		t.Fatalf("overfull connection did not fail closed: %v", err)
 	}
@@ -560,7 +668,7 @@ func TestGraphQLSnapshotRejectsRepeatedCursor(t *testing.T) {
 			"pullRequests": connection(3, []any{second}, true, "same-cursor"),
 		}},
 	}}
-	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 	if err == nil || !strings.Contains(err.Error(), "repeated cursor") {
 		t.Fatalf("cursor loop did not fail closed: %v", err)
 	}
@@ -577,9 +685,110 @@ func TestGraphQLSnapshotRejectsConnectionCountChange(t *testing.T) {
 			"pullRequests": connection(3, []any{second}, false, nil),
 		}},
 	}}
-	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 	if err == nil || !strings.Contains(err.Error(), "totalCount changed") {
 		t.Fatalf("moving queue snapshot did not fail closed: %v", err)
+	}
+}
+
+func TestGraphQLProductionIngressRetriesCountChurnWithoutPartialResults(t *testing.T) {
+	old := gqlTestPullNode("old", 10, headA, nil, nil)
+	one := gqlTestPullNode("new-one", 11, headB, nil, nil)
+	two := gqlTestPullNode("new-two", 12, headA, nil, nil)
+	client := &scriptedGraphQLClient{t: t, results: []any{
+		map[string]any{"repository": map[string]any{"pullRequests": connection(2, []any{old}, true, "page-1"), "issues": connection(0, []any{}, false, nil)}},
+		map[string]any{"repository": map[string]any{"pullRequests": connection(3, []any{two}, false, nil)}},
+		map[string]any{"repository": map[string]any{"pullRequests": connection(2, []any{one, two}, false, nil), "issues": connection(0, []any{}, false, nil)}},
+	}}
+	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "ivanarama", "", "")
+	if err != nil || len(pulls) != 2 || len(issues) != 0 || pulls[0].Number != 11 || len(client.calls) != 3 {
+		t.Fatalf("did not retry full read or retained old nodes: pulls=%+v issues=%+v err=%v calls=%v", pulls, issues, err, client.calls)
+	}
+}
+
+func TestGraphQLProductionIngressBoundsCountChurnRetries(t *testing.T) {
+	first := gqlTestPullNode("pr-1", 10, headA, nil, nil)
+	second := gqlTestPullNode("pr-2", 11, headB, nil, nil)
+	client := &scriptedGraphQLClient{t: t}
+	for range 3 {
+		client.results = append(client.results,
+			map[string]any{"repository": map[string]any{"pullRequests": connection(2, []any{first}, true, "page-1"), "issues": connection(0, []any{}, false, nil)}},
+			map[string]any{"repository": map[string]any{"pullRequests": connection(3, []any{second}, false, nil)}})
+	}
+	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "ivanarama", "", "")
+	if err == nil || pulls != nil || issues != nil || len(client.calls) != 6 {
+		t.Fatalf("must fail closed after three full attempts: pulls=%+v issues=%+v err=%v calls=%v", pulls, issues, err, client.calls)
+	}
+}
+
+func TestGraphQLProductionIngressRetriesIssueChurnAndReloadsPulls(t *testing.T) {
+	old := gqlTestPullNode("old", 10, headA, nil, nil)
+	fresh := gqlTestPullNode("fresh", 11, headB, nil, nil)
+	one := gqlTestIssueNode("issue-1", 20, []any{gqlTestComment("5702456240")})
+	two := gqlTestIssueNode("issue-2", 21, []any{gqlTestComment("5702456241")})
+	client := &scriptedGraphQLClient{t: t, results: []any{
+		map[string]any{"repository": map[string]any{"pullRequests": connection(1, []any{old}, false, nil), "issues": connection(2, []any{one}, true, "page-1")}},
+		map[string]any{"repository": map[string]any{"issues": connection(3, []any{two}, false, nil)}},
+		map[string]any{"repository": map[string]any{"pullRequests": connection(1, []any{fresh}, false, nil), "issues": connection(2, []any{one, two}, false, nil)}},
+	}}
+	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "ivanarama", "", "")
+	if err != nil || len(pulls) != 1 || len(issues) != 2 || pulls[0].Number != 11 || len(client.calls) != 3 {
+		t.Fatalf("issue churn did not restart the complete snapshot: pulls=%+v issues=%+v err=%v", pulls, issues, err)
+	}
+}
+
+func TestGraphQLCLIRetriesIssueCountChurn(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporary := t.TempDir()
+	name := "pipelinehealth"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	binary := filepath.Join(temporary, name)
+	//nolint:gosec // executable/output paths are fixed by this test
+	build := exec.Command("go", "build", "-o", binary, "./tools/pipelinehealth")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v %s", err, output)
+	}
+	helper, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages := []any{
+		map[string]any{"data": snapshotResult(0, []any{}, false, nil, 2, []any{gqlTestIssueNode("one", 20, nil)}, true, "next")},
+		map[string]any{"data": map[string]any{"repository": map[string]any{"issues": connection(3, []any{gqlTestIssueNode("two", 21, nil)}, false, nil)}}},
+		map[string]any{"data": snapshotResult(0, []any{}, false, nil, 0, []any{}, false, nil)},
+	}
+	data, err := json.Marshal(pages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sequence := filepath.Join(temporary, "pages.json")
+	if err := os.WriteFile(sequence, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	//nolint:gosec // binary is built by this test
+	command := exec.Command(binary, "-transport", "graphql", "-json")
+	command.Dir = root
+	command.Env = append(os.Environ(), "GH_EXE="+helper, "PIPELINEHEALTH_TEST_GH_HELPER=1", "PIPELINEHEALTH_TEST_GH_SEQUENCE="+sequence)
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("CLI discarded completed gate after transient churn: %v", err)
+	}
+	var got report
+	if err := json.Unmarshal(output, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Checked != 0 || got.IssuesChecked != 0 || got.State != "green" {
+		t.Fatalf("partial old snapshot leaked: %s", output)
+	}
+	counter, err := os.ReadFile(sequence + ".index")
+	if err != nil || string(counter) != "3" {
+		t.Fatalf("retry ingress not reached: counter=%q err=%v", counter, err)
 	}
 }
 
@@ -592,7 +801,7 @@ func TestGraphQLSnapshotRejectsMalformedOrOverflowDatabaseID(t *testing.T) {
 					"pullRequests": connection(1, []any{pull}, false, nil),
 				}},
 			}}
-			_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+			_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 			if err == nil || !strings.Contains(err.Error(), "invalid fullDatabaseId") {
 				t.Fatalf("invalid database id did not fail closed: %v", err)
 			}
@@ -611,7 +820,7 @@ func TestGraphQLSnapshotRejectsShipHeadMismatch(t *testing.T) {
 			"parents": emptyConnection(),
 		}}},
 	}}
-	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 	if err == nil || !strings.Contains(err.Error(), "changed oid") {
 		t.Fatalf("head/commit race did not fail closed: %v", err)
 	}
@@ -633,7 +842,7 @@ func TestGraphQLSnapshotRejectsPushRaceAfterParentLookup(t *testing.T) {
 			"__typename": "PullRequest", "id": "pr-1", "headRefOid": headB,
 		}}},
 	}}
-	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, false)
+	_, _, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, false)
 	if err == nil || !strings.Contains(err.Error(), "headRefOid changed") {
 		t.Fatalf("push between snapshot and parent lookup was accepted: %v", err)
 	}
@@ -645,7 +854,7 @@ func TestGraphQLSnapshotRejectsClientErrorWithoutPartialResult(t *testing.T) {
 		results: []any{nil},
 		errors:  []error{errors.New("GraphQL response errors: field failed")},
 	}
-	pulls, issues, err := loadGraphQLSnapshot(client, "ivanarama/onebase", true, true)
+	pulls, issues, err := loadGraphQLSnapshot(client, "ivanarama/onebase", "ivanarama", true, true)
 	if err == nil || pulls != nil || issues != nil {
 		t.Fatalf("partial GraphQL failure was accepted: pulls=%+v issues=%+v err=%v", pulls, issues, err)
 	}
@@ -745,7 +954,7 @@ func TestGraphQLFixtureMatrixKeepsPullFixtureOffline(t *testing.T) {
 	}
 
 	client := &scriptedGraphQLClient{t: t}
-	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", pullPath, "")
+	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "ivanarama", pullPath, "")
 	if err != nil {
 		t.Fatalf("load fixture: %v", err)
 	}
@@ -771,7 +980,7 @@ func TestGraphQLIssueFixtureStillLoadsLivePullsOnly(t *testing.T) {
 		}},
 	}}
 
-	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "", issuePath)
+	pulls, issues, err := loadPipelineInputsGraphQL(client, "ivanarama/onebase", "ivanarama", "", issuePath)
 	if err != nil {
 		t.Fatalf("load mixed fixture/live inputs: %v", err)
 	}

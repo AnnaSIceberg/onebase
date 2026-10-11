@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -366,6 +367,14 @@ func tpCellNorm(f metadata.Field, v any) string {
 		}
 	}
 	switch f.Type {
+	case metadata.FieldTypeDate:
+		// Одна и та же дата приходит из формы стенными часами, из SQLite —
+		// строкой RFC3339 в UTC, из PostgreSQL — time.Time в зоне сессии.
+		// Сравниваются моменты времени, а не их запись: иначе открытая без
+		// правок форма считалась изменённой.
+		if t, ok := dateCellInstant(v); ok {
+			return t.UTC().Format(time.RFC3339Nano)
+		}
 	case metadata.FieldTypeNumber:
 		switch t := v.(type) {
 		case float64:
@@ -381,6 +390,12 @@ func tpCellNorm(f metadata.Field, v any) string {
 		switch t := v.(type) {
 		case bool:
 			return boolCanon(t)
+		case decimal.Decimal:
+			// DSL numeric literals must use the same truth value as DB integers.
+			return boolCanon(!t.IsZero())
+		case float64:
+			// Number fields parsed from the form reach handlers as float64.
+			return boolCanon(t != 0)
 		case int64:
 			// SQLite хранит булево как INTEGER (TypeBool → INTEGER), и драйвер
 			// отдаёт int64. Без этой ветки значение уходило в общий Sprintf → "1"/"0"
@@ -398,6 +413,24 @@ func tpCellNorm(f metadata.Field, v any) string {
 		return ""
 	}
 	return fmt.Sprintf("%v", v)
+}
+
+// dateCellInstant — момент времени значения даты: time.Time из формы и
+// PostgreSQL или строка (RFC3339 из SQLite, стенные часы из формы).
+func dateCellInstant(v any) (time.Time, bool) {
+	switch t := v.(type) {
+	case time.Time:
+		return t, true
+	case *time.Time:
+		if t != nil {
+			return *t, true
+		}
+	case string:
+		if s := strings.TrimSpace(t); s != "" {
+			return canonicalFormDate(s)
+		}
+	}
+	return time.Time{}, false
 }
 
 // boolCanon — канон булева значения для сравнения «значение из БД против значения

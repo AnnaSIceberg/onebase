@@ -72,6 +72,12 @@ func (s *Server) runChoicePreviewProc(ctx context.Context, ent *metadata.Entity,
 	if len(items) == 0 {
 		return nil
 	}
+	// Статический fallback берём только из уже отфильтрованных и
+	// замаскированных строк, в том числе когда процедура не задана.
+	staticField := canonicalChoicePreviewField(ent)
+	for _, row := range items {
+		row[choicePreviewKey] = refValueString(row[staticField])
+	}
 	name := strings.TrimSpace(ent.ChoicePreviewProc)
 	if name == "" {
 		return nil
@@ -106,14 +112,11 @@ func (s *Server) runChoicePreviewProc(ctx context.Context, ent *metadata.Entity,
 	}
 	// Merge-семантика: запись функции перекрывает статический fallback,
 	// отсутствующая запись оставляет его (инвариант плана 168).
-	staticField := canonicalChoicePreviewField(ent)
 	for _, row := range items {
 		id := refValueString(row["id"])
 		if text, ok := texts[id]; ok {
 			row[choicePreviewKey] = text
-			continue
 		}
-		row[choicePreviewKey] = refValueString(row[staticField])
 	}
 	return nil
 }
@@ -148,6 +151,7 @@ type choicePreviewPageBody struct {
 		Element string `json:"element"`
 	} `json:"source"`
 	Context map[string]string `json:"context"`
+	Filters map[string]string `json:"filters"`
 }
 
 // choicePreviewPage — POST /ui/_ref-options/{entity}/page (план 168, HTTP-контракт).
@@ -230,7 +234,9 @@ func (s *Server) choicePreviewPage(w http.ResponseWriter, r *http.Request, ent *
 			}
 			// Ссылка требует object read и допуска строки (инвариант 7) —
 			// тот же гейт, что и selected_allowed у choice.
-			okAllowed, aerr := s.choiceSelectedAllowed(r.Context(), refEnt, id, nil)
+			// folders=false: здесь проверяется не состав подбора, а допуск к самой
+			// ссылке контекста — состав выдачи ни при чём.
+			okAllowed, aerr := s.choiceSelectedAllowed(r.Context(), refEnt, id, nil, false)
 			if aerr != nil {
 				s.serverError(w, r, aerr)
 				return
@@ -247,7 +253,14 @@ func (s *Server) choicePreviewPage(w http.ResponseWriter, r *http.Request, ent *
 
 	// Страница — тем же путём, что и обычный подбор: object read → row filter →
 	// field mask → _label (инварианты 2 и 11). Только затем вызывается функция.
-	items, total, err := s.referenceOptionsPageWithParams(r.Context(), ent, body.Q, limit, body.Offset, storage.ListParams{})
+	filterJSON, _ := json.Marshal(body.Filters)
+	params, filterOK := refOptionsFilters(ent, string(filterJSON), storage.ListParams{IncludeFolders: element.ChoiceFolders})
+	items := []map[string]any{}
+	total := 0
+	var err error
+	if filterOK {
+		items, total, err = s.referenceOptionsPageWithParams(r.Context(), ent, body.Q, limit, body.Offset, params)
+	}
 	if err != nil {
 		s.serverError(w, r, err)
 		return

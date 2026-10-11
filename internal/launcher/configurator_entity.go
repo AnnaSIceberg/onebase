@@ -158,7 +158,41 @@ func (h *handler) findEntityConfigFile(ctx context.Context, b *Base, entityName 
 	return "", nil, false
 }
 
-func applyFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, basedOn *[]string, activity **saveActivity, numerator **saveNumerator) error {
+func applyFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, owner *string, basedOn *[]string, activity **saveActivity, numerator **saveNumerator) error {
+	// «Владелец» синтезируется при загрузке owner: и попадает в форму как
+	// обычный реквизит. В исходном YAML его может не быть: тогда сохраняем
+	// служебный id до выдачи новых f_*, а при снятии owner убираем только
+	// синтезированное поле. Явно объявленный реквизит оставляем пользователю.
+	ownerWasExplicit := false
+	for _, f := range ent.Fields {
+		if strings.EqualFold(f.Name, metadata.StandardOwnerField) && f.ID != metadata.StandardOwnerFieldID {
+			ownerWasExplicit = true
+			break
+		}
+	}
+	if owner != nil {
+		ent.Owner = strings.TrimSpace(*owner)
+	}
+	if kind == metadata.KindCatalog && !ownerWasExplicit {
+		if ent.Owner == "" {
+			kept := fields[:0]
+			for _, f := range fields {
+				if !strings.EqualFold(f.Name, metadata.StandardOwnerField) {
+					kept = append(kept, f)
+				}
+			}
+			fields = kept
+		} else {
+			ent.Fields = withStandardFieldSeed(ent.Fields, metadata.StandardOwnerField, metadata.StandardOwnerFieldID)
+		}
+	}
+	if kind == metadata.KindCatalog && ent.Owner != "" {
+		for i := range fields {
+			if strings.EqualFold(fields[i].Name, metadata.StandardOwnerField) {
+				fields[i].Type = "reference:" + ent.Owner
+			}
+		}
+	}
 	if err := applyStandardFieldEdits(ent, kind, fields, numerator); err != nil {
 		return err
 	}
@@ -218,7 +252,7 @@ func applyFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveField, tp
 	return nil
 }
 
-func saveEntityFieldsToFile(dir, entityName string, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, basedOn *[]string, activity **saveActivity, numerator **saveNumerator, objTitles *map[string]string) error {
+func saveEntityFieldsToFile(dir, entityName string, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, owner *string, basedOn *[]string, activity **saveActivity, numerator **saveNumerator, objTitles *map[string]string) error {
 	filePath, err := findEntityFilePath(dir, entityName)
 	if err != nil {
 		return err
@@ -231,7 +265,7 @@ func saveEntityFieldsToFile(dir, entityName string, fields []saveField, tpFields
 	if err := yaml.Unmarshal(raw, &ent); err != nil {
 		return err
 	}
-	if err := applyFieldEdits(&ent, entityKindFromPath(filePath), fields, tpFields, posting, postCaption, postAndCloseHidden, hierarchical, basedOn, activity, numerator); err != nil {
+	if err := applyFieldEdits(&ent, entityKindFromPath(filePath), fields, tpFields, posting, postCaption, postAndCloseHidden, hierarchical, owner, basedOn, activity, numerator); err != nil {
 		return err
 	}
 	if objTitles != nil {
@@ -244,7 +278,7 @@ func saveEntityFieldsToFile(dir, entityName string, fields []saveField, tpFields
 	return os.WriteFile(filePath, out, fsmode.File)
 }
 
-func (h *handler) saveEntityFieldsToDB(ctx context.Context, b *Base, entityName string, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, basedOn *[]string, activity **saveActivity, numerator **saveNumerator, objTitles *map[string]string) error {
+func (h *handler) saveEntityFieldsToDB(ctx context.Context, b *Base, entityName string, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, owner *string, basedOn *[]string, activity **saveActivity, numerator **saveNumerator, objTitles *map[string]string) error {
 	db, err := OpenDB(ctx, b)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
@@ -281,7 +315,7 @@ func (h *handler) saveEntityFieldsToDB(ctx context.Context, b *Base, entityName 
 		return fmt.Errorf("entity %q not found in DB config", entityName)
 	}
 
-	if err := applyFieldEdits(&ent, entityKindFromPath(targetPath), fields, tpFields, posting, postCaption, postAndCloseHidden, hierarchical, basedOn, activity, numerator); err != nil {
+	if err := applyFieldEdits(&ent, entityKindFromPath(targetPath), fields, tpFields, posting, postCaption, postAndCloseHidden, hierarchical, owner, basedOn, activity, numerator); err != nil {
 		return err
 	}
 	if objTitles != nil {
@@ -602,6 +636,15 @@ func (h *handler) configuratorSaveFields(w http.ResponseWriter, r *http.Request)
 		v := r.FormValue("hierarchical") == "true"
 		hierarchical = &v
 	}
+	// Подчинённый справочник (1С «Владелец»): выпадающий список справочников на
+	// форме объекта. Маркер owner_present отличает «поля не было на форме» (не
+	// трогать YAML) от «выбрали пустое значение» (снять подчинение) — без него
+	// подчинение нельзя было бы снять через UI.
+	var owner *string
+	if entityKind == "Справочник" && r.FormValue("owner_present") == "1" {
+		v := strings.TrimSpace(r.FormValue("owner"))
+		owner = &v
+	}
 	// Ввод на основании (Plan 38): список источников приходит как
 	// based_on[] = ИмяСущности — multi-select на форме. Маркер «based_on_present»
 	// отличает «поле не было на форме» (не трогать YAML) от «оба чекбокса
@@ -859,9 +902,9 @@ func (h *handler) configuratorSaveFields(w http.ResponseWriter, r *http.Request)
 
 	saveErr := h.guardConfigLoadable(r.Context(), b, func() error {
 		if b.ConfigSource == "database" {
-			return h.saveEntityFieldsToDB(r.Context(), b, entityName, fields, tpFields, posting, postCaption, postAndCloseHidden, hierarchical, basedOn, activity, numerator, objTitles)
+			return h.saveEntityFieldsToDB(r.Context(), b, entityName, fields, tpFields, posting, postCaption, postAndCloseHidden, hierarchical, owner, basedOn, activity, numerator, objTitles)
 		}
-		return saveEntityFieldsToFile(b.Path, entityName, fields, tpFields, posting, postCaption, postAndCloseHidden, hierarchical, basedOn, activity, numerator, objTitles)
+		return saveEntityFieldsToFile(b.Path, entityName, fields, tpFields, posting, postCaption, postAndCloseHidden, hierarchical, owner, basedOn, activity, numerator, objTitles)
 	})
 
 	data := h.loadCfgData(r.Context(), b, "tree")
