@@ -2,9 +2,13 @@ package cli
 
 import (
 	"encoding/json"
-	"github.com/ivantit66/onebase/internal/configcheck"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ivantit66/onebase/internal/configcheck"
 )
 
 func cardCheckFixture(t *testing.T, value string, extraAccount bool, targetType string) string {
@@ -62,4 +66,38 @@ func TestUserCardPublicDescribeCanonicalizesSource(t *testing.T) {
 	if !strings.Contains(out, `"account_field": "Учётка"`) || !strings.Contains(out, `"field": "Филиал"`) || strings.Contains(out, `"user_card": "`) {
 		t.Fatalf("describe source is not canonical: %s", out)
 	}
+}
+
+// Check must reject an explicitly missing source without requiring --lint.
+func TestUserCardPublicCheckRejectsNullSource(t *testing.T) {
+	for _, value := range []string{"{user_card: null}", "{user_card: ~}", "{user_card: }", "{user_card: *missing}", "{user_card: {}}"} {
+		for name, policy := range map[string]string{
+			"ne":  "{field: Филиал, op: ne, value: " + value + "}",
+			"not": "{not: {field: Филиал, op: eq, value: " + value + "}}",
+			"any": "{any: [{field: Филиал, op: eq, value: " + value + "}, {field: Филиал, op: eq, value: {literal: A}}]}",
+		} {
+			t.Run(value+"/"+name, func(t *testing.T) {
+				dir := cardCheckFixture(t, "{literal: null}", false, "string")
+				role := fmt.Sprintf("missing: &missing null\nname: Сотрудник\npermissions:\n  processors: {}\n  documents: {Ордер: [read]}\n  row_access:\n    documents:\n      Ордер:\n        read: %s\n", policy)
+				if err := os.WriteFile(filepath.Join(dir, "roles", "Сотрудник.yaml"), []byte(role), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				out, err := runCheckCmd(t, runCheck, dir, map[string]string{"json": "true"})
+				var result configcheck.Result
+				if jsonErr := json.Unmarshal([]byte(out), &result); jsonErr != nil {
+					t.Fatal(jsonErr)
+				}
+				if err == nil || result.OK {
+					t.Fatalf("missing user_card accepted: %s", out)
+				}
+			})
+		}
+	}
+	t.Run("literal null stays valid", func(t *testing.T) {
+		dir := cardCheckFixture(t, "{literal: null}", false, "string")
+		out, err := runCheckCmd(t, runCheck, dir, map[string]string{"json": "true"})
+		if err != nil {
+			t.Fatalf("literal null rejected: %v %s", err, out)
+		}
+	})
 }

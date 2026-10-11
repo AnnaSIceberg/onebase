@@ -656,3 +656,45 @@ func TestUserCardPublicTwoEmployeesMatrix(t *testing.T) {
 		}
 	})
 }
+
+// Persisted JSON permissions go through the real auth reader before HTTP RBAC.
+func TestUserCardPublicHTTPRejectsNullSourceMatrix(t *testing.T) {
+	for name, policy := range map[string]string{
+		"ne":           `{"field":"Филиал","op":"ne","value":{"user_card":null}}`,
+		"not":          `{"not":{"field":"Филиал","op":"eq","value":{"user_card":null}}}`,
+		"any":          `{"any":[{"field":"Филиал","op":"eq","value":{"user_card":null}},{"field":"Филиал","op":"eq","value":{"literal":"A"}}]}`,
+		"literal null": `{"field":"Филиал","op":"ne","value":{"literal":null}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+				f := newCardFixture(t, db)
+				permissions := `{"processors":{},"documents":{"Ордер":["read"]},"row_access":{"documents":{"Ордер":{"read":` + policy + `}}}}`
+				roleID := uuid.NewString()
+				q := fmt.Sprintf("INSERT INTO _roles (id, name, permissions) VALUES (%s,%s,%s)", db.Dialect().Placeholder(1), db.Dialect().Placeholder(2), db.Dialect().Placeholder(3))
+				if _, err := db.Exec(f.ctx, q, roleID, "Stored", permissions); err != nil {
+					t.Fatal(err)
+				}
+				repo := auth.NewRepo(db)
+				if err := repo.AssignRole(f.ctx, f.user.ID, roleID); err != nil {
+					t.Fatal(err)
+				}
+				roles, err := repo.GetRolesForUser(f.ctx, f.user.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(roles) != 1 {
+					t.Fatalf("roles: %v", roles)
+				}
+				f.user.Roles = roles
+				w := f.request(http.MethodGet, "/ui/document/ордер", nil)
+				if name == "literal null" {
+					if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "VISIBLE") || !strings.Contains(w.Body.String(), "HIDDEN") {
+						t.Fatalf("literal null lost: %d %s", w.Code, w.Body.String())
+					}
+				} else if w.Code != http.StatusForbidden || strings.Contains(w.Body.String(), "VISIBLE") || strings.Contains(w.Body.String(), "HIDDEN") {
+					t.Fatalf("missing source disclosed rows: %d %s", w.Code, w.Body.String())
+				}
+			})
+		})
+	}
+}

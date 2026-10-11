@@ -72,6 +72,11 @@ func (v *RowValue) UnmarshalYAML(n *yaml.Node) error {
 	if err := n.Decode((*plain)(v)); err != nil {
 		return err
 	}
+	// yaml.v3 skips pointer unmarshalling for null (including aliases), so
+	// the key must survive independently of the decoded descriptor.
+	if seen["user_card"] && v.UserCard == nil {
+		return fmt.Errorf("user_card requires a mapping or Catalog.Field; null is not a source")
+	}
 	v.LiteralSet = seen["literal"]
 	return nil
 }
