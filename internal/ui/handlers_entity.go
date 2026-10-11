@@ -780,7 +780,7 @@ func (s *Server) parseSubmitForm(w http.ResponseWriter, r *http.Request, entity 
 		var parseErr error
 		tpRows, parseErr = parseTablePartRowsForManagedForm(r, entity, form, true)
 		if parseErr != nil {
-			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, parseErr.Error(), tpRows)
+			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, s.errText(r, parseErr), tpRows)
 			return
 		}
 		// ValueTable attributes are form-local and are not persisted by
@@ -789,7 +789,7 @@ func (s *Server) parseSubmitForm(w http.ResponseWriter, r *http.Request, entity 
 		// through the hooks; Save still writes only entity.TableParts.
 		valueTables, parseErr := parseValueTableRowsForManagedForm(r, form, entity, true)
 		if parseErr != nil {
-			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, parseErr.Error(), tpRows)
+			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, s.errText(r, parseErr), tpRows)
 			return
 		}
 		for name, rows := range valueTables {
@@ -799,7 +799,7 @@ func (s *Server) parseSubmitForm(w http.ResponseWriter, r *http.Request, entity 
 		var parseErr error
 		tpRows, parseErr = parseTablePartRows(r, entity)
 		if parseErr != nil {
-			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, parseErr.Error(), tpRows)
+			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, s.errText(r, parseErr), tpRows)
 			return
 		}
 	}
@@ -2635,7 +2635,7 @@ func parseManagedTablePartRows(
 func tablePartFieldValue(f metadata.Field, raw string) (any, error) {
 	value, err := typedFormFieldValue(f, raw)
 	if err != nil {
-		return nil, fmt.Errorf("реквизит %q: %v", f.Name, err)
+		return nil, i18nerr.Wrapf(err, "реквизит %q", f.Name)
 	}
 	return value, nil
 }
@@ -2727,7 +2727,7 @@ func convertManagedTablePartRows(rows []map[string]any, tablePart metadata.Table
 			}
 			value, err := tablePartFieldValue(field, raw)
 			if err != nil {
-				return nil, fmt.Errorf("таблица %q: %w", tablePart.Name, err)
+				return nil, i18nerr.Wrapf(err, "таблица %q", tablePart.Name)
 			}
 			converted[field.Name] = value
 		}
@@ -2831,7 +2831,7 @@ func parseLegacyTablePartRows(r *http.Request, entity *metadata.Entity) (map[str
 					}
 					value, convErr := tablePartFieldValue(f, raw)
 					if convErr != nil {
-						return nil, fmt.Errorf("таблица %q: %w", tp.Name, convErr)
+						return nil, i18nerr.Wrapf(convErr, "таблица %q", tp.Name)
 					}
 					converted[f.Name] = value
 				}
