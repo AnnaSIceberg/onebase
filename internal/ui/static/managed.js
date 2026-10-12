@@ -1114,20 +1114,9 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       }
       // Вопрос фазы 1 (#1528): открыть модал; ответ вернётся событием Ответ
       // через _question_answer — сервер положит его в ВопросОтвет.
-      if (data.question) {
+      if (data.question && !beforePostSnapshot(snapshot)) {
         (data.messages || []).forEach(m => flash(m, 'ok'));
         if (data.error) flash(data.error, 'err');
-        if (beforePostSnapshot(snapshot) && beforePostState) {
-          // ПередПроведением: ответ — тому же событию, а не Ответ элемента;
-          // проведение ждёт его, закрытие вопроса мимо кнопок — отказ.
-          beforePostState.questionOpen = true;
-          if (window.obOpenQuestion) window.obOpenQuestion(data.question, '', {
-            onAnswer: function(variant){ runBeforePostEvent({_question_answer: variant}); },
-            onDismiss: function(){ settleBeforePost(false); }
-          });
-          else settleBeforePost(false);
-          return;
-        }
         if (window.obOpenQuestion) window.obOpenQuestion(data.question, elementName);
         return;
       }
@@ -1135,23 +1124,50 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       // partially failing renderer. Programmatic response application does
       // not emit input/change, so raise it before touching mutable DOM state.
       if (data.dirty === true) setManagedFormDirty(true);
-      if (Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
-      applyElementStates(data.elementStates);
-      window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
-      window.applyTableParts(data.tableparts);
-      applyValues(data.values, data.refOptions, snapshot.body);
-      applyChoiceList(elementName, data.choiceList);
-      applyFormTables(data.formTables);
+      var beforePostMerged = beforePostSnapshot(snapshot) && formEditState.revision !== snapshot.editRevision;
+      if (beforePostMerged) {
+        // Перед ответом на вопрос сохранить свежий ввод, но принять правки
+        // обработчика в полях и таблицах, которых пользователь не касался.
+        var mergeRevision = formEditState.revision;
+        var mergeBody = await closeSnapshotBody('', '');
+        if (!mergeBody || formEditState.revision !== mergeRevision) {
+          setManagedFormDirty(true);
+          return;
+        }
+        applyCloseResponse(data, snapshot.body, mergeBody);
+        setManagedFormDirty(true);
+      } else {
+        if (Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
+        applyElementStates(data.elementStates);
+        window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
+        window.applyTableParts(data.tableparts);
+        applyValues(data.values, data.refOptions, snapshot.body);
+        applyChoiceList(elementName, data.choiceList);
+        applyFormTables(data.formTables);
+      }
 	  // Server events repaint controls programmatically and therefore do not
 	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
 	  // it only when this response proves a successful Object.Write and no
 	  // user edits followed the snapshot that was saved.
-	  if (data.dirty === false && (data.savedId || data.version)) {
+	  if (!beforePostMerged && data.dirty === false && (data.savedId || data.version)) {
 		setManagedFormDirty(formEditState.revision !== snapshot.editRevision);
 	  }
-      (data.messages || []).forEach(m => flash(m, 'ok'));
-      if (data.error) flash(data.error, 'err');
+      if (!beforePostMerged) {
+        (data.messages || []).forEach(m => flash(m, 'ok'));
+        if (data.error) flash(data.error, 'err');
+      }
       if (navigationBlocked) flash(closeMessage('navigationDirty', 'Форма содержит несохранённые изменения — переход не выполнен'), 'err');
+      if (data.question && beforePostSnapshot(snapshot) && beforePostState) {
+        // Правки и dirty уже применены. Ответ пойдёт тем же событием с новым
+        // снимком формы; закрытие вопроса мимо кнопок отменяет проведение.
+        beforePostState.questionOpen = true;
+        if (window.obOpenQuestion) window.obOpenQuestion(data.question, '', {
+          onAnswer: function(variant){ runBeforePostEvent({_question_answer: variant}); },
+          onDismiss: function(){ settleBeforePost(false); }
+        });
+        else settleBeforePost(false);
+        return;
+      }
       // Решение — после того, как событие целиком вышло из очереди (см.
       // runBeforePostEvent): иначе проведение застало бы форму «занятой».
       if (beforePostSnapshot(snapshot) && beforePostState) beforePostState.outcome = !data.cancel && !data.error && !navigationBlocked;
@@ -1169,7 +1185,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     }
   }
 
-  window.obFire = function(elementName, eventName, extraParams, pickerRequest){
+  function fireFormEvent(elementName, eventName, extraParams, pickerRequest, beforePostOwner){
 	pickerRequest = pickerRequest || (window.obPickerRequest ? window.obPickerRequest() : null);
 	if (formEventWriteUnknown || manualReconcileRequired) {
 	  flash(closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
@@ -1179,7 +1195,9 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	  flash(closeMessage('reloadRequired', 'Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.'), 'err');
 	  return Promise.resolve();
 	}
-	if (closePending || closeHandoffPending || retryableClose) {
+	if (closePending || retryableClose ||
+        (closeHandoffPending && (!beforePostOwner || beforePostOwner !== beforePostState)) ||
+        (beforePostState && beforePostOwner !== beforePostState)) {
 	  flash(closeMessage('closePending', 'Сначала завершите или восстановите проверку закрытия формы.'), 'err');
 	  return Promise.resolve();
 	}
@@ -1244,6 +1262,9 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	  formEventPendingCount = Math.max(0, formEventPendingCount - 1);
 	  formEventPending = formEventPendingCount > 0;
 	});
+  }
+  window.obFire = function(elementName, eventName, extraParams, pickerRequest){
+    return fireFormEvent(elementName, eventName, extraParams, pickerRequest);
   };
 
   // One close controller for every managed-form adapter. It snapshots the
@@ -1269,20 +1290,24 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     if (!beforePostState) return;
     beforePostState.questionOpen = false;
     beforePostState.outcome = false;
-    Promise.resolve(window.obFire('', 'ПередПроведением', extra || null)).then(function(){
+    // Только событие владельца может пройти через embedded handoff. Общие
+    // команды и native submit остаются заперты, в том числе пока открыт вопрос.
+    Promise.resolve(fireFormEvent('', 'ПередПроведением', extra || null, null, beforePostState)).then(function(){
       // Ответ разобран и событие вышло из очереди. Открыт вопрос — ждём ответа;
       // не дошло до разбора (отказ очереди, сеть) — outcome остался false.
       if (beforePostState && !beforePostState.questionOpen) settleBeforePost(beforePostState.outcome === true);
     });
   }
-  window.obManagedBeforePost = function(){
+  function managedBeforePost(allowHandoff){
     if (!BEFORE_POST) return Promise.resolve(true);
-    if (beforePostState) return Promise.resolve(false);
+    if (beforePostState || formEventPending || closePending || retryableClose ||
+        (closeHandoffPending && !allowHandoff)) return Promise.resolve(false);
     return new Promise(function(resolve){
       beforePostState = {resolve: resolve, questionOpen: false};
       runBeforePostEvent(null);
     });
-  };
+  }
+  window.obManagedBeforePost = function(){ return managedBeforePost(false); };
   var CLOSE_TIMEOUT_MS = Number(cfg.closeTimeoutMs || 30000);
   var CLOSE_MESSAGES = cfg.closeMessages || {};
   // Declared with the close controller because browser behavior tests extract
@@ -1566,11 +1591,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
   window.obRequestFormClose = function(options){
     options = options || {};
+    if (beforePostState) return Promise.resolve({allowed: false, intentId: '', error: 'form-event-pending'});
     if (BEFORE_POST && options.mode === 'post' && !options.__beforePostDone) {
       var nextOptions = {};
       Object.keys(options).forEach(function(key){ nextOptions[key] = options[key]; });
       nextOptions.__beforePostDone = true;
-      return window.obManagedBeforePost().then(function(ok){
+      return managedBeforePost(true).then(function(ok){
         if (!ok) {
           closeHandoffPending = false;
           return {allowed: false, intentId: '', error: 'before-post-cancelled'};
@@ -1875,7 +1901,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var pending = retryableClose;
     var recoveryMode = pending && String(pending.mode || '');
     if (!form || form.id !== 'main-form') return;
-	if (formEventPending || formEventWriteUnknown || manualReconcileRequired) {
+	if (beforePostState || formEventPending || formEventWriteUnknown || manualReconcileRequired) {
 	  e.preventDefault();
 	  if (e.stopImmediatePropagation) e.stopImmediatePropagation();
 	  else if (e.stopPropagation) e.stopPropagation();
