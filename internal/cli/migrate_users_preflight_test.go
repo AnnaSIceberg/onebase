@@ -115,7 +115,10 @@ func preflightSnapshot(t *testing.T, db *storage.DB) []string {
 			var cols []string
 			read(`SELECT name FROM pragma_table_info('`+strings.ReplaceAll(table, `'`, `''`)+`') ORDER BY cid`, &cols)
 			for i, c := range cols {
-				cols[i] = `"` + strings.ReplaceAll(c, `"`, `""`) + `"`
+				quotedColumn := `"` + strings.ReplaceAll(c, `"`, `""`) + `"`
+				// Real CLI bootstrap includes binary password hashes. JSON cannot
+				// hold BLOBs; retain both their type and exact bytes in the snapshot.
+				cols[i] = `json_array(typeof(` + quotedColumn + `), CASE WHEN typeof(` + quotedColumn + `)='blob' THEN hex(` + quotedColumn + `) ELSE ` + quotedColumn + ` END)`
 			}
 			read(`SELECT json_array(`+strings.Join(cols, ",")+`) FROM `+quoted+` ORDER BY 1`, &snapshot)
 		} else {
@@ -286,6 +289,101 @@ func TestMigrateUsersPreflightFKSemanticsMatrix(t *testing.T) {
 			if !strings.Contains(out, "не эквивалентен") {
 				t.Fatalf("disabled FK accepted: %s", out)
 			}
+		}
+	})
+}
+
+func TestMigrateUsersPreflightLegacyUUIDMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		dir := t.TempDir()
+		writeProcrunFixture(t, dir, "config/app.yaml", "name: legacy-uuid\nversion: \"1.0\"\n")
+		writeField := func(name, typ string) {
+			t.Helper()
+			writeProcrunFixture(t, dir, "catalogs/Records.yaml", fmt.Sprintf("name: Records\nfields:\n  - name: %s\n    id: author\n    type: %s\n", name, typ))
+		}
+		migrate := func() {
+			t.Helper()
+			if _, err := captureStdout(t, func() error {
+				return migrateCmd.RunE(userReferenceCLICommand(t, db, dir, false), nil)
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		writeField("OldAuthor", "string")
+		migrate()
+		const user = "abcdef12-3456-7890-abcd-ef1234567890"
+		record := uuid.NewString()
+		d := db.Dialect()
+		preflightExec(t, db, "INSERT INTO _users(id,login,password_hash) VALUES ("+d.Placeholder(1)+",'SECRET_LOGIN',"+d.Placeholder(2)+")", user, []byte("unused"))
+		preflightExec(t, db, "INSERT INTO records(id,oldauthor) VALUES ("+d.Placeholder(1)+","+d.Placeholder(2)+")", record, user)
+		// The CLI must resolve the old physical column by ID, then apply the
+		// destination dialect's reference semantics without changing that column.
+		writeField("Author", "reference:_users")
+		cases := []struct {
+			name  string
+			value any
+			pgOK  bool
+		}{
+			{"canonical", user, true},
+			{"uppercase", strings.ToUpper(user), true},
+			{"braces", "{" + strings.ToUpper(user) + "}", true},
+			{"compact", strings.ReplaceAll(user, "-", ""), true},
+			{"four-digit-groups", "abcd-ef12-3456-7890-abcd-ef12-3456-7890", true},
+			{"partial-hyphens", "abcdef12-34567890abcdef1234567890", true},
+			{"trimmed", "  " + strings.ToUpper(user) + "  ", true},
+			{"null", nil, true},
+			{"missing-user", "abcdef12-3456-7890-abcd-ef1234567891", false},
+			{"zero", uuid.Nil.String(), false},
+			{"empty", "", false},
+			{"spaces", "   ", false},
+			{"malformed", "SECRET_INVALID_UUID", false},
+			{"missing-close-brace", "{" + user, false},
+			{"missing-open-brace", user + "}", false},
+			{"trailing-hyphen", user + "-", false},
+			{"misplaced-hyphen", "ab-cdef1234567890abcdef1234567890", false},
+			{"extra-digit", user + "0", false},
+			{"newline", user + "\n", false},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				preflightExec(t, db, "UPDATE records SET oldauthor="+d.Placeholder(1), tc.value)
+				out, err := preflightRun(t, db, dir, map[string]string{"allow-destructive": "true"})
+				wantOK := tc.pgOK
+				if db.IsSQLite() {
+					wantOK = tc.value == nil || tc.value == user
+				}
+				if wantOK {
+					if err != nil {
+						t.Fatalf("valid legacy reference rejected: %v\n%s", err, out)
+					}
+				} else if err == nil || !strings.Contains(err.Error(), "битых ссылок: 1") || !strings.Contains(out, record) {
+					t.Fatalf("invalid legacy reference not reported safely: %v\n%s", err, out)
+				}
+				if !strings.Contains(out, "records.author_id (сейчас oldauthor)") {
+					t.Fatalf("stable-id rename not resolved: %s", out)
+				}
+				if strings.Contains(out+fmt.Sprint(err), "SECRET_") {
+					t.Fatalf("preflight exposed source/user data: %v\n%s", err, out)
+				}
+			})
+		}
+		// Confirm the real migration agrees with the successful preflight and
+		// preserves the referenced account across both rename and retype.
+		value := user
+		if !db.IsSQLite() {
+			value = strings.ToUpper(user)
+		}
+		preflightExec(t, db, "UPDATE records SET oldauthor="+d.Placeholder(1), value)
+		if _, err := preflightRun(t, db, dir, nil); err != nil {
+			t.Fatal(err)
+		}
+		migrate()
+		var saved string
+		if err := db.QueryRow(context.Background(), "SELECT CAST(author_id AS TEXT) FROM records WHERE id="+d.Placeholder(1), record).Scan(&saved); err != nil || saved != user {
+			t.Fatalf("migration lost reference: %q, %v", saved, err)
+		}
+		if _, err := preflightRun(t, db, dir, nil); err != nil {
+			t.Fatal(err)
 		}
 	})
 }

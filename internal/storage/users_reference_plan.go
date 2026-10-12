@@ -182,11 +182,21 @@ func (db *DB) PlanUsersReferenceConstraints(ctx context.Context, refs []UsersRef
 		}
 		column := "src." + quoteIdent(p.ActualColumn)
 		comparison := "CAST(target.id AS TEXT) = CAST(" + column + " AS TEXT)"
-		if !db.IsSQLite() && cols[p.ActualColumn] == "uuid" && targetCols["id"] == "uuid" {
-			comparison = "target.id = " + column
+		if !db.IsSQLite() && targetCols["id"] == "uuid" {
+			if cols[p.ActualColumn] == "uuid" {
+				comparison = "target.id = " + column
+			} else {
+				// Match the upcoming pgUsingExpr conversion, including btrim and
+				// PostgreSQL's optional braces/hyphens and case-insensitive hex.
+				// CASE guards the cast itself: an AND predicate can be reordered,
+				// letting malformed input abort the query and expose its value.
+				text := "btrim(CAST(" + column + " AS TEXT))"
+				group := "([0-9A-Fa-f]{4}-?){7}[0-9A-Fa-f]{4}"
+				pattern := "^(" + group + "|\\{" + group + "\\})$"
+				comparison = "target.id = CASE WHEN " + text + " ~ '" + pattern + "' THEN CAST(" + text + " AS UUID) END"
+			}
 		}
 		where := column + " IS NOT NULL AND NOT EXISTS (SELECT 1 FROM " + quoteIdent(metadata.SystemUsersEntity) + " AS target WHERE " + comparison + ")"
-		// Cast both sides: a string->reference retype may still have a TEXT source on PG.
 		if err := db.QueryRow(ctx, "SELECT COUNT(*) FROM "+quoteIdent(ref.Table)+" AS src WHERE "+where).Scan(&p.BrokenCount); err != nil {
 			return nil, fmt.Errorf("%s (%s.%s): проверка ссылок: %w", ref.Object, ref.Table, p.ActualColumn, err)
 		}
