@@ -2000,29 +2000,6 @@ func (s *Server) postDocument(w http.ResponseWriter, r *http.Request) {
 // при ошибке ОбработкаПроведения; наружу уходит текст хука, не она сама.
 var errPostingHookFailed = errors.New("posting hook failed")
 
-// clearMovements removes all register movements (accumulation, info, account)
-// recorded by the given document, across every register. Passing nil rows to the
-// register writers performs only the DELETE-by-recorder step, so iterating all
-// registers is safe even for those the document never wrote to.
-func (s *Server) clearMovements(ctx context.Context, entityName string, id uuid.UUID) error {
-	for _, reg := range s.reg.Registers() {
-		if err := s.store.WriteMovements(ctx, reg.Name, entityName, id, nil, reg, nil); err != nil {
-			return err
-		}
-	}
-	for _, ir := range s.reg.InfoRegisters() {
-		if err := s.store.WriteInfoMovements(ctx, ir.Name, entityName, id, nil, ir, nil); err != nil {
-			return err
-		}
-	}
-	for _, ar := range s.reg.AccountRegisters() {
-		if err := s.store.WriteAccountMovements(ctx, ar.Name, entityName, id, nil, ar, nil); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // markForDeletion помечает/снимает пометку на удаление. При пометке проведённого
 // документа сперва отменяет проведение (чистит движения по всем регистрам и
 // снимает posted) — пометка и проведённость взаимоисключающи (как в 1С). Снятие
