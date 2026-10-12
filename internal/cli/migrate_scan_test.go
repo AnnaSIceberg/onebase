@@ -271,22 +271,31 @@ func TestMigrateScan_Encodings(t *testing.T) {
 			for _, checkout := range []string{"LF", "CRLF"} {
 				t.Run(checkout, func(t *testing.T) {
 					dir := copyScanFixture(t, false)
+					fixtureRoot, err := os.OpenRoot(dir)
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() {
+						if err := fixtureRoot.Close(); err != nil {
+							t.Error(err)
+						}
+					})
 					// Exercise both checkout styles on every host, before conversion.
 					if err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 						if err != nil || d.IsDir() {
 							return err
 						}
-						data, err := os.ReadFile(path)
+						rel, err := filepath.Rel(dir, path)
+						if err != nil {
+							return err
+						}
+						data, err := fixtureRoot.ReadFile(rel)
 						if err != nil {
 							return err
 						}
 						text := strings.ReplaceAll(string(data), "\r\n", "\n")
 						if checkout == "CRLF" {
 							text = strings.ReplaceAll(text, "\n", "\r\n")
-						}
-						rel, err := filepath.Rel(dir, path)
-						if err != nil {
-							return err
 						}
 						return writeScanFixture(dir, rel, []byte(text))
 					}); err != nil {
