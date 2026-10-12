@@ -1175,7 +1175,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     }
   }
 
-  window.obFire = function(elementName, eventName, extraParams, pickerRequest){
+  function fireFormEvent(elementName, eventName, extraParams, pickerRequest, beforePostOwner){
 	pickerRequest = pickerRequest || (window.obPickerRequest ? window.obPickerRequest() : null);
 	if (formEventWriteUnknown || manualReconcileRequired) {
 	  flash(closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
@@ -1185,7 +1185,9 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	  flash(closeMessage('reloadRequired', 'Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.'), 'err');
 	  return Promise.resolve();
 	}
-	if (closePending || closeHandoffPending || retryableClose) {
+	if (closePending || retryableClose ||
+        (closeHandoffPending && (!beforePostOwner || beforePostOwner !== beforePostState)) ||
+        (beforePostState && beforePostOwner !== beforePostState)) {
 	  flash(closeMessage('closePending', 'Сначала завершите или восстановите проверку закрытия формы.'), 'err');
 	  return Promise.resolve();
 	}
@@ -1250,6 +1252,9 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	  formEventPendingCount = Math.max(0, formEventPendingCount - 1);
 	  formEventPending = formEventPendingCount > 0;
 	});
+  }
+  window.obFire = function(elementName, eventName, extraParams, pickerRequest){
+    return fireFormEvent(elementName, eventName, extraParams, pickerRequest);
   };
 
   // One close controller for every managed-form adapter. It snapshots the
@@ -1275,20 +1280,24 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     if (!beforePostState) return;
     beforePostState.questionOpen = false;
     beforePostState.outcome = false;
-    Promise.resolve(window.obFire('', 'ПередПроведением', extra || null)).then(function(){
+    // Только событие владельца может пройти через embedded handoff. Общие
+    // команды и native submit остаются заперты, в том числе пока открыт вопрос.
+    Promise.resolve(fireFormEvent('', 'ПередПроведением', extra || null, null, beforePostState)).then(function(){
       // Ответ разобран и событие вышло из очереди. Открыт вопрос — ждём ответа;
       // не дошло до разбора (отказ очереди, сеть) — outcome остался false.
       if (beforePostState && !beforePostState.questionOpen) settleBeforePost(beforePostState.outcome === true);
     });
   }
-  window.obManagedBeforePost = function(){
+  function managedBeforePost(allowHandoff){
     if (!BEFORE_POST) return Promise.resolve(true);
-    if (beforePostState) return Promise.resolve(false);
+    if (beforePostState || formEventPending || closePending || retryableClose ||
+        (closeHandoffPending && !allowHandoff)) return Promise.resolve(false);
     return new Promise(function(resolve){
       beforePostState = {resolve: resolve, questionOpen: false};
       runBeforePostEvent(null);
     });
-  };
+  }
+  window.obManagedBeforePost = function(){ return managedBeforePost(false); };
   var CLOSE_TIMEOUT_MS = Number(cfg.closeTimeoutMs || 30000);
   var CLOSE_MESSAGES = cfg.closeMessages || {};
   // Declared with the close controller because browser behavior tests extract
@@ -1565,11 +1574,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
   window.obRequestFormClose = function(options){
     options = options || {};
+    if (beforePostState) return Promise.resolve({allowed: false, intentId: '', error: 'form-event-pending'});
     if (BEFORE_POST && options.mode === 'post' && !options.__beforePostDone) {
       var nextOptions = {};
       Object.keys(options).forEach(function(key){ nextOptions[key] = options[key]; });
       nextOptions.__beforePostDone = true;
-      return window.obManagedBeforePost().then(function(ok){
+      return managedBeforePost(true).then(function(ok){
         if (!ok) {
           closeHandoffPending = false;
           return {allowed: false, intentId: '', error: 'before-post-cancelled'};
@@ -1908,7 +1918,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var pending = retryableClose;
     var recoveryMode = pending && String(pending.mode || '');
     if (!form || form.id !== 'main-form') return;
-	if (formEventPending || formEventWriteUnknown || manualReconcileRequired) {
+	if (beforePostState || formEventPending || formEventWriteUnknown || manualReconcileRequired) {
 	  e.preventDefault();
 	  if (e.stopImmediatePropagation) e.stopImmediatePropagation();
 	  else if (e.stopPropagation) e.stopPropagation();
