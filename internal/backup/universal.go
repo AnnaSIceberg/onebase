@@ -1293,6 +1293,10 @@ func ImportUniversalWithOptions(
 		if err := migrateSchema(txCtx, db, configDest, schemaConfigDir); err != nil {
 			return fmt.Errorf("import: schema migration: %w", err)
 		}
+		idents, err := loadLegacyImportIdents(txCtx, db, configDest, schemaConfigDir)
+		if err != nil {
+			return fmt.Errorf("import: identifier inventory: %w", err)
+		}
 		if err := clearRestoreTables(txCtx, db, opts.ExchangeMode, archiveHasExchangeState); err != nil {
 			return err
 		}
@@ -1305,7 +1309,7 @@ func ImportUniversalWithOptions(
 			{filepath.Join(tmpDir, "system"), "system", preMigrationSystemTables},
 		} {
 			if _, err := os.Stat(item.dir); err == nil {
-				if err := importDir(txCtx, db, item.dir, report, item.skip); err != nil {
+				if err := importDirWithIdents(txCtx, db, item.dir, report, item.skip, idents); err != nil {
 					return fmt.Errorf("import %s: %w", item.label, err)
 				}
 			} else if !os.IsNotExist(err) {
@@ -1315,7 +1319,7 @@ func ImportUniversalWithOptions(
 		if opts.ExchangeMode == ExchangeRestoreDisasterRecovery && archiveHasExchangeState {
 			exchangeDir := filepath.Join(tmpDir, "exchange")
 			if _, err := os.Stat(exchangeDir); err == nil {
-				if err := importDir(txCtx, db, exchangeDir, report, nil); err != nil {
+				if err := importDirWithIdents(txCtx, db, exchangeDir, report, nil, idents); err != nil {
 					return fmt.Errorf("import exchange state: %w", err)
 				}
 			} else if !os.IsNotExist(err) {
@@ -2397,6 +2401,10 @@ func migrateSchema(ctx context.Context, db *storage.DB, configDest, cfgFileDir s
 	}
 	defer proj.Close()
 
+	if err := db.CheckLongIdents(ctx, proj.Entities, proj.Registers, proj.InfoRegisters, proj.AccountRegisters); err != nil {
+		return err
+	}
+
 	if err := db.Migrate(ctx, proj.Entities); err != nil {
 		return fmt.Errorf("migrate entities: %w", err)
 	}
@@ -2495,6 +2503,10 @@ func migrateSchema(ctx context.Context, db *storage.DB, configDest, cfgFileDir s
 
 // importDir walks a directory of .jsonl files and imports each into the DB.
 func importDir(ctx context.Context, db *storage.DB, dir string, report *ImportReport, skip map[string]bool, extraSkip ...[]string) error {
+	return importDirWithIdents(ctx, db, dir, report, skip, nil, extraSkip...)
+}
+
+func importDirWithIdents(ctx context.Context, db *storage.DB, dir string, report *ImportReport, skip map[string]bool, idents *legacyImportIdents, extraSkip ...[]string) error {
 	// Build combined skip set from skip + optional extraSkip.
 	allSkip := make(map[string]bool, len(skip))
 	for k, v := range skip {
@@ -2524,7 +2536,7 @@ func importDir(ctx context.Context, db *storage.DB, dir string, report *ImportRe
 			return nil
 		}
 
-		n, err := importTableJSONL(ctx, db, tableName, path)
+		n, err := importTableJSONL(ctx, db, tableName, path, idents)
 		if err != nil {
 			return fmt.Errorf("import table %s: %w", tableName, err)
 		}
@@ -2535,7 +2547,11 @@ func importDir(ctx context.Context, db *storage.DB, dir string, report *ImportRe
 
 // importTableJSONL reads a JSONL file and inserts all rows into tableName.
 // The first line must be a schema header ({"_schema":1,"btypes":[...]}).
-func importTableJSONL(ctx context.Context, db *storage.DB, tableName, filePath string) (int, error) {
+func importTableJSONL(ctx context.Context, db *storage.DB, tableName, filePath string, legacy ...*legacyImportIdents) (int, error) {
+	var idents *legacyImportIdents
+	if len(legacy) > 0 {
+		idents = legacy[0]
+	}
 	f, err := os.Open(filePath)
 	if err != nil {
 		return 0, err
@@ -2586,7 +2602,8 @@ func importTableJSONL(ctx context.Context, db *storage.DB, tableName, filePath s
 	if !exists {
 		// Имя таблицы из архива PostgreSQL до #1946 — обрезанное: полного нет,
 		// пропуск выглядел бы как «таблица другой конфигурации».
-		if l := len(tableName); l >= metadata.MaxSQLIdentBytes-1 && l <= metadata.MaxSQLIdentBytes {
+		if idents != nil && idents.tables[tableName] {
+			l := len(tableName)
 			return 0, fmt.Errorf("import: таблица %q в архиве — имя, обрезанное PostgreSQL до %d байт (архив снят до #1946); "+
 				"однозначно сопоставить её нельзя — снимите архив заново после `onebase migrate` новой платформой (docs/long-identifiers.md)", tableName, l)
 		}
@@ -2677,7 +2694,8 @@ func importTableJSONL(ctx context.Context, db *storage.DB, tableName, filePath s
 			// 62–63 байт, полного нет — к реквизиту его не привести. Новая
 			// текстовая колонка под обрезанным именем увела бы данные мимо
 			// реквизита; отказ вместо угадывания (решение владельца по #1946).
-			if l := len(col); l >= metadata.MaxSQLIdentBytes-1 && l <= metadata.MaxSQLIdentBytes {
+			if idents != nil && idents.columns[tableName][col] {
+				l := len(col)
 				return n, fmt.Errorf("import %s: колонка %q в архиве — имя, обрезанное PostgreSQL до %d байт (архив снят до #1946); "+
 					"однозначно сопоставить её реквизиту нельзя — снимите архив заново после `onebase migrate` новой платформой (docs/long-identifiers.md)", tableName, col, l)
 			}

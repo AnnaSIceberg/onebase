@@ -77,6 +77,9 @@ func (db *DB) renameSnakeCols(ctx context.Context, table string, fields []metada
 
 // MigrateRegisters creates register tables.
 func (db *DB) MigrateRegisters(ctx context.Context, registers []*metadata.Register) error {
+	if err := db.CheckLongIdents(ctx, nil, registers, nil, nil); err != nil {
+		return err
+	}
 	d := db.dialect
 	for _, reg := range registers {
 		if err := db.renameLegacyTable(ctx, metadata.RegisterTableLogical(reg.Name)); err != nil {
@@ -138,6 +141,9 @@ func (db *DB) ensureRegisterIndexes(ctx context.Context, reg *metadata.Register)
 // KEY, выполняются атомарно. SQLite пересоздаёт таблицу, PostgreSQL меняет
 // constraint; разрушительное сужение ключа требует AllowDestructive.
 func (db *DB) MigrateInfoRegisters(ctx context.Context, regs []*metadata.InfoRegister) error {
+	if err := db.CheckLongIdents(ctx, nil, nil, regs, nil); err != nil {
+		return err
+	}
 	for _, ir := range regs {
 		if err := db.WithTxScope(ctx, func(txCtx context.Context) error {
 			return db.migrateInfoRegister(txCtx, ir)
@@ -531,6 +537,9 @@ func stringSlicesEqual(a, b []string) bool {
 
 // Migrate applies CREATE TABLE and ADD COLUMN IF NOT EXISTS for all entities.
 func (db *DB) Migrate(ctx context.Context, entities []*metadata.Entity) error {
+	if err := db.CheckLongIdents(ctx, entities, nil, nil, nil); err != nil {
+		return err
+	}
 	d := db.dialect
 	if err := db.EnsureSeqTable(ctx); err != nil {
 		return fmt.Errorf("migrate: sequences table: %w", err)

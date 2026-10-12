@@ -74,6 +74,9 @@ func (db *DB) GetAccounts(ctx context.Context, plan string) ([]map[string]any, e
 
 // MigrateAccountRegisters creates акк_<name> tables for all account registers.
 func (db *DB) MigrateAccountRegisters(ctx context.Context, regs []*metadata.AccountRegister) error {
+	if err := db.CheckLongIdents(ctx, nil, nil, nil, regs); err != nil {
+		return err
+	}
 	for _, ar := range regs {
 		if err := db.migrateAccountReg(ctx, ar); err != nil {
 			return err

@@ -171,3 +171,49 @@ func TestUniversalImportRefusesTruncatedLegacyIdents_Matrix(t *testing.T) {
 		})
 	}
 }
+
+func TestUniversalImportKeepsRetiredLongColumn_Matrix(t *testing.T) {
+	const field = "РеквизитСОченьДлиннымИменемКоторыйПришёлИзОдинЭс"
+	ctx := context.Background()
+	cfg := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cfg, "onebase.yaml"), []byte("name: test\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(cfg, "catalogs"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(cfg, "catalogs", "Архив.yaml")
+	if err := os.WriteFile(file, []byte("name: Архив\nfields:\n  - name: Наименование\n    type: string\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	source := newSQLite(t, "retired-long")
+	if err := source.EnsureServiceSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	entity := &metadata.Entity{Name: "Архив", Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}, {Name: field, Type: metadata.FieldTypeString}}}
+	if err := source.Migrate(ctx, []*metadata.Entity{entity}); err != nil {
+		t.Fatal(err)
+	}
+	id := uuid.New()
+	if err := source.Upsert(ctx, entity.Name, id, map[string]any{"Наименование": "Элемент", field: "сохранённое значение"}, entity); err != nil {
+		t.Fatal(err)
+	}
+	entity.Fields = entity.Fields[:1]
+	if err := source.Migrate(ctx, []*metadata.Entity{entity}); err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	if err := ExportUniversal(ctx, source, "file", cfg, "", "test", &archive); err != nil {
+		t.Fatal(err)
+	}
+	dbtest.ForEachDialect(t, func(t *testing.T, target *storage.DB) {
+		target.SetFilesDir(t.TempDir())
+		if _, err := ImportUniversalWithOptions(ctx, target, "file", t.TempDir(), "", bytes.NewReader(archive.Bytes()), int64(archive.Len()), ImportOptions{ExchangeMode: ExchangeRestoreClone}); err != nil {
+			t.Fatal(err)
+		}
+		var value string
+		if err := target.QueryRow(ctx, "SELECT "+metadata.SQLIdent(strings.ToLower(field))+" FROM "+metadata.TableName(entity.Name)).Scan(&value); err != nil || value != "сохранённое значение" {
+			t.Fatalf("оставленная колонка не восстановлена: %q %v", value, err)
+		}
+	})
+}

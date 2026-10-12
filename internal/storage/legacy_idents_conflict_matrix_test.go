@@ -157,3 +157,155 @@ func TestPlanLongIdentsListsRename_Matrix(t *testing.T) {
 		}
 	})
 }
+
+// Короткое действующее имя совпадает с прежней обрезкой нового длинного:
+// его данные нельзя присвоить новому владельцу даже при одном длинном имени.
+func TestMigrateKeepsCurrentShortPrefix_Matrix(t *testing.T) {
+	short := strings.Repeat("Я", 31)
+	for _, kind := range []string{"column", "table"} {
+		t.Run(kind, func(t *testing.T) {
+			dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+				ctx := context.Background()
+				id := uuid.New()
+				owner := &metadata.Entity{Name: "Владелец", Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: short, Type: metadata.FieldTypeString}}}
+				if kind == "table" {
+					owner.Name = short
+					owner.Fields = []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}}
+				}
+				if err := db.Migrate(ctx, []*metadata.Entity{owner}); err != nil {
+					t.Fatal(err)
+				}
+				field := owner.Fields[0].Name
+				if err := db.Upsert(ctx, owner.Name, id, map[string]any{field: "исходные данные"}, owner); err != nil {
+					t.Fatal(err)
+				}
+				original := *owner
+				entities := []*metadata.Entity{owner}
+				if kind == "column" {
+					owner.Fields = append(owner.Fields, metadata.Field{Name: short + "Продолжение", Type: metadata.FieldTypeString})
+				} else {
+					entities = append(entities, &metadata.Entity{Name: short + "Продолжение", Kind: metadata.KindCatalog})
+				}
+				plan, err := db.PlanLongIdents(ctx, entities, nil, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(plan) == 0 || plan[0].Conflict == "" {
+					t.Fatalf("не обнаружен занятый текущий идентификатор: %v", plan)
+				}
+				err = db.Migrate(ctx, entities)
+				if err == nil || !strings.Contains(err.Error(), "КОНФЛИКТ") {
+					t.Fatalf("нужен отказ до ALTER: %v", err)
+				}
+				row, err := db.GetByID(ctx, owner.Name, id, &original)
+				if err != nil || row[field] != "исходные данные" {
+					t.Fatalf("данные действующего имени потеряны: %v %v", row, err)
+				}
+			})
+		})
+	}
+}
+
+func TestPlanLongIdentsIncludesAccountsAndTotals_Matrix(t *testing.T) {
+	resource := metadata.Field{Name: "Сумма", Type: metadata.FieldTypeNumber}
+	reg := &metadata.Register{Name: "РегистрНакопленияСОченьДлиннымИменемИзКонфигурации", Resources: []metadata.Field{resource}, Totals: metadata.RegisterTotals{Enabled: true}}
+	ar := &metadata.AccountRegister{Name: "БухгалтерскийРегистрСОченьДлиннымИменемИзКонфигурации", Resources: []metadata.Field{resource}, Totals: metadata.RegisterTotals{Enabled: true}}
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		if err := db.MigrateRegisters(ctx, []*metadata.Register{reg}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.MigrateAccountRegisters(ctx, []*metadata.AccountRegister{ar}); err != nil {
+			t.Fatal(err)
+		}
+		tables := []string{metadata.RegisterTableLogical(reg.Name), metadata.RegisterTotalsTableLogical(reg.Name), metadata.AccountRegTableLogical(ar.Name), metadata.AccountRegTotalsTableLogical(ar.Name)}
+		for _, table := range tables {
+			old := metadata.LegacySQLIdents(table)[0]
+			if !db.IsSQLite() {
+				old = metadata.LegacySQLIdents(table)[1]
+			}
+			if _, err := db.Exec(ctx, "ALTER TABLE "+metadata.SQLIdent(table)+" RENAME TO "+old); err != nil {
+				t.Fatal(err)
+			}
+		}
+		plan, err := db.PlanLongIdents(ctx, nil, []*metadata.Register{reg}, nil, []*metadata.AccountRegister{ar})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(plan) != 4 {
+			t.Fatalf("план должен включать все четыре таблицы: %v", plan)
+		}
+		for _, table := range tables {
+			found := false
+			for _, a := range plan {
+				if a.New == metadata.SQLIdent(table) && a.Conflict == "" {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("нет таблицы %s: %v", table, plan)
+			}
+		}
+		if err := db.MigrateRegisters(ctx, []*metadata.Register{reg}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.MigrateAccountRegisters(ctx, []*metadata.AccountRegister{ar}); err != nil {
+			t.Fatal(err)
+		}
+		plan, err = db.PlanLongIdents(ctx, nil, []*metadata.Register{reg}, nil, []*metadata.AccountRegister{ar})
+		if err != nil || len(plan) != 0 {
+			t.Fatalf("после миграции план не пуст: %v %v", plan, err)
+		}
+	})
+}
+
+func TestPlanLongIdentsIncludesTotalsColumnConflicts_Matrix(t *testing.T) {
+	long := strings.Repeat("Я", 31) + "Продолжение"
+	reg := &metadata.Register{Name: "Регистр", Resources: []metadata.Field{{Name: long, Type: metadata.FieldTypeNumber}}, Totals: metadata.RegisterTotals{Enabled: true}}
+	ar := &metadata.AccountRegister{Name: "Бухгалтерский", Resources: []metadata.Field{{Name: long, Type: metadata.FieldTypeNumber}}, Totals: metadata.RegisterTotals{Enabled: true}}
+	for _, kind := range []string{"register", "account"} {
+		t.Run(kind, func(t *testing.T) {
+			dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+				ctx := context.Background()
+				table := metadata.RegisterTotalsTableName(reg.Name)
+				logical := metadata.LogicalColumnName(reg.Resources[0])
+				var regs []*metadata.Register
+				var accounts []*metadata.AccountRegister
+				regs = []*metadata.Register{reg}
+				if kind == "account" {
+					table = metadata.AccountRegTotalsTableName(ar.Name)
+					logical += "_дт"
+					regs = nil
+					accounts = []*metadata.AccountRegister{ar}
+				}
+				old := metadata.LegacySQLIdents(logical)[1]
+				target := metadata.SQLIdent(logical)
+				if _, err := db.Exec(ctx, "CREATE TABLE "+table+" ("+old+" TEXT, "+target+" TEXT)"); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.Exec(ctx, "INSERT INTO "+table+" ("+old+") VALUES ('прежние данные')"); err != nil {
+					t.Fatal(err)
+				}
+				plan, err := db.PlanLongIdents(ctx, nil, regs, nil, accounts)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(plan) == 0 || plan[0].Conflict == "" || plan[0].Table != table {
+					t.Fatalf("конфликт колонок итогов не попал в план: %v", plan)
+				}
+				if kind == "account" {
+					err = db.MigrateAccountRegisters(ctx, accounts)
+				} else {
+					err = db.MigrateRegisters(ctx, regs)
+				}
+				if err == nil || !strings.Contains(err.Error(), "КОНФЛИКТ") {
+					t.Fatalf("миграция должна остановиться до таблицы движений: %v", err)
+				}
+				var value string
+				if err := db.QueryRow(ctx, "SELECT "+old+" FROM "+table).Scan(&value); err != nil || value != "прежние данные" {
+					t.Fatalf("конфликтующая колонка изменена: %q %v", value, err)
+				}
+			})
+		})
+	}
+}

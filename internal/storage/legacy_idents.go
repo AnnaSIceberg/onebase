@@ -45,7 +45,7 @@ func (a LongIdentAction) err() error {
 }
 
 // planLegacyTable решает судьбу таблицы с логическим именем logical. claims —
-// сколько таблиц конфигурации претендуют на каждое прежнее имя (nil — одна).
+// сколько таблиц конфигурации претендуют на имя: прежнее или текущее (nil — одна).
 // Неоднозначность — отказ, а не угадывание (решение владельца по #1946):
 // прежнее имя, общее для двух таблиц (PostgreSQL обрезал их одинаково), и
 // пара «новая таблица + прежняя с данными» не разрешаются автоматически.
@@ -131,12 +131,12 @@ func (db *DB) physicalLegacyNames(legacy []string) []string {
 }
 
 // legacyTableClaims — сколько логических таблиц претендуют на каждое прежнее
-// имя: таблица сущности и её табличные части с общим началом PostgreSQL
-// обрезал одинаково.
+// или текущее имя. Учитываем также короткие имена: они могут совпасть
+// с обрезкой чужого длинного имени, но принадлежат действующему объекту.
 func legacyTableClaims(logicals []string) map[string]int {
 	claims := map[string]int{}
 	for _, l := range logicals {
-		for _, old := range uniqueStrings(metadata.LegacySQLIdents(l)) {
+		for _, old := range uniqueStrings(append(metadata.LegacySQLIdents(l), metadata.SQLIdent(l))) {
 			claims[old]++
 		}
 	}
@@ -150,13 +150,13 @@ func (db *DB) planLegacyColumns(ctx context.Context, table string, logical []str
 	var long []string
 	for _, l := range logical {
 		legacy := metadata.LegacySQLIdents(l)
+		for _, name := range uniqueStrings(append(legacy, metadata.SQLIdent(l))) {
+			claims[name]++
+		}
 		if legacy == nil {
 			continue
 		}
 		long = append(long, l)
-		for _, old := range uniqueStrings(legacy) {
-			claims[old]++
-		}
 	}
 	if len(long) == 0 {
 		return nil, nil
@@ -245,82 +245,99 @@ func (db *DB) columnHasData(ctx context.Context, table, column string) (bool, er
 	return has, rows.Err()
 }
 
-// PlanLongIdents — инвентаризация длинных имён (#1946) для `migrate
-// --dry-run`: что будет переименовано и где миграция откажет. Ничего не
-// меняет. Охватывает таблицы и колонки сущностей, их табличных частей,
-// регистров накопления и сведений.
-func (db *DB) PlanLongIdents(ctx context.Context, entities []*metadata.Entity, registers []*metadata.Register, infoRegs []*metadata.InfoRegister) ([]LongIdentAction, error) {
-	var out []LongIdentAction
-	addTable := func(logical string, claims map[string]int) error {
-		a, err := db.planLegacyTable(ctx, logical, claims)
-		if err == nil && a != nil {
-			out = append(out, *a)
-		}
-		return err
+// longIdentTable описывает все имена, которые использует миграция таблицы.
+// Общий список нужен и dry-run, и проверке конфликтов до первого ALTER.
+type longIdentTable struct {
+	logical string
+	columns []string
+}
+
+func longIdentTables(entities []*metadata.Entity, registers []*metadata.Register, infoRegs []*metadata.InfoRegister, accountRegs []*metadata.AccountRegister) []longIdentTable {
+	var tables []longIdentTable
+	add := func(name string, fields []metadata.Field) {
+		tables = append(tables, longIdentTable{name, logicalColumnNames(fields)})
 	}
-	addCols := func(logicalTable string, cols []string) error {
-		// Колонки смотрим там, где таблица будет после переименования:
-		// под прежним именем, если её ещё не переименовали.
-		table := metadata.SQLIdent(logicalTable)
-		if ok, err := db.tableExists(ctx, table); err != nil {
-			return err
-		} else if !ok {
-			for _, old := range db.physicalLegacyNames(metadata.LegacySQLIdents(logicalTable)) {
-				if found, err := db.tableExists(ctx, old); err != nil {
-					return err
-				} else if found {
-					table = old
-					break
-				}
-			}
-		}
-		plan, err := db.planLegacyColumns(ctx, table, cols)
-		out = append(out, plan...)
-		return err
-	}
-	var entityTables []string
 	for _, e := range entities {
-		entityTables = append(entityTables, metadata.TableLogical(e.Name))
+		add(metadata.TableLogical(e.Name), e.Fields)
 		for _, tp := range e.TableParts {
-			entityTables = append(entityTables, metadata.TablePartTableLogical(e.Name, tp.Name))
-		}
-	}
-	claims := legacyTableClaims(entityTables)
-	for _, e := range entities {
-		if err := addTable(metadata.TableLogical(e.Name), claims); err != nil {
-			return nil, err
-		}
-		if err := addCols(metadata.TableLogical(e.Name), logicalColumnNames(e.Fields)); err != nil {
-			return nil, err
-		}
-		for _, tp := range e.TableParts {
-			if err := addTable(metadata.TablePartTableLogical(e.Name, tp.Name), claims); err != nil {
-				return nil, err
-			}
-			if err := addCols(metadata.TablePartTableLogical(e.Name, tp.Name), logicalColumnNames(tp.Fields)); err != nil {
-				return nil, err
-			}
+			add(metadata.TablePartTableLogical(e.Name, tp.Name), tp.Fields)
 		}
 	}
 	for _, r := range registers {
-		if err := addTable(metadata.RegisterTableLogical(r.Name), nil); err != nil {
-			return nil, err
-		}
 		fields := append(append(append([]metadata.Field{}, r.Dimensions...), r.Resources...), r.Attributes...)
-		if err := addCols(metadata.RegisterTableLogical(r.Name), logicalColumnNames(fields)); err != nil {
-			return nil, err
+		add(metadata.RegisterTableLogical(r.Name), fields)
+		if r.TotalsUsable() {
+			add(metadata.RegisterTotalsTableLogical(r.Name), append(append([]metadata.Field{}, r.Dimensions...), r.Resources...))
 		}
 	}
-	for _, ir := range infoRegs {
-		if err := addTable(metadata.InfoRegTableLogical(ir.Name), nil); err != nil {
+	for _, r := range infoRegs {
+		add(metadata.InfoRegTableLogical(r.Name), append(append([]metadata.Field{}, r.Dimensions...), r.Resources...))
+	}
+	for _, ar := range accountRegs {
+		add(metadata.AccountRegTableLogical(ar.Name), ar.Resources)
+		if ar.TotalsUsable() {
+			var cols []string
+			for _, r := range ar.Resources {
+				cols = append(cols, accountTotalsDebitLogical(r), accountTotalsCreditLogical(r))
+			}
+			tables = append(tables, longIdentTable{metadata.AccountRegTotalsTableLogical(ar.Name), cols})
+		}
+	}
+	return tables
+}
+
+// PlanLongIdents — инвентаризация таблиц и колонок сущностей, табличных частей,
+// всех регистров и включённых итогов. Ничего не меняет. Последний аргумент
+// необязателен для совместимости прежних вызовов без бухрегистров.
+func (db *DB) PlanLongIdents(ctx context.Context, entities []*metadata.Entity, registers []*metadata.Register, infoRegs []*metadata.InfoRegister, accountRegs ...[]*metadata.AccountRegister) ([]LongIdentAction, error) {
+	var accounts []*metadata.AccountRegister
+	for _, regs := range accountRegs {
+		accounts = append(accounts, regs...)
+	}
+	tables := longIdentTables(entities, registers, infoRegs, accounts)
+	var logicals []string
+	for _, table := range tables {
+		logicals = append(logicals, table.logical)
+	}
+	claims := legacyTableClaims(logicals)
+	var out []LongIdentAction
+	for _, spec := range tables {
+		action, err := db.planLegacyTable(ctx, spec.logical, claims)
+		if err != nil {
 			return nil, err
 		}
-		fields := append(append([]metadata.Field{}, ir.Dimensions...), ir.Resources...)
-		if err := addCols(metadata.InfoRegTableLogical(ir.Name), logicalColumnNames(fields)); err != nil {
+		if action != nil {
+			out = append(out, *action)
+		}
+		// Если переименование конфликтует, чужую таблицу не обследуем как свою.
+		if action != nil && action.Conflict != "" {
+			continue
+		}
+		table := metadata.SQLIdent(spec.logical)
+		if action != nil {
+			table = action.Old
+		}
+		cols, err := db.planLegacyColumns(ctx, table, spec.columns)
+		if err != nil {
 			return nil, err
 		}
+		out = append(out, cols...)
 	}
 	return out, nil
+}
+
+// CheckLongIdents отказывает при конфликте имён полного проекта до миграции.
+func (db *DB) CheckLongIdents(ctx context.Context, entities []*metadata.Entity, registers []*metadata.Register, infoRegs []*metadata.InfoRegister, accounts []*metadata.AccountRegister) error {
+	plan, err := db.PlanLongIdents(ctx, entities, registers, infoRegs, accounts)
+	if err != nil {
+		return err
+	}
+	for _, action := range plan {
+		if action.Conflict != "" {
+			return action.err()
+		}
+	}
+	return nil
 }
 
 // indexName — физическое имя индекса с логическим именем logical на таблице

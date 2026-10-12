@@ -143,6 +143,10 @@ func printMigrationPlan(ctx context.Context, db *storage.DB, proj *project.Proje
 // migrate и раннером тестов (onebase test), которому нужна готовая схема на
 // свежей (в т.ч. :memory:) базе.
 func applyAllMigrations(ctx context.Context, db *storage.DB, proj *project.Project) error {
+	if err := db.CheckLongIdents(ctx, proj.Entities, proj.Registers, proj.InfoRegisters, proj.AccountRegisters); err != nil {
+		return err
+	}
+
 	// Реквизиты reference:_users создают FK на auth-таблицу. Подготовить её
 	// нужно до сущностей, в том числе на свежей базе migrate/test.
 	if err := auth.NewRepo(db).EnsureSchema(ctx); err != nil {
@@ -198,7 +202,7 @@ func dsnFromFlags(cmd *cobra.Command) string {
 // колонки миграция переименует и где откажет. Печатается, только если есть
 // что показать; без длинных имён вывод dry-run прежний.
 func printLongIdentPlan(ctx context.Context, db *storage.DB, proj *project.Project) error {
-	plan, err := db.PlanLongIdents(ctx, proj.Entities, proj.Registers, proj.InfoRegisters)
+	plan, err := db.PlanLongIdents(ctx, proj.Entities, proj.Registers, proj.InfoRegisters, proj.AccountRegisters)
 	if err != nil {
 		return err
 	}
