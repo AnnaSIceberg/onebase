@@ -3431,7 +3431,7 @@ func (tr *translator) findRefDim(name string) *refDimInfo {
 
 // emitVTSubquery emits a VT subquery with its alias, detects optional user alias (КАК),
 // and adds auto-JOINs for reference dimensions using the correct alias.
-func (tr *translator) emitVTSubquery(subq, defaultAlias string) error {
+func (tr *translator) emitVTSubquery(subq, defaultAlias string, sourcePos int) error {
 	alias := defaultAlias
 	if p := tr.peek(0); p.kind == tIdent {
 		pUpper := upperFast(p.val)
@@ -3440,6 +3440,14 @@ func (tr *translator) emitVTSubquery(subq, defaultAlias string) error {
 			if a := tr.peek(0); a.kind == tIdent {
 				alias = lowerFast(tr.advance().val)
 			}
+		}
+	}
+	// Аргументы VT и её КАК уже прочитаны, поэтому область берём от исходного
+	// токена источника. ПО этого JOIN не должно наследовать прежний источник;
+	// вложенный SELECT при этом не меняет владельца ПО внешней области.
+	if tr.sourceCtx.sectionAt(sourcePos) == sectionFrom {
+		if scopeID, ok := tr.sourceCtx.scopeIDAt(sourcePos); ok {
+			tr.onSourceAliases[scopeID] = alias
 		}
 	}
 	tr.emit("(" + subq + ") AS " + alias)
@@ -5232,6 +5240,8 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		if t.kind == tIdent && isSourceType(upper) &&
 			tr.peek(1).kind == tDot && tr.peek(2).kind == tIdent {
 
+			sourcePos := tr.pos
+
 			// Check for virtual table: TypeName.EntityName.VTName(...)
 			if tr.peek(3).kind == tDot && tr.peek(4).kind == tIdent &&
 				tr.peek(5).kind == tLParen {
@@ -5250,7 +5260,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					if err != nil {
 						return Result{}, err
 					}
-					if err := tr.emitVTSubquery(subq, alias); err != nil {
+					if err := tr.emitVTSubquery(subq, alias, sourcePos); err != nil {
 						return Result{}, err
 					}
 					continue
@@ -5269,7 +5279,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					if err != nil {
 						return Result{}, err
 					}
-					if err := tr.emitVTSubquery(subq, alias); err != nil {
+					if err := tr.emitVTSubquery(subq, alias, sourcePos); err != nil {
 						return Result{}, err
 					}
 					continue
@@ -5288,7 +5298,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					if err != nil {
 						return Result{}, err
 					}
-					if err := tr.emitVTSubquery(subq, alias); err != nil {
+					if err := tr.emitVTSubquery(subq, alias, sourcePos); err != nil {
 						return Result{}, err
 					}
 					continue
@@ -5309,7 +5319,6 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			}
 
 			// Regular source: TypeName.EntityName → table_name [+ КАК alias] [+ auto-JOINs]
-			sourcePos := tr.pos
 			tr.advance()
 			tr.advance()
 			entity := tr.advance()

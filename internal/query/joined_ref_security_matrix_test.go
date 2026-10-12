@@ -51,10 +51,15 @@ func TestJoinedUsersRefSecurityMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		reg := &metadata.Register{Name: "ОстаткиПробы", Dimensions: []metadata.Field{{Name: "Код", Type: metadata.FieldTypeString}}, Resources: []metadata.Field{{Name: "Количество", Type: metadata.FieldTypeNumber}}}
+		if err := db.MigrateRegisters(ctx, []*metadata.Register{reg}); err != nil {
+			t.Fatal(err)
+		}
 		const joined = ` ИЗ Справочник.Базы КАК Б ЛЕВОЕ СОЕДИНЕНИЕ Документ.Заявка КАК З ПО З.Код = Б.Код`
 		const derivedFirst = ` ИЗ (ВЫБРАТЬ Код ИЗ Справочник.Базы) КАК Б ЛЕВОЕ СОЕДИНЕНИЕ Документ.Заявка КАК З ПО З.Код = Б.Код`
 		const aliasCollision = joined + ` ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Базы КАК ref_з_автор ПО ref_з_автор.Код = Б.Код`
-		opts := query.CompileOpts{Entities: ents, Dialect: db.Dialect()}
+		const followingVT = joined + ` ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.ОстаткиПробы.Остатки() КАК Р ПО Р.Код = Б.Код И З.Автор.Логин <> ""`
+		opts := query.CompileOpts{Entities: ents, Registers: []*metadata.Register{reg}, Dialect: db.Dialect()}
 		run := func(t *testing.T, text string) ([]map[string]any, []string) {
 			t.Helper()
 			r, err := query.Compile(text, opts)
@@ -70,6 +75,7 @@ func TestJoinedUsersRefSecurityMatrix(t *testing.T) {
 		for _, variant := range []struct{ name, text string }{
 			{"derived-first", `ВЫБРАТЬ З.Автор.Логин, З.Автор.ПолноеИмя, З.Автор.Наименование КАК Имя, З.Автор.Ссылка КАК Ид` + derivedFirst + ` УПОРЯДОЧИТЬ ПО Логин`},
 			{"correlated-joined", `ВЫБРАТЬ З.Автор.Логин, З.Автор.ПолноеИмя, З.Автор.Наименование КАК Имя, З.Автор.Ссылка КАК Ид` + joined + ` ГДЕ Б.Код В (ВЫБРАТЬ Б2.Код ИЗ Справочник.Базы КАК Б2 ГДЕ Б2.Код = З.Код И З.Автор.Логин <> "") УПОРЯДОЧИТЬ ПО Логин`},
+			{"following-vt-on", `ВЫБРАТЬ З.Автор.Логин, З.Автор.ПолноеИмя, З.Автор.Наименование КАК Имя, З.Автор.Ссылка КАК Ид` + followingVT + ` УПОРЯДОЧИТЬ ПО Логин`},
 			{"outer", `ВЫБРАТЬ З.Автор.Логин, З.Автор.ПолноеИмя, З.Автор.Наименование КАК Имя, З.Автор.Ссылка КАК Ид` + joined + ` УПОРЯДОЧИТЬ ПО Логин`},
 			{"allocated-alias", `ВЫБРАТЬ З.Автор.Логин, З.Автор.ПолноеИмя, З.Автор.Наименование КАК Имя, З.Автор.Ссылка КАК Ид` + aliasCollision + ` УПОРЯДОЧИТЬ ПО Логин`},
 			{"derived", `ВЫБРАТЬ Д.Логин, Д.ПолноеИмя, Д.Имя, Д.Ид ИЗ (ВЫБРАТЬ З.Автор.Логин, З.Автор.ПолноеИмя, З.Автор.Наименование КАК Имя, З.Автор.Ссылка КАК Ид` + joined + `) КАК Д УПОРЯДОЧИТЬ ПО Д.Логин`},
@@ -95,6 +101,8 @@ func TestJoinedUsersRefSecurityMatrix(t *testing.T) {
 		for _, col := range []string{"password_hash", "totp_secret", "is_admin", "auth_subject", "full_name", "*"} {
 			for _, text := range []string{
 				`ВЫБРАТЬ З.Автор.` + col + ` КАК Х` + joined,
+				`ВЫБРАТЬ З.Автор.` + col + ` КАК Х` + followingVT,
+				`ВЫБРАТЬ ref_з_автор.` + col + ` КАК Х` + followingVT,
 				`ВЫБРАТЬ З.Автор.` + col + ` КАК Х` + derivedFirst,
 				`ВЫБРАТЬ Б.Код` + joined + ` ГДЕ Б.Код В (ВЫБРАТЬ З.Автор.` + col + ` ИЗ Справочник.Базы КАК Б2)`,
 				`ВЫБРАТЬ Д.Х ИЗ (ВЫБРАТЬ З.Автор.` + col + ` КАК Х` + joined + `) КАК Д`,
@@ -117,6 +125,7 @@ func TestJoinedUsersRefSecurityMatrix(t *testing.T) {
 		}
 		for _, text := range []string{
 			`ВЫБРАТЬ *` + joined + ` ГДЕ З.Автор.Ссылка НЕ ЕСТЬ ПУСТО`,
+			`ВЫБРАТЬ *` + followingVT,
 			`ВЫБРАТЬ *` + joined + ` ГДЕ З.Автор.Логин <> ""`,
 			`ВЫБРАТЬ *` + aliasCollision + ` ГДЕ З.Автор.Логин <> ""`,
 			`ВЫБРАТЬ *` + derivedFirst + ` ГДЕ З.Автор.Логин <> ""`,
