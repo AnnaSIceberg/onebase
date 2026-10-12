@@ -182,7 +182,7 @@ func TestBootstrap(t *testing.T) {
 			toolDir := filepath.Join(root, "bootstrap-tools")
 			mkdir(t, toolDir)
 			if runtime.GOOS != "windows" {
-				for _, name := range []string{"curl", "jq", "tar", "mktemp", "uname", "awk", "chmod", "cp", "ln", "mkdir", "rm", "tr", "sha256sum", "shasum"} {
+				for _, name := range []string{"curl", "jq", "tar", "gzip", "mktemp", "uname", "awk", "chmod", "cp", "ln", "mkdir", "rm", "tr", "sha256sum", "shasum"} {
 					target, err := exec.LookPath(name)
 					if err != nil && (name == "sha256sum" || name == "shasum") {
 						continue
