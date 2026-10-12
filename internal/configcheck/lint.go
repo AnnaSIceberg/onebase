@@ -689,8 +689,9 @@ func formModuleYAMLSchema() *yamlLintSchema {
 	actions := with(obj(), map[string]*yamlLintSchema{
 		"delete": action,
 		"save":   action,
-		"ok":     action,
-		"close":  action,
+		// ok.post — «ОК» проводит документ, как в 1С.
+		"ok":    obj("visible", "post"),
+		"close": action,
 		// copy.visible:false убирает «Скопировать» у документа, который
 		// копировать нельзя по смыслу: звонок и заявка — свидетельства
 		// конкретного обращения, их заводят заново, а не размножают.
