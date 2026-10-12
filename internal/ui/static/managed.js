@@ -391,7 +391,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         // их синхронными при каждом применении значения.
         var mir = document.getElementById('ro-mirror-' + k);
         if (mir) mir.value = val;
-        if (inp.type === 'hidden' && inp.closest('.img-field') && typeof window.obSetImageField === 'function') {
+        if (inp.type === 'hidden' && typeof window.obSetImageField === 'function' && inp.closest('.img-field')) {
           window.obSetImageField(inp.closest('.img-field'), val);
         }
       }
