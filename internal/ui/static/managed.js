@@ -346,7 +346,11 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     sel.appendChild(o);
   }
   // BEGIN onebase-ro-apply-values
-  function applyValues(values, refOptions){
+  // sent — значения, отправленные с этим событием (URLSearchParams). Поле,
+  // которое пользователь изменил, пока шёл запрос, ответ не трогает, если
+  // сервер вернул ровно отправленное: иначе набранные за это время символы
+  // молча стирались (оператор не досчитывался последней цифры телефона).
+  function applyValues(values, refOptions, sent){
     if (!values) return;
     const form = document.getElementById('main-form');
     if (!form) return;
@@ -375,6 +379,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         // поле — дата на форме пропадала после первого же события, а следующая
         // запись затирала её в базе.
         if (inp.type === 'date' && val.indexOf('T') > 0) val = val.slice(0, val.indexOf('T'));
+        if (sent && typeof sent.has === 'function' && sent.has(k) && sent.get(k) === val && inp.value !== val) return;
         if (inp.tagName === 'SELECT') ensureRefOption(inp, val, refOptions && refOptions[k], ref && ref.label);
         if (inp.classList && inp.classList.contains('code-field') && inp._obSetCodeValue) {
           inp._obSetCodeValue(val);
@@ -1123,13 +1128,16 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       applyElementStates(data.elementStates);
       window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
       window.applyTableParts(data.tableparts);
-      applyValues(data.values, data.refOptions);
+      applyValues(data.values, data.refOptions, snapshot.body);
       applyChoiceList(elementName, data.choiceList);
       applyFormTables(data.formTables);
 	  // Server events repaint controls programmatically and therefore do not
 	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
-	  // it only when this response proves a successful Object.Write.
-	  if (data.dirty === false && (data.savedId || data.version)) setManagedFormDirty(false);
+	  // it only when this response proves a successful Object.Write and no
+	  // user edits followed the snapshot that was saved.
+	  if (data.dirty === false && (data.savedId || data.version)) {
+		setManagedFormDirty(formEditState.revision !== snapshot.editRevision);
+	  }
       (data.messages || []).forEach(m => flash(m, 'ok'));
       if (data.error) flash(data.error, 'err');
       if (navigationBlocked) flash(closeMessage('navigationDirty', 'Форма содержит несохранённые изменения — переход не выполнен'), 'err');

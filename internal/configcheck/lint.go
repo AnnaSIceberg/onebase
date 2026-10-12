@@ -686,8 +686,9 @@ func formModuleYAMLSchema() *yamlLintSchema {
 	actions := with(obj(), map[string]*yamlLintSchema{
 		"delete": action,
 		"save":   action,
-		"ok":     action,
-		"close":  action,
+		// ok.post — «ОК» проводит документ, как в 1С.
+		"ok":    obj("visible", "post"),
+		"close": action,
 		// attachments.visible:false скрывает панель вложений выбранной
 		// managed-формы (план 181C, #1621); attachment endpoint не меняется.
 		"attachments": action,
