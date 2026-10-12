@@ -3789,7 +3789,6 @@ function openItemPicker(payload, elementName, eventContext, request) {
     // светло-серым — как архивная номенклатура в подборе 1С.
     if (r.highlight) {
       tr.className = '_ip-row-highlight';
-      tr.style.background = '#e5e7eb';
     }
     tr._obRow = r;
     var tdCb = document.createElement('td');

@@ -1466,6 +1466,8 @@ details[open] summary::before{content:"▼ "}
 .tp-table td{padding:5px 6px;border-bottom:1px solid #e2e8f0;border-right:1px solid #eef2f7;vertical-align:middle}
 .tp-table tbody tr:nth-child(even) td{background:#f1f5f9}
 .tp-table tbody tr:hover td{background:#eef4ff}
+/* Подбор: фон ячеек сохраняет выделение поверх зебры и наведения. */
+#_item-picker-modal .tp-table tbody tr._ip-row-highlight td{background:#e5e7eb}
 /* Инпуты прозрачны, чтобы зебра/выделение строки просвечивали; на фокусе — белый фон. */
 .tp-table input,.tp-table select{padding:5px 8px;font-size:13px;border:1px solid transparent;border-radius:5px;width:100%;background:transparent;transition:border-color .15s,box-shadow .15s,background .15s}
 .tp-table input:hover,.tp-table select:hover{border-color:#e2e8f0}
