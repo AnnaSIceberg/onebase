@@ -2501,11 +2501,7 @@ func migrateSchema(ctx context.Context, db *storage.DB, configDest, cfgFileDir s
 	return nil
 }
 
-// importDir walks a directory of .jsonl files and imports each into the DB.
-func importDir(ctx context.Context, db *storage.DB, dir string, report *ImportReport, skip map[string]bool, extraSkip ...[]string) error {
-	return importDirWithIdents(ctx, db, dir, report, skip, nil, extraSkip...)
-}
-
+// importDirWithIdents walks .jsonl files and resolves proven legacy identifiers.
 func importDirWithIdents(ctx context.Context, db *storage.DB, dir string, report *ImportReport, skip map[string]bool, idents *legacyImportIdents, extraSkip ...[]string) error {
 	// Build combined skip set from skip + optional extraSkip.
 	allSkip := make(map[string]bool, len(skip))
