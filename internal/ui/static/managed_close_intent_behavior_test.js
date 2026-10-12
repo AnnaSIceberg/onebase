@@ -1403,3 +1403,114 @@ test('standalone bottom link and Escape use the close controller before navigati
   assert.deepEqual(reasons, ['close', 'escape']);
   assert.deepEqual(app.assigned, ['/ui/catalog/Тест']);
 });
+
+// ПередПроведением: стандартные «Провести и закрыть» и «Провести» сначала
+// спрашивают обработчик формы; close-intent и отправка формы — только после
+// ответа без отказа.
+function beforePostRuntime(answers) {
+  const calls = [];
+  const app = runtime(async (url, options) => {
+    calls.push({url, options});
+    const next = answers.shift();
+    if (typeof next === 'function') return response(next(url, options));
+    return response(next);
+  }, {kind: 'document', docId: 'doc-1', beforePost: true});
+  return {app, calls};
+}
+
+function formEventName(call) { return call.options.body.get('_event'); }
+
+test('before-post: Отказ cancels post-and-close without a close intent', async () => {
+  const {app, calls} = beforePostRuntime([{ok: true, cancel: true, messages: ['нельзя']}]);
+  const decision = await app.context.obRequestFormClose({reason: 'post_and_close', mode: 'post'});
+  assert.equal(decision.allowed, false);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, '/ui/catalog/Тест/form-event');
+  assert.equal(formEventName(calls[0]), 'ПередПроведением');
+  assert.equal(calls[0].options.body.get('_element'), '');
+  assert.ok(app.applied.some((entry) => entry[0] === 'flash' && entry[1] === 'нельзя'));
+});
+
+test('before-post: no objection continues with the post close intent', async () => {
+  const {app, calls} = beforePostRuntime([
+    {ok: true, values: {Наименование: 'Проверено'}},
+    (url, options) => ({ok: true, close: {intentId: closeIntent(options), allowed: true, saved: true}}),
+  ]);
+  const decision = await app.context.obRequestFormClose({reason: 'post_and_close', mode: 'post'});
+  assert.equal(decision.allowed, true);
+  assert.equal(calls.length, 2);
+  assert.equal(formEventName(calls[0]), 'ПередПроведением');
+  assert.equal(calls[1].url, '/ui/catalog/Тест/form-close-intent');
+  assert.equal(closeMode(calls[1].options), 'post');
+  // Правка обработчика уходит в проведение.
+  assert.equal(calls[1].options.body.get('Наименование'), 'Проверено');
+});
+
+test('before-post: question answer re-fires the same event, dismiss cancels', async () => {
+  const opened = [];
+  const {app, calls} = beforePostRuntime([
+    {ok: true, question: {text: 'Выдать?', variants: ['Да', 'Отмена']}},
+    {ok: true, values: {Наименование: 'Ответ Да'}},
+    (url, options) => ({ok: true, close: {intentId: closeIntent(options), allowed: true, saved: true}}),
+    {ok: true, question: {text: 'Выдать?', variants: ['Да', 'Отмена']}},
+  ]);
+  app.context.obOpenQuestion = (payload, elementName, handlers) => opened.push({payload, elementName, handlers});
+
+  const pending = app.context.obRequestFormClose({reason: 'post_and_close', mode: 'post'});
+  for (let i = 0; i < 20 && !opened.length; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].elementName, '');
+  assert.equal(calls.length, 1);
+  opened[0].handlers.onAnswer('Да');
+  const decision = await pending;
+  assert.equal(decision.allowed, true);
+  assert.equal(calls.length, 3);
+  assert.equal(formEventName(calls[1]), 'ПередПроведением');
+  assert.equal(calls[1].options.body.get('_question_answer'), 'Да');
+  assert.equal(calls[2].options.body.get('Наименование'), 'Ответ Да');
+
+  const second = app.context.obRequestFormClose({reason: 'post_and_close', mode: 'post'});
+  for (let i = 0; i < 20 && opened.length < 2; i++) await new Promise((resolve) => setImmediate(resolve));
+  opened[1].handlers.onDismiss();
+  assert.equal((await second).allowed, false);
+  assert.equal(calls.length, 4);
+});
+
+test('before-post: «Провести» submit waits for the handler and resubmits the same button', async () => {
+  const {app, calls} = beforePostRuntime([{ok: true}]);
+  const clicks = [];
+  const submitter = {name: '_action', value: 'post', click() { clicks.push('post'); }};
+  const event = {
+    target: app.form, submitter, defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() { this.propagationStopped = true; },
+    stopImmediatePropagation() { this.immediatePropagationStopped = true; },
+  };
+  app.document.dispatch('submit', event);
+  assert.equal(event.defaultPrevented, true);
+  for (let i = 0; i < 20 && !clicks.length; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(clicks, ['post']);
+  assert.equal(calls.length, 1);
+  assert.equal(formEventName(calls[0]), 'ПередПроведением');
+
+  // Обычная «Записать» обработчик не спрашивает.
+  const save = {
+    target: app.form, submitter: {name: '_action', value: ''}, defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() {}, stopImmediatePropagation() { this.immediatePropagationStopped = true; },
+  };
+  app.document.dispatch('submit', save);
+  assert.equal(save.defaultPrevented, false);
+  assert.equal(calls.length, 1);
+});
+
+test('before-post: without a handler post-and-close goes straight to the close intent', async () => {
+  const calls = [];
+  const app = runtime(async (url, options) => {
+    calls.push({url, options});
+    return response({ok: true, close: {intentId: closeIntent(options), allowed: true, saved: true}});
+  }, {kind: 'document', docId: 'doc-1'});
+  assert.equal((await app.context.obRequestFormClose({reason: 'post_and_close', mode: 'post'})).allowed, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, '/ui/catalog/Тест/form-close-intent');
+});
