@@ -1170,7 +1170,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       }
       // Решение — после того, как событие целиком вышло из очереди (см.
       // runBeforePostEvent): иначе проведение застало бы форму «занятой».
-      if (beforePostSnapshot(snapshot) && beforePostState) beforePostState.outcome = !data.cancel && !data.error && !navigationBlocked;
+      if (beforePostSnapshot(snapshot) && beforePostState) {
+        // Merging protects newer input but cannot authorize posting it: the
+        // handler checked another snapshot. A fresh user attempt must check it.
+        beforePostState.outcome = !beforePostMerged && !data.cancel && !data.error && !navigationBlocked;
+        beforePostState.approval.revision = snapshot.editRevision;
+        if (beforePostMerged) flash(closeMessage('formChanged', 'Форма изменилась во время проверки закрытия. Повторите закрытие.'), 'err');
+      }
     } catch (e) {
       // A lost/unparseable response for /new may hide a committed insert and
       // there is no identity with which to issue another safe write. Fence all
@@ -1284,7 +1290,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   function settleBeforePost(ok){
     var state = beforePostState;
     beforePostState = null;
-    if (state) state.resolve(!!ok);
+    if (state) state.resolve(!!ok && state.approval.revision === formEditState.revision);
   }
   function runBeforePostEvent(extra){
     if (!beforePostState) return;
@@ -1298,12 +1304,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       if (beforePostState && !beforePostState.questionOpen) settleBeforePost(beforePostState.outcome === true);
     });
   }
-  function managedBeforePost(allowHandoff){
+  function managedBeforePost(allowHandoff, approval){
     if (!BEFORE_POST) return Promise.resolve(true);
     if (beforePostState || formEventPending || closePending || retryableClose ||
         (closeHandoffPending && !allowHandoff)) return Promise.resolve(false);
     return new Promise(function(resolve){
-      beforePostState = {resolve: resolve, questionOpen: false};
+      beforePostState = {resolve: resolve, questionOpen: false, approval: approval || {}};
       runBeforePostEvent(null);
     });
   }
@@ -1592,15 +1598,19 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   window.obRequestFormClose = function(options){
     options = options || {};
     if (beforePostState) return Promise.resolve({allowed: false, intentId: '', error: 'form-event-pending'});
-    if (BEFORE_POST && options.mode === 'post' && !options.__beforePostDone) {
+    // An unknown result belongs to an already checked operation. Recover its
+    // exact payload/UUID before starting any new BeforePost handler.
+    if (BEFORE_POST && options.mode === 'post' && !options.__beforePostDone && !retryableClose && !closePending) {
       var nextOptions = {};
       Object.keys(options).forEach(function(key){ nextOptions[key] = options[key]; });
       nextOptions.__beforePostDone = true;
-      return managedBeforePost(true).then(function(ok){
-        if (!ok) {
+      var approval = {};
+      return managedBeforePost(true, approval).then(function(ok){
+        if (!ok || approval.revision !== formEditState.revision) {
           closeHandoffPending = false;
           return {allowed: false, intentId: '', error: 'before-post-cancelled'};
         }
+        nextOptions.__beforePostRevision = approval.revision;
         return window.obRequestFormClose(nextOptions);
       });
     }
@@ -1641,6 +1651,14 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       if (mode === 'cancel') return {allowed: false, intentId: '', error: 'user-cancelled'};
       var body = await closeSnapshotBody(reason, mode);
       if (!body) return {allowed: false, intentId: '', error: 'form-state'};
+      // File reads and grid synchronization may yield or commit fresh edits
+      // after BeforePost completed. Never open a new intent under old approval.
+      if (BEFORE_POST && mode === 'post' && !retryableClose &&
+          options.__beforePostRevision !== formEditState.revision) {
+        setManagedFormDirty(true);
+        flash(closeMessage('formChanged', 'Форма изменилась во время проверки закрытия. Повторите закрытие.'), 'err');
+        return {allowed: false, intentId: '', error: 'form-changed'};
+      }
       var snapshotKey = closeSnapshotKey(body);
 	  var requestedReason = reason;
 	  var requestedMode = mode;
@@ -1875,11 +1893,15 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     if (!BEFORE_POST || !form || form.id !== 'main-form' || form.__obBeforePostApproved) return;
     var submitter = e.submitter || null;
     if (!submitter || submitter.name !== '_action' || submitter.value !== 'post') return;
+    // Let the native-submit controller recover an existing close intent.
+    // BeforePost is only for a new operation, never for replay of an old one.
+    if (closePending || retryableClose) return;
     e.preventDefault();
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     else if (e.stopPropagation) e.stopPropagation();
-    window.obManagedBeforePost().then(function(ok){
-      if (!ok) return;
+    var approval = {};
+    managedBeforePost(false, approval).then(function(ok){
+      if (!ok || approval.revision !== formEditState.revision) return;
       form.__obBeforePostApproved = true;
       try {
         if (typeof form.requestSubmit === 'function') form.requestSubmit(submitter);
