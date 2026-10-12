@@ -897,6 +897,7 @@ type sourceScope struct {
 	parent            int // ближайший внешний SELECT, -1 у верхнего уровня; UNION — сосед
 	main              sourceClass
 	mainTable         string
+	mainSourcePos     int // token position of the first source, including an unaliased VT
 	mainColTypes      map[string]metadata.FieldType
 	entities          map[string]sourceEntity
 	refEntities       map[string]sourceEntity // цели одного перехода от главного источника
@@ -3748,7 +3749,9 @@ func (tr *translator) emitOwnColumn(col, lower string) {
 //     Неквалифицированная колонка в этой секции и так уходит в SQL как есть,
 //     так что правило одинаково для обеих записей.
 //   - присоединённые источники: только ГДЕ и сравнение с литералом/параметром;
-//     сравнения между колонками и секция ПО сохраняют семантику SQL NULL.
+//     присоединённое поле в сравнении между колонками не получает COALESCE.
+//     Для полей главного источника прежнее правило COALESCE действует и в
+//     сравнении между его колонками. Секцию ПО правило не охватывает.
 //
 // Секция берётся из пред-скана (sourceCtx), а не из бегущей tr.section. Бегущая —
 // одно поле на весь запрос: подзапрос в ИЗ переключает её своим ГДЕ и обратно уже
@@ -3796,9 +3799,8 @@ func (tr *translator) isMainSourceColumn(idx int, qualifier string) bool {
 	if !ok {
 		return false
 	}
-	_, owner, known := tr.columnTypeAt(idx, lowerFast(tr.tokens[idx].val), qualifier)
-	return known && ((owner != "" && strings.EqualFold(owner, scope.mainTable)) ||
-		(owner == "" && scope.sourceCount == 1))
+	_, source, known := tr.columnSourceAt(idx, lowerFast(tr.tokens[idx].val), qualifier)
+	return known && source.tokenPos == scope.mainSourcePos
 }
 
 func (tr *translator) equalityOpAt(idx int) bool {
@@ -3970,6 +3972,7 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 				scopeID := len(ctx.scopes)
 				ctx.scopes = append(ctx.scopes, sourceScope{
 					parent:          parent,
+					mainSourcePos:   -1,
 					entities:        map[string]sourceEntity{},
 					unionFirst:      unionFirst,
 					qualifiers:      map[string]sourceClass{},
@@ -4029,6 +4032,9 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 					scope := &ctx.scopes[active[len(active)-1].id]
 					isMain := scope.sourceCount == 0
 					scope.sourceCount++
+					if isMain {
+						scope.mainSourcePos = i
+					}
 					nesting := 0
 					for j := i + 1; j < len(tokens); j++ {
 						switch tokens[j].kind {
@@ -4099,6 +4105,7 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 			scope.main = class
 		}
 		if isMain {
+			scope.mainSourcePos = i
 			scope.mainColTypes = sourceColumnTypes(typeUpper, tokens[i+2].val, opts)
 			// Виртуальная таблица эмитится как подзапрос со специальным алиасом,
 			// который здесь не вычисляем. Для обычного источника сохраняем имя,

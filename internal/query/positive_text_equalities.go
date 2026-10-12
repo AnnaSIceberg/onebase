@@ -58,10 +58,6 @@ func textComparisonPositions(tokens []tok, ctx sourceContext, positiveOnly bool)
 	return out
 }
 
-func positiveComparisonTree(tokens []tok, start, end int) ([]int, bool) {
-	return textComparisonTree(tokens, start, end, true)
-}
-
 func textComparisonTree(tokens []tok, start, end int, positiveOnly bool) ([]int, bool) {
 	start, end = trimProjectionParentheses(tokens, start, end)
 	if start >= end {

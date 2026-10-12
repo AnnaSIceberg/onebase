@@ -10,6 +10,7 @@ import (
 // sources remain distinct even when they have identical metadata. A source with
 // unknown columns prevents inference of unqualified names from another source.
 type columnSource struct {
+	tokenPos  int // source identity is independent of its SQL qualifier
 	qualifier string
 	fields    map[string]metadata.FieldType
 }
@@ -26,7 +27,7 @@ func indexColumnSources(tokens []tok, opts CompileOpts, ctx sourceContext) map[i
 			continue
 		}
 		kind, name := upperFast(tokens[i].val), tokens[i+2].val
-		source := columnSource{qualifier: sourceToTable(kind, name), fields: sourceColumnTypes(kind, name, opts)}
+		source := columnSource{tokenPos: i, qualifier: sourceToTable(kind, name), fields: sourceColumnTypes(kind, name, opts)}
 		if sourceColTypes(kind, name, opts) == nil {
 			source.fields = nil
 		}
@@ -72,7 +73,7 @@ func indexColumnSources(tokens []tok, opts CompileOpts, ctx sourceContext) map[i
 		for alias := range scope.derivedAliases {
 			// Propagating derived expression types is a separate contract.
 			// Reserve the source so it cannot borrow a same-named physical type.
-			out[scopeID] = append(out[scopeID], columnSource{qualifier: alias})
+			out[scopeID] = append(out[scopeID], columnSource{tokenPos: -1, qualifier: alias})
 		}
 	}
 	return out
@@ -86,15 +87,13 @@ func virtualColumnTypes(kind, name, vt string, opts CompileOpts) map[string]meta
 				continue
 			}
 			// Use the columns actually exported by this VT, including MIN
-			// attributes in balances/turnovers and synthetic resource names.
+			// attributes in all three accumulation VTs and synthetic resource names.
 			fields = map[string]metadata.FieldType{}
 			for _, dim := range reg.Dimensions {
 				fields[lowerFast(dim.Name)] = dim.Type
 			}
-			if accumVTKinds[vt] != "balances_turnovers" {
-				for _, attr := range reg.Attributes {
-					fields[lowerFast(attr.Name)] = attr.Type
-				}
+			for _, attr := range reg.Attributes {
+				fields[lowerFast(attr.Name)] = attr.Type
 			}
 			for _, resource := range reg.Resources {
 				base := lowerFast(resource.Name)
@@ -141,28 +140,33 @@ func (tr *translator) columnQualifierAt(idx int) string {
 }
 
 func (tr *translator) columnTypeAt(idx int, name, qualifier string) (metadata.FieldType, string, bool) {
+	typ, source, known := tr.columnSourceAt(idx, name, qualifier)
+	return typ, source.qualifier, known
+}
+
+func (tr *translator) columnSourceAt(idx int, name, qualifier string) (metadata.FieldType, columnSource, bool) {
 	scopeID, ok := tr.sourceCtx.scopeIDAt(idx)
 	if !ok {
-		return "", "", false
+		return "", columnSource{}, false
 	}
 	for scopeID >= 0 {
 		count := 0
 		var typ metadata.FieldType
-		var owner string
+		var owner columnSource
 		for _, source := range tr.columnSources[scopeID] {
 			if qualifier != "" {
 				if !strings.EqualFold(qualifier, source.qualifier) {
 					continue
 				}
 				count++ // existence shadows outer scopes, even with unknown type
-				typ, owner = source.fields[name], source.qualifier
+				typ, owner = source.fields[name], source
 			} else {
 				if source.fields == nil {
-					return "", "", false
+					return "", columnSource{}, false
 				}
 				if t, exists := source.fields[name]; exists {
 					count++
-					typ, owner = t, source.qualifier
+					typ, owner = t, source
 				}
 			}
 		}
@@ -174,7 +178,7 @@ func (tr *translator) columnTypeAt(idx int, name, qualifier string) (metadata.Fi
 		}
 		scopeID = tr.sourceCtx.scopes[scopeID].parent
 	}
-	return "", "", false
+	return "", columnSource{}, false
 }
 
 // Reserve standard names without adding new scalar rules for them. Existing
