@@ -53,12 +53,8 @@ func (s *Server) navigationEditorState(r *http.Request, sub string) (navigationE
 			return state, fmt.Errorf("unknown subsystem")
 		}
 		state.Base, state.Configured = s.configurationNavigation(current.Menu, &current.Contents, false, sub)
-	} else if hp := s.reg.HomePage(); hp != nil {
-		state.Base, state.Configured = s.configurationNavigation(hp.Menu, hp.Nav, true, "")
-		state.Flat = hp.Nav.IsEmpty()
 	} else {
-		state.Base, state.Configured = s.configurationNavigation(nil, nil, true, "")
-		state.Flat = true
+		state.Base, state.Configured, state.Flat = s.homeConfigurationNavigation(r)
 	}
 	var err error
 	state.Setting, err = s.store.GetNavigationSettings(r.Context(), storage.NavigationSettingsScope{Layer: navigation.AdminLayer, Context: state.Base.Context})
