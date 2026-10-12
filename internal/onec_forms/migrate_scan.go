@@ -422,10 +422,12 @@ func readScanSubsystem(path, rel, encoding string) (scanSubsystem, error) {
 	var names []string
 	for _, part := range parts {
 		if part != "Subsystems" {
-			names = append(names, part)
+			names = append(names, "Subsystem", part)
 		}
 	}
-	s := scanSubsystem{key: "Subsystem." + strings.Join(names, ".")}
+	// Designer references repeat Subsystem at every level: the path
+	// Subsystems/A/Subsystems/B.xml denotes Subsystem.A.Subsystem.B.
+	s := scanSubsystem{key: strings.Join(names, ".")}
 	d := xml.NewDecoder(strings.NewReader(text))
 	// Input was decoded strictly before XML parsing, including its declaration.
 	d.CharsetReader = func(_ string, input io.Reader) (io.Reader, error) { return input, nil }
@@ -466,7 +468,7 @@ func readScanSubsystem(path, rel, encoding string) (scanSubsystem, error) {
 				}
 				value = strings.TrimSpace(value)
 				if value != "" {
-					s.children = append(s.children, s.key+"."+value)
+					s.children = append(s.children, s.key+".Subsystem."+value)
 				}
 				continue
 			}

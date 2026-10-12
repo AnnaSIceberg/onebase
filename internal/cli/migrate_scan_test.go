@@ -213,6 +213,41 @@ func TestMigrateScan_SubsystemReferenceAndCommand(t *testing.T) {
 	}
 }
 
+func TestMigrateScan_NestedSubsystemReference(t *testing.T) {
+	for _, route := range []string{"content-only", "content-and-child"} {
+		t.Run(route, func(t *testing.T) {
+			dir := copyScanFixture(t, false)
+			_, expected := scanJSON(t, dir)
+			rel := filepath.Join("Subsystems", "СтандартныеПодсистемы.xml")
+			data, err := os.ReadFile(filepath.Join(dir, rel))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Designer repeats the metadata type at every nesting level.
+			data = bytes.Replace(data, []byte("<Content>"), []byte("<Content><xr:Item>Subsystem.СтандартныеПодсистемы.Subsystem.Общие</xr:Item>"), 1)
+			if route == "content-only" {
+				data = bytes.Replace(data, []byte("<ChildObjects><Subsystem>Общие</Subsystem></ChildObjects>"), nil, 1)
+			}
+			if err := writeScanFixture(dir, rel, data); err != nil {
+				t.Fatal(err)
+			}
+			_, report := scanJSON(t, dir)
+			if !reflect.DeepEqual(report, expected) {
+				t.Fatalf("nested Content reference changed report: %+v", report)
+			}
+			found := false
+			for _, subsystem := range report.Subsystems {
+				if subsystem.Name == "Subsystem.СтандартныеПодсистемы.Subsystem.Общие" {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("missing canonical nested subsystem name: %+v", report.Subsystems)
+			}
+		})
+	}
+}
+
 func TestMigrateScan_MultilineStringsAndEscapedQuotes(t *testing.T) {
 	dir := copyScanFixture(t, false)
 	app := filepath.Join(dir, "Documents", "Заказ", "Ext", "ObjectModule.bsl")
@@ -233,69 +268,96 @@ func TestMigrateScan_MultilineStringsAndEscapedQuotes(t *testing.T) {
 func TestMigrateScan_Encodings(t *testing.T) {
 	for _, enc := range []string{"utf-8-bom", "windows-1251", "utf-16le", "utf-16be", "utf-16le-no-bom"} {
 		t.Run(enc, func(t *testing.T) {
-			dir := copyScanFixture(t, false)
-			_, expected := scanJSON(t, dir)
-			var paths []string
-			if err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				if !d.IsDir() && (strings.HasSuffix(path, ".bsl") || strings.HasSuffix(path, ".xml")) {
-					paths = append(paths, path)
-				}
-				return nil
-			}); err != nil {
-				t.Fatal(err)
-			}
-			for _, path := range paths {
-				data, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				text := strings.ReplaceAll(string(data), "\n", "\r\n")
-				var encoded []byte
-				switch enc {
-				case "utf-8-bom":
-					encoded = append([]byte{0xef, 0xbb, 0xbf}, []byte(text)...)
-				case "windows-1251":
-					encoded, err = charmap.Windows1251.NewEncoder().Bytes([]byte(text))
-				default:
-					var order binary.ByteOrder = binary.LittleEndian
-					encoded = []byte{0xff, 0xfe}
-					if enc == "utf-16be" {
-						order = binary.BigEndian
-						encoded = []byte{0xfe, 0xff}
+			for _, checkout := range []string{"LF", "CRLF"} {
+				t.Run(checkout, func(t *testing.T) {
+					dir := copyScanFixture(t, false)
+					// Exercise both checkout styles on every host, before conversion.
+					if err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+						if err != nil || d.IsDir() {
+							return err
+						}
+						data, err := os.ReadFile(path)
+						if err != nil {
+							return err
+						}
+						text := strings.ReplaceAll(string(data), "\r\n", "\n")
+						if checkout == "CRLF" {
+							text = strings.ReplaceAll(text, "\n", "\r\n")
+						}
+						rel, err := filepath.Rel(dir, path)
+						if err != nil {
+							return err
+						}
+						return writeScanFixture(dir, rel, []byte(text))
+					}); err != nil {
+						t.Fatal(err)
 					}
+					_, expected := scanJSON(t, dir)
+					var paths []string
+					if err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+						if err != nil {
+							return err
+						}
+						if !d.IsDir() && (strings.HasSuffix(path, ".bsl") || strings.HasSuffix(path, ".xml")) {
+							paths = append(paths, path)
+						}
+						return nil
+					}); err != nil {
+						t.Fatal(err)
+					}
+					for _, path := range paths {
+						data, err := os.ReadFile(path)
+						if err != nil {
+							t.Fatal(err)
+						}
+						// Normalize checkout CRLF before producing encoded CRLF fixtures.
+						text := strings.ReplaceAll(string(data), "\r\n", "\n")
+						text = strings.ReplaceAll(text, "\n", "\r\n")
+						var encoded []byte
+						switch enc {
+						case "utf-8-bom":
+							encoded = append([]byte{0xef, 0xbb, 0xbf}, []byte(text)...)
+						case "windows-1251":
+							encoded, err = charmap.Windows1251.NewEncoder().Bytes([]byte(text))
+						default:
+							var order binary.ByteOrder = binary.LittleEndian
+							encoded = []byte{0xff, 0xfe}
+							if enc == "utf-16be" {
+								order = binary.BigEndian
+								encoded = []byte{0xfe, 0xff}
+							}
+							if enc == "utf-16le-no-bom" {
+								encoded = nil
+							}
+							for _, unit := range utf16.Encode([]rune(text)) {
+								var b [2]byte
+								order.PutUint16(b[:], unit)
+								encoded = append(encoded, b[:]...)
+							}
+						}
+						if err != nil {
+							t.Fatal(err)
+						}
+						rel, err := filepath.Rel(dir, path)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if err := writeScanFixture(dir, rel, encoded); err != nil {
+							t.Fatal(err)
+						}
+					}
+					var args []string
 					if enc == "utf-16le-no-bom" {
-						encoded = nil
+						args = []string{"--encoding", "utf-16le"}
 					}
-					for _, unit := range utf16.Encode([]rune(text)) {
-						var b [2]byte
-						order.PutUint16(b[:], unit)
-						encoded = append(encoded, b[:]...)
+					_, r := scanJSON(t, dir, args...)
+					for i := range expected.Sources {
+						expected.Sources[i].Encoding = r.Sources[i].Encoding
 					}
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				rel, err := filepath.Rel(dir, path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := writeScanFixture(dir, rel, encoded); err != nil {
-					t.Fatal(err)
-				}
-			}
-			var args []string
-			if enc == "utf-16le-no-bom" {
-				args = []string{"--encoding", "utf-16le"}
-			}
-			_, r := scanJSON(t, dir, args...)
-			for i := range expected.Sources {
-				expected.Sources[i].Encoding = r.Sources[i].Encoding
-			}
-			if !reflect.DeepEqual(r, expected) {
-				t.Fatalf("encoding changed report: %+v", r)
+					if !reflect.DeepEqual(r, expected) {
+						t.Fatalf("encoding changed report: %+v", r)
+					}
+				})
 			}
 		})
 	}
