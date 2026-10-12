@@ -78,6 +78,10 @@ func TestCorrelatedRefNavigationMatrix(t *testing.T) {
      ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ К.Ссылка ИЗ Документ.ЗаказПроба КАК К ГДЕ Д.Клиент.deletion_mark = Ложь)`},
 			{"reference attribute", `ВЫБРАТЬ Д.Номер ИЗ Документ.ЗаказПроба КАК Д ГДЕ Д.Ссылка В
     (ВЫБРАТЬ П.Ссылка ИЗ Документ.ЗаказПроба КАК П ГДЕ Д.Клиент.Наименование = "Живой")`},
+			// The explicit alias remains valid; the generated outer JOIN now
+			// receives another name, so correlation still reads the live customer.
+			{"join alias collision", `ВЫБРАТЬ Д.Номер ИЗ Документ.ЗаказПроба КАК Д ГДЕ Д.Ссылка В
+    (ВЫБРАТЬ Д.Ссылка ИЗ Справочник.ВнутренняяПроба КАК ref_клиент ГДЕ Д.Клиент.deletion_mark = Ложь)`},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -109,8 +113,6 @@ func TestCorrelatedRefNavigationMatrix(t *testing.T) {
     (ВЫБРАТЬ Д.Ссылка ИЗ Справочник.ВнутренняяПроба КАК Д ГДЕ Д.Клиент.deletion_mark = Ложь)`},
 			{"shadow without reference", `ВЫБРАТЬ Д.Номер ИЗ Документ.ЗаказПроба КАК Д ГДЕ Д.Ссылка В
     (ВЫБРАТЬ Д.Ссылка ИЗ Справочник.КонтрагентПроба КАК Д ГДЕ Д.Клиент.deletion_mark = Ложь)`},
-			{"join alias shadow", `ВЫБРАТЬ Д.Номер ИЗ Документ.ЗаказПроба КАК Д ГДЕ Д.Ссылка В
-    (ВЫБРАТЬ Д.Ссылка ИЗ Справочник.ВнутренняяПроба КАК ref_клиент ГДЕ Д.Клиент.deletion_mark = Ложь)`},
 			{"derived shadow", `ВЫБРАТЬ Д.Номер ИЗ Документ.ЗаказПроба КАК Д ГДЕ Д.Ссылка В
     (ВЫБРАТЬ Д.Ссылка ИЗ (ВЫБРАТЬ П.Ссылка, П.Клиент ИЗ Справочник.ВнутренняяПроба КАК П) КАК Д
      ГДЕ Д.Клиент.deletion_mark = Ложь)`},

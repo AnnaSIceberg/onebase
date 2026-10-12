@@ -789,6 +789,53 @@ func (tr *translator) systemRefByJoinAlias(name string) *refDimInfo {
 	return nil
 }
 
+// assignRefJoinAliases binds each reference path once, before SQL emission.
+// Reserve sources from every SELECT: a child source must not shadow an outer
+// auto-JOIN used by a correlated expression. The same namespace also prevents
+// collisions between main-source and joined-source reference paths.
+func (tr *translator) assignRefJoinAliases() {
+	occupied := map[string]bool{}
+	reserve := func(name string) {
+		occupied[name] = true
+		if len(name) > 63 {
+			occupied[strings.ToValidUTF8(name[:63], "")] = true
+		}
+	}
+	for _, scope := range tr.sourceCtx.scopes {
+		for name := range scope.qualifiers {
+			reserve(name)
+		}
+		for name := range scope.derivedAliases {
+			reserve(name)
+		}
+	}
+	next := 0
+	assign := func(rd *refDimInfo) {
+		name := rd.joinAlias
+		// PostgreSQL truncates identifiers to 63 bytes. Short fallback names
+		// also keep long Unicode source/field names distinct on both dialects.
+		if occupied[name] || len(name) > 63 {
+			for {
+				next++
+				name = fmt.Sprintf("ref_join_%d", next)
+				if !occupied[name] {
+					break
+				}
+			}
+		}
+		occupied[name] = true
+		rd.joinAlias = name
+	}
+	for i := range tr.refDims {
+		assign(&tr.refDims[i])
+	}
+	for i := range tr.joinedRefs {
+		for j := range tr.joinedRefs[i].dims {
+			assign(&tr.joinedRefs[i].dims[j])
+		}
+	}
+}
+
 // standaloneSelectItem — токены [from, to) составляют целый элемент списка
 // выборки: стоят на глубине его SELECT, перед ними начало списка (ВЫБРАТЬ,
 // РАЗЛИЧНЫЕ) или запятая списка, после — запятая, КАК, ИЗ или конец
@@ -5172,6 +5219,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		}
 		break
 	}
+	tr.assignRefJoinAliases()
 	tr.textEqIndex = positiveTextEqualities(tokens, tr.sourceCtx)
 	for {
 		t := tr.peek(0)
