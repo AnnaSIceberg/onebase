@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -214,5 +215,104 @@ menu:
 	admin := f.editor(t, "")
 	if len(admin.Base.Sections) != 2 || len(admin.Base.Sections[1].Items) != 1 || admin.Base.Sections[1].Items[0].Target != "catalog:Classes" {
 		t.Fatal("role projection mutated the common configuration")
+	}
+}
+
+func TestHomeNavByRole_HTTPCommonMoveBeforeRoleProjection(t *testing.T) {
+	for _, grouped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("grouped=%v", grouped), func(t *testing.T) {
+			f := newNavigationHTTPFixture(t)
+			layout := `nav:
+  catalogs: [Years, Classes]
+nav_by_role:
+  Teacher:
+    catalogs: [Classes]
+menu:
+  sections:
+    - id: years-section
+      title: Years section
+      items:
+        - id: years
+          target: catalog:Years
+    - id: classes-section
+      title: Classes section
+      items:
+        - id: classes
+          target: catalog:Classes
+`
+			if grouped {
+				layout = strings.Replace(layout, "      items:\n        - id: years\n          target: catalog:Years", "      groups:\n        - id: years-group\n          title: Years group\n          items:\n            - id: years\n              target: catalog:Years", 1)
+			}
+			loadRoleHome(t, f, layout)
+			stale := f.personalEditor(t, "alice", "")
+			common := f.editor(t, "")
+			item := common.Desired.Sections[1].Items[0]
+			common.Desired.Sections[1].Items = nil
+			if grouped {
+				common.Desired.Sections[0].Groups[0].Items = append(common.Desired.Sections[0].Groups[0].Items, item)
+			} else {
+				common.Desired.Sections[0].Items = append(common.Desired.Sections[0].Items, item)
+			}
+			if rec := f.request(t, "POST", "/ui/admin/navigation/save", "admin", navigationForm(t, common)); rec.Code != http.StatusSeeOther {
+				t.Fatal(rec.Code, rec.Body.String())
+			}
+			state := f.personalEditor(t, "alice", "")
+			if stale.BaseRevision == state.BaseRevision {
+				t.Fatal("common move did not invalidate role revision")
+			}
+			for _, tree := range []navigation.Tree{state.Base, state.Desired} {
+				if len(tree.Sections) != 1 || tree.Sections[0].ID != "cfg:years-section" {
+					t.Fatalf("common destination lost: %+v", tree)
+				}
+				items := tree.Sections[0].Items
+				if grouped {
+					if len(tree.Sections[0].Groups) != 1 || tree.Sections[0].Groups[0].ID != "cfg:years-group" {
+						t.Fatalf("common destination group lost: %+v", tree)
+					}
+					items = tree.Sections[0].Groups[0].Items
+				}
+				if len(items) != 1 || items[0].ID != "cfg:classes" {
+					t.Fatalf("role move or membership lost: %+v", tree)
+				}
+			}
+			nav := roleHomeNav(t, f, "alice")
+			if semanticFind(nav, "data-nav-id", "cfg:years-section") == nil || semanticFind(nav, "data-nav-id", "cfg:classes") == nil || semanticFind(nav, "data-nav-id", "cfg:years") != nil {
+				t.Fatal("runtime does not apply common move within role scope")
+			}
+			for _, action := range []string{"preview", "save"} {
+				if rec := f.request(t, "POST", "/ui/settings/navigation/"+action, "alice", personalNavigationForm(t, stale)); rec.Code != http.StatusConflict {
+					t.Fatalf("stale %s: %d", action, rec.Code)
+				}
+			}
+			state.Desired.Sections[0].Title = "My moved classes"
+			state.Desired.Sections[0].Titles = nil
+			state.Renamed = []string{"cfg:years-section"}
+			preview := f.request(t, "POST", "/ui/settings/navigation/preview", "alice", personalNavigationForm(t, state))
+			if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), "My moved classes") {
+				t.Fatal(preview.Code, preview.Body.String())
+			}
+			personalSave(t, f, "alice", state)
+			if !strings.Contains(semanticHeading(roleHomeNav(t, f, "alice")), "My moved classes") {
+				t.Fatal("personal save lost common placement")
+			}
+			// The admin still sees its complete menu, including the item used
+			// as the common move's predecessor but removed by the role filter.
+			if semanticFind(roleHomeNav(t, f, "admin"), "data-nav-id", "cfg:years") == nil {
+				t.Fatal("role projection changed common tree")
+			}
+			common = f.editor(t, "")
+			if grouped {
+				common.Desired.Sections[0].Groups[0].Items = common.Desired.Sections[0].Groups[0].Items[:1]
+			} else {
+				common.Desired.Sections[0].Items = common.Desired.Sections[0].Items[:1]
+			}
+			if rec := f.request(t, "POST", "/ui/admin/navigation/save", "admin", navigationForm(t, common)); rec.Code != http.StatusSeeOther {
+				t.Fatal(rec.Code, rec.Body.String())
+			}
+			hidden := f.personalEditor(t, "alice", "")
+			if len(hidden.Desired.Sections) != 0 || semanticFind(roleHomeNav(t, f, "alice"), "data-nav-id", "cfg:classes") != nil {
+				t.Fatal("role projection resurrected a common hidden target")
+			}
+		})
 	}
 }

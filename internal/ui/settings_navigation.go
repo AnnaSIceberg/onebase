@@ -40,6 +40,7 @@ type navigationEditorState struct {
 	Renamed       []string
 	Origins       map[string]string
 	configuration navigation.Tree
+	adminBase     navigation.Tree
 	layerBase     navigation.Tree
 	effective     navigation.Tree
 	previous      navigation.Delta
@@ -65,7 +66,12 @@ func (s *Server) navigationEditorState(r *http.Request, sub string) (navigationE
 	if state.Setting.Exists {
 		raw = []byte(state.Setting.Raw)
 	}
+	state.adminBase = state.Base
 	state.Desired, state.Diagnostics = navigation.Compose(state.Base, raw, nil)
+	if sub == "" {
+		state.Base = s.projectHomeNavigation(r, state.Base)
+		state.Desired = s.projectHomeNavigation(r, state.Desired)
+	}
 	return state, nil
 }
 

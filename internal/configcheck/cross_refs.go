@@ -66,6 +66,11 @@ func CheckCrossRefs(proj *project.Project, roles []*auth.Role) []Issue {
 		journals.add(j.Name)
 	}
 
+	pages := nameSet{}
+	for _, p := range proj.Pages {
+		pages.add(p.Name)
+	}
+
 	var issues []Issue
 	add := func(file, object, kind, msg string) {
 		issues = append(issues, Issue{File: file, Object: object, Kind: kind, Message: msg})
@@ -195,6 +200,7 @@ func CheckCrossRefs(proj *project.Project, roles []*auth.Role) []Issue {
 			checkRefs("config/home_page.yaml", object, "Главная страница", c.Registers, registers, "регистр")
 			checkRefs("config/home_page.yaml", object, "Главная страница", c.Processors, processors, "обработка")
 			checkRefs("config/home_page.yaml", object, "Главная страница", c.Journals, journals, "журнал")
+			checkRefs("config/home_page.yaml", object, "Главная страница", c.Pages, pages, "страница")
 		}
 	}
 
