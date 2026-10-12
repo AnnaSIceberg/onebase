@@ -1148,7 +1148,19 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	  if (data.dirty === false && (data.savedId || data.version)) window.obSetManagedFormDirty(false);
       (data.messages || []).forEach(m => flash(m, 'ok'));
       if (data.error) flash(data.error, 'err');
-      if (pendingQuestion && window.obOpenQuestion) window.obOpenQuestion(pendingQuestion, elementName);
+      if (pendingQuestion && beforePostSnapshot(snapshot) && beforePostState) {
+        // ПередПроведением: ответ — тому же событию, а не Ответ элемента;
+        // проведение ждёт его, закрытие вопроса мимо кнопок — отказ.
+        beforePostState.questionOpen = true;
+        if (window.obOpenQuestion) window.obOpenQuestion(pendingQuestion, '', {
+          onAnswer: function(variant, extra){ runBeforePostEvent(extra || {_question_answer: variant}); },
+          onDismiss: function(){ settleBeforePost(false); }
+        });
+        else settleBeforePost(false);
+      } else if (pendingQuestion && window.obOpenQuestion) window.obOpenQuestion(pendingQuestion, elementName);
+      // Решение — после того, как событие целиком вышло из очереди (см.
+      // runBeforePostEvent): иначе проведение застало бы форму «занятой».
+      if (!pendingQuestion && beforePostSnapshot(snapshot) && beforePostState) beforePostState.outcome = !data.cancel && !data.error;
     } catch (e) {
       // A lost/unparseable response for /new may hide a committed insert and
       // there is no identity with which to issue another safe write. Fence all
@@ -1245,6 +1257,38 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // applies returned state/messages first and only then returns a decision.
   // Shell/popup/standalone code decides how to destroy its own UI.
   var CLOSE_URL = String(cfg.closeUrl || '');
+  // ПередПроведением (событие уровня формы): стандартные «Провести» и «Провести
+  // и закрыть» сначала спрашивают обработчик. Он вправе отказать (Отказ) или
+  // задать вопрос — ответ возвращается тем же событием; проведение идёт, только
+  // когда обработчик ответил без отказа, без ошибки и без нового вопроса.
+  var BEFORE_POST = !!cfg.beforePost;
+  var beforePostState = null;
+  function beforePostSnapshot(snapshot){
+    return !!(snapshot && !snapshot.elementName && snapshot.eventName === 'ПередПроведением');
+  }
+  function settleBeforePost(ok){
+    var state = beforePostState;
+    beforePostState = null;
+    if (state) state.resolve(!!ok);
+  }
+  function runBeforePostEvent(extra){
+    if (!beforePostState) return;
+    beforePostState.questionOpen = false;
+    beforePostState.outcome = false;
+    Promise.resolve(window.obFire('', 'ПередПроведением', extra || null)).then(function(){
+      // Ответ разобран и событие вышло из очереди. Открыт вопрос — ждём ответа;
+      // не дошло до разбора (отказ очереди, сеть) — outcome остался false.
+      if (beforePostState && !beforePostState.questionOpen) settleBeforePost(beforePostState.outcome === true);
+    });
+  }
+  window.obManagedBeforePost = function(){
+    if (!BEFORE_POST) return Promise.resolve(true);
+    if (beforePostState) return Promise.resolve(false);
+    return new Promise(function(resolve){
+      beforePostState = {resolve: resolve, questionOpen: false};
+      runBeforePostEvent(null);
+    });
+  };
   var CLOSE_TIMEOUT_MS = Number(cfg.closeTimeoutMs || 30000);
   var CLOSE_MESSAGES = cfg.closeMessages || {};
   // Declared with the close controller because browser behavior tests extract
@@ -1521,6 +1565,18 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
   window.obRequestFormClose = function(options){
     options = options || {};
+    if (BEFORE_POST && options.mode === 'post' && !options.__beforePostDone) {
+      var nextOptions = {};
+      Object.keys(options).forEach(function(key){ nextOptions[key] = options[key]; });
+      nextOptions.__beforePostDone = true;
+      return window.obManagedBeforePost().then(function(ok){
+        if (!ok) {
+          closeHandoffPending = false;
+          return {allowed: false, intentId: '', error: 'before-post-cancelled'};
+        }
+        return window.obRequestFormClose(nextOptions);
+      });
+    }
 	if (formEventPending && !options.__awaitedFormEvent) {
 	  // Ждём текущее событие вместо немедленного отказа. Два сценария, где
 	  // отказ был ложным: обработчик, закрывающий форму своей же командой
@@ -1817,6 +1873,29 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	setManagedFormDirty(false);
     return true;
   };
+
+  // «Провести»: до отправки формы — ПередПроведением. Перехват в фазе захвата,
+  // раньше остальных обработчиков отправки; после согласия форма отправляется
+  // заново той же кнопкой и проходит их как обычно.
+  document.addEventListener('submit', function(e){
+    var form = e.target;
+    if (!BEFORE_POST || !form || form.id !== 'main-form' || form.__obBeforePostApproved) return;
+    var submitter = e.submitter || null;
+    if (!submitter || submitter.name !== '_action' || submitter.value !== 'post') return;
+    e.preventDefault();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    else if (e.stopPropagation) e.stopPropagation();
+    window.obManagedBeforePost().then(function(ok){
+      if (!ok) return;
+      form.__obBeforePostApproved = true;
+      try {
+        if (typeof form.requestSubmit === 'function') form.requestSubmit(submitter);
+        else submitter.click();
+      } finally {
+        form.__obBeforePostApproved = false;
+      }
+    });
+  }, true);
 
   // A native submit must not race an unfinished close request. A lost close
   // response is also an unknown commit outcome: BeforeClose may call

@@ -142,3 +142,23 @@ test('два-три варианта остаются рядом справа', 
   assert.ok(String(row.style.cssText).includes('justify-content:flex-end'));
   assert.ok(String(row.style.cssText).includes('flex-wrap:wrap'));
 });
+
+test('обработчики вызывающего получают ответ и закрытие мимо кнопок вместо события Ответ', () => {
+  const app = setup();
+  const answers = [];
+  let dismissed = 0;
+  const before = fired.length;
+  app.window.obOpenQuestion(payload, '', { onAnswer: (v) => answers.push(v), onDismiss: () => { dismissed++; } });
+  let modal = app.__modalNode();
+  const buttons = [];
+  (function walk(n) { if (n.tag === 'button') buttons.push(n); (n.children || []).forEach(walk); })(modal);
+  buttons[1].click();
+  assert.deepEqual(answers, ['Нет']);
+  assert.equal(fired.length, before, 'событие Ответ при своих обработчиках не отправляется');
+
+  app.window.obOpenQuestion(payload, '', { onAnswer: (v) => answers.push(v), onDismiss: () => { dismissed++; } });
+  modal = app.__modalNode();
+  modal.listeners.get('click')({ target: modal });
+  assert.equal(dismissed, 1);
+  assert.deepEqual(answers, ['Нет']);
+});
