@@ -2,6 +2,8 @@ package query_test
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -10,6 +12,78 @@ import (
 	"github.com/ivantit66/onebase/internal/query"
 	"github.com/ivantit66/onebase/internal/storage"
 )
+
+// A source qualifier can share a column's spelling without becoming a column.
+// Exercise both scalar wrapping and the qualification enabled by an auto-JOIN.
+func TestColumnSourcesQualifierMatchesFieldMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		client := &metadata.Entity{Name: "КлиентыАлиаса1183", Kind: metadata.KindCatalog}
+		order := &metadata.Entity{Name: "ЗаказыАлиаса1183", Kind: metadata.KindDocument,
+			Fields: []metadata.Field{{Name: "Ключ", Type: metadata.FieldTypeString},
+				{Name: "Метка", Type: metadata.FieldTypeString},
+				{Name: "Клиент", Type: metadata.FieldType("reference:" + client.Name), RefEntity: client.Name}}}
+		price := &metadata.Entity{Name: "Цена", Kind: metadata.KindCatalog,
+			Fields: []metadata.Field{{Name: "Ключ", Type: metadata.FieldTypeString},
+				{Name: "Цена", Type: metadata.FieldTypeNumber},
+				{Name: "Категория", Type: metadata.FieldTypeString}}}
+		entities := []*metadata.Entity{order, price, client}
+		if err := db.Migrate(ctx, entities); err != nil {
+			t.Fatal(err)
+		}
+		clientID := uuid.New()
+		if err := db.Upsert(ctx, client.Name, clientID, map[string]any{"Наименование": "Клиент"}, client); err != nil {
+			t.Fatal(err)
+		}
+		for _, num := range []int{2, 9, 100} {
+			label := fmt.Sprint(num)
+			if err := db.Upsert(ctx, order.Name, uuid.New(), map[string]any{
+				"Ключ": label, "Метка": label, "Клиент": clientID.String(),
+			}, order); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Upsert(ctx, price.Name, uuid.New(), map[string]any{"Ключ": label, "Цена": num}, price); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, autoJoin := range []bool{false, true} {
+			for _, tc := range []struct {
+				name, alias, declaration, clause string
+				want                             []string
+			}{
+				{"number filter", "Цена", " КАК Цена", `ГДЕ Цена.Цена < 3 УПОРЯДОЧИТЬ ПО Цена.Цена`, []string{"2"}},
+				{"number order", "Цена", " КАК Цена", `ГДЕ Цена.Цена > 0 УПОРЯДОЧИТЬ ПО Цена.Цена`, []string{"2", "9", "100"}},
+				{"source name", "Цена", "", `ГДЕ Цена.Цена < 3 УПОРЯДОЧИТЬ ПО Цена.Цена`, []string{"2"}},
+				{"text filter", "Категория", " КАК Категория", `ГДЕ Категория.Категория = "" УПОРЯДОЧИТЬ ПО Категория.Цена`, []string{"2", "9", "100"}},
+			} {
+				t.Run(fmt.Sprintf("%s/autoJoin=%t", tc.name, autoJoin), func(t *testing.T) {
+					projection := "А.Метка"
+					if autoJoin {
+						projection += ", А.Клиент"
+					}
+					text := `ВЫБРАТЬ ` + projection + ` ИЗ Документ.ЗаказыАлиаса1183 КАК А
+						ВНУТРЕННЕЕ СОЕДИНЕНИЕ Справочник.Цена` + tc.declaration +
+						` ПО А.Ключ = ` + tc.alias + `.Ключ ` + tc.clause
+					r, err := query.Compile(text, query.CompileOpts{Entities: entities, Dialect: db.Dialect()})
+					if err != nil {
+						t.Fatal(err)
+					}
+					rows, cols, err := db.RunQuery(ctx, r.SQL, r.Args)
+					if err != nil {
+						t.Fatalf("%v; SQL=%s", err, r.SQL)
+					}
+					var got []string
+					for _, row := range rows {
+						got = append(got, fmt.Sprint(row[cols[0]]))
+					}
+					if !reflect.DeepEqual(got, tc.want) {
+						t.Fatalf("got %v, want %v; SQL=%s", got, tc.want, r.SQL)
+					}
+				})
+			}
+		}
+	})
+}
 
 func TestColumnSourcesAccumulationVirtualAttributesMatrix(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {

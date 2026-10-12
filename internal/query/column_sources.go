@@ -145,6 +145,11 @@ func (tr *translator) columnTypeAt(idx int, name, qualifier string) (metadata.Fi
 }
 
 func (tr *translator) columnSourceAt(idx int, name, qualifier string) (metadata.FieldType, columnSource, bool) {
+	// The identifier before a dot qualifies the following column. It must not
+	// borrow a same-named field's type for CAST or automatic qualification.
+	if idx+1 < len(tr.tokens) && tr.tokens[idx+1].kind == tDot {
+		return "", columnSource{}, false
+	}
 	scopeID, ok := tr.sourceCtx.scopeIDAt(idx)
 	if !ok {
 		return "", columnSource{}, false
