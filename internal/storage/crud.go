@@ -28,7 +28,8 @@ type ListParams struct {
 	RowFilterEvaluated bool
 	JournalRowFilters  map[string]*Predicate // per document name row-level predicates for journal UNIONs
 	// Sort is a metadata field name. Empty selects the default: keyset by id ASC;
-	// otherwise entity.OrderBy, folders then first string for hierarchical lists,
+	// otherwise entity.OrderBy followed by id ASC (folders first for hierarchy),
+	// folders then first string for hierarchical lists without OrderBy,
 	// first document date DESC, flat catalog name/first string ASC, or id (using Dir).
 	Sort           string
 	Dir            string     // "asc" or "desc"
@@ -957,9 +958,9 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 			}
 			parts = append(parts, expr+" "+dir)
 		}
-		if len(parts) == 0 {
-			parts = append(parts, "id ASC")
-		}
+		// Уникальный последний ключ задаёт полный порядок равных значений
+		// order_by, в том числе у папок и при устаревших именах полей.
+		parts = append(parts, "id ASC")
 		query += " ORDER BY " + strings.Join(parts, ", ")
 	} else if entity.Hierarchical && params.Sort == "" {
 		firstStrCol := "id"
