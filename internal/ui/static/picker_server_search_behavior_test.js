@@ -691,3 +691,14 @@ test('при серверном поиске отборы переживают �
   ctx.open({columns: masterColumns, rows: masterRows, config}, 'КнВыбратьМастера', null);
   assert.equal(filterSelect(ctx, 'Филиал').value, '', 'закрытое окно передало отбор следующему');
 });
+
+test('Конфиг.Ширина задаёт ширину окна, без неё — прежние 720px', () => {
+  const ctx = pickerContext();
+  ctx.open({columns, rows, config: {title: 'Подбор', width: 1440}}, 'КнопкаНайти', null);
+  const wide = ctx.modal().children[0].style.cssText;
+  assert.match(wide, /(^|;)width:1440px;/, wide);
+  assert.match(wide, /max-width:96vw/, 'на узком экране окно обязано ужиматься');
+
+  ctx.open({columns, rows, config: {title: 'Подбор'}}, 'КнопкаНайти', null);
+  assert.match(ctx.modal().children[0].style.cssText, /(^|;)width:720px;/);
+});
