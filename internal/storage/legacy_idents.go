@@ -59,7 +59,7 @@ func (db *DB) planLegacyTable(ctx context.Context, logical string, claims map[st
 	if err != nil {
 		return nil, fmt.Errorf("длинное имя %s: %w", logical, err)
 	}
-	for _, old := range uniqueStrings(legacy) {
+	for _, old := range db.physicalLegacyNames(legacy) {
 		found, err := db.tableExists(ctx, old)
 		if err != nil {
 			return nil, fmt.Errorf("длинное имя %s: %w", logical, err)
@@ -109,6 +109,25 @@ func (db *DB) renameLegacyTableClaimed(ctx context.Context, logical string, clai
 	}
 	slog.Info("длинное имя таблицы сокращено", "было", a.Old, "стало", a.New)
 	return nil
+}
+
+// physicalLegacyNames — прежние имена, которые могли физически существовать в
+// этой СУБД. На PostgreSQL имя длиннее 63 байт в базе быть не могло, а поиск
+// по нему находит обрезанное (сервер обрезает идентификатор и в запросе):
+// таблица с именем, общим для двух логических, выглядела бы как «своя» по
+// полному имени, и отказ по неоднозначности не срабатывал.
+func (db *DB) physicalLegacyNames(legacy []string) []string {
+	out := uniqueStrings(legacy)
+	if db.IsSQLite() {
+		return out
+	}
+	kept := out[:0:0]
+	for _, n := range out {
+		if len(n) <= metadata.MaxSQLIdentBytes {
+			kept = append(kept, n)
+		}
+	}
+	return kept
 }
 
 // legacyTableClaims — сколько логических таблиц претендуют на каждое прежнее
@@ -246,7 +265,7 @@ func (db *DB) PlanLongIdents(ctx context.Context, entities []*metadata.Entity, r
 		if ok, err := db.tableExists(ctx, table); err != nil {
 			return err
 		} else if !ok {
-			for _, old := range uniqueStrings(metadata.LegacySQLIdents(logicalTable)) {
+			for _, old := range db.physicalLegacyNames(metadata.LegacySQLIdents(logicalTable)) {
 				if found, err := db.tableExists(ctx, old); err != nil {
 					return err
 				} else if found {
