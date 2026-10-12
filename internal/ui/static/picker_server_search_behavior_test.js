@@ -915,3 +915,144 @@ test('БезВыбора: ни отметок, ни «Выбрать» — од�
   ctx.rowsOf()[0].dispatch('dblclick');
   assert.equal(ctx.fired.length, 0, 'двойной щелчок что-то выбрал');
 });
+
+const headerPickerData = (brand, config = {}) => ({
+  columns: [{name: 'Бренд', title: 'Бренд', type: 'string'}],
+  rows: [{id: brand + '-row', data: {Бренд: brand}}],
+  config: Object.assign(headerConfig(brand), {single: true}, config),
+});
+
+async function openManagedHeader(ctx) {
+  const opening = ctx.fire('КнПодбор', 'Нажатие');
+  await ctx.tick();
+  await ctx.settle(0, {pickerData: headerPickerData('b-1')});
+  await opening;
+}
+
+function chooseHeaderRow(ctx, action) {
+  const row = headerBox(ctx).querySelector('tbody').rows[0];
+  if (action === 'double-click') row.dispatch('dblclick');
+  else if (action === 'button') {
+    row.dispatch('click');
+    ctx.transfer();
+  } else ctx.search().dispatch('keydown', {key: 'Enter', preventDefault() {}});
+}
+
+for (const action of ['Enter', 'double-click', 'button']) {
+  for (const failure of ['fetch', 'json', 'server']) {
+    test(`поля шапки: ${action} ждёт успешного обновления после ошибки ${failure}`, async () => {
+      const ctx = pickerContext(true);
+      await openManagedHeader(ctx);
+      const brand = headerCtl(ctx, 'Бренд');
+      brand.value = 'b-2';
+      brand.dispatch('change');
+      await ctx.tick();
+      assert.equal(ctx.requests[1].options.body.get('_event'), 'Поиск');
+      assert.equal(JSON.parse(ctx.requests[1].options.body.get('_pick_fields')).Бренд, 'b-2');
+      chooseHeaderRow(ctx, action);
+      await ctx.tick();
+      assert.ok(ctx.modal(), 'выбор закрыл окно во время обновления');
+      assert.equal(ctx.requests.length, 2, 'старая строка ушла, пока Поиск в пути');
+      const error = new Error('refresh failed');
+      if (failure === 'fetch') ctx.requests[1].reject(error);
+      else if (failure === 'json') ctx.requests[1].resolve({ok: true, json: async () => { throw error; }});
+      else ctx.requests[1].resolve({ok: true, json: async () => ({ok: false, error: error.message})});
+      await ctx.tick();
+      assert.ok(ctx.messages.some((m) => m.includes('refresh failed')));
+      chooseHeaderRow(ctx, action);
+      await ctx.tick();
+      assert.ok(ctx.modal(), 'выбор закрыл окно после ошибки обновления');
+      assert.equal(ctx.requests.length, 2, 'ошибка разрешила выбор прежней строки с новым брендом');
+      headerBox(ctx).querySelector('._ip-refresh').dispatch('click');
+      await ctx.tick();
+      await ctx.settle(2, {pickerData: headerPickerData('b-2')});
+      chooseHeaderRow(ctx, action);
+      await ctx.tick();
+      assert.equal(ctx.modal(), null, 'успешное обновление не разрешило выбор');
+      assert.equal(ctx.requests.length, 4);
+      assert.equal(ctx.requests[3].options.body.get('_event'), 'Выбор');
+      assert.equal(JSON.parse(ctx.requests[3].options.body.get('_pick_fields')).Бренд, 'b-2');
+      assert.deepEqual(JSON.parse(ctx.requests[3].options.body.get('_pick_result')), [{id: 'b-2-row', Бренд: 'b-2'}]);
+      await ctx.settle(3, {});
+    });
+  }
+}
+
+test('поля шапки: набранное без запроса не разрешает выбор; ответ старого запроса тоже', async () => {
+  const ctx = pickerContext(true);
+  await openManagedHeader(ctx);
+  const art = headerCtl(ctx, 'Артикул');
+  art.value = 'first';
+  art.dispatch('input');
+  chooseHeaderRow(ctx, 'double-click');
+  await ctx.tick();
+  assert.ok(ctx.modal());
+  assert.equal(ctx.requests.length, 1, 'набранный артикул ушёл с прежней выдачей');
+  headerBox(ctx).querySelector('._ip-refresh').dispatch('click');
+  await ctx.tick();
+  art.value = 'second';
+  art.dispatch('input'); // Ответ для first не подтверждает новое значение second.
+  await ctx.settle(1, {pickerData: headerPickerData('b-1')});
+  assert.equal(headerCtl(ctx, 'Артикул').value, 'second', 'набранное пропало');
+  chooseHeaderRow(ctx, 'button');
+  await ctx.tick();
+  assert.ok(ctx.modal());
+  assert.equal(ctx.requests.length, 2, 'старый успешный ответ подтвердил новое значение');
+  headerBox(ctx).querySelector('._ip-refresh').dispatch('click');
+  await ctx.tick();
+  await ctx.settle(2, {pickerData: headerPickerData('b-1')});
+  chooseHeaderRow(ctx, 'Enter');
+  await ctx.tick();
+  assert.equal(JSON.parse(ctx.requests[3].options.body.get('_pick_fields')).Артикул, 'second');
+  await ctx.settle(3, {});
+});
+
+test('поля шапки: очередь и пустой ответ не разрешают выбор до последнего успешного ответа', async () => {
+  const ctx = pickerContext(true);
+  await openManagedHeader(ctx);
+  headerCtl(ctx, 'Бренд').value = 'b-2';
+  headerCtl(ctx, 'Бренд').dispatch('change');
+  await ctx.tick();
+  const hideZero = headerBox(ctx).querySelector('._ip-head-fields').querySelectorAll('input')
+    .find((ctl) => ctl.type === 'checkbox');
+  hideZero.checked = true;
+  hideZero.dispatch('change');
+  assert.equal(ctx.requests.length, 2, 'обновления ушли параллельно');
+  await ctx.settle(1, {pickerData: headerPickerData('b-2')});
+  assert.equal(ctx.requests.length, 3, 'очередь не отправила новое значение флажка');
+  assert.equal(JSON.parse(ctx.requests[2].options.body.get('_pick_fields')).СкрыватьНулевые, true);
+  chooseHeaderRow(ctx, 'double-click');
+  await ctx.tick();
+  assert.ok(ctx.modal());
+  assert.equal(ctx.requests.length, 3);
+  await ctx.settle(2, {}); // Обработчик не вернул ПоказатьПодбор.
+  ctx.transfer();
+  await ctx.tick();
+  assert.ok(ctx.modal(), 'пустой ответ разрешил перенести прежнюю отметку');
+  assert.equal(ctx.requests.length, 3);
+  headerBox(ctx).querySelector('._ip-refresh').dispatch('click');
+  await ctx.tick();
+  await ctx.settle(3, {pickerData: headerPickerData('b-2')});
+  chooseHeaderRow(ctx, 'button');
+  await ctx.tick();
+  assert.equal(ctx.requests[4].options.body.get('_event'), 'Выбор');
+  assert.equal(JSON.parse(ctx.requests[4].options.body.get('_pick_fields')).СкрыватьНулевые, true);
+  await ctx.settle(4, {});
+});
+
+test('поля шапки: серверная замена недоступного варианта списка разрешает выбор', async () => {
+  const ctx = pickerContext(true);
+  await openManagedHeader(ctx);
+  headerBox(ctx).querySelector('._ip-refresh').dispatch('click');
+  await ctx.tick();
+  const data = headerPickerData('b-3');
+  data.config.headerFields[0].options = [{value: 'b-3', title: 'GORENJE'}];
+  await ctx.settle(1, {pickerData: data});
+  assert.equal(headerCtl(ctx, 'Бренд').value, 'b-3');
+  chooseHeaderRow(ctx, 'Enter');
+  await ctx.tick();
+  assert.equal(ctx.modal(), null);
+  assert.equal(JSON.parse(ctx.requests[2].options.body.get('_pick_fields')).Бренд, 'b-3');
+  assert.deepEqual(JSON.parse(ctx.requests[2].options.body.get('_pick_result')), [{id: 'b-3-row', Бренд: 'b-3'}]);
+  await ctx.settle(2, {});
+});

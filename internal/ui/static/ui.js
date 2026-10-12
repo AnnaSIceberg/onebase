@@ -3571,7 +3571,8 @@ var obPickerSearch = {
   picked: {},      // выбранные строки по id — переживают смену выдачи
   order: [],       // порядок выбора: «Перенести» отдаёт строки в нём
   filters: Object.create(null), // значения отборов (Конфиг.Отборы) — переживают смену выдачи
-  fields: Object.create(null)   // значения полей шапки (Конфиг.ПоляШапки) — уходят на сервер
+  fields: Object.create(null),  // значения полей шапки (Конфиг.ПоляШапки) — уходят на сервер
+  appliedFields: null // поля шапки, которым соответствует показанная выдача
 };
 
 // obPickerFieldsParam — значения полей шапки строкой для _pick_fields; пусто —
@@ -3599,6 +3600,7 @@ function obPickerForget() {
   obPickerSearch.order = [];
   obPickerSearch.filters = Object.create(null);
   obPickerSearch.fields = Object.create(null);
+  obPickerSearch.appliedFields = null;
   obPickerSearch.generation++;
   obPickerSearch.inFlight = null;
 }
@@ -3623,7 +3625,9 @@ function obPickerSendSearch(q) {
   if (obPickerSearch.inFlight) { obPickerSearch.pending = q; return; }
   if (!document.getElementById('_item-picker-modal')) { obPickerForget(); return; }
   if (typeof obFire !== 'function') return;
-  var request = {generation: obPickerSearch.generation, search: true, query: q};
+  var fields = Object.create(null);
+  Object.keys(obPickerSearch.fields).forEach(function (k) { fields[k] = obPickerSearch.fields[k]; });
+  var request = {generation: obPickerSearch.generation, search: true, query: q, fields: fields};
   obPickerSearch.inFlight = request;
   var params = {};
   var ctx = obPickerSearch.context;
@@ -3663,6 +3667,7 @@ function obPickerFirePending() {
 window.obPickerSearchEmpty = function (request) {
   if (!request || !request.search || !obPickerSearchApplied(request)) return;
   obPickerSearch.appliedQuery = null;
+  obPickerSearch.appliedFields = null;
   var modal = document.getElementById('_item-picker-modal');
   var tb = modal ? modal.querySelector('tbody') : null;
   if (!tb) { obPickerFirePending(); return; }
@@ -3737,6 +3742,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
       obPickerSearch.fields = Object.create(null);
     }
     obPickerSearch.appliedQuery = searchResponse ? request.query : '';
+    obPickerSearch.appliedFields = Object.create(null);
     obPickerSearch.element = elementName;
     obPickerSearch.context = eventContext || null;
     search.value = obPickerSearch.query;
@@ -3751,6 +3757,17 @@ function openItemPicker(payload, elementName, eventContext, request) {
     hdrBar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end;margin-bottom:10px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px';
     var hdrRefresh = function () { obPickerSendSearch(obPickerSearch.query); };
     headerFields.forEach(function (f) {
+      // Ответ подтверждает отправленные значения, а не ввод, сделанный пока
+      // запрос был в пути. Сервер может заменить недоступный вариант списка.
+      var appliedKnown = searchResponse && request.fields &&
+        Object.prototype.hasOwnProperty.call(request.fields, f.name);
+      var applied = appliedKnown ? request.fields[f.name] :
+        (f.type === 'bool' ? !!f.value : (f.value == null ? '' : String(f.value)));
+      if (f.type === 'list' && applied !== '' &&
+          !(f.options || []).some(function (o) { return o.value === applied; })) {
+        applied = f.value == null ? '' : String(f.value);
+      }
+      obPickerSearch.appliedFields[f.name] = applied;
       var known = Object.prototype.hasOwnProperty.call(hdrState, f.name);
       if (f.type === 'list' && known && hdrState[f.name] !== '' &&
           !(f.options || []).some(function (o) { return o.value === hdrState[f.name]; })) known = false;
@@ -4277,6 +4294,15 @@ function openItemPicker(payload, elementName, eventContext, request) {
   btnOk.addEventListener('click', function () { submitPick(); });
   function submitPick() {
     if (noSelect) return;
+    // Общий гейт для Enter, двойного щелчка и кнопки: прежние строки нельзя
+    // отправить с новым контекстом шапки, в том числе после ошибки обновления.
+    if (headerFields.length && (obPickerSearch.inFlight || obPickerSearch.pending !== null ||
+        !obPickerSearch.appliedFields ||
+        Object.keys(obPickerSearch.fields).length !== Object.keys(obPickerSearch.appliedFields).length ||
+        Object.keys(obPickerSearch.fields).some(function (k) {
+          return !Object.prototype.hasOwnProperty.call(obPickerSearch.appliedFields, k) ||
+            obPickerSearch.fields[k] !== obPickerSearch.appliedFields[k];
+        }))) return;
     var result;
     // Поля шапки уходят и с выбором: где выбрано (склад, филиал) обработчику
     // бывает нужно не меньше, чем что.
