@@ -72,6 +72,7 @@ func RunFullWithOptions(dir string, opts Options) Result {
 			issues = append(issues, Issue{Message: "roles: " + rolesErr.Error()})
 		}
 		issues = append(issues, CheckCrossRefs(proj, roles)...)
+		issues = append(issues, CheckUserCardPolicies(dir, proj, roles)...)
 		warnings = append(warnings, CheckLayoutWarnings(proj)...)
 		warnings = append(warnings, CheckFormFieldFormat(proj)...)
 		warnings = append(warnings, CheckFormEventDispatch(proj)...)
