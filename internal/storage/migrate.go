@@ -577,12 +577,22 @@ func (db *DB) Migrate(ctx context.Context, entities []*metadata.Entity) error {
 	// Таблицы с длинными именами (#1946) переименовываются до создания любой
 	// из таблиц: внешние ключи новых таблиц ссылаются на короткие имена, и
 	// цель ссылки к этому моменту уже должна называться по-новому.
+	// Прежнее имя, общее для таблицы и её табличной части (PostgreSQL обрезал
+	// их одинаково), — отказ, а не угадывание (решение владельца по #1946).
+	var entityTables []string
 	for _, e := range ordered {
-		if err := db.renameLegacyTable(ctx, metadata.TableLogical(e.Name)); err != nil {
+		entityTables = append(entityTables, metadata.TableLogical(e.Name))
+		for _, tp := range e.TableParts {
+			entityTables = append(entityTables, metadata.TablePartTableLogical(e.Name, tp.Name))
+		}
+	}
+	claims := legacyTableClaims(entityTables)
+	for _, e := range ordered {
+		if err := db.renameLegacyTableClaimed(ctx, metadata.TableLogical(e.Name), claims); err != nil {
 			return fmt.Errorf("migrate %s: %w", e.Name, err)
 		}
 		for _, tp := range e.TableParts {
-			if err := db.renameLegacyTable(ctx, metadata.TablePartTableLogical(e.Name, tp.Name)); err != nil {
+			if err := db.renameLegacyTableClaimed(ctx, metadata.TablePartTableLogical(e.Name, tp.Name), claims); err != nil {
 				return fmt.Errorf("migrate %s.%s: %w", e.Name, tp.Name, err)
 			}
 		}

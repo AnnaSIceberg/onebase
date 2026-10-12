@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -98,4 +99,75 @@ func TestUniversalImportMapsLegacyLongIdents_Matrix(t *testing.T) {
 			}
 		}
 	})
+}
+
+// Архив PostgreSQL-базы до #1946: длинные имена в нём уже обрезаны до 62–63
+// байт, полного нет. Импорт обязан отказать, а не завести под обрезанным
+// именем новую текстовую колонку (данные ушли бы мимо реквизита) и не
+// пропустить таблицу как «чужую» — решение владельца по #1946: отказ вместо
+// угадывания.
+func TestUniversalImportRefusesTruncatedLegacyIdents_Matrix(t *testing.T) {
+	const entityName = "СправочникСОченьДлиннымИменемИзКонфигурации1С"
+	const fieldName = "РеквизитСОченьДлиннымИменемКоторыйПришёлИзОдинЭс"
+	entity := &metadata.Entity{
+		Name: entityName,
+		Kind: metadata.KindCatalog,
+		Fields: []metadata.Field{
+			{Name: "Наименование", Type: metadata.FieldTypeString},
+			{Name: fieldName, Type: metadata.FieldTypeString},
+		},
+	}
+	fullTable := metadata.TableLogical(entityName)
+	truncTable := metadata.LegacySQLIdents(fullTable)[1]
+	truncCol := metadata.LegacySQLIdents(metadata.LogicalColumnName(entity.Fields[1]))[1]
+
+	cfg := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cfg, "onebase.yaml"), []byte("name: test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(cfg, "catalogs"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	yaml := "name: " + entityName + "\nfields:\n  - name: Наименование\n    type: string\n  - name: " + fieldName + "\n    type: string\n"
+	if err := os.WriteFile(filepath.Join(cfg, "catalogs", entityName+".yaml"), []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for _, tc := range []struct{ name, table, col, want string }{
+		// Колонка обрезана, таблица — под полным именем (переводится).
+		{"колонка", fullTable, truncCol, "колонка"},
+		// Таблица обрезана — как её и хранил PostgreSQL.
+		{"таблица", truncTable, "наименование", "таблица"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := newSQLite(t, "legacy-trunc-"+tc.name)
+			if err := source.EnsureServiceSchema(ctx); err != nil {
+				t.Fatal(err)
+			}
+			cols := "id TEXT PRIMARY KEY, deletion_mark INTEGER NOT NULL DEFAULT 0, _version BIGINT NOT NULL DEFAULT 1, наименование TEXT"
+			if tc.col != "наименование" {
+				cols += ", " + tc.col + " TEXT"
+			}
+			for _, q := range []string{
+				"CREATE TABLE " + tc.table + " (" + cols + ")",
+				"INSERT INTO " + tc.table + " (id, " + tc.col + ") VALUES ('" + uuid.New().String() + "', 'значение')",
+			} {
+				if _, err := source.Exec(ctx, q); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var archive bytes.Buffer
+			if err := ExportUniversal(ctx, source, "file", cfg, "", "test", &archive); err != nil {
+				t.Fatal("export:", err)
+			}
+			dbtest.ForEachDialect(t, func(t *testing.T, target *storage.DB) {
+				target.SetFilesDir(t.TempDir())
+				_, err := ImportUniversalWithOptions(ctx, target, "file", t.TempDir(), "", bytes.NewReader(archive.Bytes()), int64(archive.Len()),
+					ImportOptions{ExchangeMode: ExchangeRestoreClone})
+				if err == nil || !strings.Contains(err.Error(), "обрезанное PostgreSQL") || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("импорт обязан отказать по обрезанному имени (%s), получили: %v", tc.want, err)
+				}
+			})
+		})
+	}
 }

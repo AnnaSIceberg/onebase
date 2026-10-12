@@ -105,6 +105,9 @@ func runMigrate(cmd *cobra.Command, _ []string) error {
 
 // printMigrationPlan показывает, что сделает реструктуризация, ничего не меняя.
 func printMigrationPlan(ctx context.Context, db *storage.DB, proj *project.Project) error {
+	if err := printLongIdentPlan(ctx, db, proj); err != nil {
+		return err
+	}
 	plan, err := db.PlanMigration(ctx, proj.Entities, proj.Registers, proj.InfoRegisters)
 	if err != nil {
 		return err
@@ -183,4 +186,32 @@ func dsnFromFlags(cmd *cobra.Command) string {
 		return dsn
 	}
 	return "postgres://localhost/onebase"
+}
+
+// printLongIdentPlan — инвентаризация длинных имён (#1946): какие таблицы и
+// колонки миграция переименует и где откажет. Печатается, только если есть
+// что показать; без длинных имён вывод dry-run прежний.
+func printLongIdentPlan(ctx context.Context, db *storage.DB, proj *project.Project) error {
+	plan, err := db.PlanLongIdents(ctx, proj.Entities, proj.Registers, proj.InfoRegisters)
+	if err != nil {
+		return err
+	}
+	if len(plan) == 0 {
+		return nil
+	}
+	conflicts := 0
+	outf("Длинные имена (#1946, docs/long-identifiers.md), %d:\n", len(plan))
+	for _, a := range plan {
+		outln("  " + a.String())
+		if a.Conflict != "" {
+			conflicts++
+		}
+	}
+	if conflicts > 0 {
+		outf("Конфликтов: %d — миграция на них откажет, ничего не переименовав в этих таблицах.\n", conflicts)
+	} else {
+		outln("Переименование — ALTER … RENAME, данные не копируются. Снимите резервную копию: старая платформа переименованную базу не прочитает.")
+	}
+	outln("")
+	return nil
 }

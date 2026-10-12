@@ -2564,6 +2564,12 @@ func importTableJSONL(ctx context.Context, db *storage.DB, tableName, filePath s
 		tableName = short
 	}
 	if !exists {
+		// Имя таблицы из архива PostgreSQL до #1946 — обрезанное: полного нет,
+		// пропуск выглядел бы как «таблица другой конфигурации».
+		if l := len(tableName); l >= metadata.MaxSQLIdentBytes-1 && l <= metadata.MaxSQLIdentBytes {
+			return 0, fmt.Errorf("import: таблица %q в архиве — имя, обрезанное PostgreSQL до %d байт (архив снят до #1946); "+
+				"однозначно сопоставить её нельзя — снимите архив заново после `onebase migrate` новой платформой (docs/long-identifiers.md)", tableName, l)
+		}
 		return 0, nil
 	}
 
@@ -2647,6 +2653,14 @@ func importTableJSONL(ctx context.Context, db *storage.DB, tableName, filePath s
 		}
 		sort.Strings(missing)
 		for _, col := range missing {
+			// Архив PostgreSQL-базы до #1946: длинное имя там уже обрезано до
+			// 62–63 байт, полного нет — к реквизиту его не привести. Новая
+			// текстовая колонка под обрезанным именем увела бы данные мимо
+			// реквизита; отказ вместо угадывания (решение владельца по #1946).
+			if l := len(col); l >= metadata.MaxSQLIdentBytes-1 && l <= metadata.MaxSQLIdentBytes {
+				return n, fmt.Errorf("import %s: колонка %q в архиве — имя, обрезанное PostgreSQL до %d байт (архив снят до #1946); "+
+					"однозначно сопоставить её реквизиту нельзя — снимите архив заново после `onebase migrate` новой платформой (docs/long-identifiers.md)", tableName, col, l)
+			}
 			if err := db.AddColumnIfMissing(ctx, tableName, col, db.Dialect().TypeText()); err != nil {
 				return n, fmt.Errorf("add archive column %s.%s: %w", tableName, col, err)
 			}
