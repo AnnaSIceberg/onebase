@@ -48,6 +48,13 @@ func newCardFixtureTyped(t *testing.T, db *storage.DB, typ metadata.FieldType, o
 	f.orders = &metadata.Entity{Name: "Ордер", Kind: metadata.KindDocument, Fields: []metadata.Field{
 		{Name: "Номер", Type: metadata.FieldTypeString}, {Name: "Филиал", Type: typ}}}
 	entities := []*metadata.Entity{f.card, f.orders}
+	var enums []*metadata.Enum
+	if metadata.IsEnum(typ) {
+		name := metadata.EnumTypeName(typ)
+		f.card.Fields[2].EnumName = name
+		f.orders.Fields[1].EnumName = name
+		enums = []*metadata.Enum{{Name: name, Values: []string{"A", "B"}}}
+	}
 	if metadata.IsReference(typ) {
 		target := metadata.RefName(typ)
 		f.card.Fields[2].RefEntity = target
@@ -71,7 +78,7 @@ func newCardFixtureTyped(t *testing.T, db *storage.DB, typ metadata.FieldType, o
 		Documents: map[string][]string{f.orders.Name: {"read", "write", "delete", "post", "unpost"}},
 		RowAccess: auth.RowAccess{Documents: map[string]auth.RowPolicies{f.orders.Name: {"read": policy, "write": {SameAs: "read"}, "delete": {SameAs: "read"}, "post": {SameAs: "read"}, "unpost": {SameAs: "read"}}}}}}}}
 	reg := runtime.NewRegistry()
-	reg.Load(runtime.LoadOptions{Entities: entities})
+	reg.Load(runtime.LoadOptions{Entities: entities, Enums: enums})
 	interp := interpreter.New()
 	interp.LookupProc = reg.GetModuleProc
 	f.s = New(reg, db, interp, nil, Config{}, nil)
@@ -693,6 +700,104 @@ func TestUserCardPublicHTTPRejectsNullSourceMatrix(t *testing.T) {
 					}
 				} else if w.Code != http.StatusForbidden || strings.Contains(w.Body.String(), "VISIBLE") || strings.Contains(w.Body.String(), "HIDDEN") {
 					t.Fatalf("missing source disclosed rows: %d %s", w.Code, w.Body.String())
+				}
+			})
+		})
+	}
+}
+
+func TestUserCardPublicEnumSourceMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		f := newCardFixtureTyped(t, db, metadata.FieldType("enum:Филиал"), "A", "B")
+		eq := f.user.Roles[0].Permissions.RowAccess.Documents[f.orders.Name]["read"]
+		ne := eq
+		ne.Op = "ne"
+		policies := []struct {
+			name                        string
+			policy                      auth.RowPolicy
+			count                       float64
+			visibleStatus, hiddenStatus int
+		}{
+			{"eq", eq, 1, 200, 403},
+			{"ne", ne, 1, 403, 200},
+			{"not", auth.RowPolicy{Not: &eq}, 1, 403, 200},
+			{"any", auth.RowPolicy{Any: []auth.RowPolicy{eq, {Field: "Филиал", Op: "eq", Value: auth.RowValue{Literal: "B"}}}}, 2, 200, 200},
+		}
+		for _, source := range []struct {
+			name       string
+			value      any
+			valid, raw bool
+		}{
+			{"canonical", "A", true, false},
+			{"null", nil, false, false},
+			{"empty", "", false, false},
+			{"space", " ", false, false},
+			{"whitespace", "\t\n", false, false},
+			{"nil marker", "<nil>", false, false},
+			{"padded nil marker", " <nil> ", false, false},
+			{"trailing space", "A ", false, false},
+			{"leading space", " A", false, false},
+			{"unicode space", "A\u00a0", false, false},
+			{"unknown", "INVALID", false, true},
+			{"case mismatch", "a", false, true},
+		} {
+			t.Run(source.name, func(t *testing.T) {
+				if source.raw {
+					// Imported/corrupt data can bypass the ordinary write backstop.
+					_, err := db.Exec(f.ctx, fmt.Sprintf("UPDATE %s SET филиал = %s WHERE id = %s", metadata.TableName(f.card.Name), db.Dialect().Placeholder(1), db.Dialect().Placeholder(2)), source.value, f.cardID.String())
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					// Empty placeholders and padded identifiers are accepted by Upsert.
+					f.saveCard(t, source.value)
+				}
+				for _, p := range policies {
+					t.Run(p.name, func(t *testing.T) {
+						f.user.Roles[0].Permissions.RowAccess.Documents[f.orders.Name]["read"] = p.policy
+						want := float64(0)
+						if source.valid {
+							want = p.count
+						}
+						if got := f.dslCount(t, "ВЫБРАТЬ Номер ИЗ Документ.Ордер"); got != want {
+							t.Errorf("DSL returned %v rows, want %v", got, want)
+						}
+						for _, row := range []struct {
+							id     uuid.UUID
+							status int
+						}{{f.visible, p.visibleStatus}, {f.hidden, p.hiddenStatus}} {
+							status := http.StatusForbidden
+							if source.valid {
+								status = row.status
+							}
+							w := f.request("GET", "/ui/document/ордер/"+row.id.String(), nil)
+							if w.Code != status {
+								t.Errorf("HTTP card %s = %d, want %d", row.id, w.Code, status)
+							}
+						}
+						if !source.valid {
+							w := f.request("GET", "/ui/document/ордер", nil)
+							if (w.Code != http.StatusOK && w.Code != http.StatusForbidden) || strings.Contains(w.Body.String(), "VISIBLE") || strings.Contains(w.Body.String(), "HIDDEN") {
+								t.Errorf("HTTP list leaked rows or returned unexpected status: %d", w.Code)
+							}
+						}
+					})
+				}
+			})
+		}
+	})
+}
+
+func TestUserCardPublicStringWhitespaceMatrix(t *testing.T) {
+	for _, value := range []string{" ", "<nil>", "A "} {
+		t.Run(value, func(t *testing.T) {
+			dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+				f := newCardFixtureTyped(t, db, metadata.FieldTypeString, value, "B")
+				if got := f.dslCount(t, "ВЫБРАТЬ Номер ИЗ Документ.Ордер"); got != float64(1) {
+					t.Fatalf("string equality count = %v", got)
+				}
+				if w := f.request("GET", "/ui/document/ордер/"+f.visible.String(), nil); w.Code != http.StatusOK {
+					t.Fatalf("string equality HTTP = %d", w.Code)
 				}
 			})
 		})

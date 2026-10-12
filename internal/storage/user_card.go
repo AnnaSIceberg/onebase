@@ -102,10 +102,28 @@ func (db *DB) ReadUserCardSource(ctx context.Context, desc UserCardDescriptor, u
 			}
 		}
 		if metadata.IsEnum(desc.Field.Type) {
-			if db.enumSourceOrNil() == nil {
+			src := db.enumSourceOrNil()
+			if src == nil {
 				return UserCardValue{}, fmt.Errorf("user_card enumeration metadata is unavailable")
 			}
-			if msg := ValidateEnumValues(db.enumSourceOrNil(), desc.Catalog, map[string]any{desc.Field.Name: value}, nil); msg != "" {
+			// Write validation accepts an unselected optional enum and trims its
+			// identifier. An access source must contain a selected, exact identifier;
+			// validate the same value that the policy will actually compare.
+			selected, ok := value.(string)
+			if !ok || selected == "<nil>" || selected != strings.TrimSpace(selected) {
+				continue
+			}
+			en := src.GetEnum(metadata.EnumTypeName(desc.Field.Type))
+			valid := false
+			if en != nil {
+				for _, id := range en.Values {
+					if selected == id {
+						valid = true
+						break
+					}
+				}
+			}
+			if !valid {
 				continue
 			}
 		}
