@@ -2037,11 +2037,15 @@ func (s *Server) markForDeletion(ctx context.Context, entity *metadata.Entity, i
 				return err
 			}
 			if asBool(row["posted"]) {
-				if err := s.clearMovements(txCtx, entity.Name, id); err != nil {
+				// Пометка проведённого документа снимает проведение так же, как
+				// «Отменить проведение», — с ОбработкаУдаленияПроведения, как в 1С.
+				// Отказ обработчика отменяет и пометку.
+				res, err := s.entityService().Unpost(txCtx, entity, id)
+				if err != nil {
 					return err
 				}
-				if err := s.store.SetPosted(txCtx, entity.Name, id, false); err != nil {
-					return err
+				if res.DSLError != "" {
+					return &markRefusedError{message: res.DSLError}
 				}
 			}
 		}
@@ -2067,6 +2071,12 @@ func (s *Server) markForDeletion(ctx context.Context, entity *metadata.Entity, i
 		return nil
 	})
 }
+
+// markRefusedError — ОбработкаУдаленияПроведения отказала в снятии проведения
+// при пометке на удаление: документ остаётся проведённым и непомеченным.
+type markRefusedError struct{ message string }
+
+func (e *markRefusedError) Error() string { return e.message }
 
 // unpostDocument clears movements, sets posted=false and runs
 // ОбработкаУдаленияПроведения in the same transaction.
@@ -2265,6 +2275,12 @@ func (s *Server) deleteRecord(w http.ResponseWriter, r *http.Request) {
 		if err := s.store.WithTx(r.Context(), func(ctx context.Context) error {
 			return s.markForDeletion(ctx, entity, id, true)
 		}); err != nil {
+			var refused *markRefusedError
+			if errors.As(err, &refused) {
+				// Обработчик отменил снятие проведения — документ на месте.
+				http.Error(w, s.errText(r, errors.New(refused.message)), http.StatusConflict)
+				return
+			}
 			s.serverError(w, r, err)
 			return
 		}
