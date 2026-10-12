@@ -38,7 +38,11 @@ func TestInfoRegPeriodKeepsSeconds(t *testing.T) {
 	t.Cleanup(ts.Close)
 	formURL := ts.URL + "/ui/inforeg/" + url.PathEscape(ir.Name) + "/new"
 
-	resp, err := http.Get(formURL)
+	req, err := http.NewRequest(http.MethodGet, formURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := ts.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
