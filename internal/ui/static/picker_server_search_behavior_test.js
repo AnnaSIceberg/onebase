@@ -827,3 +827,14 @@ for (const close of ['cancel', 'escape', 'transfer', 'other-button']) {
     assert.deepEqual(visibleIds(ctx), ['linked-1'], 'повторное открытие вернуло коллизии ключей');
   });
 }
+
+test('Конфиг.Ширина задаёт ширину окна, без неё — прежние 720px', () => {
+  const ctx = pickerContext();
+  ctx.open({columns, rows, config: {title: 'Подбор', width: 1440}}, 'КнопкаНайти', null);
+  const wide = ctx.modal().children[0].style.cssText;
+  assert.match(wide, /(^|;)width:1440px;/, wide);
+  assert.match(wide, /max-width:96vw/, 'на узком экране окно обязано ужиматься');
+
+  ctx.open({columns, rows, config: {title: 'Подбор'}}, 'КнопкаНайти', null);
+  assert.match(ctx.modal().children[0].style.cssText, /(^|;)width:720px;/);
+});

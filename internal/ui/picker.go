@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -75,6 +76,11 @@ type pickerConfig struct {
 	// сравнивает значение колонки целиком. Списки значений строятся из
 	// приехавших строк и сужают друг друга.
 	Filters []string `json:"filters,omitempty"`
+	// Width — ширина окна в пикселях; 0 — прежние 720. Подбору номенклатуры с
+	// десятком колонок (артикул, склад, остатки, цены, аналоги) 720 мало:
+	// таблица прокручивается вбок, наименование переносится в три строки. На
+	// узком экране окно по-прежнему не шире 96% ширины.
+	Width int `json:"width,omitempty"`
 }
 
 // newPickerBuiltin создаёт билтин ПоказатьПодбор. Записывает собранный payload
@@ -89,7 +95,7 @@ type pickerConfig struct {
 // Колонки — Массив структур {Имя, Заголовок, Тип, Редактируемое}.
 // Конфиг  — Структура {Заголовок, ПолеПоиска, ПолеКоличества, ВыбратьВсе,
 //
-//	ОдинВыбор, Отборы}
+//	ОдинВыбор, Отборы, Ширина}
 //
 //	(опционально). Отборы — имена колонок строкой через запятую или Массивом.
 func newPickerBuiltin(sink **pickerPayload) interpreter.BuiltinFunc {
@@ -141,10 +147,43 @@ func newPickerBuiltin(sink **pickerPayload) interpreter.BuiltinFunc {
 				return nil, err
 			}
 			p.Config.Filters = filters
+			width, err := pickerWidth(dslField(args[2], "Ширина", "Width"))
+			if err != nil {
+				return nil, err
+			}
+			p.Config.Width = width
 		}
 		*sink = p
 		return nil, nil
 	})
+}
+
+// pickerWidth разбирает Конфиг.Ширина — ширину окна в пикселях. Не число или
+// не больше нуля — ошибка: молча проигнорированная ширина выглядела бы как
+// «ключ не работает».
+func pickerWidth(v any) (int, error) {
+	if v == nil {
+		return 0, nil
+	}
+	var w float64
+	switch n := v.(type) {
+	case int:
+		w = float64(n)
+	case int64:
+		w = float64(n)
+	case float64:
+		w = n
+	default:
+		f, err := strconv.ParseFloat(strings.TrimSpace(pickStr(v)), 64)
+		if err != nil {
+			return 0, fmt.Errorf("ПоказатьПодбор: Ширина должна быть числом пикселей, получено «%v»", v)
+		}
+		w = f
+	}
+	if w <= 0 || w != math.Trunc(w) {
+		return 0, fmt.Errorf("ПоказатьПодбор: Ширина должна быть целым числом пикселей больше нуля, получено %v", v)
+	}
+	return int(w), nil
 }
 
 // pickerFilters разбирает Конфиг.Отборы: строку «Направление, Филиал» или

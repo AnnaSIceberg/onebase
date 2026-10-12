@@ -97,3 +97,34 @@ func TestPicker_FiltersRejectUnknownAndEditableColumns(t *testing.T) {
 		}
 	}
 }
+
+// Конфиг.Ширина — ширина окна подбора в пикселях. Тот же путь, что у
+// пользователя: событие формы → pickerData.config.width.
+func TestPicker_Width(t *testing.T) {
+	resp := pickerFiltersResponse(t, `Конфиг.Вставить("Ширина", 1440);`)
+	if resp.PickerData == nil {
+		t.Fatalf("ждали pickerData; error=%q", resp.Error)
+	}
+	if got := resp.PickerData.Config.Width; got != 1440 {
+		t.Errorf("width = %d, ждали 1440", got)
+	}
+}
+
+func TestPicker_WidthDefault(t *testing.T) {
+	resp := pickerFiltersResponse(t, "")
+	if resp.PickerData == nil {
+		t.Fatalf("ждали pickerData; error=%q", resp.Error)
+	}
+	if got := resp.PickerData.Config.Width; got != 0 {
+		t.Errorf("без Ширины width = %d, ждали 0 (окно — прежние 720px)", got)
+	}
+}
+
+func TestPicker_WidthInvalid(t *testing.T) {
+	for _, v := range []string{`0`, `-5`, `"широко"`, `100.5`} {
+		resp := pickerFiltersResponse(t, `Конфиг.Вставить("Ширина", `+v+`);`)
+		if resp.PickerData != nil || !strings.Contains(resp.Error, "Ширина") {
+			t.Errorf("Ширина %s: ждали ошибку про Ширину, получили error=%q", v, resp.Error)
+		}
+	}
+}
