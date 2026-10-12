@@ -79,7 +79,13 @@ try {
         $sum = [IO.File]::ReadAllText($sumPath, [Text.Encoding]::UTF8).Trim()
         if ($sum -notmatch ('^([0-9a-fA-F]{64})\s+' + [regex]::Escape($assetName) + '$')) { throw 'Invalid checksum record' }
         $expected = $Matches[1].ToLowerInvariant()
-        $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archivePath).Hash.ToLowerInvariant()
+        $hasher = [Security.Cryptography.SHA256]::Create()
+        try {
+            $hashInput = [IO.File]::OpenRead($archivePath)
+            try {
+                $actual = [BitConverter]::ToString($hasher.ComputeHash($hashInput)).Replace('-', '').ToLowerInvariant()
+            } finally { $hashInput.Dispose() }
+        } finally { $hasher.Dispose() }
         if ($actual -cne $expected) { throw 'SHA-256 mismatch' }
         # Windows release ZIPs are flat. Stream only the exact CLI entry,
         # never expand archive-controlled paths or select a recursive match.

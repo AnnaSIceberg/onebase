@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/ivantit66/onebase/internal/installtest"
 )
 
 // Exercise the actual shipped scripts and real native processes with release
@@ -53,6 +55,9 @@ func TestBootstrap(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		binaryName += ".exe"
 	}
+	ambientDir := t.TempDir()
+	write(t, filepath.Join(ambientDir, binaryName), fixture, 0700)
+	t.Setenv("PATH", ambientDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	projectName := "проект & literal; $(touch injected)"
 	if runtime.GOOS == "windows" {
 		projectName = "проект & literal; (no shell)"
@@ -79,7 +84,7 @@ func TestBootstrap(t *testing.T) {
 			if runtime.GOOS == "windows" {
 				testAsset = testBundle + ".zip"
 			}
-			root := t.TempDir()
+			root := installtest.CanonicalTempDir(t)
 			installDir := filepath.Join(root, "install with spaces")
 			project := filepath.Join(root, projectName)
 			sentinel := filepath.Join(project, ".mcp.json")
@@ -110,8 +115,8 @@ func TestBootstrap(t *testing.T) {
 			if scenario == "wrong-sum-name" {
 				sum = fmt.Sprintf("%x  other.tar.gz\n", sha256.Sum256(archive))
 			}
-			var server *httptest.Server
-			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewUnstartedServer(nil)
+			server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests.Add(1)
 				switch r.URL.Path {
 				case "/latest":
@@ -142,7 +147,8 @@ func TestBootstrap(t *testing.T) {
 					t.Errorf("unexpected download: %s", r.URL.Path)
 					http.NotFound(w, r)
 				}
-			}))
+			})
+			server.Start()
 			defer server.Close()
 			withProject := scenario != "new"
 			agents := "claude,cursor,opencode,zcode"
@@ -173,6 +179,27 @@ func TestBootstrap(t *testing.T) {
 					argv = append(argv, "--dry-run")
 				}
 			}
+			toolDir := filepath.Join(root, "bootstrap-tools")
+			mkdir(t, toolDir)
+			if runtime.GOOS != "windows" {
+				for _, name := range []string{"curl", "jq", "tar", "mktemp", "uname", "awk", "chmod", "cp", "ln", "mkdir", "rm", "tr", "sha256sum", "shasum"} {
+					target, err := exec.LookPath(name)
+					if err != nil && (name == "sha256sum" || name == "shasum") {
+						continue
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					target, err = filepath.Abs(target)
+					if err != nil {
+						t.Fatal(err)
+					}
+					// macOS shasum dispatches by its original script path; wrappers
+					// preserve it while keeping the child's PATH controlled.
+					quoted := "'" + strings.ReplaceAll(target, "'", "'\\''") + "'"
+					write(t, filepath.Join(toolDir, name), []byte("#!/bin/sh\nexec "+quoted+" \"$@\"\n"), 0700)
+				}
+			}
 			cmd := exec.Command(shell, argv...) //nolint:gosec // G204: fixed OS-selected interpreter and repo script; fixture paths are separate arguments.
 			mode := ""
 			switch scenario {
@@ -183,9 +210,9 @@ func TestBootstrap(t *testing.T) {
 			case "command-fail":
 				mode = "command-fail"
 			}
-			env := map[string]string{"BOOTSTRAP_FIXTURE_MODE": mode, "BOOTSTRAP_FIXTURE_ARGS": argsFile, "TMPDIR": staging, "TEMP": staging, "TMP": staging}
+			env := map[string]string{"BOOTSTRAP_FIXTURE_MODE": mode, "BOOTSTRAP_FIXTURE_ARGS": argsFile, "TMPDIR": staging, "TEMP": staging, "TMP": staging, "PATH": toolDir}
 			if scenario == "existing-path" {
-				env["PATH"] = existingDir + string(os.PathListSeparator) + os.Getenv("PATH")
+				env["PATH"] = existingDir + string(os.PathListSeparator) + toolDir
 			}
 			if scenario == "concurrent-winner" {
 				env["BOOTSTRAP_FIXTURE_WINNER"] = filepath.Join(installDir, binaryName)
@@ -205,7 +232,7 @@ func TestBootstrap(t *testing.T) {
 					machine = "arm64"
 				}
 				write(t, filepath.Join(fakeBin, "uname"), []byte("#!/bin/sh\ncase \"$1\" in -s) echo "+kernel+";; -m) echo "+machine+";; *) exit 1;; esac\n"), 0700)
-				env["PATH"] = fakeBin + string(os.PathListSeparator) + os.Getenv("PATH")
+				env["PATH"] = fakeBin + string(os.PathListSeparator) + toolDir
 			}
 			cmd.Env = replaceEnv(os.Environ(), env)
 			output, runErr := cmd.CombinedOutput()
@@ -299,11 +326,15 @@ func makeArchive(t *testing.T, fixture []byte, bundle, scenario string) []byte {
 	if runtime.GOOS == "windows" {
 		z := zip.NewWriter(&b)
 		for _, name := range names {
+			content := []byte("unrelated")
+			if name == member {
+				content = fixture
+			}
 			w, err := z.Create(name)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := w.Write(fixture); err != nil {
+			if _, err := w.Write(content); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -314,10 +345,14 @@ func makeArchive(t *testing.T, fixture []byte, bundle, scenario string) []byte {
 		g := gzip.NewWriter(&b)
 		z := tar.NewWriter(g)
 		for _, name := range names {
-			if err := z.WriteHeader(&tar.Header{Name: name, Mode: 0700, Size: int64(len(fixture)), Typeflag: tar.TypeReg}); err != nil {
+			content := []byte("unrelated")
+			if name == member {
+				content = fixture
+			}
+			if err := z.WriteHeader(&tar.Header{Name: name, Mode: 0700, Size: int64(len(content)), Typeflag: tar.TypeReg}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := z.Write(fixture); err != nil {
+			if _, err := z.Write(content); err != nil {
 				t.Fatal(err)
 			}
 		}

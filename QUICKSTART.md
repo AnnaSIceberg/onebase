@@ -30,8 +30,11 @@ examples/         ← примеры конфигураций (9 штук)
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/ivanarama/onebase/main/install.ps1 -OutFile install.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-& "$env:USERPROFILE\.onebase\bin\onebase.exe" start
 ```
+
+После bootstrap выполните команду из строки `Run:` в его выводе: она содержит
+фактически выбранный CLI. Если скрипт нашёл его только в PATH, копии в
+`%USERPROFILE%\.onebase\bin` не будет.
 
 ### Bootstrap для проекта
 

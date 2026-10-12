@@ -116,8 +116,10 @@ PostgreSQL, запуск, конфигуратор, остановка:
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/ivanarama/onebase/main/install.ps1 -OutFile install.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-& "$env:USERPROFILE\.onebase\bin\onebase.exe" start
 ```
+
+После bootstrap запустите CLI по фактически выбранному пути из строки `Run:`
+в выводе установщика: при имеющемся CLI он может находиться только в PATH.
 
 **Linux / macOS:**
 
@@ -133,8 +135,10 @@ onebase start
 ```bash
 curl -fL https://raw.githubusercontent.com/ivanarama/onebase/main/install.sh -o install.sh
 sh install.sh
-"$HOME/.onebase/bin/onebase" start
 ```
+
+После bootstrap используйте путь из напечатанной строки `Run:`: скрипт может
+выбрать имеющийся CLI из PATH и не создавать `~/.onebase/bin/onebase`.
 
 Установщики сохраняют имеющийся бинарь, не меняют постоянный PATH и глобальные
 конфиги клиентов. Параметры bootstrap и граница готовности `vibe-init` описаны
