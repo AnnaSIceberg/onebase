@@ -1008,7 +1008,7 @@ func (s *Service) deleteInTx(
 		// ОбработкаУдаленияПроведения видит снятые движения и может отказать —
 		// тогда откатывается и удаление. Иначе удаление обходило бы проверки,
 		// которые конфигурация ставит на отмену проведения.
-		if postedFlag(obj.Fields["posted"]) {
+		if obj != nil && postedFlag(obj.Fields["posted"]) {
 			if err := s.unpostInTx(txCtx, entity, id, runtime.NewMovementsCollector(entity.Name, id), messages, lockCollector); err != nil {
 				return err
 			}
