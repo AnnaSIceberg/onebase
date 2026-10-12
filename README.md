@@ -111,10 +111,12 @@ PostgreSQL, запуск, конфигуратор, остановка:
 
 **Windows** — скачайте `onebase-windows-amd64.zip` со страницы
 [Releases](https://github.com/ivanarama/onebase/releases/latest), распакуйте и
-запустите **`onebase-gui.exe`** двойным кликом. Или через PowerShell:
+запустите **`onebase-gui.exe`** двойным кликом. Для установки только CLI через PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/ivanarama/onebase/main/install.ps1 | iex
+Invoke-WebRequest https://raw.githubusercontent.com/ivanarama/onebase/main/install.ps1 -OutFile install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+& "$env:USERPROFILE\.onebase\bin\onebase.exe" start
 ```
 
 **Linux / macOS:**
@@ -124,6 +126,19 @@ tar xzf onebase-linux-amd64.tar.gz          # macOS: onebase-darwin-arm64.tar.gz
 sudo mv onebase-linux-amd64/onebase /usr/local/bin/
 onebase start
 ```
+
+Либо установите CLI в `~/.onebase/bin` без `sudo` (нужны `curl`, `jq`, `tar`
+и `sha256sum` или `shasum`):
+
+```bash
+curl -fL https://raw.githubusercontent.com/ivanarama/onebase/main/install.sh -o install.sh
+sh install.sh
+"$HOME/.onebase/bin/onebase" start
+```
+
+Установщики сохраняют имеющийся бинарь, не меняют постоянный PATH и глобальные
+конфиги клиентов. Параметры bootstrap и граница готовности `vibe-init` описаны
+в [QUICKSTART.md](QUICKSTART.md#bootstrap-для-проекта).
 
 Какой архив брать под вашу платформу, что лежит внутри и как обновить уже
 установленную копию — [QUICKSTART.md → Установка](QUICKSTART.md#установка).
