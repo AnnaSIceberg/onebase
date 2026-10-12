@@ -1265,12 +1265,18 @@ func TestCLIReportsWhyOpenPullReferenceExcludesFixIssue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve repository root: %v", err)
 	}
+	// A missing test-owned contract gives a deterministic independent finding,
+	// without coupling the exclusion check to the live maintenance procedures.
+	contractPath := filepath.Join(directory, "missing-contract.md")
 	// #nosec G204 -- executable and flags are fixed; variable arguments are test-owned paths from t.TempDir.
-	command := exec.Command("go", "run", "./tools/pipelinehealth", "-prs", pullPath, "-issues", issuePath, "-json")
+	command := exec.Command("go", "run", "./tools/pipelinehealth", "-prs", pullPath, "-issues", issuePath,
+		"-contract", contractPath, "-json")
 	command.Dir = repositoryRoot
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("pipelinehealth CLI failed: %v\n%s", err, output)
+	// go run writes its exit-status message to stderr; keep stdout as JSON.
+	output, err := command.Output()
+	exitError, ok := err.(*exec.ExitError)
+	if !ok || exitError.ExitCode() != 1 {
+		t.Fatalf("pipelinehealth CLI did not report the contract failure: %v\n%s", err, output)
 	}
 	var result report
 	if err := json.Unmarshal(output, &result); err != nil {
@@ -1279,9 +1285,23 @@ func TestCLIReportsWhyOpenPullReferenceExcludesFixIssue(t *testing.T) {
 	if len(result.FixCandidates) != 0 {
 		t.Fatalf("referenced issue remained executable: %+v", result.FixCandidates)
 	}
-	if len(result.Findings) != 1 || result.Findings[0].Severity != "yellow" ||
-		result.Findings[0].Code != "fix_issue_referenced_by_open_pull" || result.Findings[0].Issue != 21 ||
-		!strings.Contains(result.Findings[0].Message, "#100, #101") {
+	var diagnostic *finding
+	contractFailure := false
+	for index := range result.Findings {
+		item := &result.Findings[index]
+		if item.Code == "fix_issue_referenced_by_open_pull" && item.Issue == 21 {
+			diagnostic = item
+		}
+		if item.Code == "contract_unreadable" && item.Severity == "red" &&
+			strings.Contains(item.Message, contractPath) {
+			contractFailure = true
+		}
+	}
+	if !contractFailure || result.State != "red" {
+		t.Fatalf("CLI did not report the independent contract failure: %+v", result)
+	}
+	if diagnostic == nil || diagnostic.Severity != "yellow" ||
+		!strings.Contains(diagnostic.Message, "#100, #101") {
 		t.Fatalf("CLI did not explain the exclusion: %+v", result.Findings)
 	}
 }

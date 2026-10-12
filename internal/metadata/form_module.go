@@ -212,6 +212,7 @@ type FormElement struct {
 	HorizontalAlign string            `yaml:"halign,omitempty"`         // left|center|right|stretch
 	VerticalAlign   string            `yaml:"valign,omitempty"`         // top|center|bottom
 	Orientation     string            `yaml:"orientation,omitempty"`    // vertical|horizontal для контейнеров
+	EqualColumns    bool              `yaml:"equal_columns,omitempty"`  // равная ширина детей горизонтальной ГруппаФормы
 	// ScrollX — горизонтальная группа не переносит содержимое на вторую строку,
 	// а прокручивается. Нужна ряду кнопок: перенос рвёт панель действий пополам,
 	// и половина кнопок читается как отдельный блок. По умолчанию перенос, как
@@ -574,6 +575,20 @@ type FormAction struct {
 	// Visible — показывать ли кнопку действия. nil = поведение по умолчанию
 	// (для delete — по праву CanDelete). false = скрыть кнопку.
 	Visible *bool `yaml:"visible,omitempty"`
+	// Post — только для ok: у проводимого документа «ОК» записывает, проводит
+	// и закрывает форму, как в 1С (обычное «ОК» — записать и закрыть). Без
+	// права «Провести» и у помеченного на удаление документа «ОК» остаётся
+	// записью. У непроводимой сущности ключ игнорируется (check предупреждает).
+	Post *bool `yaml:"post,omitempty"`
+}
+
+// OKPosts — «ОК» формы проводит документ (actions.ok.post: true).
+func (f *FormModule) OKPosts() bool {
+	if f == nil || f.Actions == nil {
+		return false
+	}
+	a := f.Actions["ok"]
+	return a != nil && a.Post != nil && *a.Post
 }
 
 // FormCondRule описывает декларативное условное оформление строк и ячеек
