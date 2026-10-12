@@ -838,3 +838,80 @@ test('Конфиг.Ширина задаёт ширину окна, без не�
   ctx.open({columns, rows, config: {title: 'Подбор'}}, 'КнопкаНайти', null);
   assert.match(ctx.modal().children[0].style.cssText, /(^|;)width:720px;/);
 });
+
+// Конфиг.ПоляШапки — поля отбора в шапке окна, как «Список номенклатуры» 1С:
+// что искать, решает сервер (событие Поиск с _pick_fields).
+const headerConfig = (brand) => ({
+  title: 'Список номенклатуры',
+  headerFields: [
+    {name: 'Бренд', title: 'Бренд', type: 'list', value: brand,
+      options: [{value: 'b-1', title: 'ARISTON'}, {value: 'b-2', title: 'BOSCH'}]},
+    {name: 'Артикул', title: 'Артикул', type: 'string', value: ''},
+    {name: 'СкрыватьНулевые', title: 'Скрывать нулевые', type: 'bool', value: false},
+  ],
+});
+const headerBox = (ctx) => ctx.modal().children[0];
+const headerCtl = (ctx, name) => headerBox(ctx).querySelector(`._ip-hf[data-col="${name}"]`);
+
+test('поле шапки: смена списка и Enter в строке отправляют Поиск с _pick_fields', () => {
+  const ctx = pickerContext();
+  ctx.open({columns, rows, config: headerConfig('b-1')}, 'КнПодбор', {_tp: 'Товары'});
+  assert.equal(headerCtl(ctx, 'Бренд').value, 'b-1', 'значение с сервера не подставлено');
+
+  const brand = headerCtl(ctx, 'Бренд');
+  brand.value = 'b-2';
+  brand.dispatch('change');
+  assert.equal(ctx.fired.length, 1);
+  assert.equal(ctx.fired[0].element, 'КнПодбор');
+  assert.equal(ctx.fired[0].event, 'Поиск');
+  assert.equal(ctx.fired[0].params._tp, 'Товары', 'контекст события потерян');
+  assert.deepEqual(JSON.parse(ctx.fired[0].params._pick_fields),
+    {Бренд: 'b-2', Артикул: '', СкрыватьНулевые: false});
+
+  // Ответ сервера пересобирает окно; второй запрос — после него.
+  ctx.respond({columns, rows, config: headerConfig('b-2')}, 'КнПодбор', {_tp: 'Товары'});
+  const art = headerCtl(ctx, 'Артикул');
+  art.value = 'C005';
+  art.dispatch('input');
+  art.dispatch('keydown', {key: 'Enter', preventDefault() {}});
+  assert.equal(ctx.fired.length, 2);
+  assert.equal(JSON.parse(ctx.fired[1].params._pick_fields).Артикул, 'C005');
+});
+
+test('поле шапки: набранное переживает пересборку, чужое значение списка — с сервера', () => {
+  const ctx = pickerContext();
+  ctx.open({columns, rows, config: headerConfig('b-1')}, 'КнПодбор', null);
+  const art = headerCtl(ctx, 'Артикул');
+  art.value = 'C005';
+  art.dispatch('input');
+  headerBox(ctx).querySelector('._ip-refresh').dispatch('click');
+  assert.equal(ctx.fired.length, 1, '«Обновить» не отправил Поиск');
+
+  // Сервер сменил варианты бренда: выбранного b-1 среди них больше нет.
+  const cfg = headerConfig('b-3');
+  cfg.headerFields[0].options = [{value: 'b-3', title: 'GORENJE'}];
+  ctx.respond({columns, rows, config: cfg}, 'КнПодбор', null);
+  assert.equal(headerCtl(ctx, 'Артикул').value, 'C005', 'набранный артикул пропал');
+  assert.equal(headerCtl(ctx, 'Бренд').value, 'b-3');
+});
+
+test('поля шапки уходят и с выбором', () => {
+  const ctx = pickerContext();
+  ctx.open({columns, rows, config: Object.assign(headerConfig('b-1'), {single: true})}, 'КнПодбор', null);
+  headerBox(ctx).querySelector('tbody').rows[0].dispatch('dblclick');
+  const pick = ctx.fired.find((f) => f.event === 'Выбор');
+  assert.ok(pick, 'Выбор не отправлен');
+  assert.equal(JSON.parse(pick.params._pick_fields).Бренд, 'b-1');
+});
+
+test('БезВыбора: ни отметок, ни «Выбрать» — одна кнопка «Закрыть»', () => {
+  const ctx = pickerContext();
+  ctx.open({columns, rows, config: {title: 'Список номенклатуры', single: true, noSelect: true}}, 'КнПодбор', null);
+  const box = headerBox(ctx);
+  const foot = box.children[box.children.length - 1];
+  assert.equal(foot.children.length, 1);
+  assert.equal(foot.children[0].textContent, 'Закрыть');
+  assert.equal(box.querySelector('._ip-cb'), null, 'у строк остались отметки');
+  ctx.rowsOf()[0].dispatch('dblclick');
+  assert.equal(ctx.fired.length, 0, 'двойной щелчок что-то выбрал');
+});

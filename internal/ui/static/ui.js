@@ -3570,8 +3570,19 @@ var obPickerSearch = {
   pending: null,   // запрос, набранный пока предыдущий в пути (строка) либо null
   picked: {},      // выбранные строки по id — переживают смену выдачи
   order: [],       // порядок выбора: «Перенести» отдаёт строки в нём
-  filters: Object.create(null) // значения отборов (Конфиг.Отборы) — переживают смену выдачи
+  filters: Object.create(null), // значения отборов (Конфиг.Отборы) — переживают смену выдачи
+  fields: Object.create(null)   // значения полей шапки (Конфиг.ПоляШапки) — уходят на сервер
 };
+
+// obPickerFieldsParam — значения полей шапки строкой для _pick_fields; пусто —
+// полей шапки у окна нет.
+function obPickerFieldsParam() {
+  var keys = Object.keys(obPickerSearch.fields);
+  if (!keys.length) return '';
+  var out = {};
+  keys.forEach(function (k) { out[k] = obPickerSearch.fields[k]; });
+  return JSON.stringify(out);
+}
 
 // obPickerForget — диалог закрыт. Гасим таймер, забываем набранное и выбор.
 // Меняем поколение: ответы и завершение старых запросов больше не относятся
@@ -3587,6 +3598,7 @@ function obPickerForget() {
   obPickerSearch.picked = {};
   obPickerSearch.order = [];
   obPickerSearch.filters = Object.create(null);
+  obPickerSearch.fields = Object.create(null);
   obPickerSearch.generation++;
   obPickerSearch.inFlight = null;
 }
@@ -3617,6 +3629,8 @@ function obPickerSendSearch(q) {
   var ctx = obPickerSearch.context;
   if (ctx) Object.keys(ctx).forEach(function (key) { params[key] = ctx[key]; });
   params._pick_query = q;
+  var fieldsParam = obPickerFieldsParam();
+  if (fieldsParam) params._pick_fields = fieldsParam;
   obFire(obPickerSearch.element, 'Поиск', params, request);
 }
 
@@ -3705,18 +3719,99 @@ function openItemPicker(payload, elementName, eventContext, request) {
   // фильтровать нечего: выдача обрезана пределом, а искомое за ним, либо
   // колонка показана маской ПДн и её текст искать бессмысленно.
   var serverSearch = !!cfg.serverSearch && typeof obFire === 'function';
-  if (serverSearch) {
+  // Поля шапки (Конфиг.ПоляШапки) — как отборы «Списка номенклатуры» 1С: что
+  // искать, решает сервер. Окно с ними живёт по правилам серверного поиска
+  // (пересборка ответом, выбор переживает смену выдачи), даже если строка
+  // поиска фильтрует приехавшие строки на клиенте.
+  var headerFields = (typeof obFire === 'function' && cfg.headerFields) || [];
+  var serverMode = serverSearch || headerFields.length > 0;
+  // Конфиг.БезВыбора — окно только для просмотра: ни отметок, ни «Выбрать».
+  var noSelect = !!cfg.noSelect;
+  if (serverMode) {
     if (!searchResponse || obPickerSearch.element !== elementName) {
       // Новое открытие, а не ответ на поиск: прежний выбор не наследуется.
       obPickerSearch.query = '';
       obPickerSearch.picked = {};
       obPickerSearch.order = [];
       obPickerSearch.filters = Object.create(null);
+      obPickerSearch.fields = Object.create(null);
     }
     obPickerSearch.appliedQuery = searchResponse ? request.query : '';
     obPickerSearch.element = elementName;
     obPickerSearch.context = eventContext || null;
     search.value = obPickerSearch.query;
+  }
+  if (headerFields.length) {
+    // Значение поля — набранное человеком (переживает пересборку окна ответом),
+    // иначе присланное сервером. Значение списка, которого нет среди новых
+    // вариантов (сменили филиал — у него свои направления), берётся с сервера.
+    var hdrState = obPickerSearch.fields;
+    var hdrBar = document.createElement('div');
+    hdrBar.className = '_ip-head-fields';
+    hdrBar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end;margin-bottom:10px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px';
+    var hdrRefresh = function () { obPickerSendSearch(obPickerSearch.query); };
+    headerFields.forEach(function (f) {
+      var known = Object.prototype.hasOwnProperty.call(hdrState, f.name);
+      if (f.type === 'list' && known && hdrState[f.name] !== '' &&
+          !(f.options || []).some(function (o) { return o.value === hdrState[f.name]; })) known = false;
+      if (!known) hdrState[f.name] = f.type === 'bool' ? !!f.value : (f.value == null ? '' : String(f.value));
+      var label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:13px;color:#475569';
+      var caption = document.createElement('span');
+      caption.textContent = f.title || f.name;
+      var ctl;
+      if (f.type === 'bool') {
+        ctl = document.createElement('input');
+        ctl.type = 'checkbox';
+        ctl.checked = !!hdrState[f.name];
+        ctl.addEventListener('change', function () { hdrState[f.name] = !!ctl.checked; hdrRefresh(); });
+        label.appendChild(ctl);
+        label.appendChild(caption);
+      } else {
+        if (f.type === 'list') {
+          ctl = document.createElement('select');
+          var empty = document.createElement('option');
+          empty.value = '';
+          empty.textContent = '';
+          ctl.appendChild(empty);
+          (f.options || []).forEach(function (o) {
+            var opt = document.createElement('option');
+            opt.value = o.value;
+            opt.textContent = o.title;
+            ctl.appendChild(opt);
+          });
+          ctl.value = hdrState[f.name];
+          ctl.addEventListener('change', function () { hdrState[f.name] = ctl.value; hdrRefresh(); });
+        } else {
+          ctl = document.createElement('input');
+          ctl.type = 'text';
+          ctl.autocomplete = 'off';
+          ctl.value = hdrState[f.name];
+          ctl.addEventListener('input', function () { hdrState[f.name] = ctl.value; });
+          ctl.addEventListener('change', function () { hdrState[f.name] = ctl.value; hdrRefresh(); });
+          ctl.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            if (e.preventDefault) e.preventDefault();
+            hdrState[f.name] = ctl.value;
+            hdrRefresh();
+          });
+        }
+        ctl.className = '_ip-hf';
+        ctl.setAttribute('data-col', f.name);
+        ctl.style.cssText = 'padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;width:' + (f.width > 0 ? Math.round(f.width) : 160) + 'px;max-width:100%';
+        label.appendChild(caption);
+        label.appendChild(ctl);
+      }
+      hdrBar.appendChild(label);
+    });
+    var btnRefresh = document.createElement('button');
+    btnRefresh.type = 'button';
+    btnRefresh.className = '_ip-refresh';
+    btnRefresh.textContent = 'Обновить';
+    btnRefresh.style.cssText = 'padding:5px 14px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;font-size:13px';
+    btnRefresh.addEventListener('click', hdrRefresh);
+    hdrBar.appendChild(btnRefresh);
+    box.appendChild(hdrBar);
   }
   // Отборы (Конфиг.Отборы): выпадающий список значений колонки над таблицей.
   // Строка поиска ищет подстроку во всех колонках и не отличает направление
@@ -3725,7 +3820,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
   var filterCols = (cfg.filters || []).filter(function (name) {
     return cols.some(function (c) { return c.name === name && !c.editable; });
   });
-  var fltState = serverSearch ? obPickerSearch.filters : Object.create(null);
+  var fltState = serverMode ? obPickerSearch.filters : Object.create(null);
   var fltSelects = Object.create(null);
   if (filterCols.length) {
     var filterBar = document.createElement('div');
@@ -3768,7 +3863,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
   cbAll.type = 'checkbox';
   // «Выбрать всё» в режиме одного выбора отмечать нечего.
   if (!single) thCb.appendChild(cbAll);
-  htr.appendChild(thCb);
+  if (!noSelect) htr.appendChild(thCb);
   cols.forEach(function (c) {
     var th = document.createElement('th');
     th.textContent = c.title || c.name;
@@ -3796,28 +3891,28 @@ function openItemPicker(payload, elementName, eventContext, request) {
     cb.className = '_ip-cb';
     if (cfg.checkAll && !single) cb.checked = true;
     cb.onchange = function () {
-      if (serverSearch) rememberRow(tr);
+      if (serverMode) rememberRow(tr);
       updateCounter();
     };
     tdCb.appendChild(cb);
     // В одиночном выборе строка целиком работает как переключатель: попадать
     // мышью в кружок диаметром 13 px посреди разговора с клиентом незачем.
-    if (single) {
+    if (single && !noSelect) {
       tr.style.cursor = 'pointer';
       tr.addEventListener('click', function (e) {
         if (e.target === cb) return;
         cb.checked = true;
-        if (serverSearch) rememberRow(tr);
+        if (serverMode) rememberRow(tr);
         updateCounter();
       });
       // Двойной щелчок выбирает строку и закрывает окно — как форма выбора 1С.
       tr.addEventListener('dblclick', function () {
         cb.checked = true;
-        if (serverSearch) rememberRow(tr);
+        if (serverMode) rememberRow(tr);
         submitPick();
       });
     }
-    tr.appendChild(tdCb);
+    if (!noSelect) tr.appendChild(tdCb);
     cols.forEach(function (c) {
       var td = document.createElement('td');
       var v = (r.data || {})[c.name];
@@ -3838,7 +3933,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
     });
     tbody.appendChild(tr);
   });
-  if (serverSearch) {
+  if (serverMode) {
     // Выдача сменилась ответом сервера: вернуть отметки и правленые значения
     // строкам, выбранным по прежнему запросу. Без этого мультивыбор по
     // нескольким запросам невозможен, а «Перенести» отдаёт только последнюю
@@ -3868,14 +3963,14 @@ function openItemPicker(payload, elementName, eventContext, request) {
     var tr = inp.closest('tr');
     if (!tr) return;
     if (cfg.qtyField && inp.getAttribute('data-col') !== cfg.qtyField) {
-      if (serverSearch) rememberRow(tr);
+      if (serverMode) rememberRow(tr);
       return;
     }
     var cb = tr.querySelector('._ip-cb');
     if (!cb) return;
     var val = parseFloat(inp.value);
     cb.checked = (!isNaN(val) && val > 0);
-    if (serverSearch) rememberRow(tr);
+    if (serverMode) rememberRow(tr);
     updateCounter();
   });
   table.appendChild(tbody);
@@ -3905,7 +4000,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
   basketHead.appendChild(basketBadge);
   // Корзина — про «набрать позиций с количествами». Без колонки количества она
   // всё равно всегда пуста, а в одиночном выборе не нужна по смыслу.
-  if (!single && cfg.qtyField) box.appendChild(basketHead);
+  if (!single && !noSelect && cfg.qtyField) box.appendChild(basketHead);
   var basketScroll = document.createElement('div');
   basketScroll.style.cssText = 'overflow:auto;max-height:180px;margin-top:4px;border:1px solid #e2e8f0;border-radius:7px;display:none';
   var basketTable = document.createElement('table');
@@ -3925,7 +4020,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
   var bTbody = document.createElement('tbody');
   basketTable.appendChild(bTbody);
   basketScroll.appendChild(basketTable);
-  if (!single && cfg.qtyField) box.appendChild(basketScroll);
+  if (!single && !noSelect && cfg.qtyField) box.appendChild(basketScroll);
   basketHead.addEventListener('click', function () {
     basketScroll.style.display = basketScroll.style.display === 'none' ? '' : 'none';
   });
@@ -3940,7 +4035,8 @@ function openItemPicker(payload, elementName, eventContext, request) {
   btnOk.textContent = single ? 'Выбрать' : 'Перенести в документ';
   btnOk.style.cssText = 'padding:7px 18px;border:1px solid #2563eb;border-radius:7px;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600';
   foot.appendChild(btnCancel);
-  foot.appendChild(btnOk);
+  if (noSelect) btnCancel.textContent = 'Закрыть';
+  else foot.appendChild(btnOk);
   box.appendChild(foot);
   modal.appendChild(box);
   document.body.appendChild(modal);
@@ -3986,8 +4082,8 @@ function openItemPicker(payload, elementName, eventContext, request) {
     if (at >= 0) obPickerSearch.order.splice(at, 1);
   }
   function updateCounter() {
-    var n = serverSearch ? obPickerSearch.order.length : checkedRows().length;
-    counter.textContent = single ? '' : ('Выбрано: ' + n);
+    var n = serverMode ? obPickerSearch.order.length : checkedRows().length;
+    counter.textContent = (single || noSelect) ? '' : ('Выбрано: ' + n);
     updateBasket();
   }
   function updateBasket() {
@@ -4006,7 +4102,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
       bTr.appendChild(tdQty);
       bTbody.appendChild(bTr);
     }
-    if (serverSearch) {
+    if (serverMode) {
       // Корзина показывает тот же полный выбор и порядок, что «Перенести»,
       // включая позиции, отсутствующие в текущей серверной выдаче.
       obPickerSearch.order.forEach(function (id) {
@@ -4044,16 +4140,19 @@ function openItemPicker(payload, elementName, eventContext, request) {
       obPickerSendSearch(q);
     }, 250);
   }
-  if (serverSearch) obPickerFirePending();
+  if (serverMode) obPickerFirePending();
   search.addEventListener('input', function () {
     if (serverSearch) { scheduleServerSearch(this.value); return; }
+    // Поля шапки пересобирают окно ответом сервера: клиентский фильтр
+    // строки поиска должен это пережить.
+    if (serverMode) obPickerSearch.query = this.value;
     applyVisibility();
   });
   // Одиночный выбор — с клавиатуры, как форма «…» ссылочного поля: стрелки
   // ведут отметку по видимым строкам, Enter выбирает (без отметки — первую
   // видимую).
   search.addEventListener('keydown', function (e) {
-    if (!single) return;
+    if (!single || noSelect) return;
     var key = e.key;
     if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'Enter') return;
     if (e.preventDefault) e.preventDefault();
@@ -4061,6 +4160,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
     // включая ошибку поиска, после которой inFlight уже освобождён.
     if (serverSearch && (obPickerSearch.timer || obPickerSearch.inFlight ||
         obPickerSearch.pending !== null || search.value !== obPickerSearch.appliedQuery)) return;
+    if (serverMode && obPickerSearch.inFlight) return;
     var visible = Array.prototype.filter.call(tbody.rows, function (tr) { return tr.style.display !== 'none'; });
     if (!visible.length) return;
     var at = -1;
@@ -4084,7 +4184,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
     // Отметка одна: снимаем остальные явно, не полагаясь на группу радиокнопок.
     Array.prototype.forEach.call(tbody.querySelectorAll('._ip-cb'), function (other) { other.checked = false; });
     mcb.checked = true;
-    if (serverSearch) rememberRow(tr);
+    if (serverMode) rememberRow(tr);
     if (tr.scrollIntoView) tr.scrollIntoView({ block: 'nearest' });
     updateCounter();
   }
@@ -4151,6 +4251,8 @@ function openItemPicker(payload, elementName, eventContext, request) {
   if (filterCols.length) {
     rebuildFilters();
     applyVisibility();
+  } else if (serverMode && !serverSearch && search.value) {
+    applyVisibility();
   }
   cbAll.addEventListener('change', function () {
     if (single) return;
@@ -4158,7 +4260,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
       if (tr.style.display === 'none') return;
       var cb = tr.querySelector('._ip-cb');
       if (cb) cb.checked = cbAll.checked;
-      if (serverSearch) rememberRow(tr);
+      if (serverMode) rememberRow(tr);
     });
     updateCounter();
   });
@@ -4174,8 +4276,12 @@ function openItemPicker(payload, elementName, eventContext, request) {
   });
   btnOk.addEventListener('click', function () { submitPick(); });
   function submitPick() {
+    if (noSelect) return;
     var result;
-    if (serverSearch) {
+    // Поля шапки уходят и с выбором: где выбрано (склад, филиал) обработчику
+    // бывает нужно не меньше, чем что.
+    var fieldsParam = obPickerFieldsParam();
+    if (serverMode) {
       // Выбор собран по всем запросам, а не только по последней выдаче.
       result = obPickerSearch.order.map(function (id) { return obPickerSearch.picked[id]; });
       // Строка без id не может пережить смену выдачи, но текущий одиночный
@@ -4194,6 +4300,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
         Object.keys(eventContext).forEach(function (key) { params[key] = eventContext[key]; });
       }
       params._pick_result = JSON.stringify(result);
+      if (fieldsParam) params._pick_fields = fieldsParam;
       obFire(elementName, 'Выбор', params);
     }
   }
