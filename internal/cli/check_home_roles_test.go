@@ -50,6 +50,35 @@ func TestCheckHomeNavByRoleContracts(t *testing.T) {
 	}
 }
 
+// Роли — только roles/*.yaml: несуществующая роль nav_by_role — ошибка и при
+// отсутствии каталога ролей; ключи, совпадающие без учёта регистра, — тоже.
+func TestCheckHomeNavByRoleRoleNames(t *testing.T) {
+	for _, tc := range []struct{ name, teacherRole, navByRole, want string }{
+		{"no-roles-dir", "", "  MissingRole:\n    catalogs: [Classes]\n", `роль \"MissingRole\" не найдена`},
+		{"empty-role-no-roles-dir", "", "  MissingRole: {}\n", `роль \"MissingRole\" не найдена`},
+		{"case-duplicate", "name: Teacher\npermissions:\n  processors: {}\n  catalogs:\n    Classes: [read]\n",
+			"  Teacher:\n    catalogs: [Classes]\n  teacher:\n    catalogs: [Classes]\n", "имена ролей — без учёта регистра"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeProcrunFixture(t, dir, "config/app.yaml", "name: role-menu-names\nversion: \"1.0\"\n")
+			writeProcrunFixture(t, dir, "catalogs/Classes.yaml", "name: Classes\nfields:\n  - name: Name\n    type: string\n")
+			if tc.teacherRole != "" {
+				writeProcrunFixture(t, dir, "roles/Teacher.yaml", tc.teacherRole)
+			}
+			writeProcrunFixture(t, dir, "config/home_page.yaml", "nav_by_role:\n"+tc.navByRole)
+			out, err := runCheckCmd(t, runCheck, dir, map[string]string{"json": "true"})
+			var result configcheck.Result
+			if e := json.Unmarshal([]byte(out), &result); e != nil {
+				t.Fatal(e, out)
+			}
+			if !errors.Is(err, errSilentExit) || result.OK || !strings.Contains(out, tc.want) {
+				t.Fatalf("want error %q, got %v %s", tc.want, err, out)
+			}
+		})
+	}
+}
+
 func TestSchemaHomeNavByRole(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().Bool("list", false, "")

@@ -188,10 +188,23 @@ func CheckCrossRefs(proj *project.Project, roles []*auth.Role) []Issue {
 			names = append(names, name)
 		}
 		sort.Strings(names)
+		// Роли платформы — только roles/*.yaml (в _roles они лишь
+		// синхронизируются), поэтому имя проверяется и при пустом каталоге
+		// ролей: без него nav_by_role не применится ни к одному пользователю.
+		// Имена ролей сравниваются без учёта регистра — два ключа, совпадающие
+		// так, давали бы составу двух хозяев.
+		seen := map[string]string{}
 		for _, name := range names {
 			object := prefix + ".nav_by_role." + name
-			if len(roles) > 0 && !knownRoles.has(name) {
+			if !knownRoles.has(name) {
 				add(file, object, kind, fmt.Sprintf("роль %q не найдена", name))
+			}
+			key := strings.ToLower(strings.TrimSpace(name))
+			if prev, dup := seen[key]; dup {
+				add(file, object, kind,
+					fmt.Sprintf("роль %q уже указана как %q (имена ролей — без учёта регистра)", name, prev))
+			} else {
+				seen[key] = name
 			}
 			c := hp.NavByRole[name]
 			if c == nil {

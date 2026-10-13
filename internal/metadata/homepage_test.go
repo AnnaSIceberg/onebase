@@ -190,3 +190,18 @@ nav_by_role:
 		t.Error("роль не из nav_by_role — должен действовать общий nav")
 	}
 }
+
+// Ключи, совпадающие без учёта регистра (check их отвергает), объединяются в
+// порядке имён, а не обхода map: порядок меню и ревизия настройки стабильны.
+func TestNavForRoles_CaseDuplicateStableOrder(t *testing.T) {
+	hp := &HomePage{NavByRole: map[string]*SubsystemContents{
+		"Teacher": {Catalogs: []string{"Years"}},
+		"teacher": {Catalogs: []string{"Classes"}},
+	}}
+	for i := 0; i < 64; i++ {
+		got, ok := hp.NavForRoles([]string{"Teacher"})
+		if !ok || strings.Join(got.Catalogs, ",") != "Years,Classes" {
+			t.Fatalf("итерация %d: %+v, ok=%v — ждали Years,Classes", i, got, ok)
+		}
+	}
+}
