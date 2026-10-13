@@ -652,7 +652,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			switch el.Kind {
 			case metadata.FormElementField,
 				metadata.FormElementSwitch,
-				metadata.FormElementDatePicker:
+				metadata.FormElementDatePicker,
+				metadata.FormElementButton: // «Утвердить» после события (#2132)
 				return false // рисуем с display:none
 			}
 			return true // остальные типы — пропускаем как раньше

@@ -250,8 +250,9 @@ const tplManagedForm = `
   {{$clickAction := or (hasHandler $el "Нажатие") (and $ctx.IsProcessor (processorExecuteFallbackButton $ctx.Form $el))}}
   {{$hotKey := ""}}{{if and (not $ro) $clickAction}}{{$hotKey = normalizedFormHotkey $el.HotKey}}{{end}}
   {{$buttonLayout := elLayout $el}}
-  {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}" style="{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{with elBackground $el}} style="{{.}}"{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{end}}>
+  {{$buttonHidden := elHiddenStyle $ctx $el}}
+  {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}" style="{{$buttonHidden}}{{$buttonLayout}}">{{end}}
+  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="{{$buttonHidden}}{{elBackground $el}}"{{else}}{{with elBackground $el}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
   {{if $buttonLayout}}</div>{{end}}
