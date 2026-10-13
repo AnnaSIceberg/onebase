@@ -1269,6 +1269,12 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		vars["ПодборРезультат"] = pr
 		vars["PickResult"] = pr
 	}
+	// Значения полей шапки окна подбора (Конфиг.ПоляШапки) — с событиями Поиск
+	// и Выбор: что искать и где выбрано.
+	if pf := parsePickFields(r.FormValue("_pick_fields")); pf != nil {
+		vars["ПодборПоля"] = pf
+		vars["PickFields"] = pf
+	}
 
 	// Повторная фаза 1: набранное в строке поиска открытого диалога приходит как
 	// _pick_query → переменная ПодборЗапрос для обработчика события Поиск.
@@ -2697,6 +2703,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		if pr := parsePickResult(pickResult); pr != nil {
 			vars["ПодборРезультат"] = pr
 			vars["PickResult"] = pr
+		}
+		pickFields, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_pick_fields"))
+		if pf := parsePickFields(pickFields); pf != nil {
+			vars["ПодборПоля"] = pf
+			vars["PickFields"] = pf
 		}
 		// Тот же ПодборЗапрос, что и в формах сущностей: серверный поиск обязан
 		// работать и в формах обработок, иначе платформенное поведение молча

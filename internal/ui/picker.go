@@ -82,6 +82,33 @@ type pickerConfig struct {
 	// таблица прокручивается вбок, наименование переносится в три строки. На
 	// узком экране окно по-прежнему не шире 96% ширины.
 	Width int `json:"width,omitempty"`
+	// HeaderFields — поля отбора в шапке окна, как «Список номенклатуры» 1С:
+	// направление, бренд, артикул… Их значения задают, ЧТО искать на сервере, а
+	// не фильтруют приехавшие строки (это Filters): изменение поля или кнопка
+	// «Обновить» отправляют событие Поиск той же цели, значения приходят в
+	// переменной ПодборПоля, обработчик снова вызывает ПоказатьПодбор.
+	HeaderFields []pickerHeaderField `json:"headerFields,omitempty"`
+	// NoSelect — окно только для просмотра: без отметок и «Выбрать», одна
+	// кнопка «Закрыть». Нужен отдельной обработке «Список номенклатуры», где
+	// найденное некуда переносить.
+	NoSelect bool `json:"noSelect,omitempty"`
+}
+
+// pickerHeaderField — поле шапки окна подбора (Конфиг.ПоляШапки).
+type pickerHeaderField struct {
+	Name    string               `json:"name"`
+	Title   string               `json:"title"`
+	Type    string               `json:"type"` // string | bool | list
+	Value   any                  `json:"value"`
+	Options []pickerHeaderOption `json:"options,omitempty"`
+	Width   int                  `json:"width,omitempty"`
+}
+
+// pickerHeaderOption — вариант поля шапки типа list. Value — строка
+// (у ссылки — UUID), Title — что видит пользователь.
+type pickerHeaderOption struct {
+	Value string `json:"value"`
+	Title string `json:"title"`
 }
 
 // newPickerBuiltin создаёт билтин ПоказатьПодбор. Записывает собранный payload
@@ -96,7 +123,7 @@ type pickerConfig struct {
 // Колонки — Массив структур {Имя, Заголовок, Тип, Редактируемое}.
 // Конфиг  — Структура {Заголовок, ПолеПоиска, ПолеКоличества, ВыбратьВсе,
 //
-//	ОдинВыбор, Отборы, Ширина}
+//	ОдинВыбор, Отборы, Ширина, ПоляШапки, БезВыбора}
 //
 //	(опционально). Отборы — имена колонок строкой через запятую или Массивом.
 func newPickerBuiltin(sink **pickerPayload) interpreter.BuiltinFunc {
@@ -153,10 +180,94 @@ func newPickerBuiltin(sink **pickerPayload) interpreter.BuiltinFunc {
 				return nil, err
 			}
 			p.Config.Width = width
+			fields, err := pickerHeaderFields(dslField(args[2], "ПоляШапки", "HeaderFields"))
+			if err != nil {
+				return nil, err
+			}
+			p.Config.HeaderFields = fields
+			p.Config.NoSelect = pickBool(dslField(args[2], "БезВыбора", "NoSelect"))
 		}
 		*sink = p
 		return nil, nil
 	})
+}
+
+// pickerHeaderFields разбирает Конфиг.ПоляШапки — Массив структур
+// {Имя, Заголовок, Тип, Значение, Варианты, Ширина}. Тип: Строка (по
+// умолчанию), Булево или Список; Варианты списка — Массив структур
+// {Значение, Представление} или Массив строк. Пустое или повторное имя и
+// неизвестный тип — ошибка: поле, молча выпавшее из шапки, выглядело бы как
+// «отбор не работает».
+func pickerHeaderFields(v any) ([]pickerHeaderField, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var out []pickerHeaderField
+	seen := map[string]bool{}
+	for _, it := range iterateAny(v) {
+		f := pickerHeaderField{
+			Name:  strings.TrimSpace(pickStr(dslField(it, "Имя", "Name"))),
+			Title: pickStr(dslField(it, "Заголовок", "Title")),
+		}
+		if f.Name == "" {
+			return nil, fmt.Errorf("ПоказатьПодбор: у поля ПоляШапки не задано Имя")
+		}
+		if seen[strings.ToLower(f.Name)] {
+			return nil, fmt.Errorf("ПоказатьПодбор: поле шапки «%s» указано дважды", f.Name)
+		}
+		seen[strings.ToLower(f.Name)] = true
+		if f.Title == "" {
+			f.Title = f.Name
+		}
+		switch strings.ToLower(strings.TrimSpace(pickStr(dslField(it, "Тип", "Type")))) {
+		case "", "строка", "string":
+			f.Type = "string"
+			f.Value = pickStr(dslField(it, "Значение", "Value"))
+		case "булево", "bool", "boolean":
+			f.Type = "bool"
+			f.Value = pickBool(dslField(it, "Значение", "Value"))
+		case "список", "list":
+			f.Type = "list"
+			f.Value = pickStr(dslField(it, "Значение", "Value"))
+			for _, o := range iterateAny(dslField(it, "Варианты", "Options")) {
+				opt := pickerHeaderOption{}
+				if _, isStr := o.(string); isStr {
+					opt.Value, opt.Title = o.(string), o.(string)
+				} else {
+					opt.Value = pickStr(dslField(o, "Значение", "Value"))
+					opt.Title = pickStr(dslField(o, "Представление", "Title"))
+				}
+				if opt.Title == "" {
+					opt.Title = opt.Value
+				}
+				f.Options = append(f.Options, opt)
+			}
+		default:
+			return nil, fmt.Errorf("ПоказатьПодбор: у поля шапки «%s» неизвестный Тип «%v» (Строка, Булево, Список)", f.Name, dslField(it, "Тип", "Type"))
+		}
+		width, err := pickerWidth(dslField(it, "Ширина", "Width"))
+		if err != nil {
+			return nil, fmt.Errorf("ПоказатьПодбор: поле шапки «%s»: %w", f.Name, err)
+		}
+		f.Width = width
+		out = append(out, f)
+	}
+	return out, nil
+}
+
+// parsePickFields разбирает _pick_fields (JSON-объект значений полей шапки
+// окна подбора) в Структуру DSL — переменную ПодборПоля. Ключи доступны
+// регистронезависимо. nil — полей не было (пустой или битый JSON).
+func parsePickFields(raw string) *interpreter.MapThis {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(raw), &m); err != nil || m == nil {
+		return nil
+	}
+	return &interpreter.MapThis{M: m}
 }
 
 // pickerWidth разбирает Конфиг.Ширина — ширину окна в пикселях. Не число или
