@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
+	"github.com/shopspring/decimal"
 )
 
 // ── Подбор: платформенный механизм диалога мультивыбора (план 46) ──────────
@@ -276,25 +277,40 @@ func pickerWidth(v any) (int, error) {
 	if v == nil {
 		return 0, nil
 	}
-	var w float64
+	var w decimal.Decimal
 	switch n := v.(type) {
-	case int:
-		w = float64(n)
-	case int64:
-		w = float64(n)
-	case float64:
+	case decimal.Decimal:
 		w = n
+	case int:
+		w = decimal.NewFromInt(int64(n))
+	case int64:
+		w = decimal.NewFromInt(n)
+	case float64:
+		if math.IsNaN(n) || math.IsInf(n, 0) {
+			return 0, fmt.Errorf("ПоказатьПодбор: Ширина должна быть конечным числом пикселей, получено %v", v)
+		}
+		w = decimal.NewFromFloat(n)
 	default:
-		f, err := strconv.ParseFloat(strings.TrimSpace(pickStr(v)), 64)
+		d, err := decimal.NewFromString(strings.TrimSpace(pickStr(v)))
 		if err != nil {
 			return 0, fmt.Errorf("ПоказатьПодбор: Ширина должна быть числом пикселей, получено «%v»", v)
 		}
-		w = f
+		w = d
 	}
-	if w <= 0 || w != math.Trunc(w) {
+	// Проверяем исходный Decimal: float64 может округлить дробь до целого
+	// или верхнюю границу int до следующего, уже недопустимого значения.
+	// Экспоненту ограничиваем до операций, расширяющих коэффициент числа.
+	if !interpreter.DecimalWithinSafeBounds(w) {
+		return 0, fmt.Errorf("ПоказатьПодбор: Ширина вне допустимого диапазона чисел")
+	}
+	if !w.IsPositive() || !w.IsInteger() {
 		return 0, fmt.Errorf("ПоказатьПодбор: Ширина должна быть целым числом пикселей больше нуля, получено %v", v)
 	}
-	return int(w), nil
+	maxInt := int(^uint(0) >> 1)
+	if w.GreaterThan(decimal.NewFromInt(int64(maxInt))) {
+		return 0, fmt.Errorf("ПоказатьПодбор: Ширина превышает допустимое число пикселей %d", maxInt)
+	}
+	return int(w.IntPart()), nil
 }
 
 // pickerFilters разбирает Конфиг.Отборы: строку «Направление, Филиал» или
