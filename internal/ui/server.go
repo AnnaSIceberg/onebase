@@ -725,7 +725,41 @@ func strSet(names []string) map[string]bool {
 }
 
 func (s *Server) buildNavForSubsystem(r *http.Request, sub *metadata.Subsystem, subName string) []navGroup {
-	return s.buildNavFromContents(r, &sub.Contents, "?subsystem="+subName)
+	contents := &sub.Contents
+	// nav_by_role в home_page подсистемы — меню раздела по ролям; состав роли
+	// только сужает contents (ivanarama/onebase#2130, локальная версия).
+	if sub.HomePage != nil {
+		if byRole, ok := sub.HomePage.NavForRoles(homeNavRoles(r)); ok {
+			contents = intersectContents(&sub.Contents, byRole)
+			if contents.IsEmpty() {
+				return nil
+			}
+		}
+	}
+	return s.buildNavFromContents(r, contents, "?subsystem="+subName)
+}
+
+// intersectContents — объекты base, перечисленные в role (без учёта регистра),
+// в порядке base.
+func intersectContents(base, role *metadata.SubsystemContents) *metadata.SubsystemContents {
+	keep := func(from, allowed []string) []string {
+		var out []string
+		for _, n := range from {
+			for _, a := range allowed {
+				if strings.EqualFold(n, a) {
+					out = append(out, n)
+					break
+				}
+			}
+		}
+		return out
+	}
+	return &metadata.SubsystemContents{
+		Documents: keep(base.Documents, role.Documents), Catalogs: keep(base.Catalogs, role.Catalogs),
+		Reports: keep(base.Reports, role.Reports), InfoRegs: keep(base.InfoRegs, role.InfoRegs),
+		Registers: keep(base.Registers, role.Registers), Processors: keep(base.Processors, role.Processors),
+		Journals: keep(base.Journals, role.Journals), Pages: keep(base.Pages, role.Pages),
+	}
 }
 
 // buildNavFromContents строит левое меню по набору объектов (contents),
