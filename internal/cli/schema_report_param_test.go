@@ -56,16 +56,10 @@ func TestSchemaReportParamPeriodEnd(t *testing.T) {
 func TestSchemaReportParamCoversModelKeys(t *testing.T) {
 	keys := yamlTagsOfStruct(t, "../report/report.go", "Param")
 	props := schemaAt(t, publishedParamSchema(t, "report"), "properties")
-	// These are pre-existing gaps in the published schema, outside #2119.
-	// Keep them explicit so a new model key cannot silently go missing.
-	existingGaps := map[string]string{
-		"labels":  "Localized labels were already missing before period_end was added",
-		"default": "Parameter defaults were already missing before period_end was added",
-	}
 	known := make(map[string]bool, len(keys))
 	for _, key := range keys {
 		known[key] = true
-		if _, ok := props[key]; !ok && existingGaps[key] == "" {
+		if _, ok := props[key]; !ok {
 			t.Errorf("report parameter schema does not describe YAML key %q", key)
 		}
 	}
@@ -74,12 +68,39 @@ func TestSchemaReportParamCoversModelKeys(t *testing.T) {
 			t.Errorf("schema promises key %q that report.Param does not read", key)
 		}
 	}
-	for key, reason := range existingGaps {
-		if !known[key] || strings.TrimSpace(reason) == "" {
-			t.Errorf("invalid existing schema gap %q: %q", key, reason)
-		}
-		if _, ok := props[key]; ok {
-			t.Errorf("key %q is now published; remove its existing-gap exemption", key)
+}
+
+func TestSchemaReportParamLabelsAndDefault(t *testing.T) {
+	param := publishedParamSchema(t, "report")
+	aggregate := schemaAt(t, publishedSchema(t), "$defs", "report", "properties", "params", "items")
+	for name, schema := range map[string]map[string]any{"report": param, "aggregate": aggregate} {
+		t.Run(name, func(t *testing.T) {
+			props := schemaAt(t, schema, "properties")
+			labels := schemaAt(t, props, "labels")
+			if labels["type"] != "object" {
+				t.Errorf("labels.type = %#v, want object", labels["type"])
+			}
+			if values := schemaAt(t, labels, "additionalProperties"); values["type"] != "string" {
+				t.Errorf("labels values type = %#v, want string", values["type"])
+			}
+			if defaults := schemaAt(t, props, "default"); defaults["type"] != "string" {
+				t.Errorf("default.type = %#v, want string", defaults["type"])
+			}
+			if schema["additionalProperties"] != false {
+				t.Error("report parameters must still reject unknown keys")
+			}
+			if !reflect.DeepEqual(schema["required"], []any{"name", "type"}) {
+				t.Errorf("required = %#v, want name and type only", schema["required"])
+			}
+		})
+	}
+	if !reflect.DeepEqual(param, aggregate) {
+		t.Error("separate and aggregate report parameter schemas differ")
+	}
+	processor := schemaAt(t, publishedParamSchema(t, "processor"), "properties")
+	for _, key := range []string{"labels", "default"} {
+		if _, ok := processor[key]; ok {
+			t.Errorf("report-only key %q leaked into processor parameters", key)
 		}
 	}
 }
