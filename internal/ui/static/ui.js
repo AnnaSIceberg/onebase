@@ -3634,6 +3634,8 @@ function obPickerSendSearch(q) {
   if (ctx) Object.keys(ctx).forEach(function (key) { params[key] = ctx[key]; });
   params._pick_query = q;
   var fieldsParam = obPickerFieldsParam();
+  // Контекст ответа содержит параметры прошлого Поиска, включая удалённые поля.
+  delete params._pick_fields;
   if (fieldsParam) params._pick_fields = fieldsParam;
   obFire(obPickerSearch.element, 'Поиск', params, request);
 }
@@ -3729,7 +3731,9 @@ function openItemPicker(payload, elementName, eventContext, request) {
   // (пересборка ответом, выбор переживает смену выдачи), даже если строка
   // поиска фильтрует приехавшие строки на клиенте.
   var headerFields = (typeof obFire === 'function' && cfg.headerFields) || [];
-  var serverMode = serverSearch || headerFields.length > 0;
+  // Ответ остаётся частью серверного диалога и после удаления последнего поля:
+  // очередь запросов и накопленный выбор должны пережить пустую шапку.
+  var serverMode = serverSearch || headerFields.length > 0 || searchResponse;
   // Конфиг.БезВыбора — окно только для просмотра: ни отметок, ни «Выбрать».
   var noSelect = !!cfg.noSelect;
   if (serverMode) {
@@ -3741,6 +3745,13 @@ function openItemPicker(payload, elementName, eventContext, request) {
       obPickerSearch.filters = Object.create(null);
       obPickerSearch.fields = Object.create(null);
     }
+    // Сохраняем ввод только существующих полей. Удалённые имена не должны
+    // уходить в следующий Поиск/Выбор или блокировать сверку с appliedFields.
+    var currentFields = Object.create(null);
+    headerFields.forEach(function (f) { currentFields[f.name] = true; });
+    Object.keys(obPickerSearch.fields).forEach(function (name) {
+      if (!Object.prototype.hasOwnProperty.call(currentFields, name)) delete obPickerSearch.fields[name];
+    });
     obPickerSearch.appliedQuery = searchResponse ? request.query : '';
     obPickerSearch.appliedFields = Object.create(null);
     obPickerSearch.element = elementName;
@@ -4296,7 +4307,8 @@ function openItemPicker(payload, elementName, eventContext, request) {
     if (noSelect) return;
     // Общий гейт для Enter, двойного щелчка и кнопки: прежние строки нельзя
     // отправить с новым контекстом шапки, в том числе после ошибки обновления.
-    if (headerFields.length && (obPickerSearch.inFlight || obPickerSearch.pending !== null ||
+    // Проверяем также ответ с пустой шапкой: у него ещё может быть запрос в очереди.
+    if ((headerFields.length || searchResponse) && (obPickerSearch.inFlight || obPickerSearch.pending !== null ||
         !obPickerSearch.appliedFields ||
         Object.keys(obPickerSearch.fields).length !== Object.keys(obPickerSearch.appliedFields).length ||
         Object.keys(obPickerSearch.fields).some(function (k) {
@@ -4326,6 +4338,7 @@ function openItemPicker(payload, elementName, eventContext, request) {
         Object.keys(eventContext).forEach(function (key) { params[key] = eventContext[key]; });
       }
       params._pick_result = JSON.stringify(result);
+      delete params._pick_fields;
       if (fieldsParam) params._pick_fields = fieldsParam;
       obFire(elementName, 'Выбор', params);
     }
