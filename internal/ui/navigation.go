@@ -126,7 +126,27 @@ func (s *Server) homeConfigurationNavigation(r *http.Request) (navigation.Tree, 
 // Project both the configuration palette and the composed common layer onto
 // role membership; personal settings never receive targets outside that scope.
 func (s *Server) projectHomeNavigation(r *http.Request, tree navigation.Tree) navigation.Tree {
-	hp := s.reg.HomePage()
+	return s.projectRoleNavigation(r, s.reg.HomePage(), tree)
+}
+
+// navigationHomePage — страница, чей nav_by_role задаёт меню контекста:
+// глобальная «Главная» или home_page подсистемы sub.
+func (s *Server) navigationHomePage(sub string) *metadata.HomePage {
+	if sub == "" {
+		return s.reg.HomePage()
+	}
+	if current := s.reg.GetSubsystem(sub); current != nil {
+		return current.HomePage
+	}
+	return nil
+}
+
+// projectRoleNavigation оставляет в дереве только объекты составов
+// nav_by_role ролей пользователя (hp — «Главная» или home_page подсистемы).
+// В подсистеме состав роли только сужает её меню: объекта, которого нет в
+// contents подсистемы, проекция не добавляет. Нужен там, где объект роль
+// читает ради ссылок (кладовщику — заказы из ордера), а в меню ему не место.
+func (s *Server) projectRoleNavigation(r *http.Request, hp *metadata.HomePage, tree navigation.Tree) navigation.Tree {
 	contents, byRole := hp.NavForRoles(homeNavRoles(r))
 	if !byRole {
 		return tree
@@ -276,10 +296,9 @@ func (s *Server) buildNavigation(r *http.Request, menu *metadata.Menu, contents 
 
 func (s *Server) buildNavigationFromBase(r *http.Request, base navigation.Tree, configured, flat bool, sub string) []navGroup {
 	tree, _ := s.adminNavigationLayer(r, base)
-	if sub == "" {
-		base = s.projectHomeNavigation(r, base)
-		tree = s.projectHomeNavigation(r, tree)
-	}
+	hp := s.navigationHomePage(sub)
+	base = s.projectRoleNavigation(r, hp, base)
+	tree = s.projectRoleNavigation(r, hp, tree)
 	tree = s.personalNavigationLayer(r, tree)
 	return s.navigationGroups(r, tree, base, configured, flat, sub)
 }

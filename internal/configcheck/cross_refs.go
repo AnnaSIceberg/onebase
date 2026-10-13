@@ -170,38 +170,68 @@ func CheckCrossRefs(proj *project.Project, roles []*auth.Role) []Issue {
 		checkRefs("config/home_page.yaml", "home_page.nav", "Главная страница", c.Journals, journals, "журнал")
 	}
 
-	// Главная страница → nav_by_role: роли и объекты их составов. Опечатка в
-	// имени роли молча оставила бы пользователю общий nav.
-	if proj.HomePage != nil && len(proj.HomePage.NavByRole) > 0 {
-		knownRoles := nameSet{}
-		for _, r := range roles {
-			if r != nil {
-				knownRoles.add(r.Name)
-			}
+	// nav_by_role «Главной» и подсистем: роли и объекты их составов. Опечатка в
+	// имени роли молча оставила бы пользователю общее меню. В подсистеме состав
+	// роли только сужает её меню — объект вне contents в нём не появится.
+	knownRoles := nameSet{}
+	for _, r := range roles {
+		if r != nil {
+			knownRoles.add(r.Name)
 		}
-		names := make([]string, 0, len(proj.HomePage.NavByRole))
-		for name := range proj.HomePage.NavByRole {
+	}
+	checkNavByRole := func(file, prefix, kind string, hp *metadata.HomePage, scope *metadata.SubsystemContents) {
+		if hp == nil || len(hp.NavByRole) == 0 {
+			return
+		}
+		names := make([]string, 0, len(hp.NavByRole))
+		for name := range hp.NavByRole {
 			names = append(names, name)
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			object := "home_page.nav_by_role." + name
+			object := prefix + ".nav_by_role." + name
 			if len(roles) > 0 && !knownRoles.has(name) {
-				add("config/home_page.yaml", object, "Главная страница", fmt.Sprintf("роль %q не найдена", name))
+				add(file, object, kind, fmt.Sprintf("роль %q не найдена", name))
 			}
-			c := proj.HomePage.NavByRole[name]
+			c := hp.NavByRole[name]
 			if c == nil {
 				continue
 			}
-			checkRefs("config/home_page.yaml", object, "Главная страница", c.Documents, docs, "документ")
-			checkRefs("config/home_page.yaml", object, "Главная страница", c.Catalogs, cats, "справочник")
-			checkRefs("config/home_page.yaml", object, "Главная страница", c.Reports, reports, "отчёт")
-			checkRefs("config/home_page.yaml", object, "Главная страница", c.InfoRegs, inforegs, "регистр сведений")
-			checkRefs("config/home_page.yaml", object, "Главная страница", c.Registers, registers, "регистр")
-			checkRefs("config/home_page.yaml", object, "Главная страница", c.Processors, processors, "обработка")
-			checkRefs("config/home_page.yaml", object, "Главная страница", c.Journals, journals, "журнал")
-			checkRefs("config/home_page.yaml", object, "Главная страница", c.Pages, pages, "страница")
+			checkRefs(file, object, kind, c.Documents, docs, "документ")
+			checkRefs(file, object, kind, c.Catalogs, cats, "справочник")
+			checkRefs(file, object, kind, c.Reports, reports, "отчёт")
+			checkRefs(file, object, kind, c.InfoRegs, inforegs, "регистр сведений")
+			checkRefs(file, object, kind, c.Registers, registers, "регистр")
+			checkRefs(file, object, kind, c.Processors, processors, "обработка")
+			checkRefs(file, object, kind, c.Journals, journals, "журнал")
+			checkRefs(file, object, kind, c.Pages, pages, "страница")
+			if scope == nil {
+				continue
+			}
+			for _, pair := range []struct {
+				names, in []string
+				what      string
+			}{
+				{c.Documents, scope.Documents, "документ"}, {c.Catalogs, scope.Catalogs, "справочник"},
+				{c.Reports, scope.Reports, "отчёт"}, {c.InfoRegs, scope.InfoRegs, "регистр сведений"},
+				{c.Registers, scope.Registers, "регистр"}, {c.Processors, scope.Processors, "обработка"},
+				{c.Journals, scope.Journals, "журнал"}, {c.Pages, scope.Pages, "страница"},
+			} {
+				in := nameSet{}
+				for _, n := range pair.in {
+					in.add(n)
+				}
+				for _, n := range pair.names {
+					if !in.has(n) {
+						add(file, object, kind, fmt.Sprintf("%s %q не входит в contents подсистемы — в её меню не появится", pair.what, n))
+					}
+				}
+			}
 		}
+	}
+	checkNavByRole("config/home_page.yaml", "home_page", "Главная страница", proj.HomePage, nil)
+	for _, s := range proj.Subsystems {
+		checkNavByRole("subsystems", s.Name+".home_page", "Подсистема", s.HomePage, &s.Contents)
 	}
 
 	// Печатные формы → документ/справочник-источник и табличная часть.

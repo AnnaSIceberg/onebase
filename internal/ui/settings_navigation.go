@@ -68,10 +68,11 @@ func (s *Server) navigationEditorState(r *http.Request, sub string) (navigationE
 	}
 	state.adminBase = state.Base
 	state.Desired, state.Diagnostics = navigation.Compose(state.Base, raw, nil)
-	if sub == "" {
-		state.Base = s.projectHomeNavigation(r, state.Base)
-		state.Desired = s.projectHomeNavigation(r, state.Desired)
-	}
+	// nav_by_role «Главной» или подсистемы: личный редактор не видит и не
+	// сохраняет объекты вне меню ролей пользователя (администратор — общее).
+	hp := s.navigationHomePage(sub)
+	state.Base = s.projectRoleNavigation(r, hp, state.Base)
+	state.Desired = s.projectRoleNavigation(r, hp, state.Desired)
 	return state, nil
 }
 
