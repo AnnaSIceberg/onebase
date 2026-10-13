@@ -84,3 +84,68 @@ func treeTargets(tree navigation.Tree) string {
 	}
 	return strings.Join(out, ",")
 }
+
+func TestNavByRole_HTTPCaseInsensitiveObjectNames(t *testing.T) {
+	for _, context := range []string{"home-placed", "home-role-only", "subsystem"} {
+		t.Run(context, func(t *testing.T) {
+			f := newNavigationHTTPFixture(t)
+			role := &metadata.SubsystemContents{
+				Catalogs: []string{"classes", "CLASSES", "years"}, Documents: []string{"orders"},
+				Registers: []string{"attendance"}, InfoRegs: []string{"bells"},
+				Processors: []string{"classjournal"}, Journals: []string{"documents"}, Pages: []string{"teacherpage"},
+			}
+			home := &metadata.HomePage{NavByRole: map[string]*metadata.SubsystemContents{"Teacher": role}}
+			sub := ""
+			var nav *html.Node
+			if context == "subsystem" {
+				sub = "School"
+				current := f.server.reg.GetSubsystem(sub)
+				current.Contents.Catalogs = []string{"Classes", "Private"}
+				current.HomePage = home
+				nav = subsystemRoleNav(t, f, "alice")
+			} else {
+				if context == "home-placed" {
+					common := f.server.reg.GetSubsystem("School").Contents
+					home.Nav = &common
+				} else {
+					home.Nav = &metadata.SubsystemContents{Catalogs: []string{"Private"}}
+				}
+				f.server.reg.LoadHomePage(home)
+				nav = roleHomeNav(t, f, "alice")
+			}
+			links := strings.Join(semanticLinks(nav), "|")
+			if !strings.Contains(links, "/ui/catalog/Classes") || strings.Contains(links, "/ui/catalog/classes") {
+				t.Fatalf("canonical Classes link missing: %s", links)
+			}
+			if sub != "" && strings.Contains(links, "/ui/catalog/Years") {
+				t.Fatalf("role expanded subsystem contents: %s", links)
+			}
+			state := f.personalEditor(t, "alice", sub)
+			want := []string{"catalog:Classes", "document:Orders", "register:Attendance:movements", "register:Attendance:balances",
+				"inforeg:Bells", "processor:ClassJournal", "journal:Documents", "page:TeacherPage"}
+			if sub == "" {
+				want = append(want, "catalog:Years")
+			}
+			for _, tree := range []navigation.Tree{state.Base, state.Desired} {
+				targets := strings.Split(treeTargets(tree), ",")
+				if len(targets) != len(want) {
+					t.Fatalf("role palette has missing or duplicate targets: %v, want %v", targets, want)
+				}
+				for _, target := range want {
+					if !strings.Contains(","+treeTargets(tree)+",", ","+target+",") {
+						t.Fatalf("canonical role target %s missing: %v", target, targets)
+					}
+				}
+			}
+			preview := f.request(t, "POST", "/ui/settings/navigation/preview", "alice", personalNavigationForm(t, state))
+			if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), "/ui/catalog/Classes") {
+				t.Fatalf("canonical preview: %d %s", preview.Code, preview.Body.String())
+			}
+			personalSave(t, f, "alice", state)
+			// Runtime resolution must not rewrite the loaded role metadata.
+			if role.Catalogs[0] != "classes" || role.Documents[0] != "orders" {
+				t.Fatal("role metadata mutated")
+			}
+		})
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/i18n"
@@ -80,7 +81,7 @@ func (s *Server) homeConfigurationNavigation(r *http.Request) (navigation.Tree, 
 	if !byRole {
 		return base, configured, hp.Nav.IsEmpty()
 	}
-	scoped, _ := s.configurationNavigation(nil, contents, false, "")
+	scoped := s.roleNavigation(contents)
 	placed := map[string]bool{}
 	for _, section := range base.Sections {
 		for _, item := range section.Items {
@@ -145,7 +146,7 @@ func (s *Server) projectRoleNavigation(r *http.Request, hp *metadata.HomePage, t
 	if !byRole {
 		return tree
 	}
-	scoped, _ := s.configurationNavigation(nil, contents, false, "")
+	scoped := s.roleNavigation(contents)
 	allowed := map[string]bool{}
 	for _, section := range scoped.Sections {
 		for _, item := range section.Items {
@@ -177,6 +178,37 @@ func (s *Server) projectRoleNavigation(r *http.Request, hp *metadata.HomePage, t
 		}
 	}
 	return result
+}
+
+// Resolve role contents to metadata spelling before constructing targets. The
+// check command accepts these names without regard to case; tree identities and
+// RBAC still use canonical names. Do not mutate the loaded role configuration.
+func (s *Server) roleNavigation(contents *metadata.SubsystemContents) navigation.Tree {
+	objects := NavigationObjects(s.reg)
+	canonical := make(map[string]string, len(objects))
+	for _, object := range objects {
+		canonical[object.Target.Kind+":"+strings.ToLower(object.Target.Name)] = object.Target.Name
+	}
+	resolve := func(kind string, names []string) []string {
+		var resolved []string
+		for _, name := range names {
+			if actual, ok := canonical[kind+":"+strings.ToLower(strings.TrimSpace(name))]; ok {
+				resolved = append(resolved, actual)
+			}
+		}
+		return resolved
+	}
+	if contents != nil {
+		contents = &metadata.SubsystemContents{
+			Catalogs: resolve("catalog", contents.Catalogs), Documents: resolve("document", contents.Documents),
+			Registers: resolve("register", contents.Registers), InfoRegs: resolve("inforeg", contents.InfoRegs),
+			Reports: resolve("report", contents.Reports), Processors: resolve("processor", contents.Processors),
+			Journals: resolve("journal", contents.Journals), Pages: resolve("page", contents.Pages),
+		}
+	}
+	scope := navigation.NewScope(objects, contents, false)
+	tree, _ := navigation.Normalize(navContext(""), nil, scope)
+	return tree
 }
 
 // homeNavRoles — роли, по которым выбирается меню «Главной». Администратор

@@ -107,3 +107,31 @@ func TestSchemaHomeNavByRole(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckSubsystemNavByRoleOutsideContentsIsError(t *testing.T) {
+	dir := semanticCheckFixture(t, "home_page:\n  nav_by_role:\n    Teacher:\n      catalogs: [Товар, Outside]\n")
+	writeProcrunFixture(t, dir, "catalogs/Outside.yaml", "name: Outside\nfields:\n  - name: Title\n    type: string\n")
+	writeProcrunFixture(t, dir, "roles/Teacher.yaml", "name: Teacher\npermissions:\n  processors: {}\n  catalogs:\n    Товар: [read]\n    Outside: [read]\n")
+	out, err := runCheckCmd(t, runCheck, dir, map[string]string{"json": "true", "lint": "true"})
+	var result configcheck.Result
+	if parseErr := json.Unmarshal([]byte(out), &result); parseErr != nil {
+		t.Fatalf("%v: %s", parseErr, out)
+	}
+	if !errors.Is(err, errSilentExit) || result.OK {
+		t.Fatalf("outside role member must fail check: %v %s", err, out)
+	}
+	matches := func(issue configcheck.Issue) bool {
+		return issue.Object == "Education.home_page.nav_by_role.Teacher" && strings.Contains(issue.Message, `справочник "Outside" не входит в contents`)
+	}
+	for _, warning := range result.Warnings {
+		if matches(warning) {
+			t.Fatalf("outside role member reported as warning: %+v", warning)
+		}
+	}
+	for _, issue := range result.Issues {
+		if matches(issue) {
+			return
+		}
+	}
+	t.Fatalf("missing blocking outside-contents diagnostic: %s", out)
+}
