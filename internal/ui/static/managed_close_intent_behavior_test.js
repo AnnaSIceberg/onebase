@@ -26,6 +26,12 @@ const dirtyStart = managed.indexOf('  function _obMarkDirty(');
 const dirtyEnd = managed.indexOf('  // «Грязный» флаг', dirtyStart);
 assert.ok(dirtyStart >= 0 && dirtyEnd > dirtyStart, 'managed input listeners not found');
 const dirtyListeners = managed.slice(dirtyStart, dirtyEnd);
+// Производственный обработчик отправки формы с файловым полем: отменяет
+// submit, ждёт FileReader и отправляет форму повторно (reentry).
+const fileSubmitStart = managed.indexOf('  obManagedReady(restoreFormAttrs);');
+const fileSubmitEnd = managed.indexOf('  window._obFormDirty = false;', fileSubmitStart);
+assert.ok(fileSubmitStart >= 0 && fileSubmitEnd > fileSubmitStart, 'managed file-submit slice not found');
+const fileSubmitHandler = managed.slice(fileSubmitStart, fileSubmitEnd);
 
 class FakeFormData {
   constructor(form) {
@@ -1781,4 +1787,94 @@ test('before-post: native post recovers an unknown close before starting a fresh
   await waitFor(() => posted);
   assert.equal(calls.length, 4);
   assert.equal(formEventName(calls[3]), 'ПередПроведением');
+});
+
+// «Провести» на форме с файловым полем: файловый обработчик отменяет
+// повторный submit после ПередПроведением, ждёт чтение и отправляет форму
+// сам. Разрешение проверенного снимка должно дожить до этого повтора — одна
+// проверка, один POST; правка во время чтения — новая проверка, POST новых
+// данных, старые по старому разрешению не уходят.
+function withFileSubmit(app) {
+  const posts = [];
+  let finishRead = null;
+  let readDone = false;
+  app.context.obManagedFileSubmitPending = new WeakSet();
+  app.context.obManagedFileSubmitReentry = new WeakSet();
+  app.context.obManagedSubmitAllowed = () => true;
+  app.context.obManagedGridSubmitAllowed = () => true;
+  app.context.__fileReads = () => readDone ? Promise.resolve(true) : new Promise((resolve) => {
+    finishRead = () => { readDone = true; resolve(true); };
+  });
+  const helper = {};
+  app.form.querySelectorAll = (selector) => selector === '[data-ob-file-content-for]' ? [helper] : [];
+  const submitter = {name: '_action', value: 'post'};
+  function submit(button) {
+    const event = {target: app.form, submitter: button || null, defaultPrevented: false,
+      preventDefault() { this.defaultPrevented = true; },
+      stopPropagation() { this.propagationStopped = true; },
+      stopImmediatePropagation() { this.immediatePropagationStopped = true; }};
+    app.document.dispatch('submit', event);
+    if (!event.defaultPrevented) posts.push(new Map(app.form.values));
+    return event;
+  }
+  app.form.requestSubmit = (button) => submit(button);
+  vm.runInNewContext(`(function(){
+    function obManagedReady(){}
+    function restoreFormAttrs(){}
+    function stashFormAttrs(){}
+    function flash(value, kind){ globalThis.__applied.push(['flash', value, kind]); }
+    function awaitCurrentFileReads(helpers){ return globalThis.__fileReads(helpers); }
+  ` + fileSubmitHandler + '\n})();', app.context, {filename: 'managed-file-submit.js'});
+  return {
+    posts, submitter, submit,
+    readPending() { return !!finishRead && !readDone; },
+    finishRead() { finishRead(); },
+  };
+}
+
+test('before-post: file field — one check, one POST after the file is read', async () => {
+  const {app, calls} = beforePostRuntime([{ok: true}]);
+  const file = withFileSubmit(app);
+  const first = file.submit(file.submitter);
+  assert.equal(first.defaultPrevented, true);
+  await waitFor(() => file.readPending());
+  assert.equal(file.posts.length, 0, 'posted before the file was read');
+  file.finishRead();
+  await waitFor(() => file.posts.length > 0);
+  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(file.posts.length, 1);
+  assert.equal(calls.length, 1, 'BeforePost repeated for the same snapshot');
+  assert.equal(formEventName(calls[0]), 'ПередПроведением');
+  assert.equal(app.form.__obBeforePostApproval, null, 'approval must be one-shot');
+});
+
+test('before-post: file field — edit while reading needs a fresh check and posts new data', async () => {
+  const {app, calls} = beforePostRuntime([{ok: true}, {ok: true}]);
+  const file = withFileSubmit(app);
+  file.submit(file.submitter);
+  await waitFor(() => file.readPending());
+  app.form.values.set('Наименование', 'Правка во время чтения');
+  app.context.obSetManagedFormDirty(true);
+  file.finishRead();
+  await waitFor(() => file.posts.length > 0);
+  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 2, 'edited snapshot must be checked again');
+  assert.equal(calls[0].options.body.get('Наименование'), 'Черновик');
+  assert.equal(calls[1].options.body.get('Наименование'), 'Правка во время чтения');
+  assert.equal(file.posts.length, 1);
+  assert.equal(file.posts[0].get('Наименование'), 'Правка во время чтения');
+});
+
+test('before-post: file field — a later click is checked again', async () => {
+  const {app, calls} = beforePostRuntime([{ok: true}, {ok: true, cancel: true}]);
+  const file = withFileSubmit(app);
+  file.submit(file.submitter);
+  await waitFor(() => file.readPending());
+  file.finishRead();
+  await waitFor(() => file.posts.length > 0);
+  const again = file.submit(file.submitter);
+  assert.equal(again.defaultPrevented, true);
+  await waitFor(() => calls.length === 2);
+  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(file.posts.length, 1, 'refused second post was sent');
 });

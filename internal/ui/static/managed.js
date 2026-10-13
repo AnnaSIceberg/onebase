@@ -1888,11 +1888,24 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // «Провести»: до отправки формы — ПередПроведением. Перехват в фазе захвата,
   // раньше остальных обработчиков отправки; после согласия форма отправляется
   // заново той же кнопкой и проходит их как обычно.
+  // Файловое поле откладывает отправку: его обработчик отменяет наш повторный
+  // submit, ждёт FileReader и отправляет форму сам (флаг reentry). Разрешение
+  // проверенного снимка поэтому живёт дольше синхронного requestSubmit — до
+  // этого повторного submit — и годится только для той же ревизии формы:
+  // правка во время чтения требует новой проверки, а не отправки по старой.
+  function obFileSubmitReentry(form){
+    return typeof obManagedFileSubmitReentry !== 'undefined' && obManagedFileSubmitReentry.has(form);
+  }
   document.addEventListener('submit', function(e){
     var form = e.target;
     if (!BEFORE_POST || !form || form.id !== 'main-form' || form.__obBeforePostApproved) return;
     var submitter = e.submitter || null;
     if (!submitter || submitter.name !== '_action' || submitter.value !== 'post') return;
+    var granted = form.__obBeforePostApproval || null;
+    form.__obBeforePostApproval = null;
+    // Повтор файлового обработчика для того же снимка — без второй проверки
+    // (разрешение одноразовое).
+    if (granted && obFileSubmitReentry(form) && granted.revision === formEditState.revision) return;
     // Let the native-submit controller recover an existing close intent.
     // BeforePost is only for a new operation, never for replay of an old one.
     if (closePending || retryableClose) return;
@@ -1902,6 +1915,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var approval = {};
     managedBeforePost(false, approval).then(function(ok){
       if (!ok || approval.revision !== formEditState.revision) return;
+      form.__obBeforePostApproval = {revision: approval.revision};
       form.__obBeforePostApproved = true;
       try {
         if (typeof form.requestSubmit === 'function') form.requestSubmit(submitter);
