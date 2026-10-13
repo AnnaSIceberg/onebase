@@ -80,16 +80,24 @@ type saveNumerator struct {
 	Field      *saveStandardField `yaml:"field,omitempty"`
 }
 
+// saveNumeratorEdit separates the submitted field properties from the final
+// numbering state: disabling numbering still submits edits to that field.
+// A nil edit preserves numbering; a nil Numerator explicitly disables it.
+type saveNumeratorEdit struct {
+	Numerator   *saveNumerator
+	FieldTitle  *string
+	FieldTitles map[string]string
+}
+
 // saveStandardField mirrors the user properties of metadata.rawNumeratorField.
 // The standard name, string type and stable ID are derived from entity kind.
 type saveStandardField struct {
-	Title         string            `yaml:"title,omitempty"`
-	Label         string            `yaml:"label,omitempty"`
-	Titles        map[string]string `yaml:"titles,omitempty"`
-	TitlesPresent bool              `yaml:"-"` // form marker: Titles contains edits, including explicit clears
-	Required      bool              `yaml:"required,omitempty"`
-	Default       string            `yaml:"default,omitempty"`
-	PII           bool              `yaml:"pii,omitempty"`
+	Title    string            `yaml:"title,omitempty"`
+	Label    string            `yaml:"label,omitempty"`
+	Titles   map[string]string `yaml:"titles,omitempty"`
+	Required bool              `yaml:"required,omitempty"`
+	Default  string            `yaml:"default,omitempty"`
+	PII      bool              `yaml:"pii,omitempty"`
 }
 
 // savePredefined — предопределённые элементы справочника. inline map нужен,

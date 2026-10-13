@@ -158,7 +158,7 @@ func (h *handler) findEntityConfigFile(ctx context.Context, b *Base, entityName 
 	return "", nil, false
 }
 
-func applyFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, owner *string, basedOn *[]string, activity **saveActivity, numerator **saveNumerator) error {
+func applyFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, owner *string, basedOn *[]string, activity **saveActivity, numerator *saveNumeratorEdit) error {
 	// «Владелец» синтезируется при загрузке owner: и попадает в форму как
 	// обычный реквизит. В исходном YAML его может не быть: тогда сохраняем
 	// служебный id до выдачи новых f_*, а при снятии owner убираем только
@@ -252,7 +252,7 @@ func applyFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveField, tp
 	return nil
 }
 
-func saveEntityFieldsToFile(dir, entityName string, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, owner *string, basedOn *[]string, activity **saveActivity, numerator **saveNumerator, objTitles *map[string]string) error {
+func saveEntityFieldsToFile(dir, entityName string, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, owner *string, basedOn *[]string, activity **saveActivity, numerator *saveNumeratorEdit, objTitles *map[string]string) error {
 	filePath, err := findEntityFilePath(dir, entityName)
 	if err != nil {
 		return err
@@ -278,7 +278,7 @@ func saveEntityFieldsToFile(dir, entityName string, fields []saveField, tpFields
 	return os.WriteFile(filePath, out, fsmode.File)
 }
 
-func (h *handler) saveEntityFieldsToDB(ctx context.Context, b *Base, entityName string, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, owner *string, basedOn *[]string, activity **saveActivity, numerator **saveNumerator, objTitles *map[string]string) error {
+func (h *handler) saveEntityFieldsToDB(ctx context.Context, b *Base, entityName string, fields []saveField, tpFields map[string][]saveField, posting *bool, postCaption *string, postAndCloseHidden *bool, hierarchical *bool, owner *string, basedOn *[]string, activity **saveActivity, numerator *saveNumeratorEdit, objTitles *map[string]string) error {
 	db, err := OpenDB(ctx, b)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
@@ -755,7 +755,7 @@ func (h *handler) configuratorSaveFields(w http.ResponseWriter, r *http.Request)
 	// Нумерация (план 117, Д5). До этого блок `numerator:` конфигуратор только
 	// сохранял при round-trip: задать префикс или включить уникальность можно
 	// было лишь правкой YAML руками.
-	var numerator **saveNumerator
+	var numerator *saveNumeratorEdit
 	if r.FormValue("numerator_present") == "1" {
 		var target *saveNumerator
 		if r.FormValue("numerator_enabled") == "1" {
@@ -785,13 +785,6 @@ func (h *handler) configuratorSaveFields(w http.ResponseWriter, r *http.Request)
 				BasePrefix: r.FormValue("numerator_base_prefix") == "1",
 				Unique:     r.FormValue("numerator_unique") == "1",
 			}
-			if r.FormValue("numerator_field_present") == "1" {
-				target.Field = &saveStandardField{
-					Title:         strings.TrimSpace(r.FormValue("numerator_field_title")),
-					Titles:        parseMapFormValues(r, "numerator_field_titles", true),
-					TitlesPresent: r.FormValue("numerator_field_titles_present") == "1",
-				}
-			}
 			// Уникальность вместе со сбросом счётчика без маски даты — ловушка
 			// с отложенным сроком: значение повторится в следующем периоде, и
 			// конфигурация сломается не сейчас, а первого января.
@@ -802,7 +795,16 @@ func (h *handler) configuratorSaveFields(w http.ResponseWriter, r *http.Request)
 				return
 			}
 		}
-		numerator = &target
+		numerator = &saveNumeratorEdit{Numerator: target}
+		if r.FormValue("numerator_field_present") == "1" {
+			if _, present := r.Form["numerator_field_title"]; present {
+				title := strings.TrimSpace(r.FormValue("numerator_field_title"))
+				numerator.FieldTitle = &title
+			}
+			if r.FormValue("numerator_field_titles_present") == "1" {
+				numerator.FieldTitles = parseMapFormValues(r, "numerator_field_titles", true)
+			}
+		}
 	}
 
 	tpFields := make(map[string][]saveField)

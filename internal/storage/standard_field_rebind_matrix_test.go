@@ -171,6 +171,28 @@ func TestStandardFieldRebindAfterNumberingDisabledMatrix(t *testing.T) {
 				if err != nil || row[field] != "000123" {
 					t.Fatalf("value after rebind = %v, %v", row, err)
 				}
+				// A repeated disabled save and re-enabling numbering keep the
+				// column, its data and the unique schema-map owner unchanged.
+				for _, state := range []*metadata.Entity{after, before} {
+					plan, err := db.PlanMigration(ctx, []*metadata.Entity{state}, nil, nil)
+					if err != nil || len(plan) != 0 {
+						t.Fatalf("repeat/enable dry-run = %+v, %v", plan, err)
+					}
+					if err := db.Migrate(ctx, []*metadata.Entity{state}); err != nil {
+						t.Fatal(err)
+					}
+					if metadata.ColumnName(state.Fields[0]) != column {
+						t.Fatal("physical column changed")
+					}
+					if owners := schemaMapOwners(t, db, table, column); len(owners) != 1 || owners[0] != standardID {
+						t.Fatalf("owners after repeat/enable = %v", owners)
+					}
+					row, err := db.GetByID(ctx, state.Name, rowID, state)
+					if err != nil || row[field] != "000123" {
+						t.Fatalf("value after repeat/enable = %v, %v", row, err)
+					}
+				}
+
 			})
 		}
 	})

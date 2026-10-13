@@ -65,17 +65,27 @@ func standardProperties(f saveField) *saveStandardField {
 // applyStandardFieldEdits keeps the standard column's identity while moving
 // its user properties between numerator.field and fields. The same function
 // runs for file and database configuration storage.
-func applyStandardFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveField, numerator **saveNumerator) error {
+func applyStandardFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveField, numerator *saveNumeratorEdit) error {
 	hadNumerator := ent.Numerator != nil
 	willNumerator := hadNumerator
 	if numerator != nil {
-		willNumerator = *numerator != nil
+		willNumerator = numerator.Numerator != nil
 	}
-	name, id := standardFieldIdentity(kind, hadNumerator || willNumerator)
+	// After disabling numbering, the materialized std_* field still carries
+	// the same properties and remains editable in the numbering section.
+	wasStandard := false
+	standardName, standardID := standardFieldIdentity(kind, true)
+	for _, field := range ent.Fields {
+		if strings.EqualFold(field.Name, standardName) && field.ID == standardID {
+			wasStandard = true
+			break
+		}
+	}
+	name, id := standardFieldIdentity(kind, hadNumerator || willNumerator || wasStandard)
 	if name == "" {
 		ent.Fields = ensureFieldIDs(ent.Fields, fields)
 		if numerator != nil {
-			ent.Numerator = *numerator
+			ent.Numerator = numerator.Numerator
 		}
 		return nil
 	}
@@ -86,6 +96,12 @@ func applyStandardFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveF
 	nextOrdinary, nextStandard, err := splitStandardSaveFields(fields, name)
 	if err != nil {
 		return err
+	}
+	if !hadNumerator && !willNumerator && nextStandard == nil {
+		// With numbering already off, deleting or renaming the ordinary row
+		// continues to use the ordinary field editor's existing behavior.
+		ent.Fields = ensureFieldIDs(ent.Fields, fields)
+		return nil
 	}
 	if hadNumerator && ent.Numerator.Field != nil && previousStandard != nil {
 		return fmt.Errorf("%s is defined in both fields and numerator.field", name)
@@ -106,24 +122,22 @@ func applyStandardFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveF
 		standard.Titles = mergeStandardTitles(previousTitles, standard.Titles)
 	}
 	standard.Name, standard.ID, standard.Type = name, id, "string"
+	if numerator != nil {
+		// Preserve the legacy label spelling on an unchanged roundtrip.
+		// A submitted change, including an explicit clear, supersedes it.
+		previousTitle := standard.Title
+		if previousTitle == "" {
+			previousTitle = standard.Label
+		}
+		if numerator.FieldTitle != nil && *numerator.FieldTitle != previousTitle {
+			standard.Title, standard.Label = *numerator.FieldTitle, ""
+		}
+		standard.Titles = mergeStandardTitles(standard.Titles, numerator.FieldTitles)
+	}
 	if willNumerator {
 		active := ent.Numerator
 		if numerator != nil {
-			active = *numerator
-		}
-		if active.Field != nil && numerator != nil {
-			// Keep the legacy label spelling on an unchanged roundtrip. A
-			// changed form title, including an explicit clear, supersedes it.
-			previousTitle := standard.Title
-			if previousTitle == "" {
-				previousTitle = standard.Label
-			}
-			if active.Field.Title != previousTitle {
-				standard.Title, standard.Label = active.Field.Title, ""
-			}
-			if active.Field.TitlesPresent {
-				standard.Titles = mergeStandardTitles(standard.Titles, active.Field.Titles)
-			}
+			active = numerator.Numerator
 		}
 		active.Field = standardProperties(standard)
 		ent.Numerator = active
