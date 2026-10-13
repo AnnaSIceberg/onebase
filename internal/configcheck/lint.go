@@ -496,7 +496,7 @@ func reportYAMLSchema() *yamlLintSchema {
 		// параметра пока только у обработок (processor.Param). А вот «default»
 		// модель знает — параметр без значения получает умолчание, — поэтому
 		// ключ разрешён: иначе линт ругался бы на работающую возможность.
-		"params":      seq(with(obj("name", "type", "label", "options", "default"), map[string]*yamlLintSchema{"labels": freeMap()})),
+		"params":      seq(with(obj("name", "type", "label", "options", "default", "period_end"), map[string]*yamlLintSchema{"labels": freeMap()})),
 		"composition": composition,
 		"variants":    seq(with(obj("name"), map[string]*yamlLintSchema{"composition": composition})),
 	})
@@ -686,8 +686,9 @@ func formModuleYAMLSchema() *yamlLintSchema {
 	actions := with(obj(), map[string]*yamlLintSchema{
 		"delete": action,
 		"save":   action,
-		"ok":     action,
-		"close":  action,
+		// ok.post — «ОК» проводит документ, как в 1С.
+		"ok":    obj("visible", "post"),
+		"close": action,
 		// attachments.visible:false скрывает панель вложений выбранной
 		// managed-формы (план 181C, #1621); attachment endpoint не меняется.
 		"attachments": action,

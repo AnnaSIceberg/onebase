@@ -495,7 +495,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       // Some managed elements keep their layout only in an inline display
       // declaration (checkbox and command bar use flex). Remember that value
       // before the first state update instead of erasing it on hidden=false.
-      if (!Object.prototype.hasOwnProperty.call(el, '_obDisplay')) el._obDisplay = el.style.display || '';
+      if (!Object.prototype.hasOwnProperty.call(el, '_obDisplay')) {
+        var d = el.style.display || '';
+        // Элемент с hidden_when рендерится сервером с display:none, но его
+        // натуральное состояние — видимый (''). Не запоминаем 'none' как
+        // значение для восстановления, иначе поле останется скрытым навсегда.
+        el._obDisplay = d === 'none' ? '' : d;
+      }
       el.style.display = hidden[path] ? 'none' : el._obDisplay;
     });
     var ro = st.readonly || {};
