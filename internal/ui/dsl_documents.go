@@ -1001,7 +1001,7 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 			return err
 		}
 	}
-	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc)
+	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc, w.hookXDTOState())
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
@@ -1132,7 +1132,7 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 			return storage.PostingFrozenError(lock)
 		}
 	}
-	errMsg, hookMessages := w.s.runOnPostCtx(ctx, w.obj, mc)
+	errMsg, hookMessages := w.s.runOnPostCtx(ctx, w.obj, mc, w.hookXDTOState())
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
@@ -1367,6 +1367,13 @@ func (s *Server) dslFieldSearchChecker() interpreter.FieldSearchChecker { return
 // шапку вместе с табличными частями. Без этого СериализаторXDTO.ЗаписатьXML
 // видел бы только Get/Set обёртки и не смог бы прочитать строки ТЧ.
 func (w *docWriter) XDTOObject() *runtime.Object { return w.obj }
+
+func (w *docWriter) hookXDTOState() *entityHookXDTOState {
+	if w.assigned == nil {
+		w.assigned = map[string]bool{}
+	}
+	return &entityHookXDTOState{loaded: w.loaded, assigned: w.assigned}
+}
 
 // XDTOMaskField — полевая политика для СериализаторXDTO.ЗаписатьXML: XDTOObject()
 // отдаёт сырой объект, минуя маскирование в Get().
