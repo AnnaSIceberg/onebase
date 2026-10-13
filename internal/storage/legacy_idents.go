@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 
 	"github.com/ivantit66/onebase/internal/metadata"
 )
@@ -143,9 +145,71 @@ func legacyTableClaims(logicals []string) map[string]int {
 	return claims
 }
 
+// finalNameOwners — конечные физические имена (SQLIdent), на которые
+// претендуют несколько логических имён, хотя бы одно из них длинное: короткое
+// имя, совпавшее с «началом_хешем» длинного, или два длинных с одним хешем.
+// Прежнего имени у такого случая может не быть вовсе — новое длинное поле
+// просто легло бы в существующую колонку с чужими данными, — поэтому
+// проверяется сама конфигурация, а не только найденная в базе обрезка.
+// Ключ — физическое имя, значение — его логические владельцы по порядку.
+func finalNameOwners(logicals []string) map[string][]string {
+	owners := map[string][]string{}
+	var order []string
+	for _, l := range uniqueStrings(logicals) {
+		target := metadata.SQLIdent(l)
+		if _, ok := owners[target]; !ok {
+			order = append(order, target)
+		}
+		owners[target] = append(owners[target], l)
+	}
+	out := map[string][]string{}
+	for _, target := range order {
+		names := owners[target]
+		if len(names) < 2 {
+			continue
+		}
+		for _, l := range names {
+			if metadata.LegacySQLIdents(l) != nil {
+				out[target] = names
+				break
+			}
+		}
+	}
+	return out
+}
+
+// finalNameConflict — отказ по общему конечному имени: table пусто — таблица.
+func finalNameConflict(table, target string, names []string) LongIdentAction {
+	what, object := "таблиц", "одна таблица"
+	if table != "" {
+		what, object = "полей", "одна колонка"
+	}
+	return LongIdentAction{Table: table, Old: target, New: target, Conflict: fmt.Sprintf(
+		"на физическое имя претендуют %d %s конфигурации (%s) — %s на разные данные",
+		len(names), what, strings.Join(names, ", "), object)}
+}
+
+func sortedKeys(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // planLegacyColumns — план для колонок таблицы table с логическими именами
 // logical (lower(поле) или lower(поле)_id).
 func (db *DB) planLegacyColumns(ctx context.Context, table string, logical []string) ([]LongIdentAction, error) {
+	// Два логических поля на одно физическое имя — отказ до обращения к
+	// базе: такая колонка на любой базе (и на пустой) смешала бы данные.
+	if owners := finalNameOwners(logical); len(owners) > 0 {
+		var out []LongIdentAction
+		for _, target := range sortedKeys(owners) {
+			out = append(out, finalNameConflict(table, target, owners[target]))
+		}
+		return out, nil
+	}
 	claims := map[string]int{}
 	var long []string
 	for _, l := range logical {
@@ -301,7 +365,16 @@ func (db *DB) PlanLongIdents(ctx context.Context, entities []*metadata.Entity, r
 	}
 	claims := legacyTableClaims(logicals)
 	var out []LongIdentAction
+	// Таблицы с общим конечным именем: отказ по каждому имени, и обе таблицы
+	// дальше не обследуются — колонки чужой таблицы не считаем своими.
+	shared := finalNameOwners(logicals)
+	for _, target := range sortedKeys(shared) {
+		out = append(out, finalNameConflict("", target, shared[target]))
+	}
 	for _, spec := range tables {
+		if _, ok := shared[metadata.SQLIdent(spec.logical)]; ok {
+			continue
+		}
 		action, err := db.planLegacyTable(ctx, spec.logical, claims)
 		if err != nil {
 			return nil, err

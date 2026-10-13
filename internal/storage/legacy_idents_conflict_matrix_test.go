@@ -309,3 +309,83 @@ func TestPlanLongIdentsIncludesTotalsColumnConflicts_Matrix(t *testing.T) {
 		})
 	}
 }
+
+// Ревью #1949, круг 3: конечное физическое имя нового длинного объекта уже
+// занято действующим коротким, буквально равным «началу_хешу». Прежнего
+// (обрезанного) имени у нового объекта нет, поэтому проверка обрезки конфликт
+// не видела, и новое поле или справочник читали чужие данные. Отказ — до
+// изменения схемы, исходные данные на месте; на чистой базе — тоже отказ.
+func TestMigrateRefusesSharedFinalIdent_Matrix(t *testing.T) {
+	longField := metadata.Field{Name: "РеквизитСОченьДлиннымИменемКоторыйПришёлИзОдинЭс", Type: metadata.FieldTypeString}
+	longCatalog := "СправочникСОченьДлиннымИменемИзКонфигурацииОдинЭс"
+	for _, kind := range []string{"column", "table"} {
+		for _, existing := range []bool{true, false} {
+			name := kind
+			if !existing {
+				name += "-empty-db"
+			}
+			t.Run(name, func(t *testing.T) {
+				dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+					ctx := context.Background()
+					owner := &metadata.Entity{Name: "ВладелецИмени", Kind: metadata.KindCatalog,
+						Fields: []metadata.Field{{Name: metadata.SQLIdent(metadata.LogicalColumnName(longField)), Type: metadata.FieldTypeString}}}
+					if kind == "table" {
+						owner.Name = metadata.SQLIdent(metadata.TableLogical(longCatalog))
+						owner.Fields = []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}}
+					}
+					if len(owner.Fields[0].Name) > metadata.MaxSQLIdentBytes || len(owner.Name) > metadata.MaxSQLIdentBytes {
+						t.Fatal("владелец должен быть коротким — иначе тест ничего не проверяет")
+					}
+					id := uuid.New()
+					field := owner.Fields[0].Name
+					original := *owner
+					original.Fields = append([]metadata.Field{}, owner.Fields...)
+					if existing {
+						if err := db.Migrate(ctx, []*metadata.Entity{owner}); err != nil {
+							t.Fatal(err)
+						}
+						if err := db.Upsert(ctx, owner.Name, id, map[string]any{field: "чужие данные"}, owner); err != nil {
+							t.Fatal(err)
+						}
+					}
+					entities := []*metadata.Entity{owner}
+					if kind == "column" {
+						owner.Fields = append(owner.Fields, longField)
+					} else {
+						entities = append(entities, &metadata.Entity{Name: longCatalog, Kind: metadata.KindCatalog,
+							Fields: []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}}})
+					}
+					if err := metadata.Validate(entities, nil); err != nil {
+						t.Fatalf("сценарий допускает публичная Validate — иначе тест не о миграции: %v", err)
+					}
+					plan, err := db.PlanLongIdents(ctx, entities, nil, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					conflict := false
+					for _, a := range plan {
+						if strings.Contains(a.Conflict, "претендуют 2") {
+							conflict = true
+						}
+					}
+					if !conflict {
+						t.Fatalf("dry-run не показал общее конечное имя: %v", plan)
+					}
+					if err := db.CheckLongIdents(ctx, entities, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "КОНФЛИКТ") {
+						t.Fatalf("preflight обязан отказать: %v", err)
+					}
+					err = db.Migrate(ctx, entities)
+					if err == nil || !strings.Contains(err.Error(), "КОНФЛИКТ") {
+						t.Fatalf("миграция обязана отказать до изменения схемы: %v", err)
+					}
+					if existing {
+						row, err := db.GetByID(ctx, original.Name, id, &original)
+						if err != nil || row[field] != "чужие данные" {
+							t.Fatalf("данные действующего владельца тронуты: %v %v", row, err)
+						}
+					}
+				})
+			})
+		}
+	}
+}
