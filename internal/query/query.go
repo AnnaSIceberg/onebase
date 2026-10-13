@@ -5838,7 +5838,7 @@ func dateArgumentIsMoment(tokens []tok, colTypes map[string]metadata.FieldType, 
 	if len(tokens) == 1 {
 		switch tokens[0].kind {
 		case tIdent:
-			name := lowerFast(tokens[0].val)
+			name := projectionInputSQLKey(tokens[0].val)
 			if typ, ok := colTypes[name]; ok {
 				return typ == metadata.FieldTypeDate
 			}
@@ -5856,7 +5856,7 @@ func dateArgumentIsMoment(tokens []tok, colTypes map[string]metadata.FieldType, 
 		if !ok {
 			return false
 		}
-		if typ, ok := fields[lowerFast(tokens[2].val)]; ok {
+		if typ, ok := fields[projectionInputSQLKey(tokens[2].val)]; ok {
 			return typ == metadata.FieldTypeDate
 		}
 		return false
