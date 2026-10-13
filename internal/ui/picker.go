@@ -3,10 +3,12 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
+	"github.com/shopspring/decimal"
 )
 
 // ── Подбор: платформенный механизм диалога мультивыбора (план 46) ──────────
@@ -75,6 +77,11 @@ type pickerConfig struct {
 	// сравнивает значение колонки целиком. Списки значений строятся из
 	// приехавших строк и сужают друг друга.
 	Filters []string `json:"filters,omitempty"`
+	// Width — ширина окна в пикселях; 0 — прежние 720. Подбору номенклатуры с
+	// десятком колонок (артикул, склад, остатки, цены, аналоги) 720 мало:
+	// таблица прокручивается вбок, наименование переносится в три строки. На
+	// узком экране окно по-прежнему не шире 96% ширины.
+	Width int `json:"width,omitempty"`
 }
 
 // newPickerBuiltin создаёт билтин ПоказатьПодбор. Записывает собранный payload
@@ -89,7 +96,7 @@ type pickerConfig struct {
 // Колонки — Массив структур {Имя, Заголовок, Тип, Редактируемое}.
 // Конфиг  — Структура {Заголовок, ПолеПоиска, ПолеКоличества, ВыбратьВсе,
 //
-//	ОдинВыбор, Отборы}
+//	ОдинВыбор, Отборы, Ширина}
 //
 //	(опционально). Отборы — имена колонок строкой через запятую или Массивом.
 func newPickerBuiltin(sink **pickerPayload) interpreter.BuiltinFunc {
@@ -141,10 +148,58 @@ func newPickerBuiltin(sink **pickerPayload) interpreter.BuiltinFunc {
 				return nil, err
 			}
 			p.Config.Filters = filters
+			width, err := pickerWidth(dslField(args[2], "Ширина", "Width"))
+			if err != nil {
+				return nil, err
+			}
+			p.Config.Width = width
 		}
 		*sink = p
 		return nil, nil
 	})
+}
+
+// pickerWidth разбирает Конфиг.Ширина — ширину окна в пикселях. Не число или
+// не больше нуля — ошибка: молча проигнорированная ширина выглядела бы как
+// «ключ не работает».
+func pickerWidth(v any) (int, error) {
+	if v == nil {
+		return 0, nil
+	}
+	var w decimal.Decimal
+	switch n := v.(type) {
+	case decimal.Decimal:
+		w = n
+	case int:
+		w = decimal.NewFromInt(int64(n))
+	case int64:
+		w = decimal.NewFromInt(n)
+	case float64:
+		if math.IsNaN(n) || math.IsInf(n, 0) {
+			return 0, fmt.Errorf("ПоказатьПодбор: Ширина должна быть конечным числом пикселей, получено %v", v)
+		}
+		w = decimal.NewFromFloat(n)
+	default:
+		d, err := decimal.NewFromString(strings.TrimSpace(pickStr(v)))
+		if err != nil {
+			return 0, fmt.Errorf("ПоказатьПодбор: Ширина должна быть числом пикселей, получено «%v»", v)
+		}
+		w = d
+	}
+	// Проверяем исходный Decimal: float64 может округлить дробь до целого
+	// или верхнюю границу int до следующего, уже недопустимого значения.
+	// Экспоненту ограничиваем до операций, расширяющих коэффициент числа.
+	if !interpreter.DecimalWithinSafeBounds(w) {
+		return 0, fmt.Errorf("ПоказатьПодбор: Ширина вне допустимого диапазона чисел")
+	}
+	if !w.IsPositive() || !w.IsInteger() {
+		return 0, fmt.Errorf("ПоказатьПодбор: Ширина должна быть целым числом пикселей больше нуля, получено %v", v)
+	}
+	maxInt := int(^uint(0) >> 1)
+	if w.GreaterThan(decimal.NewFromInt(int64(maxInt))) {
+		return 0, fmt.Errorf("ПоказатьПодбор: Ширина превышает допустимое число пикселей %d", maxInt)
+	}
+	return int(w.IntPart()), nil
 }
 
 // pickerFilters разбирает Конфиг.Отборы: строку «Направление, Филиал» или

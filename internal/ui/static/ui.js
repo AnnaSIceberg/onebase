@@ -3682,7 +3682,9 @@ function openItemPicker(payload, elementName, eventContext, request) {
   modal.id = '_item-picker-modal';
   modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
   var box = document.createElement('div');
-  box.style.cssText = 'background:#fff;border-radius:10px;padding:20px;width:720px;max-width:96vw;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.18)';
+  // Конфиг.Ширина — ширина окна в пикселях; на узком экране — не шире 96vw.
+  var boxWidth = cfg.width > 0 ? Math.round(cfg.width) : 720;
+  box.style.cssText = 'background:#fff;border-radius:10px;padding:20px;width:' + boxWidth + 'px;max-width:96vw;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.18)';
   var head = document.createElement('div');
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px';
   var title = document.createElement('div');
