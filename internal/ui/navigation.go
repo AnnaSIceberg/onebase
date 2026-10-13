@@ -123,12 +123,6 @@ func (s *Server) homeConfigurationNavigation(r *http.Request) (navigation.Tree, 
 	return base, configured, false
 }
 
-// Project both the configuration palette and the composed common layer onto
-// role membership; personal settings never receive targets outside that scope.
-func (s *Server) projectHomeNavigation(r *http.Request, tree navigation.Tree) navigation.Tree {
-	return s.projectRoleNavigation(r, s.reg.HomePage(), tree)
-}
-
 // navigationHomePage — страница, чей nav_by_role задаёт меню контекста:
 // глобальная «Главная» или home_page подсистемы sub.
 func (s *Server) navigationHomePage(sub string) *metadata.HomePage {
