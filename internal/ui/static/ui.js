@@ -845,6 +845,7 @@ function obInitReportChart() {
 window.obInitDashboard = function () {
   obInitMappedCharts('ob-widget-charts', '.w-chart-canvas[data-widget]', 'data-widget', 'chart init failed', true);
   obInitWidgetControllers();
+  if (window.obInitLiveList) window.obInitLiveList();
 };
 
 obReady(function () {
@@ -5771,6 +5772,8 @@ window.onebaseDevice = {
       }
     }
   }
+  // После подмены рабочего стола добавляем только ещё не привязанные события.
+  window.obInitLiveList = bindEvents;
 
   // Скрытая вкладка копит dirty; при возврате — один перечитывающий GET.
   document.addEventListener('visibilitychange', function () {

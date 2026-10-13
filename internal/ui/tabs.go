@@ -402,12 +402,21 @@ const tplAppShell = `{{define "page-app-shell"}}
       var nextBar=doc.querySelector('.subsys-bar'), nextNav=doc.getElementById('ob-nav'), nextHome=doc.getElementById('ob-tabhome');
       var bar=document.querySelector('.subsys-bar'), nav=document.getElementById('ob-nav');
       if(!nextHome||!home||!!nextBar!==!!bar||!!nextNav!==!!nav)throw new Error('shell layout differs');
+      // Настройки меню остаются в topbar, но относятся к разделу из ответа.
+      // Сначала проверяем наличие обеих ссылок, до изменения рабочего стола.
+      var navigationLinks=['/ui/settings/navigation','/ui/admin/navigation'].map(function(path){
+        var selector='.topbar a[href^="'+path+'?"]';
+        var current=document.querySelector(selector), next=doc.querySelector(selector);
+        if(!!current!==!!next)throw new Error('shell navigation differs');
+        return {current:current,next:next};
+      });
       if(bar)bar.replaceWith(document.importNode(nextBar,true));
       if(nav)nav.replaceWith(document.importNode(nextNav,true));
       while(home.firstChild)home.removeChild(home.firstChild);
       Array.prototype.forEach.call(nextHome.childNodes,function(n){ home.appendChild(document.importNode(n,true)); });
       var nextCharts=doc.getElementById('ob-widget-charts'), charts=document.getElementById('ob-widget-charts');
       if(nextCharts&&charts)charts.textContent=nextCharts.textContent;
+      navigationLinks.forEach(function(link){ if(link.current)link.current.setAttribute('href',link.next.getAttribute('href')); });
       if(doc.title)document.title=doc.title;
       if(push)history.pushState({obSection:true},'',target.pathname+target.search);
       currentSection=sectionOf(location.href);
@@ -420,6 +429,8 @@ const tplAppShell = `{{define "page-app-shell"}}
   // «Назад»/«Вперёд» между разделами — тем же путём. Смена только отборов
   // виджетов (тот же раздел) остаётся их собственному обработчику popstate.
   window.addEventListener('popstate',function(){
+    // Даже возврат к уже показанному разделу отменяет предыдущий pending fetch.
+    ++sectionSeq;
     if(sectionOf(location.href)===currentSection)return;
     switchSection(location.pathname+location.search,false);
   });
