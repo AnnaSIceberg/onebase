@@ -1876,7 +1876,8 @@ func (st formEventState) response(ok bool) formEventResponse {
 //
 // Снять получается не всё: элемент, скрытый на момент отрисовки, в разметку не
 // попал, и показать его обратно клиенту нечем — hidden=false для него ничего не
-// изменит до перезагрузки страницы. Для readonly обе стороны рабочие.
+// изменит до перезагрузки страницы. Исключение — кнопка: она рисуется с
+// display:none и показывается сразу. Для readonly обе стороны рабочие.
 type elementStates struct {
 	ReadOnly map[string]bool `json:"readonly,omitempty"`
 	Hidden   map[string]bool `json:"hidden,omitempty"`
