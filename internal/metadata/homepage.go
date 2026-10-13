@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -51,9 +52,18 @@ func (h *HomePage) NavForRoles(roles []string) (contents *SubsystemContents, ok 
 	if h == nil || len(h.NavByRole) == 0 {
 		return nil, false
 	}
+	// Ключи — в порядке имён: обход map случаен, а порядок объединения
+	// задаёт порядок объектов меню (и ревизию личной настройки), если два
+	// ключа совпадают без учёта регистра (check такое отвергает).
+	names := make([]string, 0, len(h.NavByRole))
+	for name := range h.NavByRole {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	union := &SubsystemContents{}
 	for _, role := range roles {
-		for name, c := range h.NavByRole {
+		for _, name := range names {
+			c := h.NavByRole[name]
 			if !strings.EqualFold(strings.TrimSpace(name), strings.TrimSpace(role)) {
 				continue
 			}
