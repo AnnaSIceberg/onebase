@@ -185,10 +185,11 @@ func allSchemas() map[string]map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"name", "type"},
 		"properties": map[string]any{
-			"name":    stringSchema("Имя параметра"),
-			"type":    stringSchema("Тип параметра"),
-			"label":   stringSchema("Подпись"),
-			"options": arrayOf(stringSchema("Значение")),
+			"name":       stringSchema("Имя параметра"),
+			"type":       stringSchema("Тип параметра"),
+			"label":      stringSchema("Подпись"),
+			"options":    arrayOf(stringSchema("Значение")),
+			"period_end": boolSchema("Для type: date — использовать конец выбранного дня (23:59:59)"),
 		},
 	}
 	// Параметр ОБРАБОТКИ знает обязательность, параметр отчёта — нет
