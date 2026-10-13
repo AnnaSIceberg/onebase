@@ -1056,3 +1056,118 @@ test('поля шапки: серверная замена недоступно�
   assert.deepEqual(JSON.parse(ctx.requests[2].options.body.get('_pick_result')), [{id: 'b-3-row', Бренд: 'b-3'}]);
   await ctx.settle(2, {});
 });
+
+for (const action of ['Enter', 'double-click', 'button']) {
+  for (const serverSearch of [false, true]) {
+    for (const removal of ['one', 'last']) {
+      test(`поля шапки: ${action} после удаления ${removal}, серверный поиск ${serverSearch}`, async () => {
+        const ctx = pickerContext(true);
+        const initial = headerPickerData('b-1', {serverSearch});
+        if (removal === 'last') initial.config.headerFields = [initial.config.headerFields[1]];
+        const opening = ctx.fire('КнПодбор', 'Нажатие');
+        await ctx.tick();
+        await ctx.settle(0, {pickerData: initial});
+        await opening;
+        headerCtl(ctx, 'Артикул').value = 'obsolete';
+        headerCtl(ctx, 'Артикул').dispatch('input');
+        if (removal === 'one') {
+          headerCtl(ctx, 'Бренд').value = 'b-2';
+          headerCtl(ctx, 'Бренд').dispatch('change');
+        } else headerBox(ctx).querySelector('._ip-refresh').dispatch('click');
+        await ctx.tick();
+        assert.equal(JSON.parse(ctx.requests[1].options.body.get('_pick_fields')).Артикул, 'obsolete');
+
+        const data = headerPickerData('b-2', {serverSearch});
+        data.config.headerFields = removal === 'one'
+          ? data.config.headerFields.filter((f) => f.name !== 'Артикул') : [];
+        await ctx.settle(1, {pickerData: data});
+        assert.equal(headerCtl(ctx, 'Артикул'), null);
+        assert.equal(Object.getPrototypeOf(ctx.state().fields), null);
+        assert.equal(Object.hasOwn(ctx.state().fields, 'Артикул'), false, 'удалённый реквизит остался в состоянии');
+        if (removal === 'one') {
+          assert.equal(headerCtl(ctx, 'Бренд').value, 'b-2', 'значение оставшегося поля потеряно');
+          headerBox(ctx).querySelector('._ip-refresh').dispatch('click');
+        } else if (serverSearch) {
+          assert.deepEqual(Object.keys(ctx.state().fields), []);
+          ctx.search().value = 'b-2';
+          ctx.search().dispatch('input');
+          ctx.flush();
+        }
+        await ctx.tick();
+        let pickIndex = 2;
+        if (removal === 'one' || serverSearch) {
+          assert.equal(ctx.requests[2].options.body.get('_event'), 'Поиск');
+          const fields = ctx.requests[2].options.body.get('_pick_fields');
+          if (removal === 'one') assert.deepEqual(JSON.parse(fields), {Бренд: 'b-2', СкрыватьНулевые: false});
+          else assert.equal(fields, null, 'пустая шапка отправила прежние значения');
+          await ctx.settle(2, {pickerData: data});
+          pickIndex = 3;
+        }
+        chooseHeaderRow(ctx, action);
+        await ctx.tick();
+        assert.equal(ctx.modal(), null, 'удаление поля заблокировало выбор');
+        const pick = ctx.requests[pickIndex].options.body;
+        assert.equal(pick.get('_event'), 'Выбор');
+        assert.deepEqual(JSON.parse(pick.get('_pick_result')), [{id: 'b-2-row', Бренд: 'b-2'}]);
+        if (removal === 'one') assert.deepEqual(JSON.parse(pick.get('_pick_fields')), {Бренд: 'b-2', СкрыватьНулевые: false});
+        else assert.equal(pick.get('_pick_fields'), null, 'выбор вернул удалённое последнее поле');
+        await ctx.settle(pickIndex, {});
+      });
+    }
+  }
+
+  test(`поля шапки: удаление другого поля не подтверждает поздний ввод — ${action}`, async () => {
+    const ctx = pickerContext(true);
+    await openManagedHeader(ctx);
+    headerCtl(ctx, 'Артикул').value = 'sent';
+    headerCtl(ctx, 'Артикул').dispatch('input');
+    headerBox(ctx).querySelector('._ip-refresh').dispatch('click');
+    await ctx.tick();
+    headerCtl(ctx, 'Артикул').value = 'late';
+    headerCtl(ctx, 'Артикул').dispatch('input');
+    const data = headerPickerData('b-1');
+    data.config.headerFields = data.config.headerFields.filter((f) => f.name !== 'СкрыватьНулевые');
+    await ctx.settle(1, {pickerData: data});
+    assert.equal(headerCtl(ctx, 'Артикул').value, 'late', 'поздний ввод потерян');
+    chooseHeaderRow(ctx, action);
+    await ctx.tick();
+    assert.ok(ctx.modal(), 'удаление другого поля подтвердило поздний ввод');
+    assert.equal(ctx.requests.length, 2);
+    headerBox(ctx).querySelector('._ip-refresh').dispatch('click');
+    await ctx.tick();
+    assert.deepEqual(JSON.parse(ctx.requests[2].options.body.get('_pick_fields')), {Бренд: 'b-1', Артикул: 'late'});
+    await ctx.settle(2, {pickerData: data});
+    chooseHeaderRow(ctx, action);
+    await ctx.tick();
+    assert.equal(ctx.modal(), null);
+    assert.deepEqual(JSON.parse(ctx.requests[3].options.body.get('_pick_fields')), {Бренд: 'b-1', Артикул: 'late'});
+    await ctx.settle(3, {});
+  });
+
+  test(`поля шапки: пустая шапка сохраняет запрет выбора до ответа очереди — ${action}`, async () => {
+    const ctx = pickerContext(true);
+    await openManagedHeader(ctx);
+    headerCtl(ctx, 'Бренд').value = 'b-2';
+    headerCtl(ctx, 'Бренд').dispatch('change');
+    await ctx.tick();
+    const hideZero = headerBox(ctx).querySelector('._ip-head-fields').querySelectorAll('input')
+      .find((ctl) => ctl.type === 'checkbox');
+    hideZero.checked = true;
+    hideZero.dispatch('change');
+    const data = headerPickerData('b-2', {headerFields: []});
+    await ctx.settle(1, {pickerData: data});
+    assert.equal(ctx.requests.length, 3, 'последний запрос очереди потерян');
+    assert.equal(ctx.requests[2].options.body.get('_pick_fields'), null, 'очередь отправила удалённые поля');
+    chooseHeaderRow(ctx, action);
+    await ctx.tick();
+    assert.ok(ctx.modal(), 'пустая шапка разрешила выбрать строку до завершения очереди');
+    assert.equal(ctx.requests.length, 3);
+    await ctx.settle(2, {pickerData: data});
+    chooseHeaderRow(ctx, action);
+    await ctx.tick();
+    assert.equal(ctx.modal(), null);
+    assert.equal(ctx.requests[3].options.body.get('_event'), 'Выбор');
+    assert.equal(ctx.requests[3].options.body.get('_pick_fields'), null);
+    await ctx.settle(3, {});
+  });
+}
