@@ -97,8 +97,10 @@ func getMovementPeriodForm(t *testing.T, f *registerMaskFixture, router http.Han
 func movementPeriodDSL(t *testing.T, f *registerMaskFixture) []any {
 	t.Helper()
 	prog := mustParse(t, `Функция Тест()
-  П = РегистрыНакопления.PeriodMovements.ВыбратьПоРегистратору(Док)[0].Период;
-  Возврат [ТипЗнч(П), П];
+  А = РегистрыНакопления.PeriodMovements.Выбрать()[0].Период;
+  Б = РегистрыНакопления.PeriodMovements.Движения()[0].Период;
+  В = РегистрыНакопления.PeriodMovements.ВыбратьПоРегистратору(Док)[0].Период;
+  Возврат [ТипЗнч(А), А, ТипЗнч(Б), Б, ТипЗнч(В), В];
 КонецФункции`)
 	var result any
 	if err := f.s.interp.RunWithResult(prog.Procedures[0], nil, &result, map[string]any{
@@ -110,6 +112,16 @@ func movementPeriodDSL(t *testing.T, f *registerMaskFixture) []any {
 	return result.(*interpreter.Array).Iterate()
 }
 
+func requireMovementDSLPeriod(t *testing.T, values []any, want time.Time) {
+	t.Helper()
+	for i, method := range []string{"Выбрать", "Движения", "ВыбратьПоРегистратору"} {
+		period, ok := values[2*i+1].(time.Time)
+		if values[2*i] != "Дата" || !ok || !period.Equal(want) {
+			t.Fatalf("%s DSL period = %v (%T); want Date at %v", method, values[2*i+1], values[2*i+1], want)
+		}
+	}
+}
+
 func TestDocumentMovementPeriodLocalTimeMatrix(t *testing.T) {
 	saved := time.Local
 	t.Cleanup(func() { time.Local = saved })
@@ -119,9 +131,9 @@ func TestDocumentMovementPeriodLocalTimeMatrix(t *testing.T) {
 	}{{"UTCplus3", 3 * 3600}, {"UTCminus5", -5 * 3600}} {
 		t.Run(zone.name, func(t *testing.T) {
 			time.Local = time.FixedZone(zone.name, zone.offset)
-			dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
-				for _, managed := range []bool{false, true} {
-					t.Run(fmt.Sprintf("managed=%t", managed), func(t *testing.T) {
+			for _, managed := range []bool{false, true} {
+				t.Run(fmt.Sprintf("managed=%t", managed), func(t *testing.T) {
+					dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 						f, router := movementPeriodServer(t, db, managed)
 						reader := f.reader("period-reader", true, nil, nil)
 						for _, tc := range []struct {
@@ -133,17 +145,19 @@ func TestDocumentMovementPeriodLocalTimeMatrix(t *testing.T) {
 							{"after-midnight", time.Date(2026, 8, 15, 0, 0, 7, 0, time.Local), "15.08.2026 00:00:07"},
 							{"before-midnight", time.Date(2026, 8, 15, 23, 59, 58, 0, time.Local), "15.08.2026 23:59:58"},
 							{"midnight", time.Date(2026, 8, 15, 0, 0, 0, 0, time.Local), "15.08.2026"},
+							{"fractional-seconds", time.Date(2026, 8, 15, 15, 33, 22, 123456000, time.Local), "15.08.2026 15:33:22"},
 						} {
 							t.Run(tc.name, func(t *testing.T) {
 								// Pass a UTC instant into storage, independently of the host zone.
 								writePeriodMovements(t, f, tc.local.UTC())
 								before := movementPeriodDSL(t, f)
+								want := tc.local
 								if db.IsSQLite() {
-									period, ok := before[1].(time.Time)
-									if before[0] != "Дата" || !ok || !period.Equal(tc.local) {
-										t.Fatalf("SQLite DSL period = %v; want Date at %v", before, tc.local)
-									}
+									// The existing SQLite writer stores whole seconds; PostgreSQL
+									// stores microseconds. Reading must retain the saved precision.
+									want = want.Truncate(time.Second)
 								}
+								requireMovementDSLPeriod(t, before, want)
 								rawBefore, err := db.GetMovements(f.ctx, f.reg.Name, f.reg, storage.RegFilter{})
 								if err != nil {
 									t.Fatal(err)
@@ -190,8 +204,8 @@ func TestDocumentMovementPeriodLocalTimeMatrix(t *testing.T) {
 							}
 						})
 					})
-				}
-			})
+				})
+			}
 		})
 	}
 }
@@ -222,9 +236,89 @@ func TestDocumentMovementPeriodSQLiteTextFormats(t *testing.T) {
 						if !strings.Contains(page, "<td>15.08.2026 15:33:22</td>") {
 							t.Fatalf("raw period %q not rendered as local time", raw)
 						}
+						// Keep the existing DSL parser's interpretation of machine
+						// timestamps: offsets identify instants, no offset means local
+						// wall time. The legacy Go spelling is covered above for display.
+						if raw != "2026-08-15 12:33:22 +0000 UTC" {
+							want := time.Date(2026, 8, 15, 15, 33, 22, 0, time.Local)
+							if raw == "2026-08-15T12:33:22.123456Z" {
+								want = want.Add(123456 * time.Microsecond)
+							}
+							requireMovementDSLPeriod(t, movementPeriodDSL(t, f), want)
+						}
 					})
 				}
 			})
 		})
 	}
+}
+
+func TestMovementPeriodDSLAccessMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		f, router := movementPeriodServer(t, db, false)
+		period := time.Date(2026, 8, 15, 12, 33, 22, 0, time.UTC)
+		writePeriodMovements(t, f, period)
+		policy := auth.RowPolicy{Field: "Область", Op: "eq", Value: auth.RowValue{Literal: "visible"}}
+		for _, call := range []string{"Выбрать()", "Движения()", "ВыбратьПоРегистратору(Док)"} {
+			t.Run(call, func(t *testing.T) {
+				prog := mustParse(t, `Функция Тест()
+  Строки = РегистрыНакопления.PeriodMovements.`+call+`;
+  Возврат [Строки.Количество(), ТипЗнч(Строки[0].Период), Строки[0].Период,
+    ТипЗнч(Строки[0].Метка), Строки[0].Метка];
+КонецФункции`)
+				for _, strategy := range []string{"", "mask_all", "hide", "denied"} {
+					t.Run("period-policy="+strategy, func(t *testing.T) {
+						var fields auth.FieldPolicies
+						if strategy == "mask_all" || strategy == "hide" {
+							fields = auth.FieldPolicies{"period": {Read: strategy}}
+						}
+						user := f.reader(call+strategy, strategy != "denied", fields, &policy)
+						ctx := auth.ContextWithUser(f.ctx, user)
+						var result any
+						err := f.s.interp.RunWithResult(prog.Procedures[0], nil, &result, map[string]any{
+							"РегистрыНакопления": newAccumRegsRoot(f.s, interpreter.NewTxState(ctx)),
+							"Док":                &interpreter.Ref{UUID: f.recorderID.String(), Type: f.doc.Name},
+						})
+						if strategy == "denied" {
+							if err == nil {
+								t.Fatal("DSL disclosed movements without register read")
+							}
+							return
+						}
+						if err != nil {
+							t.Fatal(err)
+						}
+						values := result.(*interpreter.Array).Iterate()
+						if values[0] != float64(1) || values[3] != "Строка" || values[4] != "VISIBLE-PERIOD-ROW" {
+							t.Fatalf("RLS or unrelated string field changed: %v", values)
+						}
+						switch strategy {
+						case "":
+							got, ok := values[2].(time.Time)
+							if values[1] != "Дата" || !ok || !got.Equal(period) {
+								t.Fatalf("DSL period under RLS = %v; want Date at %v", values, period)
+							}
+						case "mask_all":
+							if values[1] != "Строка" || values[2] != "••••••" {
+								t.Fatalf("masked period disclosed: %v", values)
+							}
+						case "hide":
+							if values[2] != nil {
+								t.Fatalf("hidden period disclosed: %v", values)
+							}
+						}
+						// The register list consumes the same storage rows. Its access
+						// filters must remain intact after changing the period payload.
+						r := httptest.NewRequest(http.MethodGet, "/ui/register/"+strings.ToLower(f.reg.Name), nil)
+						r = r.WithContext(ctx)
+						w := httptest.NewRecorder()
+						router.ServeHTTP(w, r)
+						if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "VISIBLE-PERIOD-ROW") || strings.Contains(w.Body.String(), "HIDDEN-PERIOD-ROW") {
+							t.Fatalf("register list broke RLS: status %d", w.Code)
+						}
+					})
+				}
+			})
+		}
+	})
 }
