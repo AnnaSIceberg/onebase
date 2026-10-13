@@ -608,6 +608,7 @@ func homePageYAMLSchema() *yamlLintSchema {
 		"rows":    seq(obj("widgets")),
 		"widgets": seq(obj("name", "span")),
 		"nav":     nav,
+		"nav_by_role": freeMap(),
 	})
 }
 
