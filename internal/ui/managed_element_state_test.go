@@ -109,9 +109,12 @@ func TestУсловноеСкрытие_ЭлементНеОтрисован(t *
 		t.Errorf("черновик: кнопка должна быть видна\n%s", черновик)
 	}
 
+	// Скрытая кнопка остаётся в разметке с display:none: иначе событие формы,
+	// снявшее условие, не смогло бы её показать (managed_hidden_button_test.go).
 	принята := отрисоватьСУсловиями(t, ent, form, map[string]string{"СтадияОформления": "Принята"})
-	if strings.Contains(принята, "Принять заявку") {
-		t.Errorf("принятая заявка: кнопка не должна отрисовываться\n%s", принята)
+	якорь := managedAnchorNode(t, принята, "КнопкаПринять")
+	if якорь == nil || !managedStyleHidden(якорь) {
+		t.Errorf("принятая заявка: кнопка должна быть скрыта (display:none)\n%s", принята)
 	}
 }
 
@@ -130,12 +133,13 @@ func TestСостоянияЭлементов_СодержатЛожныеУсл
 	if st == nil {
 		t.Fatal("состояния не рассчитаны, ожидалась карта с ложным условием")
 	}
-	if v, есть := st.ReadOnly["ПолеУлица"]; !есть || v {
-		t.Errorf("ReadOnly[ПолеУлица] = (%v, есть=%v), ожидалось (false, есть=true)", v, есть)
+	ключ := путьСостояния(t, form, "ПолеУлица")
+	if v, есть := st.ReadOnly[ключ]; !есть || v {
+		t.Errorf("ReadOnly[%s] = (%v, есть=%v), ожидалось (false, есть=true)", ключ, v, есть)
 	}
 
 	st = s.formElementStates(form, ent, map[string]any{"СтадияОформления": "Принята"}, true)
-	if !st.ReadOnly["ПолеУлица"] {
+	if !st.ReadOnly[ключ] {
 		t.Errorf("на принятой заявке ожидалось ReadOnly[ПолеУлица]=true")
 	}
 }
@@ -682,7 +686,7 @@ func TestФлажокДинамическиЗапертСобытием_НеСб
 	if !resp.OK {
 		t.Fatalf("событие формы завершилось ошибкой: %q", resp.Error)
 	}
-	if resp.ElementStates == nil || !resp.ElementStates.ReadOnly["ФлагСогласовано"] {
+	if resp.ElementStates == nil || !resp.ElementStates.ReadOnly[путьСостояния(t, form, "ФлагСогласовано")] {
 		t.Fatalf("событие не заперло флажок: %#v", resp.ElementStates)
 	}
 	stage, ok := resp.Values["СтадияОформления"].(string)
@@ -820,8 +824,9 @@ func заявкаПодЗапретомПослеСобытия(t *testing.T) ([
 }
 
 func TestПостоянныйЗапрет_НеСнимаетсяСобытиемФормы(t *testing.T) {
+	ent := заявкаСГруппойПодЗапретом(t)
 	_, resp := заявкаПодЗапретомПослеСобытия(t)
-	if resp.ElementStates == nil || !resp.ElementStates.ReadOnly["ПолеУлица"] {
+	if resp.ElementStates == nil || !resp.ElementStates.ReadOnly[путьСостояния(t, ent.Forms[0], "ПолеУлица")] {
 		t.Fatalf("карта состояний обязана нести итоговый запрет, а не ложное условие: %#v", resp.ElementStates)
 	}
 }
@@ -849,8 +854,9 @@ func TestУсловныйЗапретБезПостоянного_ВсёЕщёС
 	if st == nil {
 		t.Fatal("состояния не рассчитаны, ожидалась карта с ложным условием")
 	}
-	if v, есть := st.ReadOnly["ПолеУлица"]; !есть || v {
-		t.Errorf("ReadOnly[ПолеУлица] = (%v, есть=%v), ожидалось (false, есть=true)", v, есть)
+	ключ := путьСостояния(t, ent.Forms[0], "ПолеУлица")
+	if v, есть := st.ReadOnly[ключ]; !есть || v {
+		t.Errorf("ReadOnly[%s] = (%v, есть=%v), ожидалось (false, есть=true)", ключ, v, есть)
 	}
 }
 
