@@ -68,6 +68,11 @@ const (
 	// отменяет проведение; без отказа и без вопроса браузер проводит документ
 	// как обычно.
 	FormEventBeforePost FormEventType = "ПередПроведением" // BeforePost
+	// ПриСменеСтраницы — пользователь открыл другую страницу набора
+	// СтраницыФормы (ПриСменеСтраницы панели 1С). Имя открытой страницы —
+	// переменная ТекущаяСтраница; сервер принимает только страницу этого же
+	// набора.
+	FormEventOnPageChange FormEventType = "ПриСменеСтраницы" // OnCurrentPageChange
 )
 
 var knownFormEventTypes = map[FormEventType]bool{
@@ -81,8 +86,10 @@ var knownFormEventTypes = map[FormEventType]bool{
 	FormEventBeforeRowAdd: true, FormEventAfterRowAdd: true,
 	FormEventBeforeRowDelete: true, FormEventStartListChoice: true,
 	FormEventAutoComplete: true, FormEventExecuteCommand: true, FormEventOnChoice: true,
-	FormEventOnSearch: true,
-	FormEventOnAnswer: true, FormEventBeforePost: true,
+	FormEventOnSearch:     true,
+	FormEventOnAnswer:     true,
+	FormEventBeforePost:   true,
+	FormEventOnPageChange: true,
 }
 
 // formTablePartContextVars — имена, которые платформа инжектирует в обработчик
@@ -223,9 +230,9 @@ type FormElement struct {
 	// а прокручивается. Нужна ряду кнопок: перенос рвёт панель действий пополам,
 	// и половина кнопок оказывается отдельной полосой, будто это другой блок.
 	// По умолчанию поведение прежнее — перенос.
-	ScrollX bool `yaml:"scroll_x,omitempty"`
-	Background      string            `yaml:"background,omitempty"`     // фон контейнера; читается только у ГруппаФормы (#1547), цвет проверяет csssafe.Color
-	ReadOnly        bool              `yaml:"readonly,omitempty"`       // только чтение
+	ScrollX    bool   `yaml:"scroll_x,omitempty"`
+	Background string `yaml:"background,omitempty"` // фон контейнера; читается только у ГруппаФормы (#1547), цвет проверяет csssafe.Color
+	ReadOnly   bool   `yaml:"readonly,omitempty"`   // только чтение
 	// ChoiceFolders — разрешить выбирать ГРУППЫ иерархического справочника
 	// (аналог ВыборГруппИЭлементов в 1С). Подбор ссылочного поля всегда
 	// исключает папки, и для справочника, где значение по смыслу является

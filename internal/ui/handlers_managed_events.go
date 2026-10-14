@@ -1269,6 +1269,11 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		vars["DialogFields"] = qf
 	}
 
+	if err := addPageChangeContext(eventName, r.FormValue("_page"), eventTarget, vars); err != nil {
+		respondJSON(enc, formEventResponse{Error: err.Error()})
+		return
+	}
+
 	if err := addEntityTPEventContext(r, entity, form, tableAuthorities, eventTarget, obj, vars); err != nil {
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
@@ -2617,6 +2622,12 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 				vars["ДиалогПоля"] = fields
 				vars["DialogFields"] = fields
 			}
+		}
+		page, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_page"))
+		if err := addPageChangeContext(eventName, page, eventTarget, vars); err != nil {
+			opStatus = "error"
+			respondJSON(enc, formEventResponse{Error: err.Error()})
+			return
 		}
 		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars); err != nil {
 			opStatus = "error"
