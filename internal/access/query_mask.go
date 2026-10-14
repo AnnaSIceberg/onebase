@@ -98,7 +98,8 @@ func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 	// адресует одно имя и ложится на одну колонку — вторая уходит клиенту
 	// сырой. Частично замаскированную выдачу отдавать нельзя, поэтому
 	// отказываем до выполнения запроса.
-	if denied, ambiguous := ambiguousMaskedOutput(res.Projection, masked, columns, fieldColumns); ambiguous {
+	if denied, ambiguous := ambiguousMaskedOutput(res.Projection, masked, columns, fieldColumns,
+		res.SourceOccurrences, lookup); ambiguous {
 		return QueryMaskPlan{Denied: denied, deniedReason: "имя колонки встречается в выборке дважды"}
 	}
 	plan := QueryMaskPlan{}
@@ -242,9 +243,47 @@ func containsString(list []string, v string) bool {
 	return false
 }
 
+// wildcardSourceColumnCounts считает физические колонки по отдельным
+// вхождениям источников, а не по карте защищённых полей. Обычное поле другого
+// источника также может дублировать защищённое имя. Self-JOIN учитывается дважды;
+// уникальный список Sources предназначен для RBAC и здесь недостаточен.
+// nil означает, что однозначность источников доказать нельзя.
+func wildcardSourceColumnCounts(sources []query.SourceOccurrence, qualifier string, lookup func(kind, name string) *metadata.Entity) map[string]int {
+	if len(sources) == 0 || lookup == nil {
+		return nil
+	}
+	counts := map[string]int{}
+	found := false
+	for _, src := range sources {
+		if qualifier != "" && fieldKey(src.Qualifier) != fieldKey(qualifier) {
+			continue
+		}
+		found = true
+		meta := lookup(src.Kind, src.Name)
+		if meta == nil {
+			return nil
+		}
+		own := map[string]bool{"id": true}
+		if meta.Kind == metadata.KindDocument {
+			own["posted"] = true
+		}
+		for _, f := range meta.Fields {
+			own[fieldKey(metadata.ColumnName(f))] = true
+		}
+		for name := range own {
+			counts[name]++
+		}
+	}
+	if !found {
+		return nil
+	}
+	return counts
+}
+
 // ambiguousMaskedOutput ищет защищённое имя выходной колонки, встречающееся в
-// списке выборки больше одного раза. «*» считается за все защищённые колонки
-// своих источников, поэтому «ВЫБРАТЬ *, Телефон» тоже попадает сюда. Элемент
+// списке выборки больше одного раза. «*» учитывает кратность физических колонок
+// всех источников (в том числе обычных полей и повторов одной сущности).
+// Поэтому «ВЫБРАТЬ *, Телефон» тоже попадает сюда. Элемент
 // выборки учитывается под выходным именем: разные алиасы одного физического
 // поля адресуются независимо и получают каждый свою маску. Отдельно проверяем
 // пересечение явной проекции со «*» по физическим колонкам: защищённая ссылка
@@ -252,24 +291,39 @@ func containsString(list []string, v string) bool {
 // колонку по физическому имени (`секрет_id`) — без сопоставления их опасное
 // сочетание не обнаруживалось бы вовсе (круг 4 #1428). Дубль
 // НЕзащищённого имени к отказу не ведёт: маску он не трогает.
-func ambiguousMaskedOutput(p query.ProjectionPlan, masked, columns map[string]FieldDecision, fieldColumns map[string][]string) (string, bool) {
+func ambiguousMaskedOutput(p query.ProjectionPlan, masked, columns map[string]FieldDecision, fieldColumns map[string][]string, sources []query.SourceOccurrence, lookup func(kind, name string) *metadata.Entity) (string, bool) {
 	counts := map[string]int{}
 	protected := map[string]bool{}
 	starColumns := map[string]bool{}
 	ambiguous := map[string]bool{}
-	for _, col := range p.Columns {
-		if col.Star {
-			for name := range columns {
-				starColumns[fieldKey(name)] = true
+	starCounts := make([]map[string]int, len(p.Columns))
+	for i, col := range p.Columns {
+		if !col.Star {
+			continue
+		}
+		qualifier := ""
+		if len(col.Path) == 1 {
+			qualifier = col.Path[0]
+		}
+		starCounts[i] = wildcardSourceColumnCounts(sources, qualifier, lookup)
+		for name := range columns {
+			key := fieldKey(name)
+			if starCounts[i] == nil {
+				// Неизвестный источник: не отдаём частично защищённую строку.
+				ambiguous[key] = true
+			} else if starCounts[i][key] > 0 {
+				starColumns[key] = true
 			}
 		}
 	}
-	for _, col := range p.Columns {
+	for i, col := range p.Columns {
 		if col.Star {
 			for name := range columns {
 				key := fieldKey(name)
-				counts[key]++
-				protected[key] = true
+				if n := starCounts[i][key]; n > 0 {
+					counts[key] += n
+					protected[key] = true
+				}
 			}
 			continue
 		}
