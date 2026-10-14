@@ -862,3 +862,41 @@ test('раздел не загрузился — прежний переход',
   assert.equal(app.pushed.length, 0);
   assert.equal(app.calls.dashboard, 0);
 });
+
+test('a close command that outran the save of a new form closes it once the id arrives', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/document/звонок/new', 'Звонок');
+  app.open('/ui/document/заявка/7', 'Заявка');
+  // Обработчик формы записал новый звонок и сразу прислал ui.закрытьФорму
+  // по адресу с id — по SSE раньше, чем форма получила ответ с savedId.
+  assert.equal(app.closeByURL('/ui/document/звонок/42'), 0);
+  assert.equal(app.count(), 2);
+  // Ответ пришёл: форма сменила адрес через replaceState и сообщила оболочке.
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/звонок/42');
+  assert.deepEqual(app.titles(), ['Заявка']);
+});
+
+test('a waiting close command does not touch another document', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/document/звонок/new', 'Звонок');
+  assert.equal(app.closeByURL('/ui/document/звонок/42'), 0);
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/звонок/43');
+  assert.equal(app.count(), 1);
+  // Вкладка, открытая позже обычным переходом, команду тоже не подхватывает.
+  app.open('/ui/document/звонок/42', 'Звонок 42');
+  assert.equal(app.count(), 2);
+});
+
+test('a waiting close command is used once', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/document/звонок/new', 'Звонок');
+  app.duplicate(0);
+  assert.equal(app.closeByURL('/ui/document/звонок/42'), 0);
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/звонок/42');
+  assert.equal(app.count(), 1);
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/звонок/42');
+  assert.equal(app.count(), 1);
+});
