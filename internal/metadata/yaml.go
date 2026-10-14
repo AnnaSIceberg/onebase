@@ -530,6 +530,7 @@ type rawInfoRegister struct {
 	Recorder   bool              `yaml:"recorder"`
 	Dimensions []rawField        `yaml:"dimensions"`
 	Resources  []rawField        `yaml:"resources"`
+	Indexes    []rawIndex        `yaml:"indexes"`
 }
 
 func LoadInfoRegisterFile(path string) (*InfoRegister, error) {
@@ -551,6 +552,12 @@ func LoadInfoRegisterFile(path string) (*InfoRegister, error) {
 	}
 	for _, rf := range raw.Resources {
 		ir.Resources = append(ir.Resources, parseField(rf))
+	}
+	for _, ri := range raw.Indexes {
+		ir.Indexes = append(ir.Indexes, IndexSpec{Fields: trimStringList(ri.Fields), Unique: ri.Unique})
+	}
+	if err := ValidateInfoRegisterIndexes(ir); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return ir, nil
 }
