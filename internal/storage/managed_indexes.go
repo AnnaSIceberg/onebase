@@ -516,7 +516,8 @@ func (db *DB) guardEntityColumnChanges(ctx context.Context, e *metadata.Entity) 
 		return err
 	}
 	for _, c := range changes {
-		if c.Kind == ChangeAdd {
+		if c.Kind == ChangeAdd || c.Kind == ChangeRebindFieldID {
+			// Rebinding only changes the schema-map ID, not the physical column.
 			continue
 		}
 		col := c.From

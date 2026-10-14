@@ -430,3 +430,55 @@ func TestManagedIndexes_RecheckAfterExternalDDLMatrix(t *testing.T) {
 		require.Equal(t, "true", value)
 	})
 }
+
+// Rebinding a legacy standard-field ID only updates the schema map; even an
+// opaque external index must survive because no physical column changes.
+func TestManagedIndexes_StandardFieldRebindMatrix(t *testing.T) {
+	for _, kind := range []metadata.Kind{metadata.KindCatalog, metadata.KindDocument} {
+		for _, index := range []struct {
+			name string
+			sql  string
+		}{
+			{"plain", "(name)"},
+			{"partial", "(name) WHERE name IS NOT NULL"},
+			{"expression", "(lower(name))"},
+		} {
+			t.Run(string(kind)+"/"+index.name, func(t *testing.T) {
+				dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+					e, field, standardID := numberedRebindEntity(kind, "RebindIndexed")
+					e.Fields = append(e.Fields, metadata.Field{ID: "field_name", Name: "Name", Type: metadata.FieldTypeString})
+					managedMigrate(t, db, e)
+					table := metadata.TableName(e.Name)
+					managedExec(t, db, "CREATE INDEX external_rebind ON "+table+" "+index.sql)
+					rowID := uuid.New()
+					require.NoError(t, db.Upsert(t.Context(), e.Name, rowID, map[string]any{field: "000123", "Name": "kept"}, e))
+					indexesBefore := managedActual(t, db, e)
+					registryBefore := managedRegistry(t, db)
+					rewriteStandardMapID(t, db, table, standardID, "f_legacy", "string")
+					plan, err := db.PlanMigration(t.Context(), []*metadata.Entity{e}, nil, nil)
+					require.NoError(t, err)
+					require.Len(t, plan, 1)
+					require.Equal(t, storage.ChangeRebindFieldID, plan[0].Kind)
+					require.Equal(t, "f_legacy", plan[0].From)
+					require.Equal(t, standardID, plan[0].FieldID)
+
+					previewErr := db.CheckEntityColumnMigration(t.Context(), e)
+					managedMigrate(t, db, e)
+					require.NoError(t, previewErr, "preview must allow metadata-only rebind")
+					require.Equal(t, []string{standardID}, schemaMapOwners(t, db, table, metadata.ColumnName(e.Fields[0])))
+					row, err := db.GetByID(t.Context(), e.Name, rowID, e)
+					require.NoError(t, err)
+					require.Equal(t, "000123", row[field])
+					require.Equal(t, "kept", row["Name"])
+					require.Equal(t, indexesBefore, managedActual(t, db, e), "external index definition must be preserved")
+					require.Equal(t, registryBefore, managedRegistry(t, db), "external index must not be adopted")
+					plan, err = db.PlanMigration(t.Context(), []*metadata.Entity{e}, nil, nil)
+					require.NoError(t, err)
+					require.Empty(t, plan)
+					managedMigrate(t, db, e)
+					require.Equal(t, indexesBefore, managedActual(t, db, e))
+				})
+			})
+		}
+	}
+}
