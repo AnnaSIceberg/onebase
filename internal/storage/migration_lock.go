@@ -13,7 +13,8 @@ type entityDDLKey struct{}
 
 func (db *DB) withMigrationLock(ctx context.Context, fn func(context.Context) error) (resultErr error) {
 	// A caller's existing transaction already pins its connection. Do not
-	// open another one (SQLite has a one-connection pool).
+	// open another one (SQLite has a one-connection pool). Acquire the
+	// connection before migration locks so its owner can always migrate.
 	var session *DurableSession
 	if !HasTx(ctx) && durableSessionFromContext(ctx, db) == nil {
 		var err error
@@ -23,18 +24,6 @@ func (db *DB) withMigrationLock(ctx context.Context, fn func(context.Context) er
 		}
 		ctx = session.Context()
 		defer func() { resultErr = errors.Join(resultErr, session.Close()) }()
-	}
-	// Acquire the connection before migration locks: a borrowed transaction
-	// or durable session already owns it and must be able to migrate while
-	// another caller is queued for the same one-connection SQLite pool.
-	db.migrationMu.Lock()
-	defer db.migrationMu.Unlock()
-	if db.IsSQLite() && db.databaseFile != "" {
-		lease, err := dblock.AcquireSQLiteMigration(db.databaseFile)
-		if err != nil {
-			return err
-		}
-		defer func() { resultErr = errors.Join(resultErr, lease.Close()) }()
 	}
 	if db.IsPostgres() {
 		var key int64
@@ -60,6 +49,18 @@ func (db *DB) withMigrationLock(ctx context.Context, fn func(context.Context) er
 				resultErr = errors.Join(resultErr, err)
 			}()
 		}
+	}
+	// Wait for the PostgreSQL advisory lock before taking migrationMu. A
+	// borrowed transaction keeps its xact lock between Migrate calls and
+	// must be able to reenter while another connection waits for that lock.
+	db.migrationMu.Lock()
+	defer db.migrationMu.Unlock()
+	if db.IsSQLite() && db.databaseFile != "" {
+		lease, err := dblock.AcquireSQLiteMigration(db.databaseFile)
+		if err != nil {
+			return err
+		}
+		defer func() { resultErr = errors.Join(resultErr, lease.Close()) }()
 	}
 	return fn(ctx)
 }

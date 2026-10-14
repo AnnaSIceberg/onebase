@@ -20,6 +20,9 @@ func TestMigrateBorrowedConnectionBeforeMigrationLock(t *testing.T) {
 			require.NoError(t, db.Migrate(t.Context(), []*metadata.Entity{e}))
 
 			compete := func(borrowedCtx context.Context) error {
+				if err := db.Migrate(borrowedCtx, []*metadata.Entity{e}); err != nil {
+					return err
+				}
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				t.Cleanup(cancel)
 				done := make(chan error, 1)
