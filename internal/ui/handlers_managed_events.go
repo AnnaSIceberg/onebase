@@ -1294,6 +1294,11 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		vars["QuestionAnswer"] = qa
 	}
 
+	if err := addPageChangeContext(eventName, r.FormValue("_page"), eventTarget, vars); err != nil {
+		respondJSON(enc, formEventResponse{Error: err.Error()})
+		return
+	}
+
 	if err := addEntityTPEventContext(r, entity, form, tableAuthorities, eventTarget, obj, vars); err != nil {
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
@@ -2726,6 +2731,12 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		if qa, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_question_answer")); strings.TrimSpace(qa) != "" {
 			vars["ВопросОтвет"] = qa
 			vars["QuestionAnswer"] = qa
+		}
+		page, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_page"))
+		if err := addPageChangeContext(eventName, page, eventTarget, vars); err != nil {
+			opStatus = "error"
+			respondJSON(enc, formEventResponse{Error: err.Error()})
+			return
 		}
 		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars); err != nil {
 			opStatus = "error"

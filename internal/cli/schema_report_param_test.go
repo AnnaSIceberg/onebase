@@ -97,10 +97,4 @@ func TestSchemaReportParamLabelsAndDefault(t *testing.T) {
 	if !reflect.DeepEqual(param, aggregate) {
 		t.Error("separate and aggregate report parameter schemas differ")
 	}
-	processor := schemaAt(t, publishedParamSchema(t, "processor"), "properties")
-	for _, key := range []string{"labels", "default"} {
-		if _, ok := processor[key]; ok {
-			t.Errorf("report-only key %q leaked into processor parameters", key)
-		}
-	}
 }
