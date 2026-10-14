@@ -25,11 +25,11 @@ func tryAcquireFileLease(path string, shared bool) (*fileLease, bool, error) {
 }
 
 func tryAcquireFileLeaseMode(path string, shared, create bool) (*fileLease, bool, error) {
-	flags := os.O_RDWR
+	openFlags := os.O_RDWR
 	if create {
-		flags |= os.O_CREATE
+		openFlags |= os.O_CREATE
 	}
-	f, err := os.OpenFile(path, flags, fsmode.SecretFile) //nolint:gosec // G703: sole caller appends a fixed lock suffix to the absolute, clean, symlink-resolved SQLite target after validatedSQLiteTargetParent rejects roots and malformed paths
+	f, err := os.OpenFile(path, openFlags, fsmode.SecretFile) //nolint:gosec // G703: sole caller appends a fixed lock suffix to the absolute, clean, symlink-resolved SQLite target after validatedSQLiteTargetParent rejects roots and malformed paths
 	if err != nil {
 		return nil, false, err
 	}

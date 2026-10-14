@@ -12,15 +12,6 @@ import (
 type entityDDLKey struct{}
 
 func (db *DB) withMigrationLock(ctx context.Context, fn func(context.Context) error) (resultErr error) {
-	db.migrationMu.Lock()
-	defer db.migrationMu.Unlock()
-	if db.IsSQLite() && db.databaseFile != "" {
-		lease, err := dblock.AcquireSQLiteMigration(db.databaseFile)
-		if err != nil {
-			return err
-		}
-		defer func() { resultErr = errors.Join(resultErr, lease.Close()) }()
-	}
 	// A caller's existing transaction already pins its connection. Do not
 	// open another one (SQLite has a one-connection pool).
 	var session *DurableSession
@@ -32,6 +23,18 @@ func (db *DB) withMigrationLock(ctx context.Context, fn func(context.Context) er
 		}
 		ctx = session.Context()
 		defer func() { resultErr = errors.Join(resultErr, session.Close()) }()
+	}
+	// Acquire the connection before migration locks: a borrowed transaction
+	// or durable session already owns it and must be able to migrate while
+	// another caller is queued for the same one-connection SQLite pool.
+	db.migrationMu.Lock()
+	defer db.migrationMu.Unlock()
+	if db.IsSQLite() && db.databaseFile != "" {
+		lease, err := dblock.AcquireSQLiteMigration(db.databaseFile)
+		if err != nil {
+			return err
+		}
+		defer func() { resultErr = errors.Join(resultErr, lease.Close()) }()
 	}
 	if db.IsPostgres() {
 		var key int64
