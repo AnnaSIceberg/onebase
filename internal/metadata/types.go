@@ -782,6 +782,11 @@ type InfoRegister struct {
 	Recorder   bool
 	Dimensions []Field // key fields
 	Resources  []Field // value fields
+	// Indexes — дополнительные (неуникальные) индексы таблицы регистра.
+	// Первичный ключ начинается с period, поэтому отбор по измерению без
+	// периода («срез последних по адресу») без своего индекса читает всю
+	// таблицу. Поля — измерения, ресурсы или служебное period.
+	Indexes []IndexSpec
 }
 
 // DisplayName возвращает заголовок регистра сведений с учётом языка.
