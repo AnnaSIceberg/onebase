@@ -590,6 +590,13 @@ jobs:
           CI: '1'
         run: npx playwright test
 
+      - name: Run choice_filter public browser acceptance
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
+        env:
+          CI: '1'
+          ONEBASE_BROWSER_ACCEPTANCE: '1'
+        run: go test -count=1 -v ./internal/ui ./internal/launcher -run 'TestChoiceFilter(Configurator)?BrowserAcceptance$'
+
       # Без артефактов упавший браузерный тест разбирать нечем: трассировка
       # показывает шаги, снимок — что было на экране в момент падения.
       - name: Upload failure artifacts

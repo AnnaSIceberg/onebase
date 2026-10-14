@@ -2358,7 +2358,7 @@ const tplForm = `
         <tr>
           {{if $columns.ShowLineNumber}}<td>{{index $row "line_number"}}</td>{{end}}
           {{if $columns.ShowKind}}<td>{{$kind := index $row "вид_движения"}}{{if eq $kind "Приход"}}<span style="color:#16a34a">▲</span>{{else if eq $kind "Расход"}}<span style="color:#dc2626">▼</span>{{else}}{{$kind}}{{end}}</td>{{end}}
-          {{range $k, $v := $row}}{{if and (ne $k "line_number") (ne $k "вид_движения")}}<td>{{$v}}</td>{{end}}{{end}}
+          {{range $k, $v := $row}}{{if and (ne $k "line_number") (ne $k "вид_движения")}}<td>{{if eq $k "period"}}{{fmtDate $v}}{{else}}{{$v}}{{end}}</td>{{end}}{{end}}
         </tr>
         {{end}}
       </table>
@@ -3462,7 +3462,8 @@ const tplInfoReg = `
   {{if .InfoReg.Periodic}}
   <div class="form-row">
     <label>{{t $.Lang "Период"}}</label>
-    <input type="date" name="period" value="{{index .Values "period"}}" required>
+    {{/* Период — момент с точностью до секунды, как у даты документа и в 1С. */}}
+    <input type="datetime-local" step="1" name="period" value="{{index .Values "period"}}" required>
   </div>
   {{end}}
   {{range .InfoReg.Dimensions}}
