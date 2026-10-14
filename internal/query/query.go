@@ -4240,13 +4240,10 @@ func (ctx sourceContext) scopeProjectsSystemColumn(tokens []tok, scopeID int, na
 	if scopeID < 0 || scopeID >= len(ctx.scopes) || seen[scopeID] {
 		return false
 	}
-	// Алиасы объектов после КАК сохраняются буквально, даже если в той же
+	// Явный выходной алиас сохраняет своё имя, даже если в той же
 	// проекции есть не переименованная системная колонка или звёздочка.
-	// Системные алиасы регистра имеют прежнюю, отдельную семантику.
-	if _, _, objectAlias := entitySystemColAlias(name); objectAlias {
-		if _, explicit := ctx.scopes[scopeID].outputAliases[lowerFast(name)]; explicit {
-			return false
-		}
+	if _, explicit := ctx.scopes[scopeID].outputAliases[lowerFast(name)]; explicit {
+		return false
 	}
 	seen[scopeID] = true
 	defer delete(seen, scopeID)
@@ -4630,6 +4627,17 @@ func (tr *translator) systemColumnAlias(name string, prevDot bool) (string, bool
 	scope, hasScope := tr.sourceCtx.scopeAt(tr.pos - 1)
 	if !hasScope {
 		return "", false
+	}
+	if !prevDot {
+		if tr.inUnionOrder() {
+			scope = tr.sourceCtx.scopes[scope.unionFirst]
+		}
+		section := tr.sourceCtx.sectionAt(tr.pos - 1)
+		if section == sectionOrderBy || section == sectionGroupBy {
+			if _, outputAlias := scope.outputAliases[lowerFast(name)]; outputAlias {
+				return "", false
+			}
+		}
 	}
 	if prevDot && tr.pos >= 3 {
 		qualifier := lowerFast(tr.tokens[tr.pos-3].val)
@@ -5170,9 +5178,12 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			// Системные колонки регистра — PascalCase русские алиасы
 			// (см. systemColAlias). Работает и с префиксом (Х.Период), и без,
 			// но только если соответствующий источник действительно регистр.
-			if col, ok := tr.systemColumnAlias(t.val, prevDot); ok {
-				tr.emit(col)
-				continue
+			// Объявление алиаса и квалификатор источника — не имена колонок.
+			if !prevAlias && !nextIsDot {
+				if col, ok := tr.systemColumnAlias(t.val, prevDot); ok {
+					tr.emit(col)
+					continue
+				}
 			}
 			// Системные колонки самого объекта (Проведен, ПометкаУдаления):
 			// разрешаются по метаданным источника, см. entitySystemColumn.
