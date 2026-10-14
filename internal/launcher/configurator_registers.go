@@ -210,6 +210,7 @@ func saveInfoRegToFile(dir string, reg saveInfoReg, objTitles *map[string]string
 			// Устойчивые id (план 81) — тоже поле, которого форма не знает.
 			reg.Dimensions = ensureFieldIDs(existing.Dimensions, reg.Dimensions)
 			reg.Resources = ensureFieldIDs(existing.Resources, reg.Resources)
+			reg.Indexes = existing.Indexes
 		}
 	}
 	if objTitles != nil {
@@ -252,6 +253,7 @@ func (h *handler) saveInfoRegToDB(ctx context.Context, b *Base, reg saveInfoReg,
 			// Устойчивые id (план 81) — тоже поле, которого форма не знает.
 			reg.Dimensions = ensureFieldIDs(existing.Dimensions, reg.Dimensions)
 			reg.Resources = ensureFieldIDs(existing.Resources, reg.Resources)
+			reg.Indexes = existing.Indexes
 			break
 		}
 	}
