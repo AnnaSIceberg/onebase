@@ -34,7 +34,10 @@ type saveField struct {
 	Title  string            `yaml:"title,omitempty"`
 	Label  string            `yaml:"label,omitempty"`
 	Titles map[string]string `yaml:"titles,omitempty"`
-	Type   string            `yaml:"type"`
+	// Submitted translations, including explicit clears, for the standard editor.
+	// Kept separate so ordinary fields retain their existing YAML representation.
+	titleEdits map[string]string
+	Type       string `yaml:"type"`
 	// AllowInlineCreate — pointer-bool, чтобы omitempty отличал «явно false»
 	// от «не задано». nil → дефолт контекста (true в шапке, false в ТЧ).
 	AllowInlineCreate *bool `yaml:"allow_inline_create,omitempty"`

@@ -688,6 +688,10 @@ func (h *handler) configuratorSaveFields(w http.ResponseWriter, r *http.Request)
 		typ = numberTypeWithSpec(typ, r.FormValue(fmt.Sprintf("field.%d.length", i)), r.FormValue(fmt.Sprintf("field.%d.scale", i)))
 		sf := saveField{Name: name, Type: typ}
 		sf.Titles = parseMapForm(r, fmt.Sprintf("field.%d.titles", i))
+		if (entityKind == "Справочник" && strings.EqualFold(name, metadata.StandardCodeField)) ||
+			(entityKind == "Документ" && strings.EqualFold(name, metadata.StandardNumberField)) {
+			sf.titleEdits = parseMapFormValues(r, fmt.Sprintf("field.%d.titles", i), true)
+		}
 		// allow_inline_create — пишем только если значение отличается от дефолта
 		// контекста (true в шапке). Шаблон отрисовывает hidden inline_present=1
 		// только для ссылочных полей, поэтому маркер косвенно фильтрует тип.

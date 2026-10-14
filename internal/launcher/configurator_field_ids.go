@@ -112,14 +112,27 @@ func applyStandardFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveF
 	} else if hadNumerator {
 		standard = standardSaveField(name, id, ent.Numerator.Field)
 	}
+	// Compare both editors against the stored translations before applying either.
+	previousTitles := standard.Titles
+	var ordinaryTitles, numeratorTitles map[string]string
+	if nextStandard != nil {
+		ordinaryTitles = nextStandard.titleEdits
+		if ordinaryTitles == nil {
+			ordinaryTitles = nextStandard.Titles
+		}
+	}
+	if numerator != nil {
+		numeratorTitles = numerator.FieldTitles
+	}
+	titles, err := reconcileStandardTitles(name, previousTitles, ordinaryTitles, numeratorTitles)
+	if err != nil {
+		return err
+	}
 	if nextStandard != nil {
 		if nextStandard.Type != "" && nextStandard.Type != "string" {
 			return fmt.Errorf("standard field %s must have type string", name)
 		}
-		previousTitles := standard.Titles
 		standard = carryFieldKeys(*nextStandard, standard)
-		// During first numbering the ordinary row also omits hidden languages.
-		standard.Titles = mergeStandardTitles(previousTitles, standard.Titles)
 	}
 	standard.Name, standard.ID, standard.Type = name, id, "string"
 	if numerator != nil {
@@ -132,8 +145,8 @@ func applyStandardFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveF
 		if numerator.FieldTitle != nil && *numerator.FieldTitle != previousTitle {
 			standard.Title, standard.Label = *numerator.FieldTitle, ""
 		}
-		standard.Titles = mergeStandardTitles(standard.Titles, numerator.FieldTitles)
 	}
+	standard.Titles = titles
 	if willNumerator {
 		active := ent.Numerator
 		if numerator != nil {
@@ -150,9 +163,24 @@ func applyStandardFieldEdits(ent *saveEntity, kind metadata.Kind, fields []saveF
 	return nil
 }
 
-// Only submitted languages are edits. Empty submitted values clear a visible
-// translation; absent languages (including ru) keep their stored values.
-func mergeStandardTitles(previous, edits map[string]string) map[string]string {
+// A submitted value identical to storage is a stale duplicate, not an edit.
+// Missing controls preserve storage; explicit empty values clear only that language.
+func reconcileStandardTitles(name string, previous, ordinary, numerator map[string]string) (map[string]string, error) {
+	edits := make(map[string]string)
+	for lang, value := range ordinary {
+		if value != previous[lang] {
+			edits[lang] = value
+		}
+	}
+	for lang, value := range numerator {
+		if value == previous[lang] {
+			continue
+		}
+		if other, changed := edits[lang]; changed && other != value {
+			return nil, &standardTitleConflictError{field: name, language: lang}
+		}
+		edits[lang] = value
+	}
 	titles := maps.Clone(previous)
 	if titles == nil {
 		titles = make(map[string]string)
@@ -165,9 +193,17 @@ func mergeStandardTitles(previous, edits map[string]string) map[string]string {
 		}
 	}
 	if len(titles) == 0 {
-		return nil
+		return nil, nil
 	}
-	return titles
+	return titles, nil
+}
+
+type standardTitleConflictError struct {
+	field, language string
+}
+
+func (e *standardTitleConflictError) Error() string {
+	return fmt.Sprintf("conflicting translations for standard field %s (%s): make both editors agree", e.field, e.language)
 }
 
 // ensureFieldIDs возвращает next с проставленными id: перенесёнными из prev по
