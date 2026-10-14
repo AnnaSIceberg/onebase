@@ -325,7 +325,7 @@ func decimalArg(args []any, i int) decimal.Decimal {
 // builtinToString — Строка()/Стр(). Для decimal используем String() напрямую:
 // маршрут через toFloat терял бы точность на больших числах.
 func builtinToString(args []any, file string, line int) (any, error) {
-	if len(args) == 0 {
+	if len(args) == 0 || args[0] == nil {
 		return "", nil
 	}
 	if wrapped, ok := args[0].(readOnlyStringValue); ok {
