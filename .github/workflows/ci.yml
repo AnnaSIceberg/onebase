@@ -773,8 +773,10 @@ jobs:
           go test -race -count=1 -timeout 15m ./internal/dbcheck
           # Fresh migrate/test databases must initialize auth before creating
           # reference:_users foreign keys; run both dialects and dry-run here.
-          go test -race -count=1 -timeout 5m ./internal/cli \
-            -run '^(TestMigrateUserReferencesMatrix|TestTestUserReferencesMatrix|TestMigrateUserReferencesDryRunMatrix)$'
+          # Include procrun row indexing; verbose output confirms the PostgreSQL
+          # subtests execute instead of being skipped.
+          go test -race -count=1 -v -timeout 5m ./internal/cli \
+            -run '^(TestMigrateUserReferencesMatrix|TestTestUserReferencesMatrix|TestMigrateUserReferencesDryRunMatrix|TestProcrunInfoRegRowIndexMatrix)$'
           # Очередь фоновых заданий (план 130). Юнит-джоб гоняет её на SQLite,
           # где исполнитель ровно один по построению — то есть ГЛАВНОЕ свойство
           # подсистемы, параллельная работа N исполнителей и расхождение
