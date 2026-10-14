@@ -495,7 +495,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       // Some managed elements keep their layout only in an inline display
       // declaration (checkbox and command bar use flex). Remember that value
       // before the first state update instead of erasing it on hidden=false.
-      if (!Object.prototype.hasOwnProperty.call(el, '_obDisplay')) el._obDisplay = el.style.display || '';
+      if (!Object.prototype.hasOwnProperty.call(el, '_obDisplay')) {
+        var d = el.style.display || '';
+        // Элемент с hidden_when рендерится сервером с display:none, но его
+        // натуральное состояние — видимый (''). Не запоминаем 'none' как
+        // значение для восстановления, иначе поле останется скрытым навсегда.
+        el._obDisplay = d === 'none' ? '' : d;
+      }
       el.style.display = hidden[path] ? 'none' : el._obDisplay;
     });
     var ro = st.readonly || {};
@@ -4040,7 +4046,17 @@ obManagedReady(function () {
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('.managed-tab-btn') : null;
     if (!btn) return;
+    var wasActive = btn.classList.contains('active');
     obManagedSwitchTab(btn);
+    // ПриСменеСтраницы — только когда пользователь действительно открыл другую
+    // страницу: щелчок по уже открытой закладке страницу не меняет, а
+    // восстановление запомненной закладки и переход к невалидному полю
+    // пользовательской сменой не являются.
+    var tabs = btn.closest ? btn.closest('.managed-tabs') : null;
+    var owner = tabs ? tabs.getAttribute('data-ob-fire-pagechange') : '';
+    if (!wasActive && owner && window.obFire) {
+      obFire(owner, 'ПриСменеСтраницы', { _page: btn.getAttribute('data-tab-page') || '' });
+    }
   });
   var groups = document.querySelectorAll('.managed-tabs');
   for (var i = 0; i < groups.length; i++) {

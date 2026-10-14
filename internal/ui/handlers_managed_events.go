@@ -1269,6 +1269,12 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		vars["ПодборРезультат"] = pr
 		vars["PickResult"] = pr
 	}
+	// Значения полей шапки окна подбора (Конфиг.ПоляШапки) — с событиями Поиск
+	// и Выбор: что искать и где выбрано.
+	if pf := parsePickFields(r.FormValue("_pick_fields")); pf != nil {
+		vars["ПодборПоля"] = pf
+		vars["PickFields"] = pf
+	}
 
 	// Повторная фаза 1: набранное в строке поиска открытого диалога приходит как
 	// _pick_query → переменная ПодборЗапрос для обработчика события Поиск.
@@ -1286,6 +1292,11 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	if qa := strings.TrimSpace(r.FormValue("_question_answer")); qa != "" {
 		vars["ВопросОтвет"] = qa
 		vars["QuestionAnswer"] = qa
+	}
+
+	if err := addPageChangeContext(eventName, r.FormValue("_page"), eventTarget, vars); err != nil {
+		respondJSON(enc, formEventResponse{Error: err.Error()})
+		return
 	}
 
 	if err := addEntityTPEventContext(r, entity, form, tableAuthorities, eventTarget, obj, vars); err != nil {
@@ -1870,7 +1881,8 @@ func (st formEventState) response(ok bool) formEventResponse {
 //
 // Снять получается не всё: элемент, скрытый на момент отрисовки, в разметку не
 // попал, и показать его обратно клиенту нечем — hidden=false для него ничего не
-// изменит до перезагрузки страницы. Для readonly обе стороны рабочие.
+// изменит до перезагрузки страницы. Исключение — кнопка: она рисуется с
+// display:none и показывается сразу. Для readonly обе стороны рабочие.
 type elementStates struct {
 	ReadOnly map[string]bool `json:"readonly,omitempty"`
 	Hidden   map[string]bool `json:"hidden,omitempty"`
@@ -2698,6 +2710,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			vars["ПодборРезультат"] = pr
 			vars["PickResult"] = pr
 		}
+		pickFields, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_pick_fields"))
+		if pf := parsePickFields(pickFields); pf != nil {
+			vars["ПодборПоля"] = pf
+			vars["PickFields"] = pf
+		}
 		// Тот же ПодборЗапрос, что и в формах сущностей: серверный поиск обязан
 		// работать и в формах обработок, иначе платформенное поведение молча
 		// разное. Кладём ВСЕГДА при событии Поиск — очистка строки поиска это
@@ -2714,6 +2731,12 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		if qa, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_question_answer")); strings.TrimSpace(qa) != "" {
 			vars["ВопросОтвет"] = qa
 			vars["QuestionAnswer"] = qa
+		}
+		page, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_page"))
+		if err := addPageChangeContext(eventName, page, eventTarget, vars); err != nil {
+			opStatus = "error"
+			respondJSON(enc, formEventResponse{Error: err.Error()})
+			return
 		}
 		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars); err != nil {
 			opStatus = "error"

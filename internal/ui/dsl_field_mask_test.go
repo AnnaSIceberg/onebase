@@ -258,7 +258,7 @@ func TestDSL_QueryGuardНеТипизируетСкрытыеЧислаПосл�
 		strategy string
 		want     string
 	}{
-		{name: "hide", strategy: "hide", want: "Неопределено|Неопределено|<nil>|<nil>"},
+		{name: "hide", strategy: "hide", want: "Неопределено|Неопределено||"},
 		{name: "mask_all", strategy: "mask_all", want: "Строка|Строка||••••••"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

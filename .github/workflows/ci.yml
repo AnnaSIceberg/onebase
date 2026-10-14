@@ -590,6 +590,13 @@ jobs:
           CI: '1'
         run: npx playwright test
 
+      - name: Run choice_filter public browser acceptance
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
+        env:
+          CI: '1'
+          ONEBASE_BROWSER_ACCEPTANCE: '1'
+        run: go test -count=1 -v ./internal/ui ./internal/launcher -run 'TestChoiceFilter(Configurator)?BrowserAcceptance$'
+
       # Без артефактов упавший браузерный тест разбирать нечем: трассировка
       # показывает шаги, снимок — что было на экране в момент падения.
       - name: Upload failure artifacts
@@ -766,8 +773,10 @@ jobs:
           go test -race -count=1 -timeout 15m ./internal/dbcheck
           # Fresh migrate/test databases must initialize auth before creating
           # reference:_users foreign keys; run both dialects and dry-run here.
-          go test -race -count=1 -timeout 5m ./internal/cli \
-            -run '^(TestMigrateUserReferencesMatrix|TestTestUserReferencesMatrix|TestMigrateUserReferencesDryRunMatrix)$'
+          # Include procrun row indexing; verbose output confirms the PostgreSQL
+          # subtests execute instead of being skipped.
+          go test -race -count=1 -v -timeout 5m ./internal/cli \
+            -run '^(TestMigrateUserReferencesMatrix|TestTestUserReferencesMatrix|TestMigrateUserReferencesDryRunMatrix|TestProcrunInfoRegRowIndexMatrix)$'
           # Очередь фоновых заданий (план 130). Юнит-джоб гоняет её на SQLite,
           # где исполнитель ровно один по построению — то есть ГЛАВНОЕ свойство
           # подсистемы, параллельная работа N исполнителей и расхождение
