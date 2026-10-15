@@ -4052,11 +4052,12 @@ function obManagedSetPageHidden(path, hide) {
 }
 
 // A conditionally hidden page cannot be filled. Suspend only its form-local
-// native required rule, keeping controls enabled so their values still post.
-// Ordinary inactive pages remain required. Restore the rule only after every
-// ancestor page is available again; Field.required is enforced by the server.
+// native required and string mask (pattern) rules. Keep controls enabled so
+// their unchanged values still post. Ordinary inactive pages keep both rules.
+// Restore the exact attributes only after every ancestor page is available;
+// Field.required and type validation remain enforced by the server.
 function obManagedSyncPageRequired() {
-  document.querySelectorAll('input[required], select[required], textarea[required], [data-ob-page-required]').forEach(function (control) {
+  document.querySelectorAll('input[required], select[required], textarea[required], input[data-ob-form-mask][pattern], [data-ob-page-required], [data-ob-page-pattern]').forEach(function (control) {
     var hidden = false;
     var content = control.closest('.managed-tab-content');
     while (content) {
@@ -4070,13 +4071,19 @@ function obManagedSyncPageRequired() {
       var parent = content.parentElement;
       content = parent && parent.closest ? parent.closest('.managed-tab-content') : null;
     }
-    if (hidden && control.required) {
-      control.setAttribute('data-ob-page-required', '1');
-      control.required = false;
-    } else if (!hidden && control.hasAttribute('data-ob-page-required')) {
-      control.required = true;
-      control.removeAttribute('data-ob-page-required');
-    }
+    ['required', 'pattern'].forEach(function (rule) {
+      if (rule === 'pattern' && !control.hasAttribute('data-ob-form-mask')) return;
+      var saved = 'data-ob-page-' + rule;
+      if (hidden && control.hasAttribute(rule)) {
+        // Remember once: another hide (or a still-hidden ancestor) must not
+        // overwrite the original value with the suspended state.
+        if (!control.hasAttribute(saved)) control.setAttribute(saved, control.getAttribute(rule));
+        control.removeAttribute(rule);
+      } else if (!hidden && control.hasAttribute(saved)) {
+        control.setAttribute(rule, control.getAttribute(saved));
+        control.removeAttribute(saved);
+      }
+    });
   });
 }
 
