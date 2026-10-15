@@ -303,7 +303,7 @@ Return total;
 разработчик.
 
 **Полный справочник языка — [`docs/dsl-reference.md`](docs/dsl-reference.md):**
-169 функций, 163 метода объектов, 19 конструкций и 37 элементов языка запросов,
+172 функций, 163 метода объектов, 19 конструкций и 37 элементов языка запросов,
 с сигнатурами, параметрами и примерами. Открывается прямо здесь, на GitHub —
 качать платформу, чтобы посмотреть язык, не нужно. Справочник генерируется из
 самой платформы (`onebase langref`), поэтому не может разойтись с ней: сверка
@@ -321,6 +321,7 @@ Return total;
 | [`docs/forms.md`](docs/forms.md) | Управляемые формы |
 | [`docs/rest-api-v2.md`](docs/rest-api-v2.md) | REST API |
 | [`docs/ai-assistant.md`](docs/ai-assistant.md) · [`docs/mcp.md`](docs/mcp.md) | ИИ-ассистент и MCP-сервер |
+| [`docs/vibe-coding.md`](docs/vibe-coding.md) | Настройка ИИ-агентов: AGENTS.md, MCP и проверка конфигурации |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) · [`docs/reverse-proxy.md`](docs/reverse-proxy.md) | Развёртывание и обратный прокси |
 
 ## Что менялось между версиями
