@@ -28,6 +28,7 @@ import (
 func TestHiddenCopiesBrowserAcceptance(t *testing.T) {
 	browseracceptance.Require(t)
 	t.Run("files", testHiddenFileCopiesBrowserAcceptance)
+	t.Run("references", testHiddenRefAttrCopiesBrowserAcceptance)
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
 		var entities []*metadata.Entity
