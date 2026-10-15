@@ -43,7 +43,7 @@ func (s *Server) basedOnActions(r *http.Request, source *metadata.Entity, lang s
 	receivers := s.reg.ReceiversOf(source.Name)
 	actions := make([]basedOnAction, 0, len(receivers))
 	for _, receiver := range receivers {
-		if receiver == nil || receiver.NoInteractiveCreate || !s.can(r, string(receiver.Kind), receiver.Name, "write") {
+		if !s.canInteractiveCreate(r, receiver) {
 			continue
 		}
 		actions = append(actions, basedOnAction{
@@ -1163,12 +1163,25 @@ func (s *Server) refCreateRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/ui/"+kind+"/"+ent.Name+"/new?_popup=1", http.StatusFound)
 }
 
+// canInteractiveCreate — можно ли создать объект из интерфейса: право записи,
+// а у сущности с `interactive_create: false` — ещё и явное право `create`.
+func (s *Server) canInteractiveCreate(r *http.Request, ent *metadata.Entity) bool {
+	if ent == nil {
+		return false
+	}
+	kind := string(ent.Kind)
+	if !s.can(r, kind, ent.Name, "write") {
+		return false
+	}
+	return !ent.NoInteractiveCreate || s.can(r, kind, ent.Name, "create")
+}
+
 // refuseInteractiveCreate отклоняет создание объекта из интерфейса, если у
-// сущности `interactive_create: false`: кнопки скрыты, но адрес /new можно
-// набрать руками или открыть старой закладкой. Программное создание (DSL,
-// REST) этот путь не проходит и не затрагивается.
+// сущности `interactive_create: false`, а у пользователя нет права `create`:
+// кнопки скрыты, но адрес /new можно набрать руками или открыть старой
+// закладкой. Программное создание (DSL, REST) этот путь не проходит.
 func (s *Server) refuseInteractiveCreate(w http.ResponseWriter, r *http.Request, ent *metadata.Entity) bool {
-	if ent == nil || !ent.NoInteractiveCreate {
+	if ent == nil || !ent.NoInteractiveCreate || s.can(r, string(ent.Kind), ent.Name, "create") {
 		return false
 	}
 	lang := s.resolveLang(r)
