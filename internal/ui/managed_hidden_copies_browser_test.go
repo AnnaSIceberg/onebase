@@ -27,6 +27,7 @@ import (
 // stands in for the event pipeline (the delayed response is fetched unchanged).
 func TestHiddenCopiesBrowserAcceptance(t *testing.T) {
 	browseracceptance.Require(t)
+	t.Run("files", testHiddenFileCopiesBrowserAcceptance)
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
 		var entities []*metadata.Entity

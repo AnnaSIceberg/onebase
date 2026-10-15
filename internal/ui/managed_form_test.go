@@ -462,7 +462,7 @@ func TestManagedRuntime_FileHelpersUseRenderedControlIdentity(t *testing.T) {
 		`data-ob-file-content-for="`,
 		`fileHelpers.forEach`,
 		`obFileContentReady = '1'`,
-		`fcEl.dataset.obFileContentReady === '1'`,
+		`helper.dataset.obFileContentReady === '1'`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("managed runtime is missing %q", want)

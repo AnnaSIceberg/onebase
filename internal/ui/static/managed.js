@@ -1048,6 +1048,50 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // obFire(elementName, eventName[, extraParams]) — extraParams (объект)
   // добавляются к телу запроса. Используется подбором (план 46): фаза 2
   // шлёт {_pick_result}, команды ТЧ — {_tp, _tp_selected}.
+  // Match file contents to the actual submitted path control, including its
+  // position among duplicate names. Do not assign contents to a text input:
+  // the browser would strip newlines from a multi-line file.
+  function fileEventFormData(form, fileHelpers) {
+    if (!fileHelpers.length) return new FormData(form);
+    const contents = new Map();
+    const slots = new Map();
+    fileHelpers.forEach(function(helper){
+      const path = document.getElementById(helper.getAttribute('data-ob-file-path'));
+      if (controlSubmittable(helper) && path && path.form === form && controlSubmittable(path) &&
+          (helper.value || helper.dataset.obFileContentReady === '1')) {
+        contents.set(path, helper.value);
+        slots.set(path.name, []);
+      }
+    });
+    // Native FormData omits buttons, unchecked controls and disabled options.
+    // Keep a slot for every successful value of names containing a file path,
+    // so a non-file copy of the same attribute retains its own value too.
+    Array.prototype.forEach.call(form.elements || [], function(control){
+      if (!slots.has(control.name) || !controlSubmittable(control) ||
+          /^(button|submit|reset|image)$/.test(control.type) ||
+          (/^(checkbox|radio)$/.test(control.type) && !control.checked)) return;
+      const values = control.options ? Array.prototype.filter.call(control.options, function(option){
+        return option.selected && !option.disabled && !(option.parentElement.tagName === 'OPTGROUP' && option.parentElement.disabled);
+      }) : (control.type === 'file' ? (control.files && control.files.length ? Array.from(control.files) : [null]) : [null]);
+      values.forEach(function(){ slots.get(control.name).push(control); });
+    });
+    const disabled = fileHelpers.map(function(el){ return el.disabled; });
+    let fd;
+    try {
+      fileHelpers.forEach(function(el){ el.disabled = true; });
+      fd = new FormData(form);
+    } finally {
+      fileHelpers.forEach(function(el, i){ el.disabled = disabled[i]; });
+    }
+    const result = new FormData();
+    fd.forEach(function(value, name){
+      const controls = slots.get(name);
+      const control = controls && controls.shift();
+      result.append(name, contents.has(control) ? contents.get(control) : value);
+    });
+    return result;
+  }
+
   function captureFormEventSelection(extraParams){
 	if (!extraParams || !extraParams._tp) return undefined;
 	var obg = (window._obGrids || {})[extraParams._tp];
@@ -1084,32 +1128,20 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     const form = document.getElementById('main-form');
     if (!form) return;
     const fileHelpers = Array.prototype.slice.call(form.querySelectorAll('[data-ob-file-content-for]'));
-    if (fileHelpers.length && !await awaitCurrentFileReads(fileHelpers)) return;
+    if (fileHelpers.length && !await awaitCurrentFileReads(fileHelpers.filter(controlSubmittable))) return;
     // FileReader может работать долго; за это время активная grid-ячейка могла
     // измениться уже после первого snapshot. Непосредственно перед FormData
     // повторяем commit/sync и при любом veto оставляем событие неотправленным.
     if (window.obGridSync && window.obGridSync() === false) return;
     const body = new URLSearchParams();
-    const fileHelperDisabled = fileHelpers.map(function(el){ return el.disabled; });
-    let eventFD;
-    try {
-      fileHelpers.forEach(function(el){ el.disabled = true; });
-      eventFD = new FormData(form);
-    } finally {
-      fileHelpers.forEach(function(el, i){ el.disabled = fileHelperDisabled[i]; });
-    }
+    const eventFD = fileEventFormData(form, fileHelpers);
     eventFD.set(serviceField('_element'), elementName || '');
     eventFD.set(serviceField('_event'), eventName || '');
     eventFD.set(serviceField('_kind'), 'object');
     if (DOC_ID) eventFD.set(serviceField('_id'), DOC_ID);
     eventFD.forEach((v, k) => {
       if (typeof v !== 'string') { body.append(k, ''); return; }
-      // If the rendered file helper has content, prefer it over the path.
-      // The data attribute identifies the actual control without reserving
-      // all legal parameter names beginning with _fc_.
-      const fcEl = form.querySelector('[data-ob-file-content-for="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (fcEl && (fcEl.value || fcEl.dataset.obFileContentReady === '1')) { body.append(k, fcEl.value); }
-      else { body.append(k, v); }
+      body.append(k, v);
     });
     // Команда над ТЧ: подмешать индексы выделенных строк (_tp_selected) по
     // имени ТЧ из extraParams._tp.
@@ -1404,24 +1436,15 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var form = document.getElementById('main-form');
     if (!form) return new URLSearchParams();
     var fileHelpers = Array.prototype.slice.call(form.querySelectorAll('[data-ob-file-content-for]'));
-    if (!await awaitCurrentFileReads(fileHelpers)) return null;
+    if (!await awaitCurrentFileReads(fileHelpers.filter(controlSubmittable))) return null;
     if (window.obGridSync && window.obGridSync() === false) return null;
-    var disabled = fileHelpers.map(function(el){ return el.disabled; });
-    var fd;
-    try {
-      fileHelpers.forEach(function(el){ el.disabled = true; });
-      fd = new FormData(form);
-    } finally {
-      fileHelpers.forEach(function(el, i){ el.disabled = disabled[i]; });
-    }
+    var fd = fileEventFormData(form, fileHelpers);
     fd.set(serviceField('_kind'), closeFormKind());
     if (DOC_ID) fd.set(serviceField('_id'), DOC_ID);
     var body = new URLSearchParams();
     fd.forEach(function(v, k){
       if (typeof v !== 'string') { body.append(k, ''); return; }
-      var helper = form.querySelector('[data-ob-file-content-for="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (helper && (helper.value || helper.dataset.obFileContentReady === '1')) body.append(k, helper.value);
-      else body.append(k, v);
+      body.append(k, v);
     });
     return body;
   }
