@@ -271,6 +271,19 @@ const tplManagedForm = `
   {{if $el.Picture}}
     {{$pictureWidth := elPictureSize $el.Width}}{{$pictureHeight := elPictureSize $el.Height}}
     <img src="/static/forms/{{$el.Picture}}" alt="{{$el.Name}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="max-width:{{if $pictureWidth}}{{$pictureWidth}}px{{else}}100px{{end}};max-height:{{if $pictureHeight}}{{$pictureHeight}}px{{else}}100px{{end}}">
+  {{else if $el.DataPath}}
+    {{/* Картинка из вложения: реквизит data_path хранит идентификатор
+         вложения (как фото мастера в заявке), щелчок открывает её в полном
+         размере в новой вкладке — как «Поле картинки … Нажатие» 1С. Скрытое
+         поле несёт идентификатор: ответ события меняет его, и
+         refreshPictureBindings перерисовывает картинку. */}}
+    {{$fn := dpField $el.DataPath}}{{$aid := pictureAttachmentID (index $ctx.Values $fn)}}
+    {{$pictureWidth := elPictureSize $el.Width}}{{$pictureHeight := elPictureSize $el.Height}}
+    <input type="hidden" name="{{$fn}}" value="{{$aid}}" data-ob-picture-for="{{$el.Name}}">
+    <a data-ob-picture-link="{{$el.Name}}" href="{{if $aid}}/ui/attachments/{{$aid}}/download{{end}}" target="_blank" rel="noopener" title="Открыть в полном размере"{{if not $aid}} hidden{{end}}>
+      <img src="{{if $aid}}/ui/attachments/{{$aid}}/download{{end}}" alt="{{$el.Name}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="max-width:{{if $pictureWidth}}{{$pictureWidth}}px{{else}}100px{{end}};max-height:{{if $pictureHeight}}{{$pictureHeight}}px{{else}}100px{{end}}">
+    </a>
+    <span data-ob-picture-empty="{{$el.Name}}" style="color:#94a3b8"{{if $aid}} hidden{{end}}>Нет изображения</span>
   {{else}}
     <span data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="color:#cbd5e1">[Картинка: {{$el.Name}}]</span>
   {{end}}

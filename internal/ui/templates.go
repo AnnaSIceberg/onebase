@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/i18n"
 	"github.com/ivantit66/onebase/internal/metadata"
 	processorpkg "github.com/ivantit66/onebase/internal/processor"
@@ -584,6 +585,20 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// применяет к ним тот же диапазон 1…4000, что общий layout-контракт.
 		"elPictureSize": func(size int) int {
 			return metadata.NormalizeFormLayoutSize(size)
+		},
+		// pictureAttachmentID — значение реквизита ПолеКартинки с data_path:
+		// идентификатор вложения (UUID) или "". Любое другое значение (адрес,
+		// путь, javascript:) в src/href не попадает — картинка берётся только
+		// из вложений, с их проверкой права чтения владельца.
+		"pictureAttachmentID": func(v any) string {
+			if v == nil {
+				return ""
+			}
+			id, err := uuid.Parse(strings.TrimSpace(fmt.Sprint(v)))
+			if err != nil || id == uuid.Nil {
+				return ""
+			}
+			return id.String()
 		},
 		// tpGridCSS — стиль контейнера SlickGrid: высота по числу строк либо по
 		// ключу height, ширина и выравнивание — по общему контракту раскладки.
