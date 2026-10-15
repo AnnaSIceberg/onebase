@@ -2575,7 +2575,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
 	}
-	paramValues, uploadTemps, err := processorParamValuesFromRequest(
+	paramValues, uploadTemps, err := s.processorParamValuesFromRequest(
 		r,
 		proc.Params,
 		maxSize,

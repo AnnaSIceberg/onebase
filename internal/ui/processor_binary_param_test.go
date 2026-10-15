@@ -106,7 +106,7 @@ func xlsxWithStudents(t *testing.T) []byte {
 	return data
 }
 
-func postBinaryProcessor(t *testing.T, ts *httptest.Server, procName, fieldName, fileName string, data []byte) (int, string) {
+func postBinaryProcessor(t *testing.T, ts *httptest.Server, procName, fieldName, fileName string, data []byte, languages ...string) (int, string) {
 	t.Helper()
 	body := new(bytes.Buffer)
 	mw := multipart.NewWriter(body)
@@ -125,6 +125,9 @@ func postBinaryProcessor(t *testing.T, ts *httptest.Server, procName, fieldName,
 		t.Fatalf("запрос: %v", err)
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if len(languages) > 0 {
+		req.Header.Set("Accept-Language", languages[0])
+	}
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}

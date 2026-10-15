@@ -1,4 +1,6 @@
 {
+  "временный каталог загрузок": "temporary upload directory",
+  "временный файл параметра %s": "temporary file for parameter %s",
   "Excel: превышен предел импорта (32 МиБ, 10000 строк, 256 колонок, 1000000 ячеек)": "Excel: import limit exceeded (32 MiB, 10000 rows, 256 columns, 1000000 cells)",
   "Excel: повреждённая структура книги": "Excel: invalid workbook structure",
   "%q не булево значение": "%q is not a boolean value",

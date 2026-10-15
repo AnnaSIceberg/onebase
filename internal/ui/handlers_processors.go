@@ -225,7 +225,7 @@ func (s *Server) processorRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, s.errText(r, err), uploadErrorStatus(err))
 		return
 	}
-	paramValues, uploadTemps, err := processorParamValuesFromRequest(
+	paramValues, uploadTemps, err := s.processorParamValuesFromRequest(
 		r,
 		proc.Params,
 		maxSize,
@@ -409,10 +409,17 @@ func isProcessorFileParam(typ string) bool {
 	return typ == "file" || typ == processorBinaryParamType
 }
 
+type processorUploadFile interface {
+	Name() string
+	Write([]byte) (int, error)
+	Close() error
+}
+
 // processorTempFiles — временные файлы двоичных параметров одного прогона.
 // Жизненный цикл ровно такой: создать до запуска, удалить после — вызывающий
 // обязан отложить Cleanup сразу после получения значений.
 type processorTempFiles struct {
+	createTemp func(dir, pattern string) (processorUploadFile, error)
 	// Only save appends paths returned by os.CreateTemp, never request paths.
 	paths []string
 }
@@ -445,15 +452,21 @@ func processorUploadTempDir() string {
 func (t *processorTempFiles) save(paramName, fileName string, data []byte) (string, error) {
 	dir := processorUploadTempDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("временный каталог загрузок: %w", err)
+		return "", i18nerr.Wrapf(err, "временный каталог загрузок")
 	}
 	ext := strings.ToLower(filepath.Ext(fileName))
 	if len(ext) > 16 || strings.ContainsAny(ext, `/\`) {
 		ext = ""
 	}
-	f, err := os.CreateTemp(dir, "upload-*"+ext)
+	createTemp := t.createTemp
+	if createTemp == nil {
+		createTemp = func(dir, pattern string) (processorUploadFile, error) {
+			return os.CreateTemp(dir, pattern)
+		}
+	}
+	f, err := createTemp(dir, "upload-*"+ext)
 	if err != nil {
-		return "", fmt.Errorf("временный файл параметра %s: %w", paramName, err)
+		return "", i18nerr.Wrapf(err, "временный файл параметра %s", paramName)
 	}
 	path := f.Name()
 	_, writeErr := f.Write(data)
@@ -465,7 +478,7 @@ func (t *processorTempFiles) save(paramName, fileName string, data []byte) (stri
 		if removeErr := os.Remove(path); removeErr != nil && !os.IsNotExist(removeErr) { //nolint:gosec // G703: path is f.Name() from CreateTemp in our temp directory; the uploaded extension cannot contain separators.
 			oblog.Component("processor").Warn("временный файл параметра не удалён", "path", path, "err", removeErr)
 		}
-		return "", fmt.Errorf("временный файл параметра %s: %w", paramName, writeErr)
+		return "", i18nerr.Wrapf(writeErr, "временный файл параметра %s", paramName)
 	}
 	t.paths = append(t.paths, path)
 	return path, nil
@@ -732,14 +745,14 @@ func appendUniqueProcessorControl(names []string, name string) []string {
 // Отсутствующий metadata-параметр не попадает в map и потому не затирает
 // DSL-default при BindNamedArgs; явно переданное пустое значение остаётся
 // полноценным значением (parseParamValue может представить его как nil).
-func processorParamValuesFromRequest(
+func (s *Server) processorParamValuesFromRequest(
 	r *http.Request,
 	params []processorpkg.Param,
 	maxFileSize int64,
 	controls processorRequestControls,
 ) (map[string]any, *processorTempFiles, error) {
 	values := make(map[string]any)
-	temps := &processorTempFiles{}
+	temps := &processorTempFiles{createTemp: s.createProcessorTempFile}
 	for _, p := range params {
 		paramKey := strings.ToLower(p.Name)
 		paramFields := controls.paramFields[paramKey]
