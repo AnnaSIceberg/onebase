@@ -371,9 +371,12 @@ func tpCellNorm(f metadata.Field, v any) string {
 		// Одна и та же дата приходит из формы стенными часами, из SQLite —
 		// строкой RFC3339 в UTC, из PostgreSQL — time.Time в зоне сессии.
 		// Сравниваются моменты времени, а не их запись: иначе открытая без
-		// правок форма считалась изменённой.
+		// правок форма считалась изменённой. С точностью до секунды — так дату
+		// пишет хранилище (и так её понимает 1С): ТекущаяДатаВремя() в памяти
+		// несёт доли секунды, и записанная обработчиком дата иначе отличалась
+		// от только что сохранённой.
 		if t, ok := dateCellInstant(v); ok {
-			return t.UTC().Format(time.RFC3339Nano)
+			return t.UTC().Truncate(time.Second).Format(time.RFC3339)
 		}
 	case metadata.FieldTypeNumber:
 		switch t := v.(type) {
