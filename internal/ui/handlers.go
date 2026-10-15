@@ -680,6 +680,12 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		if _, ok := data["CanWrite"]; !ok {
 			data["CanWrite"] = s.can(r, kind, ent.Name, "write")
 		}
+		// CanCreate — создание из интерфейса: право записи и не запрещено
+		// `interactive_create: false` (кнопки «Создать», «Скопировать»).
+		if _, ok := data["CanCreate"]; !ok {
+			canWrite, _ := data["CanWrite"].(bool)
+			data["CanCreate"] = canWrite && !ent.NoInteractiveCreate
+		}
 		if _, ok := data["CanDelete"]; !ok {
 			data["CanDelete"] = s.can(r, kind, ent.Name, "delete")
 		}
@@ -773,7 +779,8 @@ func (s *Server) refWriteAccess(r *http.Request, entity *metadata.Entity) map[st
 			return
 		}
 		refEntity := s.reg.GetEntity(name)
-		out[name] = refEntity != nil && s.can(r, string(refEntity.Kind), refEntity.Name, "write")
+		out[name] = refEntity != nil && !refEntity.NoInteractiveCreate &&
+			s.can(r, string(refEntity.Kind), refEntity.Name, "write")
 	}
 	for _, field := range entity.Fields {
 		add(field.RefEntity)

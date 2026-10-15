@@ -43,7 +43,7 @@ func (s *Server) basedOnActions(r *http.Request, source *metadata.Entity, lang s
 	receivers := s.reg.ReceiversOf(source.Name)
 	actions := make([]basedOnAction, 0, len(receivers))
 	for _, receiver := range receivers {
-		if receiver == nil || !s.can(r, string(receiver.Kind), receiver.Name, "write") {
+		if receiver == nil || receiver.NoInteractiveCreate || !s.can(r, string(receiver.Kind), receiver.Name, "write") {
 			continue
 		}
 		actions = append(actions, basedOnAction{
@@ -325,6 +325,9 @@ func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.requirePerm(w, r, string(entity.Kind), entity.Name, "write") {
+		return
+	}
+	if s.refuseInteractiveCreate(w, r, entity) {
 		return
 	}
 	lang := s.resolveLang(r)
@@ -986,6 +989,9 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	if entity == nil {
 		return
 	}
+	if s.refuseInteractiveCreate(w, r, entity) {
+		return
+	}
 	// Предел тела зависит от метаданных: форме с richtext-реквизитом нужен запас
 	// на порядок больше (#629). Сущность известна из маршрута — getEntity читает
 	// только URL-параметр и тела не касается, так что порядок безопасен.
@@ -1150,8 +1156,27 @@ func (s *Server) refCreateRedirect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, s.tr(s.resolveLang(r), "Сущность не найдена")+": "+name, http.StatusNotFound)
 		return
 	}
+	if s.refuseInteractiveCreate(w, r, ent) {
+		return
+	}
 	kind := strings.ToLower(string(ent.Kind))
 	http.Redirect(w, r, "/ui/"+kind+"/"+ent.Name+"/new?_popup=1", http.StatusFound)
+}
+
+// refuseInteractiveCreate отклоняет создание объекта из интерфейса, если у
+// сущности `interactive_create: false`: кнопки скрыты, но адрес /new можно
+// набрать руками или открыть старой закладкой. Программное создание (DSL,
+// REST) этот путь не проходит и не затрагивается.
+func (s *Server) refuseInteractiveCreate(w http.ResponseWriter, r *http.Request, ent *metadata.Entity) bool {
+	if ent == nil || !ent.NoInteractiveCreate {
+		return false
+	}
+	lang := s.resolveLang(r)
+	w.WriteHeader(http.StatusForbidden)
+	s.render(w, r, "page-forbidden", map[string]any{
+		"Reason": fmt.Sprintf(s.tr(lang, "«%s» создаётся только из других объектов — отдельно создать нельзя."), ent.DisplayName(lang)),
+	})
+	return true
 }
 
 // refOpenRedirect — точка входа для иконки-лупы в picker'е («провалиться»
