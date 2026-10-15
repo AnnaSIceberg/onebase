@@ -17,6 +17,14 @@ import (
 // Execute the public compiler and runner: neither a wildcard collision nor a
 // reference path may silently change the types consumed by reports and DSL.
 func TestRunProjectionTypeRegressionsMatrix(t *testing.T) {
+	for _, modifier := range []string{"", "ВСЕ ", "ALL "} {
+		t.Run("modifier="+modifier, func(t *testing.T) {
+			runProjectionTypeRegressionsMatrix(t, modifier)
+		})
+	}
+}
+
+func runProjectionTypeRegressionsMatrix(t *testing.T, modifier string) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
 		owner := &metadata.Entity{Name: "ProjectionOwner", Kind: metadata.KindCatalog, Fields: []metadata.Field{
@@ -46,7 +54,7 @@ func TestRunProjectionTypeRegressionsMatrix(t *testing.T) {
 		}
 		compile := func(t *testing.T, src string) query.Result {
 			t.Helper()
-			res, err := query.Compile(src, query.CompileOpts{Entities: entities, Dialect: db.Dialect()})
+			res, err := query.Compile(strings.ReplaceAll(src, "ВЫБРАТЬ ", "ВЫБРАТЬ "+modifier), query.CompileOpts{Entities: entities, Dialect: db.Dialect()})
 			require.NoError(t, err, src)
 			return res
 		}

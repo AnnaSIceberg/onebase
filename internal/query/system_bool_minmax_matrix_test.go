@@ -3,6 +3,7 @@ package query_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -236,6 +237,14 @@ func TestRunSystemBoolAndMinMaxMatrix(t *testing.T) {
 // #2034: logical reference aliases all emit the SQL name id. Type proof must
 // follow that name, including collisions, before normalization or numeric CAST.
 func TestRunReservedProjectionSQLKeysMatrix(t *testing.T) {
+	for _, modifier := range []string{"", "ВСЕ ", "ALL "} {
+		t.Run("modifier="+modifier, func(t *testing.T) {
+			runReservedProjectionSQLKeysMatrix(t, modifier)
+		})
+	}
+}
+
+func runReservedProjectionSQLKeysMatrix(t *testing.T, modifier string) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
 		doc := &metadata.Entity{Name: "ReservedProjection", Kind: metadata.KindDocument, Fields: []metadata.Field{
@@ -255,7 +264,7 @@ func TestRunReservedProjectionSQLKeysMatrix(t *testing.T) {
 		}
 		run := func(t *testing.T, src string, ambiguous bool) []map[string]any {
 			t.Helper()
-			res, err := query.Compile(src, query.CompileOpts{Entities: entities, Dialect: db.Dialect()})
+			res, err := query.Compile(strings.ReplaceAll(src, "ВЫБРАТЬ ", "ВЫБРАТЬ "+modifier), query.CompileOpts{Entities: entities, Dialect: db.Dialect()})
 			require.NoError(t, err, src)
 			rows, _, err := query.Run(ctx, db, &res)
 			if ambiguous && db.Dialect().Name() == "postgres" {

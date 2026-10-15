@@ -43,8 +43,7 @@ func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 	counts := map[string]int{}
 	hasStar := false
 	add := func(from, to int) {
-		item := trimProjectionItem(tokens[from:to])
-		from = to - len(item)
+		item := tokens[from:to]
 		col, _ := parseProjectionItem(item)
 		if col.Star {
 			hasStar = true
@@ -67,7 +66,7 @@ func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 			}
 		}
 	}
-	depth, from := 0, start+1
+	depth, from := 0, selectProjectionStart(tokens, start)
 	for i := from; i < end; i++ {
 		switch tokens[i].kind {
 		case tLParen:

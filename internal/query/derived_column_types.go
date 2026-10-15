@@ -81,8 +81,7 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 	}
 	hasStar := false
 	add := func(from, to int) {
-		item := trimProjectionItem(tokens[from:to])
-		from = to - len(item)
+		item := tokens[from:to]
 		column, _ := parseProjectionItem(item)
 		if column.Star {
 			hasStar = true
@@ -107,7 +106,7 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		}
 		output[key] = typ
 	}
-	depth, from := 0, start+1
+	depth, from := 0, selectProjectionStart(tokens, start)
 	for i := from; i < end; i++ {
 		switch tokens[i].kind {
 		case tLParen:
