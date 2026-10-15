@@ -1184,6 +1184,29 @@ test('queued picker event preserves its cloned table-part context', async () => 
   assert.equal(bodies[1].get('_tp'), 'Lines');
 });
 
+test('picker-opening response applies header values before the choice event', async () => {
+  const bodies = [];
+  const app = runtime((url, options) => {
+    const body = new URLSearchParams(options.body.toString());
+    bodies.push(body);
+    if (bodies.length === 1) {
+      return Promise.resolve(response({ok: true, values: {Mode: 'Master'}, pickerData: {items: []}}));
+    }
+    return Promise.resolve(response({ok: true}));
+  }, {docId: 'existing-row'});
+  app.form.values.set('Mode', 'WhichMasters');
+
+  await app.context.obFire('Distribute', 'Answer');
+  const valuesAt = app.applied.findIndex((entry) => entry[0] === 'values');
+  const pickerAt = app.applied.findIndex((entry) => entry[0] === 'picker');
+  assert.ok(pickerAt >= 0, 'pickerData did not reach openItemPicker');
+  assert.ok(valuesAt >= 0 && valuesAt < pickerAt, 'handler values were not applied before the picker opened');
+  assert.ok(!app.applied.some((entry) => entry[0] === 'parts'), 'picker phase 1 must not touch table parts');
+
+  await app.context.obFire('Distribute', 'Choice', {_pick_result: '[]'});
+  assert.equal(bodies[1].get('Mode'), 'Master', 'choice event resent the pre-handler mode');
+});
+
 test('queued table-part event keeps trigger-time canonical selection', async () => {
   let completeFirst;
   let selectedRows = [0];
