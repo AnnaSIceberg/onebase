@@ -2434,6 +2434,43 @@ function obManagedInitDelegates() {
 obManagedReady(obManagedInitDelegates);
 
 // SlickGrid initializer for managed-form table parts (plan 48).
+// Порядок колонок таблицы формы за пользователем (как в 1С): сервер отдаёт
+// сохранённый порядок в data-sg-order, перетаскивание заголовка его меняет.
+// Перестановка идёт НА МЕСТЕ массива columns: обработчики грида берут
+// колонку как columns[args.cell], и копия массива разошлась бы с показом.
+function obGridParseOrder(raw) {
+  var order;
+  try { order = JSON.parse(raw || "null"); } catch (e) { return []; }
+  if (!Array.isArray(order)) return [];
+  return order.filter(function(id) { return typeof id === "string" && id !== ""; });
+}
+function obGridApplyOrder(columns, order) {
+  if (!columns || !order || !order.length) return false;
+  var byId = {}, used = {}, out = [], i;
+  for (i = 0; i < columns.length; i++) byId[columns[i].id] = columns[i];
+  for (i = 0; i < order.length; i++) {
+    var id = order[i];
+    if (Object.prototype.hasOwnProperty.call(byId, id) && !used[id]) { out.push(byId[id]); used[id] = true; }
+  }
+  // Колонки, которых нет в сохранённом порядке (добавили в форму позже), —
+  // после переставленных, в своём порядке.
+  for (i = 0; i < columns.length; i++) if (!used[columns[i].id]) out.push(columns[i]);
+  var changed = false;
+  for (i = 0; i < out.length; i++) if (out[i] !== columns[i]) { changed = true; break; }
+  columns.length = 0;
+  Array.prototype.push.apply(columns, out);
+  return changed;
+}
+function obGridMoveColumn(columns, from, to) {
+  if (!columns || from === to || from < 0 || to < 0 || from >= columns.length || to >= columns.length) return false;
+  var col = columns.splice(from, 1)[0];
+  columns.splice(to, 0, col);
+  return true;
+}
+function obGridColumnIds(columns) {
+  return (columns || []).map(function(c) { return c.id; });
+}
+
 // Grids are stored in window._obGrids = {tpName: {grid, dataView, columns}}.
 (function(){
   window._obGrids = window._obGrids || {};
@@ -2449,6 +2486,81 @@ obManagedReady(obManagedInitDelegates);
     g.grid.resizeCanvas();
     g.grid.autosizeColumns();
     updateTotals(g); // footer-ячейки пересоздаются при re-render — обновляем суммы
+  }
+
+  // enableColumnReorder — перетаскивание заголовков колонок (HTML5 drag and
+  // drop: vendored SlickGrid без Sortable.js свой reorder не включает) и
+  // сохранение порядка за пользователем; «Стандартный порядок колонок»
+  // возвращает порядок формы.
+  function enableColumnReorder(state, defaultIds) {
+    var div = state.div, grid = state.grid;
+    var key = div.getAttribute("data-sg-layout");
+    if (!key) return;
+    var host = div.parentNode;
+    var resetBtn = host && host.querySelector ? host.querySelector('[data-ob-grid-order-reset]') : null;
+    var dragFrom = -1;
+    function headerCells() {
+      return Array.prototype.slice.call(div.querySelectorAll(".slick-header-columns .slick-header-column"));
+    }
+    function headerOf(target) {
+      var h = target && target.closest ? target.closest(".slick-header-column") : null;
+      return h && div.contains(h) ? h : null;
+    }
+    function markDraggable() {
+      headerCells().forEach(function(h) { h.setAttribute("draggable", "true"); });
+    }
+    function save(order) {
+      if (!window.fetch) return;
+      var body = "grid=" + encodeURIComponent(key) + "&order=" + encodeURIComponent(order);
+      window.fetch("/ui/_grid-order", {
+        method: "POST", credentials: "same-origin",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: body
+      }).catch(function() {});
+    }
+    function applyColumns() {
+      grid.setColumns(state.columns);
+      markDraggable();
+      try { updateTotals(state); } catch (e) {}
+      var isDefault = obGridColumnIds(state.columns).join("\u0001") === defaultIds.join("\u0001");
+      if (resetBtn) resetBtn.style.display = isDefault ? "none" : "";
+      return isDefault;
+    }
+    markDraggable();
+    if (grid.onHeaderCellRendered) {
+      grid.onHeaderCellRendered.subscribe(function(e, args) {
+        if (args && args.node) args.node.setAttribute("draggable", "true");
+      });
+    }
+    div.addEventListener("dragstart", function(e) {
+      var h = headerOf(e.target);
+      if (!h) return;
+      // Ручка изменения ширины — своё перетаскивание SlickGrid.
+      if (e.target.closest && e.target.closest(".slick-resizable-handle")) { e.preventDefault(); return; }
+      dragFrom = headerCells().indexOf(h);
+      try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", ""); } catch (er) {}
+    });
+    div.addEventListener("dragover", function(e) {
+      if (dragFrom >= 0 && headerOf(e.target)) e.preventDefault();
+    });
+    div.addEventListener("drop", function(e) {
+      if (dragFrom < 0) return;
+      var h = headerOf(e.target);
+      var from = dragFrom;
+      dragFrom = -1;
+      if (!h) return;
+      e.preventDefault();
+      if (!obGridMoveColumn(state.columns, from, headerCells().indexOf(h))) return;
+      var isDefault = applyColumns();
+      save(isDefault ? "" : JSON.stringify(obGridColumnIds(state.columns)));
+    });
+    div.addEventListener("dragend", function() { dragFrom = -1; });
+    if (resetBtn) {
+      resetBtn.addEventListener("click", function() {
+        obGridApplyOrder(state.columns, defaultIds);
+        applyColumns();
+        save("");
+      });
+    }
   }
 
   // updateTotals — строка итогов (footer row SlickGrid). Для каждой числовой
@@ -3705,6 +3817,8 @@ obManagedReady(obManagedInitDelegates);
     // алфавитный, а список должен идти в порядке объявления values:.
     var enumOrder = (window._tpEnumOrder && window._tpEnumOrder[tpName]) || {};
     var columns = buildColumns(colsRaw, refOpts, enumLabels, enumOrder);
+    var defaultColumnIds = obGridColumnIds(columns);
+    obGridApplyOrder(columns, obGridParseOrder(div.getAttribute("data-sg-order")));
     // _ord — исходный порядок строки. Клиентская сортировка меняет ПОРЯДОК
     // ОТОБРАЖЕНИЯ (dataView.sort), но при сохранении (obGridSync) строки
     // сериализуются по _ord — чтобы сортировка «для просмотра» не переставляла
@@ -3759,6 +3873,7 @@ obManagedReady(obManagedInitDelegates);
     };
     div._obGridState = gridState;
     window._obGridViews.push(gridState);
+    enableColumnReorder(gridState, defaultColumnIds);
     var registered = window._obGrids[tpName];
     if (!registered || (!readOnly && registered.readOnly)) {
       window._obGrids[tpName] = gridState;
