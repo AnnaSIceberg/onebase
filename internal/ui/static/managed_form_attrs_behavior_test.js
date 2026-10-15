@@ -28,6 +28,7 @@ function runtime(cfg, controls = []) {
     },
     // applyValues обходит все копии реквизита с этим name (#1759).
     querySelectorAll(selector) {
+      if (selector === '[name]') return this.controls;
       const match = /^\[name="([^"]+)"\]$/.exec(selector);
       return match ? this.controls.filter((el) => el.name === match[1]) : [];
     },
@@ -49,11 +50,14 @@ function runtime(cfg, controls = []) {
     function obManagedReady(fn) { fn(); }
     var DOC_ID = '';
     var formEditState = {revision: 0};
+    var controlEditRevisions = new WeakMap();
     function serviceField(name) { return name; }
     ${attrsInit}
     ${extract('managedRefParts')}
     ${extract('ensureRefOption')}
     ${extract('applyValues')}
+    ${extract('controlSubmittable')}
+    ${extract('captureFormControlState')}
     ${extract('snapshotFormEvent')}
     return {ensureFormAttrControls, applyValues, snapshotFormEvent};
   `)(document, {}, cfg, FormData);

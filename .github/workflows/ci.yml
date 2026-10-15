@@ -595,7 +595,7 @@ jobs:
         env:
           CI: '1'
           ONEBASE_BROWSER_ACCEPTANCE: '1'
-        run: go test -count=1 -v ./internal/ui ./internal/launcher -run 'TestChoiceFilter(Configurator)?BrowserAcceptance$'
+        run: go test -count=1 -v ./internal/ui ./internal/launcher -run 'Test(ChoiceFilter(Configurator)?|HiddenCopies)BrowserAcceptance$'
 
       # Без артефактов упавший браузерный тест разбирать нечем: трассировка
       # показывает шаги, снимок — что было на экране в момент падения.

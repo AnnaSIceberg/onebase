@@ -407,11 +407,25 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     });
     radios.forEach(function(r){ r.checked = (r === target); });
   }
-  // sent — значения, отправленные с этим событием (URLSearchParams). Поле,
-  // которое пользователь изменил, пока шёл запрос, ответ не трогает, если
-  // сервер вернул ровно отправленное: иначе набранные за это время символы
-  // молча стирались (оператор не досчитывался последней цифры телефона).
-  function applyValues(values, refOptions, sent){
+  // Track actual input/change events separately from values repainted by a
+  // server response. A hidden copy can already differ from the submitted copy
+  // before a request; that difference is not a concurrent edit.
+  var controlEditRevisions = new WeakMap();
+  function captureFormControlState(form){
+    var state = new Map();
+    Array.prototype.forEach.call(form.querySelectorAll('[name]'), function(inp){
+      state.set(inp, {
+        value: inp.value,
+        revision: controlEditRevisions.get(inp) || 0,
+        editable: controlSubmittable(inp) && !inp.readOnly && inp.type !== 'hidden'
+      });
+    });
+    return state;
+  }
+  // Preserve a real edit made after this event's snapshot when the server
+  // echoes the submitted value. Apply it to every copy, including the copy
+  // which applyElementStates has just made visible/submittable.
+  function applyValues(values, refOptions, sent, controlState){
     if (!values) return;
     const form = document.getElementById('main-form');
     if (!form) return;
@@ -428,6 +442,18 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       // иначе ответ доходил только до первого контрола, и видимая копия
       // отправляла старое значение обратно (#1759).
       const controls = Array.prototype.slice.call(form.querySelectorAll('[name="' + key + '"]'));
+      var newerInput = null;
+      if (sent && controlState) {
+        controls.forEach(function(inp){
+          var before = controlState.get(inp);
+          var revision = controlEditRevisions.get(inp) || 0;
+          if (before && before.editable && inp.type !== 'radio' && inp.type !== 'checkbox' &&
+              revision > before.revision && inp.value !== before.value &&
+              (!newerInput || revision > newerInput.revision)) {
+            newerInput = {value: inp.value, revision: revision};
+          }
+        });
+      }
       const radios = controls.filter(function(c){ return c.type === 'radio'; });
       if (radios.length) applyRadioValue(radios, v);
       controls.forEach(function(inp){
@@ -453,7 +479,10 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         // поле — дата на форме пропадала после первого же события, а следующая
         // запись затирала её в базе.
         if (inp.type === 'date' && val.indexOf('T') > 0) val = val.slice(0, val.indexOf('T'));
-        if (sent && typeof sent.has === 'function' && sent.has(k) && sent.get(k) === val && inp.value !== val) return;
+        if (newerInput && sent.has(k) && sent.get(k) === val) {
+          val = newerInput.value;
+          if (inp.value === val) return; // Keep the active editor/caret intact.
+        }
         if (inp.tagName === 'SELECT') ensureRefOption(inp, val, refOptions && refOptions[k], ref && ref.label);
         // Зеркало значения (план 181C/#1672) — скрытый input с тем же name:
         // у запертого select-поля отправляется оно, и этот же проход держит
@@ -1089,7 +1118,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       Object.keys(extraParams).forEach(k => body.append(serviceField(k), extraParams[k]));
     }
     return {
-	  body: body, form: form, elementName: elementName,
+	  body: body, form: form, controlState: captureFormControlState(form), elementName: elementName,
 	  extraParams: extraParams, wasNew: !DOC_ID,
 	  editRevision: formEditState.revision,
 	  eventName: eventName, pickerRequest: pickerRequest
@@ -1210,7 +1239,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       applyElementStates(data.elementStates);
       window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
       window.applyTableParts(data.tableparts);
-      applyValues(data.values, data.refOptions, snapshot.body);
+      applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
       applyChoiceList(elementName, data.choiceList);
       applyFormTables(data.formTables);
 	  // Server events repaint controls programmatically and therefore do not
@@ -2031,11 +2060,14 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   window._obFormDirty = false;
   var _obBaseTitle = document.title;
   setManagedFormDirty(cfg.initialDirty === true);
-  function _obMarkDirty(){
+  function _obMarkDirty(e){
 	window.obSetManagedFormDirty(true);
+    if (e && e.target && controlSubmittable(e.target) && !e.target.readOnly && e.target.type !== 'hidden') {
+      controlEditRevisions.set(e.target, formEditState.revision);
+    }
   }
-  document.addEventListener('input',  function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(); }, true);
-  document.addEventListener('change', function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(); }, true);
+  document.addEventListener('input',  function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(e); }, true);
+  document.addEventListener('change', function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(e); }, true);
   // «Грязный» флаг сбрасывает финальный submit-handler только после всех
   // проверок. Сбрасывать его здесь нельзя: obGridSync ниже ещё может запретить
   // отправку из-за незавершённой/невалидной правки ячейки.
