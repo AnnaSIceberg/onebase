@@ -4003,7 +4003,7 @@ function obManagedTabKey(tabs) {
 
 function obManagedSwitchTab(btn) {
   var tabs = btn && btn.closest ? btn.closest('.managed-tabs') : null;
-  if (!tabs) return;
+  if (!tabs || btn.style.display === 'none') return;
   var idx = btn.getAttribute('data-tab-idx') || '0';
   tabs.querySelectorAll('.managed-tab-btn').forEach(function (b) { b.classList.remove('active'); });
   btn.classList.add('active');
@@ -4051,8 +4051,6 @@ obManagedReady(function () {
   var validationPassStarted = false;
   document.addEventListener('invalid', function (e) {
     if (validationPassStarted) return;
-    validationPassStarted = true;
-    setTimeout(function () { validationPassStarted = false; }, 0);
     var control = e.target;
     if (!control || !control.closest) return;
     var pages = [];
@@ -4062,16 +4060,30 @@ obManagedReady(function () {
       var parent = content.parentElement;
       content = parent && parent.closest ? parent.closest('.managed-tab-content') : null;
     }
-    // For nested tab groups, select every ancestor page from outer to inner.
-    // Switching an outer group currently hides descendant pages too, so the
-    // inner selection must be restored even when it was active beforehand.
-    for (var i = pages.length - 1; i >= 0; i--) {
+    // Check the entire ancestor chain before switching anything: an inactive
+    // page may be opened, but a button hidden by hidden_when may not. Ignore
+    // that control for navigation without consuming the first-invalid slot,
+    // so the next invalid control on an available page can still be revealed.
+    var buttons = [];
+    for (var i = 0; i < pages.length; i++) {
       var page = pages[i];
       var tabs = page.closest('.managed-tabs');
       if (!tabs) continue;
       var idx = page.getAttribute('data-tab-content');
       var btn = tabs.querySelector('.managed-tab-btn[data-tab-idx="' + idx + '"]');
-      if (btn) obManagedSwitchTab(btn);
+      if (btn && btn.style.display === 'none') {
+        e.preventDefault();
+        return;
+      }
+      if (btn) buttons.push(btn);
+    }
+    validationPassStarted = true;
+    setTimeout(function () { validationPassStarted = false; }, 0);
+    // For nested tab groups, select every ancestor page from outer to inner.
+    // Switching an outer group currently hides descendant pages too, so the
+    // inner selection must be restored even when it was active beforehand.
+    for (var i = buttons.length - 1; i >= 0; i--) {
+      obManagedSwitchTab(buttons[i]);
     }
   }, true);
 
