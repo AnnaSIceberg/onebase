@@ -491,7 +491,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var hidden = st.hidden || {};
     Object.keys(hidden).forEach(function (path) {
       var el = byPath(path);
-      if (!el) return;
+      if (!el) {
+        // Страница набора СтраницыФормы своего якоря не имеет — её якорь
+        // стоит на кнопке закладки.
+        obManagedSetPageHidden(path, !!hidden[path]);
+        return;
+      }
       // Some managed elements keep their layout only in an inline display
       // declaration (checkbox and command bar use flex). Remember that value
       // before the first state update instead of erasing it on hidden=false.
@@ -4007,6 +4012,33 @@ function obManagedSwitchTab(btn) {
   if (content) content.style.display = 'block';
   try { sessionStorage.setItem(obManagedTabKey(tabs), idx); } catch (_) {}
   if (window._obResizeGrids) setTimeout(window._obResizeGrids, 0);
+}
+
+// obManagedSetPageHidden применяет пересчитанное событием формы условие
+// hidden_when к странице набора СтраницыФормы. Страница представлена двумя
+// узлами — кнопкой закладки и содержимым, — поэтому общий путь
+// applyElementStates (display у якоря) ей не подходит: спрятанное содержимое
+// оставило бы кнопку, а спрятанная кнопка — открытое содержимое. Прячется
+// кнопка; если она была открытой, открывается первая видимая закладка того же
+// набора, а когда видимых не осталось, гаснет и содержимое. hidden=false
+// возвращает кнопку, не переключая открытую закладку. Страницу, скрытую уже
+// при отрисовке, сервер не выводит, и показать её до перезагрузки нечем.
+function obManagedSetPageHidden(path, hide) {
+  var btn = document.querySelector('.managed-tab-btn[data-ob-tab-path="' + (window.CSS && CSS.escape ? CSS.escape(path) : path) + '"]');
+  if (!btn) return;
+  btn.style.display = hide ? 'none' : '';
+  if (!hide || !btn.classList.contains('active')) return;
+  var siblings = btn.parentElement ? btn.parentElement.children : [];
+  for (var i = 0; i < siblings.length; i++) {
+    if (siblings[i] !== btn && siblings[i].style.display !== 'none') {
+      obManagedSwitchTab(siblings[i]);
+      return;
+    }
+  }
+  btn.classList.remove('active');
+  var tabs = btn.closest ? btn.closest('.managed-tabs') : null;
+  var content = tabs ? tabs.querySelector('.managed-tab-content[data-tab-content="' + (btn.getAttribute('data-tab-idx') || '0') + '"]') : null;
+  if (content) content.style.display = 'none';
 }
 
 obManagedReady(function () {
