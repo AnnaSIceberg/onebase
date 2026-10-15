@@ -82,9 +82,31 @@ func (s *Server) applyListFormFilter(r *http.Request, entity *metadata.Entity, p
 // listFilterPredicate переводит одно условие формы списка в предикат хранилища.
 // Поле допускает одно разыменование: «Инициатор.УчётнаяЗапись» проверяет
 // реквизит связанной записи.
+// userHasAnyRole — есть ли у пользователя хотя бы одна из ролей (имя роли
+// без учёта регистра, как в остальных проверках ролей).
+func userHasAnyRole(user *auth.User, roles []string) bool {
+	if user == nil {
+		return false
+	}
+	for _, have := range user.Roles {
+		if have == nil {
+			continue
+		}
+		for _, want := range roles {
+			if strings.EqualFold(strings.TrimSpace(have.Name), strings.TrimSpace(want)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *Server) listFilterPredicate(entity *metadata.Entity, cond metadata.FormListCondition, user *auth.User) (storage.Predicate, bool) {
 	field := strings.TrimSpace(cond.Field)
 	if field == "" {
+		return storage.Predicate{}, false
+	}
+	if len(cond.Roles) > 0 && !userHasAnyRole(user, cond.Roles) {
 		return storage.Predicate{}, false
 	}
 	op := strings.TrimSpace(cond.Op)

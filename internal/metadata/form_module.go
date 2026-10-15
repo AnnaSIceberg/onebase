@@ -703,6 +703,10 @@ type FormListCondition struct {
 	Field string `yaml:"field"`
 	Op    string `yaml:"op,omitempty"`    // пока только eq (умолчание)
 	Value string `yaml:"value,omitempty"` // литерал или @ТекущийПользователь
+	// Roles — условие действует только для пользователя с одной из этих
+	// ролей; пусто — для всех. «Мои записи» нужны оператору, а сотрудник
+	// контроля качества разбирает весь список: одна форма, разный отбор.
+	Roles []string `yaml:"roles,omitempty"`
 }
 
 // ListFilterCurrentUser — подстановка «тот, кто смотрит» в значении условия.
