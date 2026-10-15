@@ -322,6 +322,8 @@ const tplManagedForm = `
   <div id="sg-{{$tpName}}" class="ob-grid" style="{{tpGridCSS $el (len $tpRows)}}"
        data-sg-tp="{{$tpName}}"
        data-sg-el="{{$el.Name}}"
+       {{with gridLayoutAttr $ctx $el.Name}}data-sg-layout="{{.}}"{{end}}
+       {{with gridOrderAttr $ctx $el.Name}}data-sg-order="{{.}}"{{end}}
        {{if $tpReadOnly}}data-sg-ro="1"{{end}}
        {{if and (not $tpReadOnly) (hasHandler $el "ПриИзменении")}}data-sg-recalc="1"{{end}}
        {{if $el.AutoSum}}data-sg-autosum="1"{{end}}
@@ -345,6 +347,10 @@ const tplManagedForm = `
       data-ob-grid-add="{{$tpName}}" title="Insert" aria-keyshortcuts="Insert"{{end}}>+ Добавить строку</button>
     <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#991b1b"{{if $tpReadOnly}} disabled{{else}}
       data-ob-grid-del="{{$tpName}}" title="Delete" aria-keyshortcuts="Delete"{{end}}>− Удалить строку</button>
+    {{/* display:none, а не hidden: display у .btn перебивает атрибут hidden. */}}
+    {{if gridLayoutAttr $ctx $el.Name}}<button type="button" class="btn btn-sm" style="margin-left:auto;background:#f1f5f9;color:#64748b{{if not (gridOrderAttr $ctx $el.Name)}};display:none{{end}}"
+      data-ob-grid-order-reset="{{$tpName}}"
+      title="{{t $ctx.Lang "Колонки можно переставлять, перетаскивая заголовок"}}">{{t $ctx.Lang "Стандартный порядок колонок"}}</button>{{end}}
   </div>
 {{else}}
 {{/* Маркер присутствия простой таблицы: строки — это ключи tp.X.<i>.<колонка>,
