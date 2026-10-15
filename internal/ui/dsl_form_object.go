@@ -74,6 +74,10 @@ type formObjectThis struct {
 	// xdtoState is independent of isNew (MakeThis also wraps new Save objects
 	// with isNew=false). It carries the actual source through the lifecycle.
 	xdtoState *entityHookXDTOState
+	// HTTP form values carry unsaved fields, but cannot attest posting/deletion
+	// state. Only this wrapper needs a live, authorized service-state snapshot;
+	// entity lifecycle wrappers already carry the in-flight Save object.
+	xdtoFormSnapshot bool
 	// writeBlocked prevents a form write lifecycle handler from recursively
 	// saving the same object and then letting the outer Save persist it again.
 	writeBlocked bool
@@ -92,7 +96,33 @@ func (f *formObjectThis) liveCtx() context.Context {
 	return context.Background()
 }
 
-func (f *formObjectThis) XDTOObject() *runtime.Object { return f.obj }
+func (f *formObjectThis) XDTOObject() *runtime.Object {
+	if !f.xdtoFormSnapshot {
+		return f.obj
+	}
+	// Keep the browser's unsaved fields/TP and optimistic version intact. The
+	// two service flags come exclusively from the same row whose read access
+	// is checked here, never from POST or similarly named application fields.
+	snapshot := *f.obj
+	snapshot.Posted, snapshot.DeletionMark = false, false
+	if !f.isNew || f.saved {
+		ctx := f.liveCtx()
+		if !f.srv.canCtx(ctx, string(f.entity.Kind), f.entity.Name, "read") {
+			interpreter.RaiseUserError("доступ запрещён")
+		}
+		row, err := f.srv.store.GetByID(ctx, f.entity.Name, f.obj.ID, f.entity)
+		if err != nil {
+			interpreter.RaiseUserError(err.Error())
+		}
+		readable, err := f.srv.rowAllowedContextResult(ctx, f.entity, "read", row)
+		if err != nil || !readable {
+			interpreter.RaiseUserError("доступ запрещён")
+		}
+		snapshot.Posted = asBool(row["posted"])
+		snapshot.DeletionMark = asBool(row["deletion_mark"])
+	}
+	return &snapshot
+}
 
 func (f *formObjectThis) XDTOMaskField() func(string, any) any {
 	state := f.hookXDTOState()

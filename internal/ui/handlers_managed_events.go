@@ -1149,6 +1149,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	defer rollbackDSLExecution(txState)
 	isNewForHandler := strings.TrimSpace(r.FormValue("_id")) == "" && (closeInv == nil || !closeInv.saved)
 	thisObj := s.newFormObjectThisLive(dslCtx, txState, obj, entity, form, isNewForHandler)
+	thisObj.xdtoFormSnapshot = true
 	if isNewForHandler {
 		// Объект.Записать() из обработчика — ещё один путь записи нового объекта:
 		// без этого он писал неразмещённые реквизиты пустыми, хотя «Записать»
