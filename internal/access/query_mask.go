@@ -243,13 +243,15 @@ func containsString(list []string, v string) bool {
 	return false
 }
 
-// wildcardSourceColumnCounts считает физические колонки по отдельным
+// wildcardSourceColumnCounts считает выходные колонки по отдельным
 // вхождениям источников, а не по карте защищённых полей. Обычное поле другого
 // источника также может дублировать защищённое имя. Self-JOIN учитывается дважды;
 // уникальный список Sources предназначен для RBAC и здесь недостаточен.
+// Виртуальный источник использует только доказанную SQL-проекцию компилятора:
+// метаданные предиката регистра не описывают производные имена его колонок.
 // nil означает, что однозначность источников доказать нельзя.
 func wildcardSourceColumnCounts(sources []query.SourceOccurrence, qualifier string, lookup func(kind, name string) *metadata.Entity) map[string]int {
-	if len(sources) == 0 || lookup == nil {
+	if len(sources) == 0 {
 		return nil
 	}
 	counts := map[string]int{}
@@ -259,6 +261,18 @@ func wildcardSourceColumnCounts(sources []query.SourceOccurrence, qualifier stri
 			continue
 		}
 		found = true
+		if src.Virtual {
+			if len(src.OutputColumns) == 0 {
+				return nil
+			}
+			for _, name := range src.OutputColumns {
+				counts[fieldKey(name)]++
+			}
+			continue
+		}
+		if lookup == nil {
+			return nil
+		}
 		meta := lookup(src.Kind, src.Name)
 		if meta == nil {
 			return nil
@@ -287,7 +301,7 @@ func wildcardSourceColumnCounts(sources []query.SourceOccurrence, qualifier stri
 }
 
 // ambiguousMaskedOutput ищет защищённое имя выходной колонки, встречающееся в
-// списке выборки больше одного раза. «*» учитывает кратность физических колонок
+// списке выборки больше одного раза. «*» учитывает кратность выходных колонок
 // всех источников (в том числе обычных полей и повторов одной сущности).
 // Поэтому «ВЫБРАТЬ *, Телефон» тоже попадает сюда. Элемент
 // выборки учитывается под выходным именем: разные алиасы одного физического

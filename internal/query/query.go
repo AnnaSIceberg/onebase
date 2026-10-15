@@ -103,6 +103,12 @@ type Result struct {
 type SourceOccurrence struct {
 	SourceRef
 	Qualifier string
+	// Virtual distinguishes a generated SQL source from a physical table.
+	// OutputColumns preserves its actual projection, including derived names
+	// and duplicates. nil means the output schema could not be proved; callers
+	// must not substitute the register's predicate metadata in that case.
+	Virtual       bool
+	OutputColumns []string
 }
 
 // SourceRef — объект-источник запроса (для проверки прав доступа).
@@ -3099,6 +3105,8 @@ func (tr *translator) emitVTSubquery(subq, defaultAlias string) error {
 		}
 	}
 	tr.sourceRefs[len(tr.sourceRefs)-1].Qualifier = alias
+	tr.sourceRefs[len(tr.sourceRefs)-1].Virtual = true
+	tr.sourceRefs[len(tr.sourceRefs)-1].OutputColumns = generatedSourceColumns(subq)
 	tr.emit("(" + subq + ") AS " + alias)
 	// Авто-JOIN refDims — только для главной таблицы (первого источника FROM),
 	// иначе при присоединении через явный JOIN авто-JOIN вклинивается перед ON
