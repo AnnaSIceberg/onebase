@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -197,5 +198,209 @@ func TestInteractiveCreateFalse_InlineCreateFromRefFieldByRole(t *testing.T) {
 	}
 	if !strings.Contains(render(managerCreate), `data-ref-allow-create="1"`) {
 		t.Error("роль с create не может создать заявку из поля ссылки")
+	}
+}
+
+// Both managed transports are public UI entry points. A new form opened while
+// create was allowed must stop working after that permission is revoked.
+func TestInteractiveCreateFalse_ManagedTransports(t *testing.T) {
+	for _, kind := range []metadata.Kind{metadata.KindCatalog, metadata.KindDocument} {
+		for _, transport := range []string{"form-event", "form-close-intent"} {
+			for _, tc := range []struct {
+				name                            string
+				user                            *auth.User
+				unrestricted, existing, discard bool
+				wantStatus                      int
+			}{
+				{name: "revoked-create", user: operatorNoCreate, wantStatus: http.StatusForbidden},
+				{name: "with-create", user: managerCreate, wantStatus: http.StatusOK},
+				{name: "admin", user: adminCreate, wantStatus: http.StatusOK},
+				{name: "without-flag", user: operatorNoCreate, unrestricted: true, wantStatus: http.StatusOK},
+				{name: "existing-without-create", user: operatorNoCreate, existing: true, wantStatus: http.StatusOK},
+				{name: "create-without-write", user: noCreateUser("creator", false, "read", "create"), wantStatus: http.StatusForbidden},
+				{name: "discard-revoked-create", user: operatorNoCreate, discard: true, wantStatus: http.StatusOK},
+			} {
+				if tc.discard && transport != "form-close-intent" {
+					continue
+				}
+				t.Run(string(kind)+"/"+transport+"/"+tc.name, func(t *testing.T) {
+					ent := loadNoCreateDoc(t)
+					ent.Kind = kind
+					ent.NoInteractiveCreate = !tc.unrestricted
+					form := managedObjectForm(fieldEl("Description", "Объект.Описание"), &metadata.FormElement{
+						Kind: metadata.FormElementButton, Name: "Save",
+						Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "ЗаписатьФорму"},
+					})
+					form.ProgramAST = mustParse(t, `
+Процедура ЗаписатьФорму()
+ Объект.Записать();
+ Сообщить("handler ran");
+КонецПроцедуры
+Процедура ПроверитьЗакрытие(Отказ)
+ Объект.Записать();
+ Сообщить("close handler ran");
+КонецПроцедуры
+`)
+					if tc.discard {
+						form.Handlers = map[metadata.FormEventType]string{metadata.FormEventBeforeClose: "ПроверитьЗакрытие"}
+					}
+					ent.Forms = []*metadata.FormModule{form}
+					srv, ctx := newSubmitTestServer(t, []*metadata.Entity{ent})
+					// The same permission matrix applies to catalogs and documents.
+					user := *tc.user
+					user.Roles = []*auth.Role{{Permissions: auth.Permission{
+						Documents: tc.user.Roles[0].Permissions.Documents,
+						Catalogs:  tc.user.Roles[0].Permissions.Documents,
+					}}}
+					router := chi.NewRouter()
+					srv.Mount(router)
+					base := "/ui/" + string(kind) + "/" + ent.Name
+					body := url.Values{"_kind": {"object"}, "Описание": {"changed"}}
+					if tc.existing {
+						id := uuid.New()
+						if err := srv.store.Upsert(ctx, ent.Name, id, map[string]any{"Описание": "before"}, ent); err != nil {
+							t.Fatal(err)
+						}
+						body.Set("_id", id.String())
+					} else if tc.name == "revoked-create" {
+						// Open with create, then submit that still-new form as a user without it.
+						openUser := user
+						openUser.Roles = []*auth.Role{{Permissions: auth.Permission{
+							Catalogs:  managerCreate.Roles[0].Permissions.Documents,
+							Documents: managerCreate.Roles[0].Permissions.Documents,
+						}}}
+						req := httptest.NewRequest(http.MethodGet, base+"/new", nil)
+						req = req.WithContext(auth.ContextWithUser(ctx, &openUser))
+						rec := httptest.NewRecorder()
+						router.ServeHTTP(rec, req)
+						if rec.Code != http.StatusOK {
+							t.Fatalf("open form: %d %s", rec.Code, rec.Body.String())
+						}
+					}
+					if transport == "form-event" {
+						body.Set("_element", "Save")
+						body.Set("_event", string(metadata.FormEventOnClick))
+					} else {
+						for key, values := range closeIntentBody(uuid.NewString(), "close", "") {
+							body[key] = values
+						}
+						if tc.discard {
+							body.Set("_close_mode", "discard")
+						} else {
+							body.Set("_close_mode", "save")
+						}
+						ensureEntityCloseIntentSchema(ent, body)
+					}
+					req := httptest.NewRequest(http.MethodPost, base+"/"+transport, strings.NewReader(body.Encode()))
+					req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+					req = req.WithContext(auth.ContextWithUser(ctx, &user))
+					if transport == "form-close-intent" {
+						setEntityCloseIntentHeaders(req, body)
+					}
+					rec := httptest.NewRecorder()
+					router.ServeHTTP(rec, req)
+					response := decodeCloseIntentResponse(t, rec)
+					if rec.Code != tc.wantStatus {
+						t.Fatalf("status=%d want=%d body=%s", rec.Code, tc.wantStatus, rec.Body.String())
+					}
+					rows, err := srv.store.List(ctx, ent.Name, ent, storage.ListParams{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					denied := tc.wantStatus == http.StatusForbidden
+					if denied || tc.discard {
+						if len(rows) != 0 || response.SavedID != "" || len(response.Messages) != 0 {
+							t.Fatalf("forbidden/abandoned new form ran handler or saved: rows=%v response=%+v", rows, response)
+						}
+					} else if !response.OK || len(rows) != 1 || rows[0]["Описание"] != "changed" || (!tc.existing && response.SavedID == "") {
+						t.Fatalf("authorized save/update failed: rows=%v response=%+v", rows, response)
+					}
+					if transport == "form-close-intent" && !denied && (response.Close == nil || !response.Close.Allowed) {
+						t.Fatalf("close was denied: %+v", response)
+					}
+				})
+			}
+		}
+	}
+}
+
+// Programmatic creation from a permitted source form still requires write,
+// without inheriting the target entity's interactive create restriction.
+func TestInteractiveCreateFalse_ProgrammaticCreationFromForm(t *testing.T) {
+	for _, kind := range []metadata.Kind{metadata.KindCatalog, metadata.KindDocument} {
+		t.Run(string(kind), func(t *testing.T) {
+			target := loadNoCreateDoc(t)
+			target.Kind = kind
+			root := "Документы"
+			if kind == metadata.KindCatalog {
+				root = "Справочники"
+			}
+			form := managedObjectForm(&metadata.FormElement{
+				Kind: metadata.FormElementButton, Name: "Create",
+				Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "СоздатьЗаявку"},
+			})
+			form.ProgramAST = mustParse(t, fmt.Sprintf(`
+Процедура СоздатьЗаявку()
+ Заявка = %s.Заявка.Создать();
+ Заявка.Описание = "из звонка";
+ Заявка.Записать();
+КонецПроцедуры
+`, root))
+			source := &metadata.Entity{Name: "Звонок", Kind: metadata.KindDocument, Forms: []*metadata.FormModule{form}}
+			srv, ctx := newSubmitTestServer(t, []*metadata.Entity{target, source})
+			router := chi.NewRouter()
+			srv.Mount(router)
+			for _, ops := range [][]string{{"read", "write"}, {"read"}} {
+				user := noCreateUser("operator", false, ops...)
+				user.Roles[0].Permissions.Catalogs = map[string][]string{target.Name: ops}
+				body := url.Values{"_element": {"Create"}, "_event": {string(metadata.FormEventOnClick)}, "_kind": {"object"}}
+				req := httptest.NewRequest(http.MethodPost, "/ui/document/Звонок/form-event", strings.NewReader(body.Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				req = req.WithContext(auth.ContextWithUser(ctx, user))
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, req)
+				response := decodeCloseIntentResponse(t, rec)
+				if (len(ops) == 2) != response.OK {
+					t.Fatalf("ops=%v response=%+v", ops, response)
+				}
+				rows, err := srv.store.List(ctx, target.Name, target, storage.ListParams{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(rows) != 1 || rows[0]["Описание"] != "из звонка" {
+					t.Fatalf("programmatic write: rows=%v response=%+v", rows, response)
+				}
+			}
+		})
+	}
+}
+
+func TestInteractiveCreateFalse_UnsavedCloseReplayAfterRevocation(t *testing.T) {
+	srv, ent := setupManagedEventsServer(t, `
+Процедура ПроверитьЗакрытие(Отказ)
+ Сообщить("cached handler message");
+КонецПроцедуры
+`, map[metadata.FormEventType]string{metadata.FormEventBeforeClose: "ПроверитьЗакрытие"}, nil)
+	ent.NoInteractiveCreate = true
+	user := &auth.User{ID: "create-replay", Login: "create-replay", Roles: []*auth.Role{{Permissions: auth.Permission{
+		Catalogs: map[string][]string{ent.Name: {"read", "write", "create"}},
+	}}}}
+	body := closeIntentBody(uuid.NewString(), "close", "unsaved")
+	first := decodeCloseIntentResponse(t, executeFormCloseIntentAsUser(t, srv, ent, body, user))
+	if first.Close == nil || !first.Close.Allowed || len(first.Messages) != 1 || first.SavedID != "" {
+		t.Fatalf("authorized unsaved close did not cache handler response: %+v", first)
+	}
+	user.Roles[0].Permissions.Catalogs[ent.Name] = []string{"read", "write"}
+	rec := executeFormCloseIntentAsUser(t, srv, ent, body, user)
+	replay := decodeCloseIntentResponse(t, rec)
+	if rec.Code != http.StatusOK || replay.Close == nil || !replay.Close.Allowed || !replay.Close.Terminal || len(replay.Values) != 0 || len(replay.Messages) != 0 {
+		t.Fatalf("revoked create replay exposed stale handler state: status=%d response=%+v", rec.Code, replay)
+	}
+	rows, err := srv.store.List(context.Background(), ent.Name, ent, storage.ListParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("unsaved replay wrote rows: %v", rows)
 	}
 }
