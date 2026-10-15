@@ -143,9 +143,9 @@ type rawEntity struct {
 	ListRefreshOn []string           `yaml:"list_refresh_on"`
 	NotifyChanges bool               `yaml:"notify_changes"`
 	// InteractiveCreate — указатель: отсутствие ключа значит «можно».
-	InteractiveCreate *bool `yaml:"interactive_create"`
-	TileView      *rawTileView       `yaml:"tile_view"`
-	DetailPanel   *rawDetailPanel    `yaml:"detail_panel"`
+	InteractiveCreate *bool           `yaml:"interactive_create"`
+	TileView          *rawTileView    `yaml:"tile_view"`
+	DetailPanel       *rawDetailPanel `yaml:"detail_panel"`
 	// FullText — указатель, чтобы отличить отсутствие ключа (умолчание: все
 	// строковые реквизиты) от явного `fulltext: []` (объект вне поиска).
 	FullText *[]string `yaml:"fulltext"`
