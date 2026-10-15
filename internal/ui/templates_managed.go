@@ -315,6 +315,8 @@ const tplManagedForm = `
   <div id="sg-{{$tpName}}" class="ob-grid" style="{{tpGridCSS $el (len $tpRows)}}"
        data-sg-tp="{{$tpName}}"
        data-sg-el="{{$el.Name}}"
+       {{with gridLayoutAttr $ctx $el.Name}}data-sg-layout="{{.}}"{{end}}
+       {{with gridOrderAttr $ctx $el.Name}}data-sg-order="{{.}}"{{end}}
        {{if $tpReadOnly}}data-sg-ro="1"{{end}}
        {{if and (not $tpReadOnly) (hasHandler $el "ПриИзменении")}}data-sg-recalc="1"{{end}}
        {{if $el.AutoSum}}data-sg-autosum="1"{{end}}
@@ -346,6 +348,14 @@ const tplManagedForm = `
       data-ob-grid-del="{{$tpName}}" title="Delete" aria-keyshortcuts="Delete">− Удалить строку</button>
   </div>
   {{end}}
+  {{/* Сброс порядка колонок — и у таблиц «только показать»: строки кнопок
+       правки у них нет, а переставлять колонки можно. display:none, а не
+       hidden: display у .btn перебивает атрибут hidden. */}}
+  {{if gridLayoutAttr $ctx $el.Name}}<div style="display:flex;margin-top:4px">
+    <button type="button" class="btn btn-sm" style="margin-left:auto;background:#f1f5f9;color:#64748b{{if not (gridOrderAttr $ctx $el.Name)}};display:none{{end}}"
+      data-ob-grid-order-reset="{{$tpName}}"
+      title="{{t $ctx.Lang "Колонки можно переставлять, перетаскивая заголовок"}}">{{t $ctx.Lang "Стандартный порядок колонок"}}</button>
+  </div>{{end}}
 {{else}}
 {{/* Маркер присутствия простой таблицы: строки — это ключи tp.X.<i>.<колонка>,
      и удалив их все, браузер шлёт то же самое, что и форма, где таблицы вовсе

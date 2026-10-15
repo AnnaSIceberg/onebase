@@ -181,6 +181,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 	}
 	return template.FuncMap{
 		"refWriteAllowed": refWriteAllowed,
+		"gridLayoutAttr":  gridLayoutAttr,
+		"gridOrderAttr":   gridOrderAttr,
 		"lower":           strings.ToLower,
 		"infoRegKeyValue": infoRegKeyValue,
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
