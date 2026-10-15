@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -402,5 +403,71 @@ func TestInteractiveCreateFalse_UnsavedCloseReplayAfterRevocation(t *testing.T) 
 	}
 	if len(rows) != 0 {
 		t.Fatalf("unsaved replay wrote rows: %v", rows)
+	}
+}
+
+// Lazy children must expose the same copy action as the initially rendered list.
+func TestInteractiveCreateFalse_LazyTreeCopyByRole(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		user         *auth.User
+		unrestricted bool
+		wantCopy     bool
+	}{
+		{name: "without-create", user: operatorNoCreate},
+		{name: "with-create", user: managerCreate, wantCopy: true},
+		{name: "admin", user: adminCreate, wantCopy: true},
+		{name: "without-flag", user: operatorNoCreate, unrestricted: true, wantCopy: true},
+		{name: "read-only", user: noCreateUser("reader", false, "read")},
+		{name: "create-without-write", user: noCreateUser("creator", false, "read", "create")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ent := loadNoCreateDoc(t)
+			ent.Kind = metadata.KindCatalog
+			ent.Hierarchical = true
+			ent.NoInteractiveCreate = !tc.unrestricted
+			srv, ctx := newSubmitTestServer(t, []*metadata.Entity{ent})
+			parentID, childID := uuid.New(), uuid.New()
+			if err := srv.store.Upsert(ctx, ent.Name, parentID, map[string]any{
+				"Описание": "Folder", "is_folder": true,
+			}, ent); err != nil {
+				t.Fatal(err)
+			}
+			if err := srv.store.Upsert(ctx, ent.Name, childID, map[string]any{
+				"Описание": "Child", "parent_id": parentID,
+			}, ent); err != nil {
+				t.Fatal(err)
+			}
+			user := *tc.user
+			user.Roles = []*auth.Role{{Permissions: auth.Permission{
+				Catalogs: tc.user.Roles[0].Permissions.Documents,
+			}}}
+			router := chi.NewRouter()
+			srv.Mount(router)
+			target := "/ui/_tree-children/" + url.PathEscape(ent.Name) + "?" + url.Values{
+				"parent": {parentID.String()}, "depth": {"0"}, "subsystem": {"Sales"},
+			}.Encode()
+			req := httptest.NewRequest(http.MethodGet, target, nil)
+			req = req.WithContext(auth.ContextWithUser(ctx, &user))
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("tree children: code=%d body=%s", rec.Code, rec.Body.String())
+			}
+			var got treeChildrenResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Rows) != 1 || got.Rows[0].ID != childID.String() {
+				t.Fatalf("expected the folder's child, got %+v", got.Rows)
+			}
+			wantURL := ""
+			if tc.wantCopy {
+				wantURL = "/ui/catalog/" + strings.ToLower(ent.Name) + "/new?copy=" + childID.String() + "&subsystem=Sales"
+			}
+			if got.Rows[0].CopyURL != wantURL {
+				t.Errorf("copy_url = %q, want %q", got.Rows[0].CopyURL, wantURL)
+			}
+		})
 	}
 }

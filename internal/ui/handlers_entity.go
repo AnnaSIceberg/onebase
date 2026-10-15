@@ -1408,7 +1408,7 @@ func (s *Server) treeChildRows(r *http.Request, entity *metadata.Entity, rows []
 	}
 	// Копировать может только тот, кому разрешено создавать: пустой copy_url
 	// убирает пункт меню и F9 у подгруженных строк дерева.
-	canCopy := s.can(r, string(entity.Kind), entity.Name, "write")
+	canCopy := s.canInteractiveCreate(r, entity)
 	out := make([]treeChildRow, 0, len(rows))
 	for _, row := range rows {
 		id := refValueString(row["id"])
