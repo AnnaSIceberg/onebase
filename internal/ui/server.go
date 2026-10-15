@@ -128,6 +128,8 @@ type Server struct {
 	closing              bool
 	wsMu                 sync.Mutex                // защищает wsIntakes
 	wsIntakes            map[string]*wsIntakeEntry // живые WS-соединения приёмки (план 120A)
+	// nil uses os.CreateTemp; per-server injection keeps upload failure tests isolated.
+	createProcessorTempFile func(dir, pattern string) (processorUploadFile, error)
 }
 
 func New(reg *runtime.Registry, store *storage.DB, interp *interpreter.Interpreter, authRepo *auth.Repo, cfg Config, sched *scheduler.Scheduler) *Server {
