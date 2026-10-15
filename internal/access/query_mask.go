@@ -263,9 +263,15 @@ func wildcardSourceColumnCounts(sources []query.SourceOccurrence, qualifier stri
 		if meta == nil {
 			return nil
 		}
-		own := map[string]bool{"id": true}
+		own := map[string]bool{"id": true, "deletion_mark": true, "_version": true}
 		if meta.Kind == metadata.KindDocument {
 			own["posted"] = true
+		}
+		if meta.Hierarchical {
+			own["parent_id"], own["is_folder"] = true, true
+		}
+		if meta.Kind == metadata.KindCatalog && len(meta.Predefined) > 0 {
+			own["_predefined_name"], own["_is_predefined"] = true, true
 		}
 		for _, f := range meta.Fields {
 			own[fieldKey(metadata.ColumnName(f))] = true
@@ -318,10 +324,11 @@ func ambiguousMaskedOutput(p query.ProjectionPlan, masked, columns map[string]Fi
 	}
 	for i, col := range p.Columns {
 		if col.Star {
-			for name := range columns {
-				key := fieldKey(name)
-				if n := starCounts[i][key]; n > 0 {
-					counts[key] += n
+			// Обычная колонка звёздочки может совпасть с защищённым
+			// выходным алиасом явной проекции: считаем все имена.
+			for key, n := range starCounts[i] {
+				counts[key] += n
+				if _, isProtected := columns[key]; isProtected {
 					protected[key] = true
 				}
 			}

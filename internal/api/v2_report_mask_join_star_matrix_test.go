@@ -155,3 +155,100 @@ func TestAPIV2_ReportMaskJoinStarMatrix(t *testing.T) {
 		}
 	})
 }
+
+// Обычная колонка звёздочки тоже может занять выходной алиас защищённого
+// поля. Проверяем HTTP-отказ до выдачи данных при любом порядке проекций и JOIN.
+func TestAPIV2_ReportMaskStarAliasCollisionMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		secret := &metadata.Entity{Name: "СекретАлиаса", Kind: metadata.KindCatalog,
+			Fields: []metadata.Field{{Name: "Телефон", Type: metadata.FieldTypeString}}}
+		public := &metadata.Entity{Name: "ПубличныйАлиас", Kind: metadata.KindCatalog, Hierarchical: true,
+			Predefined: []*metadata.PredefinedItem{{Name: "Эталон"}},
+			Fields:     []metadata.Field{{Name: "Комментарий", Type: metadata.FieldTypeString}}}
+		entities := []*metadata.Entity{secret, public}
+		if err := db.Migrate(ctx, entities); err != nil {
+			t.Fatal(err)
+		}
+		const raw, publicText = "5555551234", "Открытый текст"
+		id := uuid.New()
+		if err := db.Upsert(ctx, secret.Name, id, map[string]any{"Телефон": raw}, secret); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Upsert(ctx, public.Name, id, map[string]any{"Комментарий": publicText}, public); err != nil {
+			t.Fatal(err)
+		}
+		for _, join := range []struct{ name, from string }{
+			{"secret_first", "Справочник.СекретАлиаса КАК Л ВНУТРЕННЕЕ СОЕДИНЕНИЕ Справочник.ПубличныйАлиас КАК П ПО Л.Ссылка = П.Ссылка"},
+			{"public_first", "Справочник.ПубличныйАлиас КАК П ВНУТРЕННЕЕ СОЕДИНЕНИЕ Справочник.СекретАлиаса КАК Л ПО П.Ссылка = Л.Ссылка"},
+		} {
+			type projectionCase struct {
+				name, projection string
+				denied           bool
+			}
+			cases := []projectionCase{
+				{"safe_star_first", "П.*, Л.Телефон КАК Контакт", false},
+				{"safe_star_last", "Л.Телефон КАК Контакт, П.*", false},
+			}
+			// Служебные колонки входят в фактическую выдачу П.* наравне с
+			// обычным Комментарий, хотя их нет в Entity.Fields.
+			for _, alias := range []string{"Комментарий", "id", "deletion_mark", "_version", "parent_id", "is_folder", "_predefined_name", "_is_predefined"} {
+				cases = append(cases,
+					projectionCase{alias + "/star_first", "П.*, Л.Телефон КАК " + alias, true},
+					projectionCase{alias + "/star_last", "Л.Телефон КАК " + alias + ", П.*", true})
+			}
+			for _, tc := range cases {
+				for _, policy := range []auth.FieldPolicy{{Read: "mask_tail", Keep: 4}, {Read: "hide"}} {
+					t.Run(join.name+"/"+tc.name+"/"+policy.Read, func(t *testing.T) {
+						rep := &reportpkg.Report{Name: "КоллизияАлиаса", Query: "ВЫБРАТЬ " + tc.projection + " ИЗ " + join.from}
+						registry := runtime.NewRegistry()
+						registry.Load(runtime.LoadOptions{Entities: entities, Reports: []*reportpkg.Report{rep}})
+						h := &handler{reg: registry, store: db, interp: interpreter.New()}
+						router := chi.NewRouter()
+						h.mountV2(router)
+						user := apiUser("reader", auth.Permission{
+							Reports:  map[string][]string{rep.Name: {"run"}},
+							Catalogs: map[string][]string{secret.Name: {"read"}, public.Name: {"read"}},
+							FieldAccess: auth.FieldAccess{Catalogs: map[string]auth.FieldPolicies{
+								secret.Name: {"Телефон": policy},
+							}},
+						})
+						target := "/api/v2/report/" + url.PathEscape(rep.Name) + "?limit=1"
+						rec := httptest.NewRecorder()
+						router.ServeHTTP(rec, withUser(httptest.NewRequest(http.MethodGet, target, nil), user))
+						if strings.Contains(rec.Body.String(), raw) {
+							t.Errorf("ответ раскрыл исходное значение: %s", rec.Body.String())
+						}
+						if tc.denied {
+							if rec.Code != http.StatusForbidden {
+								t.Fatalf("код %d, ожидался Forbidden; тело %s", rec.Code, rec.Body.String())
+							}
+							return
+						}
+						if rec.Code != http.StatusOK {
+							t.Fatalf("безопасный алиас: код %d; тело %s", rec.Code, rec.Body.String())
+						}
+						var response struct {
+							Data []map[string]any `json:"data"`
+							Meta restV2Meta       `json:"meta"`
+						}
+						if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+							t.Fatal(err)
+						}
+						if len(response.Data) != 1 || response.Meta.Total != 1 || response.Meta.Page != 1 || response.Meta.TotalPages != 1 || response.Meta.Limit != 1 || response.Meta.Truncated {
+							t.Fatalf("неверная страница: %s", rec.Body.String())
+						}
+						var want any
+						if policy.Read == "mask_tail" {
+							want = "••••••1234"
+						}
+						row := response.Data[0]
+						if got, present := row["контакт"]; !present || got != want || row["комментарий"] != publicText {
+							t.Fatalf("неверная маска или обычный текст: %s; ожидалась маска %#v", rec.Body.String(), want)
+						}
+					})
+				}
+			}
+		}
+	})
+}
