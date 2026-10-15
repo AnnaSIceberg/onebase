@@ -40,11 +40,12 @@ func TestAPIV2_ReportMaskJoinStarMatrix(t *testing.T) {
 		id := uuid.New()
 		for _, e := range entities {
 			fields := map[string]any{"Наименование": e.Name}
-			if e == other {
+			switch e {
+			case other:
 				fields["Комментарий"] = "Открытый текст"
-			} else if e == left {
+			case left:
 				fields["Телефон"] = rawLeft
-			} else {
+			default:
 				fields["Телефон"] = rawRight
 			}
 			if err := db.Upsert(ctx, e.Name, id, fields, e); err != nil {
