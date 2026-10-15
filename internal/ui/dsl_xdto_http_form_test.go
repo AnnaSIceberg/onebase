@@ -98,7 +98,11 @@ func xdtoHTTPPost(t *testing.T, endpoint string, body url.Values) (formEventResp
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("close response body: %v", err)
+		}
+	}()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
