@@ -579,7 +579,12 @@ main>.card{max-width:none}
    line-height 18px + margin-bottom 5px (см. label в общем стиле), а разницу
    высот кнопки (30px) и поля (39px) добираем до общей средней линии. */
 .managed-group-horizontal>.managed-group-body>.form-group>label{line-height:18px}
-.managed-group-horizontal>.managed-group-body>.managed-btn,.managed-group-horizontal>.managed-group-body>.managed-btn-layout{align-self:flex-start;margin:27px 0 0 0}
+.managed-group-horizontal>.managed-group-body>.managed-btn,.managed-group-horizontal>.managed-group-body>.managed-btn-layout{align-self:flex-start;margin:0}
+/* Отступ под метку — только когда в ряду есть ВИДИМОЕ поле с меткой: ряд из
+   одних кнопок (панель действий) иначе получал пустую полосу высотой с метку.
+   Скрытое поле (hidden_when: сервер пишет display:none, клиент — display:
+   none) выравнивания не требует. */
+.managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn,.managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn-layout{margin-top:27px}
 /* Флажок без метки сверху выравниваем по той же линии, что и поля рядом. */
 /* Флажок в горизонтальной группе занимает ширину СВОЕЙ подписи, а не общую
    колонку 260px: с ней «Причина обращения ☐СПАМ» уже не помещались в строку
