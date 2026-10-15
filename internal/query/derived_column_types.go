@@ -6,7 +6,7 @@ import "github.com/ivantit66/onebase/internal/metadata"
 // to their derived-table aliases before calendar functions are rewritten.
 // Unknown expressions still reserve their output name, so a same-named date
 // from another source cannot supply their type.
-func buildScalarColumnTypes(tokens []tok, opts CompileOpts, ctx sourceContext) (
+func buildScalarColumnTypes(tokens []tok, opts CompileOpts, ctx sourceContext, keys *projectionKeyResolver) (
 	map[int]map[string]metadata.FieldType,
 	map[int]map[string]map[string]metadata.FieldType,
 ) {
@@ -40,7 +40,7 @@ func buildScalarColumnTypes(tokens []tok, opts CompileOpts, ctx sourceContext) (
 		if len(ctx.scopes[scopeID].derivedAliases) > 0 {
 			scoped[scopeID] = buildScopedColTypes(tokens, opts, ctx, derived)[scopeID]
 		}
-		outputs[scopeID] = scalarProjectionTypes(tokens, ctx, scopeID, scoped[scopeID], qualified[scopeID])
+		outputs[scopeID] = scalarProjectionTypes(tokens, ctx, scopeID, scoped[scopeID], qualified[scopeID], keys)
 		return outputs[scopeID]
 	}
 	for scopeID := range ctx.scopes {
@@ -51,6 +51,7 @@ func buildScalarColumnTypes(tokens []tok, opts CompileOpts, ctx sourceContext) (
 
 func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 	fields map[string]metadata.FieldType, qualified map[string]map[string]metadata.FieldType,
+	keys *projectionKeyResolver,
 ) map[string]metadata.FieldType {
 	output := map[string]metadata.FieldType{}
 	start := -1
@@ -79,12 +80,12 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 			}
 		}
 	}
-	hasStar := false
+	stars := projectionKeySet{counts: map[string]int{}, complete: true}
 	add := func(from, to int) {
 		item := tokens[from:to]
 		column, _ := parseProjectionItem(item)
 		if column.Star {
-			hasStar = true
+			stars.add(keys.starKeys(scopeID, item))
 		}
 		if column.Output == "" || column.Star {
 			return
@@ -121,11 +122,10 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		}
 	}
 	add(from, end)
-	if hasStar {
-		// Until every SQL column of the wildcard is known, any explicit output
-		// may collide with it, in either order. Keep the names reserved but do
-		// not let an unproven type trigger normalization or a numeric CAST.
-		for key := range output {
+	// Only a proven absence from every wildcard preserves an explicit type.
+	// This is independent of projection order and of the wildcard values.
+	for key := range output {
+		if !stars.complete || stars.counts[key] > 0 {
 			output[key] = ""
 		}
 	}

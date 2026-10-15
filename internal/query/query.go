@@ -4806,8 +4806,9 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	// не произвольную строку и не будущий localdate (#1243).
 	colTypes := buildColTypes(tokens, opts)
 	scalarSourceCtx := preScanSourceContextWithOpts(tokens, opts)
-	scopedColTypes, qualifiedColTypes := buildScalarColumnTypes(tokens, opts, scalarSourceCtx)
-	boolColumns := scopedBoolOutputColumns(tokens, opts, scalarSourceCtx, scopedColTypes, qualifiedColTypes)
+	projectionKeys := newProjectionKeyResolver(tokens, opts, scalarSourceCtx)
+	scopedColTypes, qualifiedColTypes := buildScalarColumnTypes(tokens, opts, scalarSourceCtx, projectionKeys)
+	boolColumns := scopedBoolOutputColumns(tokens, opts, scalarSourceCtx, scopedColTypes, qualifiedColTypes, projectionKeys)
 	tokens = rewriteGroupingReferenceAliases(tokens)
 	// расширяем НачалоДня/Год/Месяц/ОКР/АБС/ЦЕЛ/... в SQL-эквиваленты
 	// до основной трансляции, чтобы остальные шаги ничего не знали о них.

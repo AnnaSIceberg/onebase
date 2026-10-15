@@ -9,6 +9,7 @@ import "github.com/ivantit66/onebase/internal/metadata"
 func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 	scoped map[int]map[string]metadata.FieldType,
 	qualified map[int]map[string]map[string]metadata.FieldType,
+	keys *projectionKeyResolver,
 ) []string {
 	if len(ctx.scopes) == 0 {
 		return nil
@@ -41,12 +42,16 @@ func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 	}
 	var candidates []string
 	counts := map[string]int{}
-	hasStar := false
+	unknownStar := false
 	add := func(from, to int) {
 		item := tokens[from:to]
 		col, _ := parseProjectionItem(item)
 		if col.Star {
-			hasStar = true
+			star := keys.starKeys(scopeID, item)
+			unknownStar = unknownStar || !star.complete
+			for key, count := range star.counts {
+				counts[key] += count
+			}
 		}
 		if col.Output == "" {
 			return
@@ -81,7 +86,7 @@ func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 		}
 	}
 	add(from, end)
-	if hasStar {
+	if unknownStar {
 		return nil
 	}
 	var out []string
