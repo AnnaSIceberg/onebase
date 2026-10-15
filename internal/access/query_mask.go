@@ -2,6 +2,7 @@ package access
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -32,6 +33,25 @@ type QueryMaskPlan struct {
 // Empty сообщает, что маскировать нечего и запрос разрешён.
 func (p QueryMaskPlan) Empty() bool {
 	return p.Denied == "" && len(p.byColumn) == 0 && len(p.byField) == 0
+}
+
+// sourceMeta — метаданные источника для полевых политик. У табличной части
+// («Справочник.X.ТЧ») — её поля (номер строки и реквизиты ТЧ), а не поля
+// владельца: иначе ПДн строк ТЧ ушли бы из запроса без маски.
+func sourceMeta(kind, name, tablePart string, lookup func(kind, name string) *metadata.Entity) *metadata.Entity {
+	if lookup == nil {
+		return nil
+	}
+	meta := lookup(kind, name)
+	if meta == nil || tablePart == "" {
+		return meta
+	}
+	for i := range meta.TableParts {
+		if strings.EqualFold(meta.TableParts[i].Name, tablePart) {
+			return metadata.TablePartQueryEntity(meta, &meta.TableParts[i], meta.Name)
+		}
+	}
+	return nil
 }
 
 // QueryMaskPlanFor строит план маскирования результата скомпилированного
@@ -190,7 +210,7 @@ func maskedSourceFields(u *auth.User, sources []query.SourceRef, lookup func(kin
 	for _, src := range sources {
 		var meta *metadata.Entity
 		if lookup != nil {
-			meta = lookup(src.Kind, src.Name)
+			meta = sourceMeta(src.Kind, src.Name, src.TablePart, lookup)
 		}
 		for field, dec := range FieldDecisions(u, src.Kind, src.Name, meta) {
 			put(byField, field, dec)
@@ -227,7 +247,7 @@ func searchableMaskedFields(u *auth.User, sources []query.SourceRef, lookup func
 		canDisclose := u.Has(src.Kind, src.Name, "disclose")
 		var meta *metadata.Entity
 		if lookup != nil {
-			meta = lookup(src.Kind, src.Name)
+			meta = sourceMeta(src.Kind, src.Name, src.TablePart, lookup)
 		}
 		for field := range FieldDecisions(u, src.Kind, src.Name, meta) {
 			key := fieldKey(field)
