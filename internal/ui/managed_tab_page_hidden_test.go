@@ -206,6 +206,7 @@ global.window = {CSS: null};
 global.location = {pathname: '/ui/catalog/x'};
 global.sessionStorage = {setItem() {}, getItem() { return null; }};
 global.document = {
+  querySelectorAll() { return []; }, // Required inputs are covered in Chromium.
   querySelector(selector) {
     if (selector.startsWith('[data-ob-el-path=')) return null;
     const m = selector.match(/^\.managed-tab-btn\[data-ob-tab-path="([^"]*)"\]$/);
@@ -215,7 +216,7 @@ global.document = {
 };
 const fns = new Function(
   extract('obManagedTabKey') + extract('obManagedSwitchTab') +
-  extract('obManagedSetPageHidden') + extract('applyElementStates') +
+  extract('obManagedSetPageHidden') + extract('obManagedSyncPageRequired') + extract('applyElementStates') +
   '\nreturn {applyElementStates, obManagedSwitchTab};'
 )();
 const open = buttons.find((b) => b.page === payload.open);

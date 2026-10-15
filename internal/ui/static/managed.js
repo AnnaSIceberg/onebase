@@ -4021,14 +4021,24 @@ function obManagedSwitchTab(btn) {
 // оставило бы кнопку, а спрятанная кнопка — открытое содержимое. Прячется
 // кнопка; если она была открытой, открывается первая видимая закладка того же
 // набора, а когда видимых не осталось, гаснет и содержимое. hidden=false
-// возвращает кнопку, не переключая открытую закладку. Страницу, скрытую уже
-// при отрисовке, сервер не выводит, и показать её до перезагрузки нечем.
+// возвращает кнопку, не переключая открытую закладку; если открытых больше
+// нет, открывает возвращённую. Это не зависит от порядка ключей hidden.
+// Страницу, скрытую уже при отрисовке, сервер не выводит, и показать её до
+// перезагрузки нечем.
 function obManagedSetPageHidden(path, hide) {
   var btn = document.querySelector('.managed-tab-btn[data-ob-tab-path="' + (window.CSS && CSS.escape ? CSS.escape(path) : path) + '"]');
   if (!btn) return;
   btn.style.display = hide ? 'none' : '';
-  if (!hide || !btn.classList.contains('active')) return;
+  obManagedSyncPageRequired();
   var siblings = btn.parentElement ? btn.parentElement.children : [];
+  if (!hide) {
+    for (var i = 0; i < siblings.length; i++) {
+      if (siblings[i].style.display !== 'none' && siblings[i].classList.contains('active')) return;
+    }
+    obManagedSwitchTab(btn);
+    return;
+  }
+  if (!btn.classList.contains('active')) return;
   for (var i = 0; i < siblings.length; i++) {
     if (siblings[i] !== btn && siblings[i].style.display !== 'none') {
       obManagedSwitchTab(siblings[i]);
@@ -4039,6 +4049,35 @@ function obManagedSetPageHidden(path, hide) {
   var tabs = btn.closest ? btn.closest('.managed-tabs') : null;
   var content = tabs ? tabs.querySelector('.managed-tab-content[data-tab-content="' + (btn.getAttribute('data-tab-idx') || '0') + '"]') : null;
   if (content) content.style.display = 'none';
+}
+
+// A conditionally hidden page cannot be filled. Suspend only its form-local
+// native required rule, keeping controls enabled so their values still post.
+// Ordinary inactive pages remain required. Restore the rule only after every
+// ancestor page is available again; Field.required is enforced by the server.
+function obManagedSyncPageRequired() {
+  document.querySelectorAll('input[required], select[required], textarea[required], [data-ob-page-required]').forEach(function (control) {
+    var hidden = false;
+    var content = control.closest('.managed-tab-content');
+    while (content) {
+      var tabs = content.closest('.managed-tabs');
+      var idx = content.getAttribute('data-tab-content');
+      var btn = tabs && tabs.querySelector('.managed-tab-btn[data-tab-idx="' + idx + '"]');
+      if (btn && btn.style.display === 'none') {
+        hidden = true;
+        break;
+      }
+      var parent = content.parentElement;
+      content = parent && parent.closest ? parent.closest('.managed-tab-content') : null;
+    }
+    if (hidden && control.required) {
+      control.setAttribute('data-ob-page-required', '1');
+      control.required = false;
+    } else if (!hidden && control.hasAttribute('data-ob-page-required')) {
+      control.required = true;
+      control.removeAttribute('data-ob-page-required');
+    }
+  });
 }
 
 obManagedReady(function () {
