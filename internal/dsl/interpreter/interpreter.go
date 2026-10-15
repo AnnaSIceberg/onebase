@@ -405,6 +405,13 @@ func (i *Interpreter) execStmt(s ast.Stmt, e *env) {
 		}
 	case *ast.ForEachStmt:
 		coll := i.evalExpr(v.Collection, e)
+		// Debugger conditions wrap a native structure snapshot to forbid writes.
+		// Unwrap only that data snapshot, keeping external capabilities guarded.
+		if wrapped, ok := coll.(*readOnlyThis); ok {
+			if structure, ok := wrapped.inner.(*Struct); ok {
+				coll = structure
+			}
+		}
 		switch items := coll.(type) {
 		case []map[string]any:
 			for _, row := range items {
@@ -423,6 +430,13 @@ func (i *Interpreter) execStmt(s ast.Stmt, e *env) {
 		case *Array:
 			for _, item := range items.Iterate() {
 				e.setLocal(v.Var.Literal, item)
+				if !i.execLoopBody(v.Body, e) {
+					break
+				}
+			}
+		case *Struct:
+			for _, key := range items.keys {
+				e.setLocal(v.Var.Literal, &KeyValue{Key: key, Value: items.vals[key]})
 				if !i.execLoopBody(v.Body, e) {
 					break
 				}
@@ -459,6 +473,8 @@ func (i *Interpreter) execStmt(s ast.Stmt, e *env) {
 						break
 					}
 				}
+			} else {
+				RaiseUserError("Цикл «Для Каждого»: значение не является коллекцией")
 			}
 		}
 	case *ast.AssignStmt:

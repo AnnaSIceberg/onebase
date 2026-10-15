@@ -462,12 +462,14 @@ var processorServiceFields = []string{
 	"_close_schema",
 	"_pick_result",
 	"_pick_query",
+	"_pick_fields",
 	"_tp",
 	"_tp_selected",
 	"_tp_row",
 	"_tp_row_number",
 	"_tp_col",
 	"_tp_col_index",
+	"_page",
 }
 
 func processorParamPresenceName(params []processorpkg.Param, name string) string {

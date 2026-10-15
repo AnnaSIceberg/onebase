@@ -1,5 +1,7 @@
 package ui
 
+import "github.com/ivantit66/onebase/internal/metadata"
+
 // tplManagedForm — шаблон рендеринга «управляемой формы» из FormModule
 // (план 37, этап 3). В отличие от tplForm, который автоматически выводит
 // все поля Entity подряд, этот шаблон обходит дерево FormModule.Elements
@@ -27,9 +29,10 @@ const tplManagedForm = `
 		{{/* $roUnlockable — запрет, который клиент может снять без перезагрузки (readonly_when): такой элемент несёт кнопку подбора и data-ob-fire-change даже в запертом состоянии, иначе после разблокировки работать нечем (#1612). */}}
 		{{$roUnlockable := and (not (adminOnlyLocked $ctx $el)) (or (not $ro) (ne $el.ReadOnlyWhen ""))}}
 {{$effectiveReq := effectiveFormElementRequired $ctx.Entity $el}}{{$req := nativeFormElementRequired $ctx.Entity $el}}
-{{if elHidden $ctx $el}}
+{{/* Кнопка, скрытая hidden_when при отрисовке, рисуется с display:none, а не пропускается: иначе после события формы, снявшего условие, показать её нечем — «Утвердить» после «ОК» появлялась только при повторном открытии. Остальные виды пока пропускаются (поля — #1914). Защитой hidden_when не служит: событие кнопки сервер принимает и без неё в разметке. */}}
+{{if and (elHidden $ctx $el) (ne (str $el.Kind) "Кнопка")}}
 {{else if eq (str $el.Kind) "ГруппаФормы"}}
-  <fieldset class="form-group-box{{if eq $el.Orientation "horizontal"}} managed-group-horizontal{{end}}{{if $el.ScrollX}} managed-group-scrollx{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{elBackground $el}}{{elLayout $el}}">
+  <fieldset class="form-group-box{{if eq $el.Orientation "horizontal"}} managed-group-horizontal{{end}}{{if $el.ScrollX}} managed-group-scrollx{{end}}{{if $el.UsesEqualColumns}} ob-equal-columns{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{elBackground $el}}{{elLayout $el}}">
     {{if $el.TitleMap}}<legend style="font-weight:600;color:#475569;padding:0 6px;font-size:13px">{{fieldTitleRU $el.TitleMap $el.Name}}</legend>{{end}}
     <div class="managed-group-body">
       {{range $el.Children}}{{template "managed-element" (dict "El" . "Ctx" $ctx)}}{{end}}
@@ -42,10 +45,13 @@ const tplManagedForm = `
        кнопки, ни содержимого, а нумерация оставшихся обязана быть сплошной —
        кнопка и содержимое связаны индексом, и активна всегда нулевая. */}}
   {{$pages := visibleFormPages $ctx $el}}
-  <div class="managed-tabs" data-tabs="{{$el.Name}}" style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{elLayout $el}}">
+  {{/* ПриСменеСтраницы: клиент шлёт событие набору со щелчком по закладке
+       и именем открытой страницы (data-tab-page) — только если обработчик
+       объявлен, иначе переключение остаётся чисто клиентским. */}}
+  <div class="managed-tabs" data-tabs="{{$el.Name}}"{{if hasHandler $el "ПриСменеСтраницы"}} data-ob-fire-pagechange="{{$el.Name}}"{{end}} style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{elLayout $el}}">
     <div class="managed-tab-headers" style="display:flex;gap:2px;border-bottom:2px solid #e2e8f0;margin-bottom:12px">
       {{range $i, $page := $pages}}
-        <button type="button" class="managed-tab-btn{{if eq $i 0}} active{{end}}" data-tab-idx="{{$i}}" data-ob-readonly-navigation="1">
+        <button type="button" class="managed-tab-btn{{if eq $i 0}} active{{end}}" data-tab-idx="{{$i}}" data-tab-page="{{$page.Name}}" data-ob-readonly-navigation="1">
           {{fieldTitleRU $page.TitleMap $page.Name}}
         </button>
       {{end}}
@@ -252,8 +258,9 @@ const tplManagedForm = `
   {{$clickAction := or (hasHandler $el "Нажатие") (and $ctx.IsProcessor (processorExecuteFallbackButton $ctx.Form $el))}}
   {{$hotKey := ""}}{{if and (not $ro) $clickAction}}{{$hotKey = normalizedFormHotkey $el.HotKey}}{{end}}
   {{$buttonLayout := elLayout $el}}
-  {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{end}}>
+  {{$buttonHidden := elHidden $ctx $el}}
+  {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{if $buttonHidden}}display:none;{{end}}{{$buttonLayout}}">{{end}}
+  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground $el}}"{{else}}{{with elBackground $el}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
   {{if $buttonLayout}}</div>{{end}}
@@ -564,6 +571,9 @@ main>.card{max-width:none}
 /* Кнопка формы: отступы задаются классом, а не inline-стилем — иначе правило
    выравнивания в горизонтальной группе ниже проигрывало бы по приоритету. */
 .managed-btn{margin:6px 4px 6px 0}
+/* Кнопка со своим фоном (ключ background): цвет задан inline, поэтому
+   наведение стандартной кнопки его не меняет — затемняем фильтром. */
+.managed-btn[style*="background"]:hover:not(:disabled){filter:brightness(.94)}
 /* У кнопки с layout внешний блок — именно эта обёртка. max-content оставляет
    ей собственную ширину, поэтому auto-margin у center/right действительно
    сдвигает кнопку и вне flex-группы; заданные width/stretch из inline-стиля
@@ -605,6 +615,7 @@ main>.card{max-width:none}
    локальный полный список: ui.js оставляет прежние варианты и значение. */
 select[data-ref-choice-context][data-ob-choice-loading="1"]{cursor:progress}
 select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;background:#fef2f2;box-shadow:0 0 0 1px #fecaca}
+` + metadata.FormEqualColumnsCSS + `
 </style>
 {{if hasGridTP .Form}}
 <link rel="stylesheet" href="/vendor/slickgrid/slick.grid.css">
@@ -748,7 +759,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
         <tr>
           {{if $columns.ShowLineNumber}}<td>{{index $row "line_number"}}</td>{{end}}
           {{if $columns.ShowKind}}<td>{{$kind := index $row "вид_движения"}}{{if eq $kind "Приход"}}<span style="color:#16a34a">▲</span>{{else if eq $kind "Расход"}}<span style="color:#dc2626">▼</span>{{else}}{{$kind}}{{end}}</td>{{end}}
-          {{range $k, $v := $row}}{{if and (ne $k "line_number") (ne $k "вид_движения")}}<td>{{$v}}</td>{{end}}{{end}}
+          {{range $k, $v := $row}}{{if and (ne $k "line_number") (ne $k "вид_движения")}}<td>{{if eq $k "period"}}{{fmtDate $v}}{{else}}{{$v}}{{end}}</td>{{end}}{{end}}
         </tr>
         {{end}}
       </table>
@@ -795,7 +806,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   <a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">Отмена</a>
   {{else}}
   {{if and .CanWrite (formActionVisible .Form "save")}}<button class="btn btn-secondary" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
-  {{if and .CanWrite (formActionVisible .Form "ok")}}<button class="btn btn-primary" type="button" data-ob-form-close="save" data-ob-close-reason="ok" data-ob-close-href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}">{{t $.Lang "ОК"}}</button>{{end}}
+  {{if and .CanWrite (formActionVisible .Form "ok")}}<button class="btn btn-primary" type="button" data-ob-form-close="{{if and .Entity.Posting .CanPost .Form.OKPosts (ne (index .Values "deletion_mark") "true")}}post{{else}}save{{end}}" data-ob-close-reason="ok" data-ob-close-href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}">{{t $.Lang "ОК"}}</button>{{end}}
   {{if formActionVisible .Form "close"}}<button class="btn btn-cancel" type="button" data-ob-form-close="" data-ob-close-reason="close" data-ob-close-href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}">{{t $.Lang "Закрыть"}}</button>{{end}}
   {{end}}
 </div>

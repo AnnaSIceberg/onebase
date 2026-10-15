@@ -4122,7 +4122,17 @@ obManagedReady(function () {
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('.managed-tab-btn') : null;
     if (!btn) return;
+    var wasActive = btn.classList.contains('active');
     obManagedSwitchTab(btn);
+    // ПриСменеСтраницы — только когда пользователь действительно открыл другую
+    // страницу: щелчок по уже открытой закладке страницу не меняет, а
+    // восстановление запомненной закладки и переход к невалидному полю
+    // пользовательской сменой не являются.
+    var tabs = btn.closest ? btn.closest('.managed-tabs') : null;
+    var owner = tabs ? tabs.getAttribute('data-ob-fire-pagechange') : '';
+    if (!wasActive && owner && window.obFire) {
+      obFire(owner, 'ПриСменеСтраницы', { _page: btn.getAttribute('data-tab-page') || '' });
+    }
   });
   var groups = document.querySelectorAll('.managed-tabs');
   for (var i = 0; i < groups.length; i++) {
