@@ -184,11 +184,7 @@ func rewriteTablePartSources(tokens []tok, opts CompileOpts) ([]tok, CompileOpts
 	var out []tok
 	var found map[string]tablePartSource
 	for i := 0; i < len(tokens); i++ {
-		if i+4 < len(tokens) && tokens[i].kind == tIdent && tokens[i+1].kind == tDot &&
-			tokens[i+2].kind == tIdent && tokens[i+3].kind == tDot && tokens[i+4].kind == tIdent &&
-			!(i+5 < len(tokens) && tokens[i+5].kind == tLParen) &&
-			!(i > 0 && tokens[i-1].kind == tDot) &&
-			!(i > 1 && tokens[i-1].kind == tLParen && tokens[i-2].kind == tIdent && isValueKeyword(tokens[i-2].val)) {
+		if tablePartPathAt(tokens, i) {
 			if typeUpper := upperFast(tokens[i].val); isEntitySourceType(typeUpper) {
 				if owner, tp := findTablePart(opts.Entities, tokens[i+2].val, tokens[i+4].val); tp != nil {
 					name := metadata.TablePartTableName(owner.Name, tp.Name)
@@ -220,6 +216,28 @@ func rewriteTablePartSources(tokens []tok, opts CompileOpts) ([]tok, CompileOpts
 	opts.Entities = entities
 	opts.tablePartSources = found
 	return out, opts
+}
+
+// tablePartPathAt — «Тип.Имя.Имя» с позиции i без продолжения «(» (виртуальная
+// таблица), не после точки (поле через точку) и не аргумент ЗНАЧЕНИЕ(…).
+func tablePartPathAt(tokens []tok, i int) bool {
+	if i+4 >= len(tokens) {
+		return false
+	}
+	for k, kind := range []tokKind{tIdent, tDot, tIdent, tDot, tIdent} {
+		if tokens[i+k].kind != kind {
+			return false
+		}
+	}
+	switch {
+	case i+5 < len(tokens) && tokens[i+5].kind == tLParen:
+		return false
+	case i > 0 && tokens[i-1].kind == tDot:
+		return false
+	case i > 1 && tokens[i-1].kind == tLParen && tokens[i-2].kind == tIdent && isValueKeyword(tokens[i-2].val):
+		return false
+	}
+	return true
 }
 
 func isEntitySourceType(upper string) bool {
