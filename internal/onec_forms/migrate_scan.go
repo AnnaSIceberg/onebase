@@ -420,10 +420,10 @@ func readScanSubsystem(path, rel, encoding string) (scanSubsystem, error) {
 	}
 	parts := strings.Split(strings.TrimSuffix(rel, filepath.Ext(rel)), "/")
 	var names []string
-	for _, part := range parts {
-		if part != "Subsystems" {
-			names = append(names, "Subsystem", part)
-		}
+	// Designer paths alternate service directories and object names. A name
+	// may itself be Subsystems, so skip directory positions, not that text.
+	for i := 1; i < len(parts); i += 2 {
+		names = append(names, "Subsystem", parts[i])
 	}
 	// Designer references repeat Subsystem at every level: the path
 	// Subsystems/A/Subsystems/B.xml denotes Subsystem.A.Subsystem.B.

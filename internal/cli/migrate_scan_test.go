@@ -248,6 +248,88 @@ func TestMigrateScan_NestedSubsystemReference(t *testing.T) {
 	}
 }
 
+// Subsystems is both a Designer directory name and a valid object name.
+func TestMigrateScan_SubsystemNamedSubsystems(t *testing.T) {
+	const bsp = "Subsystem.СтандартныеПодсистемы"
+	for _, tc := range []struct {
+		name, parentFile, key, file string
+		contentOnly                 bool
+	}{
+		{"top", "Subsystems/СтандартныеПодсистемы.xml", "Subsystem.Subsystems", "Subsystems/Subsystems.xml", true},
+		{"child", "Subsystems/СтандартныеПодсистемы.xml", bsp + ".Subsystem.Subsystems", "Subsystems/СтандартныеПодсистемы/Subsystems/Subsystems.xml", false},
+		{"deep", "Subsystems/СтандартныеПодсистемы/Subsystems/Общие.xml", bsp + ".Subsystem.Общие.Subsystem.Subsystems", "Subsystems/СтандартныеПодсистемы/Subsystems/Общие/Subsystems/Subsystems.xml", false},
+	} {
+		for _, route := range []string{"content", "child"} {
+			if tc.contentOnly && route == "child" {
+				continue // A top-level sibling is referenced through Content.
+			}
+			t.Run(tc.name+"/"+route, func(t *testing.T) {
+				_, expected := scanJSON(t, filepath.Join("testdata", "migrate-scan"))
+				expected.BSPSubsystems++
+				expected.Subsystems = append(expected.Subsystems, onec_forms.ScanSubsystem{
+					Name: tc.key, Modules: 1, Calls: 4,
+					Methods: []onec_forms.ScanFrequency{{Name: "Утилиты.Помощь", Count: 4, Files: 1}},
+				})
+				sort.Slice(expected.Subsystems, func(i, j int) bool { return expected.Subsystems[i].Name < expected.Subsystems[j].Name })
+				var firstJSON, firstText []byte
+				for _, reverse := range []bool{false, true} {
+					dir := copyScanFixture(t, reverse)
+					root, err := os.OpenRoot(dir)
+					if err != nil {
+						t.Fatal(err)
+					}
+					data, readErr := root.ReadFile(filepath.FromSlash(tc.parentFile))
+					closeErr := root.Close()
+					if readErr != nil || closeErr != nil {
+						t.Fatalf("read parent: %v; close: %v", readErr, closeErr)
+					}
+					if route == "content" {
+						data = bytes.Replace(data, []byte("<Content>"), []byte("<Content><xr:Item>"+tc.key+"</xr:Item>"), 1)
+					} else {
+						childRef := []byte("<Subsystem>Subsystems</Subsystem>")
+						if bytes.Contains(data, []byte("</ChildObjects>")) {
+							data = bytes.Replace(data, []byte("</ChildObjects>"), append(childRef, []byte("</ChildObjects>")...), 1)
+						} else {
+							end := bytes.LastIndex(data, []byte("</Subsystem>"))
+							data = append(data[:end], append([]byte("<ChildObjects><Subsystem>Subsystems</Subsystem></ChildObjects>"), data[end:]...)...)
+						}
+					}
+					// Both the new child and its parent include Утилиты; no module
+					// or call may be counted twice through transitive membership.
+					child := []byte(`<MetaDataObject><Subsystem><Properties><Name>Subsystems</Name><Content><Item>CommonModule.Утилиты</Item></Content></Properties></Subsystem></MetaDataObject>`)
+					writes := []struct {
+						rel  string
+						body []byte
+					}{{tc.parentFile, data}, {tc.file, child}}
+					if reverse {
+						writes[0], writes[1] = writes[1], writes[0]
+					}
+					for _, w := range writes {
+						if err := writeScanFixture(dir, filepath.FromSlash(w.rel), w.body); err != nil {
+							t.Fatal(err)
+						}
+					}
+					for range 2 {
+						out, report := scanJSON(t, dir)
+						if !reflect.DeepEqual(report, expected) {
+							t.Fatalf("object name lost or aggregates changed:\ngot: %+v\nwant: %+v", report, expected)
+						}
+						text, err := executeScan(t, dir)
+						if err != nil || !bytes.Contains(text, []byte(tc.key)) {
+							t.Fatalf("text report missing full key %q: err=%v output=%s", tc.key, err, text)
+						}
+						if firstJSON == nil {
+							firstJSON, firstText = out, text
+						} else if !bytes.Equal(out, firstJSON) || !bytes.Equal(text, firstText) {
+							t.Fatal("report depends on repeated run or file creation order")
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestMigrateScan_MultilineStringsAndEscapedQuotes(t *testing.T) {
 	dir := copyScanFixture(t, false)
 	app := filepath.Join(dir, "Documents", "Заказ", "Ext", "ObjectModule.bsl")
@@ -373,7 +455,7 @@ func TestMigrateScan_Encodings(t *testing.T) {
 }
 
 func TestMigrateScan_InputErrorsAreAtomic(t *testing.T) {
-	for _, scenario := range []string{"missing-child", "bad-xml", "cycle", "bad-utf8", "bad-surrogate", "bom-conflict", "unknown-encoding", "empty", "file"} {
+	for _, scenario := range []string{"missing-child", "duplicate", "symlink", "bad-xml", "cycle", "bad-utf8", "bad-surrogate", "bom-conflict", "unknown-encoding", "empty", "file"} {
 		t.Run(scenario, func(t *testing.T) {
 			dir := copyScanFixture(t, false)
 			args := []string{dir, "--json"}
@@ -382,6 +464,14 @@ func TestMigrateScan_InputErrorsAreAtomic(t *testing.T) {
 			switch scenario {
 			case "missing-child":
 				err = os.Remove(filepath.Join(dir, "Subsystems", "СтандартныеПодсистемы", "Subsystems", "Общие.xml"))
+			case "duplicate":
+				// Distinct files that resolve to the same case-insensitive key.
+				err = writeScanFixture(dir, "Subsystems/СтандартныеПодсистемы.Subsystem.Общие.xml", []byte(`<MetaDataObject><Subsystem/></MetaDataObject>`))
+			case "symlink":
+				err = os.Symlink(app, filepath.Join(dir, "linked.bsl"))
+				if err != nil {
+					t.Skipf("symlinks unavailable: %v", err)
+				}
 			case "bad-xml":
 				err = os.WriteFile(filepath.Join(dir, "Subsystems", "СтандартныеПодсистемы.xml"), []byte("<bad>"), 0644)
 			case "cycle":
@@ -404,9 +494,14 @@ func TestMigrateScan_InputErrorsAreAtomic(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, err := executeScan(t, args...)
-			if err == nil || len(out) != 0 {
-				t.Fatalf("expected error without partial JSON: err=%v output=%s", err, out)
+			for _, format := range []string{"json", "text"} {
+				if format == "text" {
+					args = append(args[:1], args[2:]...) // Remove --json.
+				}
+				out, err := executeScan(t, args...)
+				if err == nil || len(out) != 0 {
+					t.Fatalf("expected error without partial %s: err=%v output=%s", format, err, out)
+				}
 			}
 		})
 	}
