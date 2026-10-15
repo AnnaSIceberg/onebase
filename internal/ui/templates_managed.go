@@ -324,6 +324,8 @@ const tplManagedForm = `
   <div id="sg-{{$tpName}}" class="ob-grid" style="{{tpGridCSS $el (len $tpRows)}}"
        data-sg-tp="{{$tpName}}"
        data-sg-el="{{$el.Name}}"
+       {{with gridLayoutAttr $ctx $el.Name}}data-sg-layout="{{.}}"{{end}}
+       {{with gridOrderAttr $ctx $el.Name}}data-sg-order="{{.}}"{{end}}
        {{if $tpReadOnly}}data-sg-ro="1"{{end}}
        {{if and (not $tpReadOnly) (hasHandler $el "ПриИзменении")}}data-sg-recalc="1"{{end}}
        {{if $el.AutoSum}}data-sg-autosum="1"{{end}}
@@ -347,6 +349,10 @@ const tplManagedForm = `
       data-ob-grid-add="{{$tpName}}" title="Insert" aria-keyshortcuts="Insert"{{end}}>+ Добавить строку</button>
     <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#991b1b"{{if $tpReadOnly}} disabled{{else}}
       data-ob-grid-del="{{$tpName}}" title="Delete" aria-keyshortcuts="Delete"{{end}}>− Удалить строку</button>
+    {{/* display:none, а не hidden: display у .btn перебивает атрибут hidden. */}}
+    {{if gridLayoutAttr $ctx $el.Name}}<button type="button" class="btn btn-sm" style="margin-left:auto;background:#f1f5f9;color:#64748b{{if not (gridOrderAttr $ctx $el.Name)}};display:none{{end}}"
+      data-ob-grid-order-reset="{{$tpName}}"
+      title="{{t $ctx.Lang "Колонки можно переставлять, перетаскивая заголовок"}}">{{t $ctx.Lang "Стандартный порядок колонок"}}</button>{{end}}
   </div>
 {{else}}
 {{/* Маркер присутствия простой таблицы: строки — это ключи tp.X.<i>.<колонка>,
@@ -588,7 +594,12 @@ main>.card{max-width:none}
    line-height 18px + margin-bottom 5px (см. label в общем стиле), а разницу
    высот кнопки (30px) и поля (39px) добираем до общей средней линии. */
 .managed-group-horizontal>.managed-group-body>.form-group>label{line-height:18px}
-.managed-group-horizontal>.managed-group-body>.managed-btn,.managed-group-horizontal>.managed-group-body>.managed-btn-layout{align-self:flex-start;margin:27px 0 0 0}
+.managed-group-horizontal>.managed-group-body>.managed-btn,.managed-group-horizontal>.managed-group-body>.managed-btn-layout{align-self:flex-start;margin:0}
+/* Отступ под метку — только когда в ряду есть ВИДИМОЕ поле с меткой: ряд из
+   одних кнопок (панель действий) иначе получал пустую полосу высотой с метку.
+   Скрытое поле (hidden_when: сервер пишет display:none, клиент — display:
+   none) выравнивания не требует. */
+.managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn,.managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn-layout{margin-top:27px}
 /* Флажок без метки сверху выравниваем по той же линии, что и поля рядом. */
 /* Флажок в горизонтальной группе занимает ширину СВОЕЙ подписи, а не общую
    колонку 260px: с ней «Причина обращения ☐СПАМ» уже не помещались в строку

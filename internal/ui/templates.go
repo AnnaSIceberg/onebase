@@ -181,6 +181,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 	}
 	return template.FuncMap{
 		"refWriteAllowed": refWriteAllowed,
+		"gridLayoutAttr":  gridLayoutAttr,
+		"gridOrderAttr":   gridOrderAttr,
 		"lower":           strings.ToLower,
 		"infoRegKeyValue": infoRegKeyValue,
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
@@ -3092,6 +3094,14 @@ const tplProcessor = `
            не недоделка. Поэтому после запуска поле пустое, и повторное
            «Выполнить» без файла обязано останавливаться здесь, а не улетать на
            сервер за ошибкой прикладного модуля. */}}
+      <input type="file" name="{{$pname}}" {{if .Required}}required{{end}}>
+    </div>
+    {{else if eq .Type "binary"}}
+    <div class="form-group" style="margin-bottom:0;grid-column:1/-1">
+      <label>{{.DisplayLabel $.Lang}}{{if .Required}} <span style="color:#dc2626">*</span>{{end}}</label>
+      {{/* Двоичный файл уходит как есть: обработка получит путь к временной
+           копии. Поле такое же, как у text-файла, — разница только в том, что
+           попадает в значение параметра. */}}
       <input type="file" name="{{$pname}}" {{if .Required}}required{{end}}>
     </div>
     {{else if eq .Type "text"}}
