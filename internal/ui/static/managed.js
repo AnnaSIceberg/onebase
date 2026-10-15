@@ -501,7 +501,12 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var hidden = st.hidden || {};
     Object.keys(hidden).forEach(function (name) {
       var el = byName(name);
-      if (!el) return;
+      if (!el) {
+        // Страница набора СтраницыФормы своего якоря не имеет — её
+        // представляет кнопка закладки.
+        obManagedSetPageHidden(name, !!hidden[name]);
+        return;
+      }
       // Some managed elements keep their layout only in an inline display
       // declaration (checkbox and command bar use flex). Remember that value
       // before the first state update instead of erasing it on hidden=false.
@@ -4284,6 +4289,30 @@ function obManagedSwitchTab(btn) {
   if (content) content.style.display = 'block';
   try { sessionStorage.setItem(obManagedTabKey(tabs), idx); } catch (_) {}
   if (window._obResizeGrids) setTimeout(window._obResizeGrids, 0);
+}
+
+// obManagedSetPageHidden применяет пересчитанное событием формы условие
+// hidden_when к странице набора СтраницыФормы: прячет кнопку закладки; если она
+// была открытой, открывается первая видимая закладка того же набора, а когда
+// видимых не осталось, гаснет и содержимое. hidden=false возвращает кнопку, не
+// переключая открытую закладку. (Локально, по имени страницы; в upstream —
+// по пути, Draft PR fix/tab-page-hidden-when.)
+function obManagedSetPageHidden(name, hide) {
+  var btn = document.querySelector('.managed-tab-btn[data-tab-page="' + (window.CSS && CSS.escape ? CSS.escape(name) : name) + '"]');
+  if (!btn) return;
+  btn.style.display = hide ? 'none' : '';
+  if (!hide || !btn.classList.contains('active')) return;
+  var siblings = btn.parentElement ? btn.parentElement.children : [];
+  for (var i = 0; i < siblings.length; i++) {
+    if (siblings[i] !== btn && siblings[i].style.display !== 'none') {
+      obManagedSwitchTab(siblings[i]);
+      return;
+    }
+  }
+  btn.classList.remove('active');
+  var tabs = btn.closest ? btn.closest('.managed-tabs') : null;
+  var content = tabs ? tabs.querySelector('.managed-tab-content[data-tab-content="' + (btn.getAttribute('data-tab-idx') || '0') + '"]') : null;
+  if (content) content.style.display = 'none';
 }
 
 obManagedReady(function () {
