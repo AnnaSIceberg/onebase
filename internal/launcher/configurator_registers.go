@@ -204,6 +204,7 @@ func saveInfoRegToFile(dir string, reg saveInfoReg, objTitles *map[string]string
 		var existing saveInfoReg
 		if yaml.Unmarshal(raw, &existing) == nil {
 			reg.Title = existing.Title
+			reg.Recorder = existing.Recorder
 			if objTitles == nil {
 				reg.Titles = existing.Titles
 			}
@@ -247,6 +248,7 @@ func (h *handler) saveInfoRegToDB(ctx context.Context, b *Base, reg saveInfoReg,
 			// Round-trip: сохраняем поля, которые форма не редактирует.
 			// Titles перезаписываем только если форма прислала блок переводов.
 			reg.Title = existing.Title
+			reg.Recorder = existing.Recorder
 			if objTitles == nil {
 				reg.Titles = existing.Titles
 			}
