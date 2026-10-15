@@ -1,7 +1,12 @@
 package ui
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -68,5 +73,67 @@ func TestListFilterPredicate_AdminSeesEverything(t *testing.T) {
 	if _, ok := s.listFilterPredicate(задача,
 		metadata.FormListCondition{Field: "Инициатор.УчётнаяЗапись", Value: metadata.ListFilterCurrentUser}, admin); ok {
 		t.Fatal("отбор «мои записи» применился к администратору")
+	}
+}
+
+// Публичный путь списка: условие с roles отбирает «мои записи» только у
+// пользователя с этой ролью. Оператор видит свою заявку, сотрудник ОТК и
+// администратор — обе (конфигурация cc2: ОТК не видел заявок вовсе).
+func TestUI_EntityList_FormFilterAppliesOnlyToListedRoles(t *testing.T) {
+	заявка := &metadata.Entity{
+		Name: "Заявка", Kind: metadata.KindCatalog,
+		Fields: []metadata.Field{
+			{Name: "Наименование", Type: metadata.FieldTypeString},
+			{Name: "Автор", Type: metadata.FieldTypeString},
+		},
+	}
+	заявка.Forms = []*metadata.FormModule{{
+		Name: "ФормаСписка", Kind: "list", EntityName: заявка.Name,
+		LayoutKind: metadata.FormLayoutManaged,
+		Elements: []*metadata.FormElement{
+			{Kind: metadata.FormElementField, Name: "КолонкаНаименование", DataPath: "Наименование"},
+		},
+		ListFilter: []metadata.FormListCondition{{
+			Field: "Автор", Value: metadata.ListFilterCurrentUser, Roles: []string{"Оператор"},
+		}},
+	}}
+	s, ctx := newSubmitTestServer(t, []*metadata.Entity{заявка})
+	for _, row := range []map[string]any{
+		{"Наименование": "Заявка оператора", "Автор": "u-op"},
+		{"Наименование": "Чужая заявка", "Автор": "u-other"},
+	} {
+		if err := s.store.Upsert(ctx, заявка.Name, uuid.New(), row, заявка); err != nil {
+			t.Fatal(err)
+		}
+	}
+	роль := func(name string) []*auth.Role {
+		return []*auth.Role{{Name: name, Permissions: auth.Permission{
+			Catalogs: map[string][]string{заявка.Name: {"read"}},
+		}}}
+	}
+	список := func(user *auth.User) string {
+		t.Helper()
+		req := reqWithChi(http.MethodGet, "/ui/catalog/"+заявка.Name, nil,
+			map[string]string{"kind": "catalog", "entity": заявка.Name})
+		req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+		rec := httptest.NewRecorder()
+		s.list(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list: status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		return rec.Body.String()
+	}
+
+	оператор := список(&auth.User{ID: "u-op", Login: "operator", Roles: роль("Оператор")})
+	if !strings.Contains(оператор, "Заявка оператора") || strings.Contains(оператор, "Чужая заявка") {
+		t.Fatal("оператору — только свои записи")
+	}
+	отк := список(&auth.User{ID: "u-otk", Login: "otk", Roles: роль("СотрудникОТК")})
+	if !strings.Contains(отк, "Заявка оператора") || !strings.Contains(отк, "Чужая заявка") {
+		t.Fatal("роль вне roles условия видит весь список")
+	}
+	админ := список(&auth.User{ID: "root", Login: "admin", IsAdmin: true})
+	if !strings.Contains(админ, "Заявка оператора") || !strings.Contains(админ, "Чужая заявка") {
+		t.Fatal("администратор видит весь список")
 	}
 }
