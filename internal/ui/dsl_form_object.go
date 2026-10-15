@@ -71,6 +71,9 @@ type formObjectThis struct {
 	// отличить от реквизита, которого форма не прислала: оба nil, а умолчание
 	// вправе заполнить только второй.
 	assigned map[string]struct{}
+	// xdtoState is independent of isNew (MakeThis also wraps new Save objects
+	// with isNew=false). It carries the actual source through the lifecycle.
+	xdtoState *entityHookXDTOState
 	// writeBlocked prevents a form write lifecycle handler from recursively
 	// saving the same object and then letting the outer Save persist it again.
 	writeBlocked bool
@@ -87,6 +90,24 @@ func (f *formObjectThis) liveCtx() context.Context {
 		return f.ctx
 	}
 	return context.Background()
+}
+
+func (f *formObjectThis) XDTOObject() *runtime.Object { return f.obj }
+
+func (f *formObjectThis) XDTOMaskField() func(string, any) any {
+	state := f.hookXDTOState()
+	return f.srv.xdtoFieldMask(f.liveCtx(), f.entity, state.loaded, state.assigned)
+}
+
+func (f *formObjectThis) hookXDTOState() *entityHookXDTOState {
+	if f.xdtoState == nil {
+		// Persistence identity alone does not prove where a form's values came
+		// from (for example, a new form may contain copied data). Only the
+		// lifecycle or its originating writer can supply a less restrictive
+		// origin; explicit Set calls still mark this operation's own values.
+		f.xdtoState = &entityHookXDTOState{loaded: true, assigned: map[string]bool{}}
+	}
+	return f.xdtoState
 }
 
 // GetRefUUID сохраняет ссылочную идентичность runtime.Object у формовой
@@ -205,7 +226,10 @@ func (f *formObjectThis) write() error {
 			}
 		})
 	}
-	result, err := f.srv.entitySvc.Save(ctx, entityservice.SaveRequest{
+	hookCtx := context.WithValue(ctx, hookXDTOOriginKey{}, hookXDTOOrigin{
+		entity: f.entity.Name, id: f.obj.ID, state: f.hookXDTOState(),
+	})
+	result, err := f.srv.entitySvc.Save(hookCtx, entityservice.SaveRequest{
 		Entity:        f.entity,
 		ID:            f.obj.ID,
 		IsNew:         isNew,
@@ -333,6 +357,7 @@ func (f *formObjectThis) Set(name string, v any) {
 		f.assigned = map[string]struct{}{}
 	}
 	f.assigned[strings.ToLower(name)] = struct{}{}
+	f.hookXDTOState().assigned[strings.ToLower(strings.TrimSpace(name))] = true
 	f.obj.Set(name, v)
 }
 

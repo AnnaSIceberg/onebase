@@ -39,7 +39,9 @@ func (s *Server) newEntityService(hooks *webhook.Dispatcher) *entityservice.Serv
 		EnrichTPRows: s.enrichTPRowsWithRefs,
 		BuildVars:    s.buildDSLVarsWithMessagesTx,
 		MakeThis: func(ctx context.Context, ctxSrc interpreter.CtxSource, obj *runtime.Object, e *metadata.Entity) interpreter.This {
-			return s.newFormObjectThisLive(ctx, ctxSrc, obj, e, nil, false)
+			this := s.newFormObjectThisLive(ctx, ctxSrc, obj, e, nil, false)
+			this.xdtoState = hookXDTOStateFromContext(ctx, obj)
+			return this
 		},
 		// Регистрация записи в планах обмена (план 86): exchange принимает
 		// конкретный *storage.DB, а сервис знает только порт Storage, поэтому
@@ -348,7 +350,14 @@ func (w *catWriter) write() error {
 		// реальное значение, которого не видел до неё.
 		w.forgetAssigned(restored)
 	}
-	result, err := w.s.entitySvc.Save(ctx, entityservice.SaveRequest{
+	if w.assigned == nil {
+		w.assigned = map[string]bool{}
+	}
+	hookCtx := context.WithValue(ctx, hookXDTOOriginKey{}, hookXDTOOrigin{
+		entity: w.entity.Name, id: w.obj.ID,
+		state: &entityHookXDTOState{loaded: w.loaded, assigned: w.assigned},
+	})
+	result, err := w.s.entitySvc.Save(hookCtx, entityservice.SaveRequest{
 		Entity:          w.entity,
 		ID:              w.obj.ID,
 		IsNew:           isNew,
