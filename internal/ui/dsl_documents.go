@@ -825,6 +825,8 @@ func (w *docWriter) read() error {
 	w.obj.Fields = fields
 	w.obj.TablePartRows = tpRows
 	w.setStandardAttrs(row)
+	w.obj.DeletionMark = asBool(row["deletion_mark"])
+	w.obj.Posted = asBool(row["posted"])
 	// Прочитанный объект целиком приехал из БД: присвоенного модулем в нём
 	// больше нет, а сохранённый признак снимал бы маску с реальных значений.
 	w.assigned = nil
@@ -999,7 +1001,7 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 			return err
 		}
 	}
-	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc)
+	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc, w.hookXDTOState())
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
@@ -1130,7 +1132,7 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 			return storage.PostingFrozenError(lock)
 		}
 	}
-	errMsg, hookMessages := w.s.runOnPostCtx(ctx, w.obj, mc)
+	errMsg, hookMessages := w.s.runOnPostCtx(ctx, w.obj, mc, w.hookXDTOState())
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
@@ -1196,9 +1198,13 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 	}
 	// Признак объекта следует за транзакцией, как saved и версия: откат
 	// проведения возвращает прежнее значение.
-	wasPosted := w.posted
+	wasPosted, wasXDTOPosted := w.posted, w.obj.Posted
 	w.posted = true
-	storage.DeferUntilTxRollback(ctx, func() { w.posted = wasPosted })
+	w.obj.Posted = true
+	storage.DeferUntilTxRollback(ctx, func() {
+		w.posted = wasPosted
+		w.obj.Posted = wasXDTOPosted
+	})
 	if err := exchange.RegisterOnSave(ctx, w.s.store, w.s.reg.ExchangePlans(), w.entity, w.obj.ID, false); err != nil {
 		return err
 	}
@@ -1356,3 +1362,21 @@ func (c dslFieldSearch) IsFieldSearchDenied(ctx context.Context, entity *metadat
 }
 
 func (s *Server) dslFieldSearchChecker() interpreter.FieldSearchChecker { return dslFieldSearch{s: s} }
+
+// XDTOObject отдаёт внутреннее представление документа сериализатору XDTO:
+// шапку вместе с табличными частями. Без этого СериализаторXDTO.ЗаписатьXML
+// видел бы только Get/Set обёртки и не смог бы прочитать строки ТЧ.
+func (w *docWriter) XDTOObject() *runtime.Object { return w.obj }
+
+func (w *docWriter) hookXDTOState() *entityHookXDTOState {
+	if w.assigned == nil {
+		w.assigned = map[string]bool{}
+	}
+	return &entityHookXDTOState{loaded: w.loaded, assigned: w.assigned}
+}
+
+// XDTOMaskField — полевая политика для СериализаторXDTO.ЗаписатьXML: XDTOObject()
+// отдаёт сырой объект, минуя маскирование в Get().
+func (w *docWriter) XDTOMaskField() func(string, any) any {
+	return w.s.xdtoFieldMask(w.ctx(), w.entity, w.loaded, w.assigned)
+}
