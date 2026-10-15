@@ -181,6 +181,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 	}
 	return template.FuncMap{
 		"refWriteAllowed": refWriteAllowed,
+		"gridLayoutAttr":  gridLayoutAttr,
+		"gridOrderAttr":   gridOrderAttr,
 		"lower":           strings.ToLower,
 		"infoRegKeyValue": infoRegKeyValue,
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
@@ -569,6 +571,18 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"elLayout": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementLayoutCSS(el)) //nolint:gosec // G203: стиль собран из словаря выравнивания и целых размеров 1…4000 px
 		},
+		// elLayoutEx — elLayout + display:none для элементов с hidden_when,
+		// скрытых при первичном рендере. Без этого такие элементы не попадали
+		// в DOM и applyElementStates не мог показать их при смене условия.
+		"elLayoutEx": func(ctx map[string]any, el *metadata.FormElement) template.CSS {
+			css := metadata.FormElementLayoutCSS(el)
+			if el != nil && el.HiddenWhen != "" {
+				if set, _ := ctx["ElHidden"].(map[string]bool); set[elementStatePath(ctx, el)] {
+					css = "display:none;" + css
+				}
+			}
+			return template.CSS(css) //nolint:gosec // G203: стиль собран из словаря выравнивания и целых размеров 1…4000 px
+		},
 		"elAlign": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementAlignCSS(el)) //nolint:gosec // G203: стиль собран только из нормализованных значений словаря выравнивания
 		},
@@ -610,7 +624,40 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				return false
 			}
 			set, _ := ctx["ElHidden"].(map[string]bool)
-			return set[elementStatePath(ctx, el)]
+			if !set[elementStatePath(ctx, el)] {
+				return false
+			}
+			if el.HiddenWhen == "" {
+				return true // статически скрыт — не рисуем
+			}
+			// Элемент с hidden_when скрыт ДИНАМИЧЕСКИ: пропускать его нельзя,
+			// иначе он не попадёт в DOM и applyElementStates не сможет
+			// показать его при смене условия. Контейнеры (ТабличнаяЧасть,
+			// ГруппаФормы, СтраницыФормы) по-прежнему пропускаются — у них
+			// рендеринг с display:none ломает отправку tp_json и флажков.
+			// Только простые поля ввода и переключатели рендерятся с
+			// display:none. Остальное (контейнеры, ТЧ, флажки, картинки,
+			// надписи, кнопки) пропускается как раньше.
+			switch el.Kind {
+			case metadata.FormElementField,
+				metadata.FormElementSwitch,
+				metadata.FormElementDatePicker:
+				return false // рисуем с display:none
+			}
+			return true // остальные типы — пропускаем как раньше
+		},
+		// elHiddenStyle возвращает "display:none;" для элемента, который
+		// скрыт условием hidden_when при первичном рендере. Элемент
+		// остаётся в DOM, и applyElementStates переключает видимость.
+		"elHiddenStyle": func(ctx map[string]any, el *metadata.FormElement) template.CSS {
+			if el == nil || el.HiddenWhen == "" {
+				return ""
+			}
+			set, _ := ctx["ElHidden"].(map[string]bool)
+			if set[elementStatePath(ctx, el)] {
+				return "display:none;"
+			}
+			return ""
 		},
 		// elPath — путь размещения элемента для якоря data-ob-el-path: по нему
 		// клиент находит свой элемент после события формы, когда имя элемента
@@ -2358,7 +2405,7 @@ const tplForm = `
         <tr>
           {{if $columns.ShowLineNumber}}<td>{{index $row "line_number"}}</td>{{end}}
           {{if $columns.ShowKind}}<td>{{$kind := index $row "вид_движения"}}{{if eq $kind "Приход"}}<span style="color:#16a34a">▲</span>{{else if eq $kind "Расход"}}<span style="color:#dc2626">▼</span>{{else}}{{$kind}}{{end}}</td>{{end}}
-          {{range $k, $v := $row}}{{if and (ne $k "line_number") (ne $k "вид_движения")}}<td>{{$v}}</td>{{end}}{{end}}
+          {{range $k, $v := $row}}{{if and (ne $k "line_number") (ne $k "вид_движения")}}<td>{{if eq $k "period"}}{{fmtDate $v}}{{else}}{{$v}}{{end}}</td>{{end}}{{end}}
         </tr>
         {{end}}
       </table>
@@ -3049,6 +3096,14 @@ const tplProcessor = `
            сервер за ошибкой прикладного модуля. */}}
       <input type="file" name="{{$pname}}" {{if .Required}}required{{end}}>
     </div>
+    {{else if eq .Type "binary"}}
+    <div class="form-group" style="margin-bottom:0;grid-column:1/-1">
+      <label>{{.DisplayLabel $.Lang}}{{if .Required}} <span style="color:#dc2626">*</span>{{end}}</label>
+      {{/* Двоичный файл уходит как есть: обработка получит путь к временной
+           копии. Поле такое же, как у text-файла, — разница только в том, что
+           попадает в значение параметра. */}}
+      <input type="file" name="{{$pname}}" {{if .Required}}required{{end}}>
+    </div>
     {{else if eq .Type "text"}}
     <div class="form-group" style="margin-bottom:0;grid-column:1/-1">
       <label>{{.DisplayLabel $.Lang}}</label>
@@ -3462,7 +3517,8 @@ const tplInfoReg = `
   {{if .InfoReg.Periodic}}
   <div class="form-row">
     <label>{{t $.Lang "Период"}}</label>
-    <input type="date" name="period" value="{{index .Values "period"}}" required>
+    {{/* Период — момент с точностью до секунды, как у даты документа и в 1С. */}}
+    <input type="datetime-local" step="1" name="period" value="{{index .Values "period"}}" required>
   </div>
   {{end}}
   {{range .InfoReg.Dimensions}}

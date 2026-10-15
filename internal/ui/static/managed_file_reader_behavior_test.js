@@ -56,11 +56,12 @@ function resetDOM() {
     value: '',
     disabled: false,
     dataset: {},
-    getAttribute(name) { return name === 'data-ob-file-content-for' ? 'Upload' : null; }
+    getAttribute(name) { return name === 'data-ob-file-content-for' ? 'Upload' : name === 'data-ob-file-path' ? 'upload-path' : null; }
   };
   const form = Object.assign(Object.create(global.HTMLFormElement.prototype), {
     id: 'main-form',
     controls: [pathInput, content],
+    get elements() { return this.controls; },
     getAttribute() { return null; },
     hasAttribute() { return false; },
     querySelectorAll(selector) {
@@ -106,7 +107,7 @@ function addFileControl(name, helperName) {
     disabled: false,
     dataset: {},
     form: current.form,
-    getAttribute(attr) { return attr === 'data-ob-file-content-for' ? name : null; }
+    getAttribute(attr) { return attr === 'data-ob-file-content-for' ? name : attr === 'data-ob-file-path' ? slug + '-path' : null; }
   };
   current.form.controls.push(pathInput, content);
   current.nodes[slug + '-path'] = pathInput;
@@ -208,7 +209,7 @@ global.HTMLFormElement = FakeHTMLFormElement;
 class FakeFormData {
   constructor(form) {
     this.values = [];
-    for (const control of form.controls || []) {
+    for (const control of (form && form.controls) || []) {
       if (!control.disabled && control.name) this.append(control.name, control.value || '');
     }
   }

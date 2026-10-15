@@ -45,6 +45,10 @@ type Result struct {
 	// Имя — исходное имя сущности/регистра; Kind — секция прав ("catalog"|
 	// "document"|"register"|"inforeg"; "" — для неизвестных типов).
 	Sources []SourceRef
+	// SourceOccurrences сохраняет каждое вхождение FROM/JOIN до дедупликации
+	// Sources, включая self-JOIN и авто-JOIN. Полевые маски используют кратность
+	// для проверки неоднозначных физических имён в выдаче «*».
+	SourceOccurrences []SourceOccurrence
 	// ProjectionFields перечисляет логические поля, прочитанные выражениями
 	// SELECT до применения SQL-алиасов. Поле используется security-gate отчётов,
 	// AI и виджетов: сравнение с результирующими именами колонок позволяло
@@ -92,6 +96,19 @@ type Result struct {
 	// запросе; при Projection.Simple == false действует прежний отказ по
 	// ProjectionFields.
 	Projection ProjectionPlan
+}
+
+// SourceOccurrence — отдельный SQL-источник с его фактическим квалификатором.
+// Для Л.* учитывается только Л; голая * включает все вхождения.
+type SourceOccurrence struct {
+	SourceRef
+	Qualifier string
+	// Virtual distinguishes a generated SQL source from a physical table.
+	// OutputColumns preserves its actual projection, including derived names
+	// and duplicates. nil means the output schema could not be proved; callers
+	// must not substitute the register's predicate metadata in that case.
+	Virtual       bool
+	OutputColumns []string
 }
 
 // SourceRef — объект-источник запроса (для проверки прав доступа).
@@ -831,7 +848,7 @@ type translator struct {
 	parts        []string
 	prevWasDot   bool                          // true after emitting "." — used to resolve .Ссылка → .id
 	colMap       map[string]string             // lowercase field name → actual column name (for reference dims)
-	colTypes     map[string]metadata.FieldType // lowercase field name → type (для квалификации и CAST number)
+	colTypes     map[string]metadata.FieldType // legacy-типы первого источника для проекции и ссылок
 	refDims      []refDimInfo                  // reference dimensions with auto-JOIN info
 	refScope     int                           // SELECT, которому принадлежат авто-JOIN
 	refSources   map[string]bool               // имена и алиас источника этих JOIN
@@ -839,6 +856,7 @@ type translator struct {
 	mainEmitted  bool                          // главная таблица FROM уже эмитирована (refDims авто-JOIN — только для неё)
 	section      querySection                  // current clause context
 	aliases      map[string]struct{}           // имена алиасов вывода (КАК ...) — их не квалифицируем и не CAST'им
+	sourceRefs   []SourceOccurrence            // каждое эмитированное вхождение источника
 	sources      []SourceRef                   // объекты-источники запроса (для RBAC, план 54)
 	rowFilters   []pendingRowFilter            // RLS-фильтры обычных источников, внедряемые в WHERE
 	rowsScoped   bool                          // true после внедрения rowFilters в outer WHERE
@@ -852,6 +870,9 @@ type translator struct {
 	refCols      map[string]string             // колонка вывода (lower) → сущность, на которую она ссылается (#1150)
 	derivedAs    map[int]string                // позиция закрывающей скобки → отложенный AS простой ссылки
 	mainRef      mainRefSource                 // главный источник запроса: чья ссылка стоит за голым «Ссылка»
+
+	columnSources   map[int][]columnSource
+	textComparisons map[int]bool
 }
 
 // mainRefSource — предсканированный главный источник запроса: имя сущности и
@@ -894,6 +915,7 @@ type sourceScope struct {
 	parent            int // ближайший внешний SELECT, -1 у верхнего уровня; UNION — сосед
 	main              sourceClass
 	mainTable         string
+	mainSourcePos     int // token position of the first source, including an unaliased VT
 	mainColTypes      map[string]metadata.FieldType
 	entities          map[string]sourceEntity
 	refEntities       map[string]sourceEntity // цели одного перехода от главного источника
@@ -1169,6 +1191,7 @@ type pendingRowFilter struct {
 // addSource фиксирует объект-источник запроса для последующей проверки прав.
 func (tr *translator) addSource(typeUpper, name string) {
 	kind := sourcePermKind(typeUpper)
+	tr.sourceRefs = append(tr.sourceRefs, SourceOccurrence{SourceRef: SourceRef{Kind: kind, Name: name}, Qualifier: sourceToTable(typeUpper, name)})
 	for _, s := range tr.sources {
 		if s.Kind == kind && s.Name == name {
 			return // уже зафиксирован (напр. та же сущность и в FROM, и через ссылку)
@@ -1192,6 +1215,7 @@ func (tr *translator) addRefSource(rd refDimInfo) {
 		return
 	}
 	tr.addSource(rd.refSrcType, rd.refEntity)
+	tr.sourceRefs[len(tr.sourceRefs)-1].Qualifier = rd.joinAlias
 }
 
 func (tr *translator) sourceRowFilter(kind, name string) *storage.Predicate {
@@ -3080,6 +3104,9 @@ func (tr *translator) emitVTSubquery(subq, defaultAlias string) error {
 			}
 		}
 	}
+	tr.sourceRefs[len(tr.sourceRefs)-1].Qualifier = alias
+	tr.sourceRefs[len(tr.sourceRefs)-1].Virtual = true
+	tr.sourceRefs[len(tr.sourceRefs)-1].OutputColumns = generatedSourceColumns(subq)
 	tr.emit("(" + subq + ") AS " + alias)
 	// Авто-JOIN refDims — только для главной таблицы (первого источника FROM),
 	// иначе при присоединении через явный JOIN авто-JOIN вклинивается перед ON
@@ -3552,10 +3579,13 @@ func sourceColTypes(typeUpper, name string, opts CompileOpts) map[string]metadat
 // в позициях сравнения/сортировки (WHERE/HAVING/ORDER BY). В ВЫБРАТЬ не кастим —
 // вывод остаётся точным TEXT.
 func (tr *translator) needsNumberCast(lower string) bool {
-	if _, isAlias := tr.aliases[lower]; isAlias {
-		return false // ссылка на алиас вывода (КАК ...), а не сырая колонка
+	idx := tr.pos - 1
+	qualifier := tr.columnQualifierAt(idx)
+	if qualifier == "" && (tr.inUnionOrder() || tr.sourceCtx.isOutputAliasAt(idx, lower)) {
+		return false
 	}
-	return tr.needsNumberCastForType(tr.colTypes[lower])
+	typ, _, known := tr.columnTypeAt(idx, lower, qualifier)
+	return known && tr.needsNumberCastForType(typ)
 }
 
 // Квалифицированный реквизит получает тип от своего источника, независимо
@@ -3567,7 +3597,7 @@ func (tr *translator) needsNumberCastForType(fieldType metadata.FieldType) bool 
 	if dialectOrDefault(tr.opts.Dialect).Name() != "sqlite" {
 		return false
 	}
-	switch tr.section {
+	switch tr.sourceCtx.sectionAt(tr.pos - 1) {
 	case sectionWhere, sectionHaving, sectionOrderBy:
 		return true
 	}
@@ -3660,13 +3690,13 @@ func (tr *translator) keywordAt(idx int, names ...string) bool {
 // когда активны авто-JOIN'ы (п.48) — иначе одноимённая колонка присоединённого
 // каталога вызывает ambiguous column. Неизвестные идентификаторы не трогаем.
 func (tr *translator) qualifyOwn(col, lower string) string {
-	if tr.sourceCtx.isOutputAliasAt(tr.pos-1, lower) {
-		return col // алиас вывода, не колонка таблицы
+	idx := tr.pos - 1
+	if tr.sourceCtx.isOutputAliasAt(idx, lower) || tr.inUnionOrder() {
+		return col
 	}
-	if len(tr.refDims) > 0 && tr.mainTable != "" {
-		_, own := tr.colTypes[lower]
-		if own {
-			return tr.mainTable + "." + col
+	if len(tr.refDims) > 0 {
+		if _, owner, known := tr.columnTypeAt(idx, lower, ""); known && owner != "" {
+			return owner + "." + col
 		}
 	}
 	return col
@@ -3741,8 +3771,10 @@ func (tr *translator) emitOwnColumn(col, lower string) {
 //     (ПО), а обёртка склеила бы в нём все незаполненные строки друг с другом.
 //     Неквалифицированная колонка в этой секции и так уходит в SQL как есть,
 //     так что правило одинаково для обеих записей.
-//   - только ОСНОВНОЙ источник запроса (см. isMainSourceColumn). Поле
-//     присоединённой таблицы обёртки не получает.
+//   - присоединённые источники: только ГДЕ и сравнение с литералом/параметром;
+//     присоединённое поле в сравнении между колонками не получает COALESCE.
+//     Для полей главного источника прежнее правило COALESCE действует и в
+//     сравнении между его колонками. Секцию ПО правило не охватывает.
 //
 // Секция берётся из пред-скана (sourceCtx), а не из бегущей tr.section. Бегущая —
 // одно поле на весь запрос: подзапрос в ИЗ переключает её своим ГДЕ и обратно уже
@@ -3762,15 +3794,15 @@ func (tr *translator) needsEmptyTextCoalesce(lower, qualifier string) bool {
 	if tr.sourceCtx.sectionAt(idx) == sectionFrom {
 		return false
 	}
-	if !tr.isMainSourceColumn(idx, qualifier) {
-		return false
-	}
-	scope, ok := tr.sourceCtx.scopeAt(idx)
-	if !ok {
-		return false
-	}
-	t, known := scope.mainColTypes[lower]
+	t, _, known := tr.columnTypeAt(idx, lower, qualifier)
 	if !known || (t != metadata.FieldTypeString && !metadata.IsEnum(t)) {
+		return false
+	}
+	// Расширение на присоединённый источник разрешено только в ГДЕ и
+	// при сравнении с литералом/параметром. Колонка = колонка может быть
+	// соединением через запятую: NULL с NULL там по-прежнему не совпадает.
+	if !tr.isMainSourceColumn(idx, qualifier) &&
+		(tr.sourceCtx.sectionAt(idx) != sectionWhere || !tr.textComparisons[idx]) {
 		return false
 	}
 	if tr.textEqIndex[idx] {
@@ -3783,42 +3815,15 @@ func (tr *translator) needsEmptyTextCoalesce(lower, qualifier string) bool {
 	return tr.equalityOpAt(idx+1) || tr.equalityOpAt(left)
 }
 
-// isMainSourceColumn — принадлежит ли колонка ОСНОВНОМУ источнику своего
-// SELECT-scope.
-//
-// Граница нужна потому, что sourceScope.mainColTypes намеренно знает типы только
-// основного источника своего SELECT. Для колонки присоединённой таблицы поиск по
-// одному имени мог бы вернуть тип одноимённой колонки основного источника.
-// Второе хуже отсутствующего типа: `Заявка.Код` строка, `Клиент.Код` число, и
-// отбор `ГДЕ К.Код <> 0` уезжал бы в
-//
-//	COALESCE(к.код, '') <> 0
-//
-// На SQLite это безвредно (number хранится как TEXT), а на PostgreSQL number —
-// NUMERIC, нетипизированный литерал пустой строки приводится к нему, и запрос
-// падает на этапе плана: работавший до правила отбор переставал работать совсем.
-//
-// (Литерал пустой строки стоит блоком кода намеренно: в обычной строке
-// док-комментария gofmt заменяет две одиночные кавычки одной типографской.)
-//
-// Тем же ограничением снимается склейка в соединении, записанном запятой
-// (ИЗ A КАК Т, B КАК К ГДЕ Т.Поле = К.Поле): секция там ГДЕ, а не ИЗ, поэтому
-// по секции такое условие не отсекалось, и обёртка с обеих сторон приравнивала
-// незаполненное к незаполненному.
-//
-// Цена границы названа честно: отбор по текстовому полю ПРИСОЕДИНЁННОЙ таблицы
-// незаполненные значения по-прежнему теряет (#1183). Закрыть это можно только
-// типизацией колонок по алиасу источника — отдельная работа по компилятору,
-// которая заодно чинит ту же дырку в needsNumberCast.
+// isMainSourceColumn сохраняет прежнюю границу вне доказанного расширения
+// ГДЕ. Источник и его тип определяются отдельно по columnSources.
 func (tr *translator) isMainSourceColumn(idx int, qualifier string) bool {
-	if qualifier == "" {
-		return true // колонка без квалификатора относится к основному источнику
-	}
 	scope, ok := tr.sourceCtx.scopeAt(idx)
-	if !ok || scope.mainTable == "" {
+	if !ok {
 		return false
 	}
-	return strings.EqualFold(qualifier, scope.mainTable)
+	_, source, known := tr.columnSourceAt(idx, lowerFast(tr.tokens[idx].val), qualifier)
+	return known && source.tokenPos == scope.mainSourcePos
 }
 
 func (tr *translator) equalityOpAt(idx int) bool {
@@ -3990,6 +3995,7 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 				scopeID := len(ctx.scopes)
 				ctx.scopes = append(ctx.scopes, sourceScope{
 					parent:          parent,
+					mainSourcePos:   -1,
 					entities:        map[string]sourceEntity{},
 					unionFirst:      unionFirst,
 					qualifiers:      map[string]sourceClass{},
@@ -4049,6 +4055,9 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 					scope := &ctx.scopes[active[len(active)-1].id]
 					isMain := scope.sourceCount == 0
 					scope.sourceCount++
+					if isMain {
+						scope.mainSourcePos = i
+					}
 					nesting := 0
 					for j := i + 1; j < len(tokens); j++ {
 						switch tokens[j].kind {
@@ -4119,6 +4128,7 @@ func preScanSourceContextWithOpts(tokens []tok, opts CompileOpts) sourceContext 
 			scope.main = class
 		}
 		if isMain {
+			scope.mainSourcePos = i
 			scope.mainColTypes = sourceColumnTypes(typeUpper, tokens[i+2].val, opts)
 			// Виртуальная таблица эмитится как подзапрос со специальным алиасом,
 			// который здесь не вычисляем. Для обычного источника сохраняем имя,
@@ -4253,13 +4263,10 @@ func (ctx sourceContext) scopeProjectsSystemColumn(tokens []tok, scopeID int, na
 	if scopeID < 0 || scopeID >= len(ctx.scopes) || seen[scopeID] {
 		return false
 	}
-	// Алиасы объектов после КАК сохраняются буквально, даже если в той же
+	// Явный выходной алиас сохраняет своё имя, даже если в той же
 	// проекции есть не переименованная системная колонка или звёздочка.
-	// Системные алиасы регистра имеют прежнюю, отдельную семантику.
-	if _, _, objectAlias := entitySystemColAlias(name); objectAlias {
-		if _, explicit := ctx.scopes[scopeID].outputAliases[lowerFast(name)]; explicit {
-			return false
-		}
+	if _, explicit := ctx.scopes[scopeID].outputAliases[lowerFast(name)]; explicit {
+		return false
 	}
 	seen[scopeID] = true
 	defer delete(seen, scopeID)
@@ -4644,6 +4651,17 @@ func (tr *translator) systemColumnAlias(name string, prevDot bool) (string, bool
 	if !hasScope {
 		return "", false
 	}
+	if !prevDot {
+		if tr.inUnionOrder() {
+			scope = tr.sourceCtx.scopes[scope.unionFirst]
+		}
+		section := tr.sourceCtx.sectionAt(tr.pos - 1)
+		if section == sectionOrderBy || section == sectionGroupBy {
+			if _, outputAlias := scope.outputAliases[lowerFast(name)]; outputAlias {
+				return "", false
+			}
+		}
+	}
 	if prevDot && tr.pos >= 3 {
 		qualifier := lowerFast(tr.tokens[tr.pos-3].val)
 		if class, known := scope.qualifiers[qualifier]; known {
@@ -4838,6 +4856,8 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		}
 		break
 	}
+	tr.columnSources = indexColumnSources(tokens, opts, tr.sourceCtx)
+	tr.textComparisons = scalarTextComparisons(tokens, tr.sourceCtx)
 	tr.textEqIndex = positiveTextEqualities(tokens, tr.sourceCtx)
 	for {
 		t := tr.peek(0)
@@ -4962,6 +4982,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					}
 				}
 			}
+			tr.sourceRefs[len(tr.sourceRefs)-1].Qualifier = sourceAlias
 			if !isMain || tr.parenDepth > 0 {
 				filtered, ok, err := tr.rowFilteredSourceSQL(upper, entity.val, tableName, sourceAlias)
 				if err != nil {
@@ -5181,9 +5202,12 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			// Системные колонки регистра — PascalCase русские алиасы
 			// (см. systemColAlias). Работает и с префиксом (Х.Период), и без,
 			// но только если соответствующий источник действительно регистр.
-			if col, ok := tr.systemColumnAlias(t.val, prevDot); ok {
-				tr.emit(col)
-				continue
+			// Объявление алиаса и квалификатор источника — не имена колонок.
+			if !prevAlias && !nextIsDot {
+				if col, ok := tr.systemColumnAlias(t.val, prevDot); ok {
+					tr.emit(col)
+					continue
+				}
 			}
 			// Системные колонки самого объекта (Проведен, ПометкаУдаления):
 			// разрешаются по метаданным источника, см. entitySystemColumn.
@@ -5375,16 +5399,17 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	}
 	typedColumns, dslColumnAliases := typedProjectionColumns(projectionPlan, tokens, opts, tr.sourceCtx, tr.refCols)
 	return Result{
-		SQL:              tr.build(),
-		Args:             tr.args,
-		Sources:          tr.sources,
-		ProjectionFields: expandReferenceProjection(projectionFields, tr.refDims),
-		Projection:       expandProjectionRefDims(projectionPlan, tr.refDims),
-		BoolColumns:      boolOutputColumns(projectionPlan, tr.colTypes),
-		DateColumns:      typedOutputColumns(projectionPlan, tr.colTypes, metadata.FieldTypeDate),
-		RefColumns:       refOutputColumns(projectionPlan, tr.refCols),
-		TypedColumns:     typedColumns,
-		DSLColumnAliases: dslColumnAliases,
+		SQL:               tr.build(),
+		Args:              tr.args,
+		Sources:           tr.sources,
+		SourceOccurrences: tr.sourceRefs,
+		ProjectionFields:  expandReferenceProjection(projectionFields, tr.refDims),
+		Projection:        expandProjectionRefDims(projectionPlan, tr.refDims),
+		BoolColumns:       boolOutputColumns(projectionPlan, tr.colTypes),
+		DateColumns:       typedOutputColumns(projectionPlan, tr.colTypes, metadata.FieldTypeDate),
+		RefColumns:        refOutputColumns(projectionPlan, tr.refCols),
+		TypedColumns:      typedColumns,
+		DSLColumnAliases:  dslColumnAliases,
 	}, nil
 }
 
