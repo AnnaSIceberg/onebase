@@ -2446,7 +2446,7 @@ function obGridParseOrder(raw) {
 }
 function obGridApplyOrder(columns, order) {
   if (!columns || !order || !order.length) return false;
-  var byId = {}, used = {}, out = [], i;
+  var byId = Object.create(null), used = Object.create(null), out = [], i;
   for (i = 0; i < columns.length; i++) byId[columns[i].id] = columns[i];
   for (i = 0; i < order.length; i++) {
     var id = order[i];
@@ -2549,6 +2549,9 @@ function obGridColumnIds(columns) {
       dragFrom = -1;
       if (!h) return;
       e.preventDefault();
+      // setColumns уничтожает редактор: сначала сохранить ввод или оставить
+      // таблицу без изменений, если валидация редактора отклонила значение.
+      if (!grid.getEditorLock().commitCurrentEdit()) return;
       if (!obGridMoveColumn(state.columns, from, headerCells().indexOf(h))) return;
       var isDefault = applyColumns();
       save(isDefault ? "" : JSON.stringify(obGridColumnIds(state.columns)));
@@ -2556,6 +2559,7 @@ function obGridColumnIds(columns) {
     div.addEventListener("dragend", function() { dragFrom = -1; });
     if (resetBtn) {
       resetBtn.addEventListener("click", function() {
+        if (!grid.getEditorLock().commitCurrentEdit()) return;
         obGridApplyOrder(state.columns, defaultIds);
         applyColumns();
         save("");
