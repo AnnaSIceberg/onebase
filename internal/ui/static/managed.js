@@ -1112,7 +1112,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         // событию Выбор: без них оно уходило с прежними значениями, и
         // обработчик выбора не узнавал свой подбор — выбор молча терялся.
         if (data.dirty === true) window.obSetManagedFormDirty(true);
-        applyValues(data.values, data.refOptions, snapshot.body);
+        if (data.values) applyValues(data.values, data.refOptions, snapshot.body);
         (data.messages || []).forEach(m => flash(m, 'ok'));
         if (data.error) flash(data.error, 'err');
         openItemPicker(data.pickerData, elementName, extraParams || null, snapshot.pickerRequest);
