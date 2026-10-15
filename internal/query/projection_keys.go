@@ -32,9 +32,9 @@ func newProjectionKeyResolver(tokens []tok, opts CompileOpts, ctx sourceContext)
 	return &projectionKeyResolver{tokens: tokens, opts: opts, ctx: ctx, outputs: map[int]projectionKeySet{}}
 }
 
-// starKeys expands only exact * or qualifier.* items. Registers, virtual
-// sources and unknown qualifiers stay incomplete; their column sets cannot be
-// inferred from a neighboring entity. SQL emission is unaffected.
+// starKeys expands only exact * or qualifier.* items. Ordinary entities and
+// information registers use their physical metadata layout. Virtual sources,
+// other registers and unknown qualifiers stay incomplete. SQL emission is unaffected.
 func (r *projectionKeyResolver) starKeys(scopeID int, item []tok) projectionKeySet {
 	unknown := projectionKeySet{complete: false}
 	qualifier := ""
@@ -66,7 +66,14 @@ func (r *projectionKeyResolver) starKeys(scopeID int, item []tok) projectionKeyS
 		}
 		keys := unknown
 		if i+3 >= len(r.tokens) || r.tokens[i+3].kind != tDot {
-			if !isAccumRegType(upperFast(t.val)) && !isInfoRegType(upperFast(t.val)) && !isAccountRegType(upperFast(t.val)) {
+			if isInfoRegType(upperFast(t.val)) {
+				for _, reg := range r.opts.InfoRegs {
+					if strings.EqualFold(reg.Name, r.tokens[i+2].val) {
+						keys = infoRegisterProjectionKeys(reg)
+						break
+					}
+				}
+			} else if !isAccumRegType(upperFast(t.val)) && !isAccountRegType(upperFast(t.val)) {
 				for _, ent := range r.opts.Entities {
 					if strings.EqualFold(ent.Name, r.tokens[i+2].val) {
 						keys = entityProjectionKeys(ent)
@@ -119,6 +126,23 @@ func entityProjectionKeys(ent *metadata.Entity) projectionKeySet {
 	}
 	for _, field := range ent.Fields {
 		out.counts[metadata.ColumnName(field)] = 1
+	}
+	return out
+}
+
+// Match CreateInfoRegisterSQL, including reference _id columns and the
+// service columns present in both periodic and nonperiodic registers. Entity
+// system columns do not belong to an information register.
+func infoRegisterProjectionKeys(reg *metadata.InfoRegister) projectionKeySet {
+	out := projectionKeySet{counts: map[string]int{"recorder": 1, "recorder_type": 1, "updated_at": 1}, complete: true}
+	if reg.Periodic {
+		out.counts["period"] = 1
+	}
+	for _, field := range reg.Dimensions {
+		out.counts[metadata.ColumnName(field)]++
+	}
+	for _, field := range reg.Resources {
+		out.counts[metadata.ColumnName(field)]++
 	}
 	return out
 }
