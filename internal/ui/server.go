@@ -356,6 +356,8 @@ func (s *Server) Mount(r chi.Router) {
 	r.Get("/ui/", s.index)
 	r.Get("/ui/app", s.appShell)           // оболочка вкладок (issue #129/#130, фаза 1)
 	r.Post("/ui/form-mode", s.setFormMode) // переключение режима открытия форм
+	// Поля панели «Отбор», добавленные пользователем (list_filters сущности).
+	r.Post("/ui/_list-filters", s.listFilterFieldsSave)
 
 	// Gengen — ДО catch-all роутов! (иначе /ui/dev/gengen матчится как {kind}/{entity})
 	r.Get("/ui/dev/gengen", s.gengenPage)

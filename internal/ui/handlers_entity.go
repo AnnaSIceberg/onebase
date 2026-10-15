@@ -198,6 +198,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"EnumLabels":       s.buildEnumLabels(entity, lang),
 		"BasedOnActions":   s.basedOnActions(r, entity, lang),
 		"RequestURI":       r.URL.RequestURI(),
+		"ListFilterExtra":  s.listFilterExtra(r, entity),
 	})
 }
 
