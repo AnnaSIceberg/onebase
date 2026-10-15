@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
@@ -82,35 +83,37 @@ func TestProcessorBinaryParam_SharedStringTableRejectsWholeBook(t *testing.T) {
 		{"malformed_extension", 5, start + items + `<extLst></sst>`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s, ctx, ts, cat := binaryImportFixture(t)
-			data := importWorkbookWithSharedStrings(t, tc.index, tc.table)
-			status, page := postBinaryProcessor(t, ts, "ЗагрузкаУчеников", "Файл", "strings.xlsx", data)
-			rows, err := s.store.List(ctx, cat.Name, cat, storage.ListParams{RowFilterEvaluated: true})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if tc.reject {
-				if len(rows) != 0 {
-					t.Errorf("invalid workbook created %d catalog rows: %v", len(rows), rows)
+			dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+				s, ctx, ts, cat := binaryImportFixture(t, db)
+				data := importWorkbookWithSharedStrings(t, tc.index, tc.table)
+				status, page := postBinaryProcessor(t, ts, "ЗагрузкаУчеников", "Файл", "strings.xlsx", data)
+				rows, err := s.store.List(ctx, cat.Name, cat, storage.ListParams{RowFilterEvaluated: true})
+				if err != nil {
+					t.Fatal(err)
 				}
-				if !strings.Contains(page, "повреждённая структура книги") {
-					t.Error("missing workbook corruption error")
+				if tc.reject {
+					if len(rows) != 0 {
+						t.Errorf("invalid workbook created %d catalog rows: %v", len(rows), rows)
+					}
+					if !strings.Contains(page, "повреждённая структура книги") {
+						t.Error("missing workbook corruption error")
+					}
+					if strings.Contains(page, "путь: ") {
+						t.Error("DSL continued after reading an invalid workbook")
+					}
+					return
 				}
-				if strings.Contains(page, "путь: ") {
-					t.Error("DSL continued after reading an invalid workbook")
+				if status != http.StatusOK || len(rows) != 2 {
+					t.Fatalf("healthy workbook: HTTP %d, rows=%v, page=%s", status, rows, page)
 				}
-				return
-			}
-			if status != http.StatusOK || len(rows) != 2 {
-				t.Fatalf("healthy workbook: HTTP %d, rows=%v, page=%s", status, rows, page)
-			}
-			byCode := map[string]string{}
-			for _, row := range rows {
-				byCode[fmt.Sprint(row["Код"])] = fmt.Sprint(row["Наименование"])
-			}
-			if byCode["007"] != "First" || byCode["012"] != "Last" {
-				t.Fatalf("healthy workbook values changed: %v", byCode)
-			}
+				byCode := map[string]string{}
+				for _, row := range rows {
+					byCode[fmt.Sprint(row["Код"])] = fmt.Sprint(row["Наименование"])
+				}
+				if byCode["007"] != "First" || byCode["012"] != "Last" {
+					t.Fatalf("healthy workbook values changed: %v", byCode)
+				}
+			})
 		})
 	}
 }

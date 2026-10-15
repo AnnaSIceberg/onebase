@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
@@ -85,22 +86,24 @@ func TestProcessorBinaryParam_RejectsUnsafeExcelBeforeWriting(t *testing.T) {
 		{"broken_xml_after_valid_rows", `<row r="3"><c r="A3"><v>`, 0, "повреждённая"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s, ctx, ts, cat := binaryImportFixture(t)
-			data := importWorkbookWithSheet(t, prefix+tc.tail+suffix, tc.extraBytes)
-			_, page := postBinaryProcessor(t, ts, "ЗагрузкаУчеников", "Файл", "book.xlsx", data)
-			rows, err := s.store.List(ctx, cat.Name, cat, storage.ListParams{RowFilterEvaluated: true})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(rows) != 0 {
-				t.Errorf("invalid workbook created %d catalog rows", len(rows))
-			}
-			if !strings.Contains(page, tc.want) {
-				t.Errorf("missing import error %q", tc.want)
-			}
-			if strings.Contains(page, "путь: ") {
-				t.Error("DSL continued after reading an invalid workbook")
-			}
+			dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+				s, ctx, ts, cat := binaryImportFixture(t, db)
+				data := importWorkbookWithSheet(t, prefix+tc.tail+suffix, tc.extraBytes)
+				_, page := postBinaryProcessor(t, ts, "ЗагрузкаУчеников", "Файл", "book.xlsx", data)
+				rows, err := s.store.List(ctx, cat.Name, cat, storage.ListParams{RowFilterEvaluated: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(rows) != 0 {
+					t.Errorf("invalid workbook created %d catalog rows", len(rows))
+				}
+				if !strings.Contains(page, tc.want) {
+					t.Errorf("missing import error %q", tc.want)
+				}
+				if strings.Contains(page, "путь: ") {
+					t.Error("DSL continued after reading an invalid workbook")
+				}
+			})
 		})
 	}
 }

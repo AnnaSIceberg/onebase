@@ -20,7 +20,9 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/dsl/ast"
+	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/excel"
 	"github.com/ivantit66/onebase/internal/i18n"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -43,7 +45,7 @@ const binaryImportProgram = `
 КонецПроцедуры
 `
 
-func binaryImportFixture(t *testing.T) (*Server, context.Context, *httptest.Server, *metadata.Entity) {
+func binaryImportFixture(t *testing.T, databases ...*storage.DB) (*Server, context.Context, *httptest.Server, *metadata.Entity) {
 	t.Helper()
 	cat := &metadata.Entity{
 		Name: "Ученики",
@@ -53,7 +55,21 @@ func binaryImportFixture(t *testing.T) (*Server, context.Context, *httptest.Serv
 			{Name: "Наименование", Type: metadata.FieldTypeString},
 		},
 	}
-	s, ctx := newSubmitTestServer(t, []*metadata.Entity{cat})
+	var s *Server
+	ctx := context.Background()
+	if len(databases) == 0 {
+		s, ctx = newSubmitTestServer(t, []*metadata.Entity{cat})
+	} else {
+		db := databases[0]
+		if err := db.Migrate(ctx, []*metadata.Entity{cat}); err != nil {
+			t.Fatal(err)
+		}
+		reg := runtime.NewRegistry()
+		interp := interpreter.New()
+		interp.LookupProc = reg.GetModuleProc
+		s = New(reg, db, interp, nil, Config{}, nil)
+		t.Cleanup(s.Close)
+	}
 	proc := &processor.Processor{
 		Name:  "ЗагрузкаУчеников",
 		Title: "Загрузка учеников",
@@ -125,59 +141,76 @@ func postBinaryProcessor(t *testing.T, ts *httptest.Server, procName, fieldName,
 }
 
 func TestProcessorBinaryParam_ExcelImportCreatesCatalogRows(t *testing.T) {
-	s, ctx, ts, cat := binaryImportFixture(t)
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		s, ctx, ts, cat := binaryImportFixture(t, db)
 
-	code, page := postBinaryProcessor(t, ts, "ЗагрузкаУчеников", "Файл", "ученики.xlsx", xlsxWithStudents(t))
-	if code != http.StatusOK {
-		t.Fatalf("код %d: %s", code, page)
-	}
+		code, page := postBinaryProcessor(t, ts, "ЗагрузкаУчеников", "Файл", "ученики.xlsx", xlsxWithStudents(t))
+		if code != http.StatusOK {
+			t.Fatalf("код %d: %s", code, page)
+		}
 
-	rows, err := s.store.List(ctx, cat.Name, cat, storage.ListParams{RowFilterEvaluated: true})
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(rows) != 2 {
-		t.Fatalf("в справочнике %d строк, ждали 2: %s", len(rows), page)
-	}
-	byCode := map[string]string{}
-	for _, row := range rows {
-		byCode[fmt.Sprintf("%v", row["Код"])] = fmt.Sprintf("%v", row["Наименование"])
-	}
-	// Ведущий ноль — главная проверка: он выживает только если значение ячейки
-	// пришло текстом, а не было приведено к числу.
-	if byCode["007"] != "Иванов Иван" || byCode["012"] != "Петрова Анна" {
-		t.Fatalf("загружено %#v", byCode)
-	}
+		rows, err := s.store.List(ctx, cat.Name, cat, storage.ListParams{RowFilterEvaluated: true})
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if len(rows) != 2 {
+			t.Fatalf("в справочнике %d строк, ждали 2: %s", len(rows), page)
+		}
+		byCode := map[string]string{}
+		for _, row := range rows {
+			byCode[fmt.Sprintf("%v", row["Код"])] = fmt.Sprintf("%v", row["Наименование"])
+		}
+		// Ведущий ноль — главная проверка: он выживает только если значение ячейки
+		// пришло текстом, а не было приведено к числу.
+		if byCode["007"] != "Иванов Иван" || byCode["012"] != "Петрова Анна" {
+			t.Fatalf("загружено %#v", byCode)
+		}
+	})
 }
 
 // Временный файл живёт ровно прогон. Иначе каталог загрузок копил бы книги
 // пользователей, и никто бы этого не заметил.
 func TestProcessorBinaryParam_TempFileRemovedAfterRun(t *testing.T) {
-	_, _, ts, _ := binaryImportFixture(t)
-
-	code, page := postBinaryProcessor(t, ts, "ЗагрузкаУчеников", "Файл", "ученики.xlsx", xlsxWithStudents(t))
-	if code != http.StatusOK {
-		t.Fatalf("код %d: %s", code, page)
-	}
-	path := ""
-	for _, line := range strings.Split(page, "\n") {
-		if idx := strings.Index(line, "путь: "); idx >= 0 {
-			rest := line[idx+len("путь: "):]
-			if end := strings.IndexAny(rest, "<\r"); end >= 0 {
-				rest = rest[:end]
+	for _, mode := range []string{"desktop", "demo"} {
+		t.Run(mode, func(t *testing.T) {
+			if mode == "demo" {
+				previous := interpreter.FileSandboxRoot()
+				interpreter.SetFileSandbox(t.TempDir())
+				t.Cleanup(func() { interpreter.SetFileSandbox(previous) })
 			}
-			path = strings.TrimSpace(rest)
-			break
-		}
-	}
-	if path == "" {
-		t.Fatalf("обработка не сообщила путь временного файла: %s", page)
-	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("временный файл %s остался после прогона (err=%v)", path, err)
-	}
-	if filepath.Ext(path) != ".xlsx" {
-		t.Errorf("расширение временного файла потеряно: %s", path)
+
+			_, _, ts, _ := binaryImportFixture(t)
+
+			code, page := postBinaryProcessor(t, ts, "ЗагрузкаУчеников", "Файл", "ученики.xlsx", xlsxWithStudents(t))
+			if code != http.StatusOK {
+				t.Fatalf("код %d: %s", code, page)
+			}
+			path := ""
+			for _, line := range strings.Split(page, "\n") {
+				if idx := strings.Index(line, "путь: "); idx >= 0 {
+					rest := line[idx+len("путь: "):]
+					if end := strings.IndexAny(rest, "<\r"); end >= 0 {
+						rest = rest[:end]
+					}
+					path = strings.TrimSpace(rest)
+					break
+				}
+			}
+			if path == "" {
+				t.Fatalf("обработка не сообщила путь временного файла: %s", page)
+			}
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Fatalf("временный файл %s остался после прогона (err=%v)", path, err)
+			}
+			if filepath.Ext(path) != ".xlsx" {
+				t.Errorf("расширение временного файла потеряно: %s", path)
+			}
+			if mode == "demo" {
+				if _, err := interpreter.ResolveSafePath(path); err != nil {
+					t.Fatalf("upload escaped demo sandbox: %v", err)
+				}
+			}
+		})
 	}
 }
 
