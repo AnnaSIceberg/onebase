@@ -15,20 +15,21 @@ test.beforeAll(async () => {
   work = fs.mkdtempSync(path.join(os.tmpdir(), 'ob-page-mask-'));
   const binary = path.join(work, process.platform === 'win32' ? 'ui.test.exe' : 'ui.test');
   execFileSync('go', ['test', '-c', '-o', binary, './internal/ui'], { cwd: repo, timeout: 100_000 });
-  const ready = path.join(work, 'ready.json');
   fixture = spawn(binary, ['-test.run=^TestManagedPageMaskBrowserFixture$', '-test.timeout=5m'], {
     cwd: path.join(repo, 'internal/ui'),
-    env: { ...process.env, ONEBASE_PAGE_MASK_FIXTURE: ready },
+    env: { ...process.env, ONEBASE_PAGE_MASK_FIXTURE: '1' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
+  // The fixture prints the record URLs as one marked stdout line.
   let output = '';
   fixture.stdout.on('data', (chunk) => { output += chunk; });
   fixture.stderr.on('data', (chunk) => { output += chunk; });
-  for (let i = 0; !fs.existsSync(ready); i++) {
+  const marker = /^ONEBASE_PAGE_MASK_URLS (.+)$/m;
+  for (let i = 0; !marker.test(output); i++) {
     if (fixture.exitCode !== null || i > 200) throw new Error(`UI fixture did not start: ${output}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  urls = JSON.parse(fs.readFileSync(ready, 'utf8'));
+  urls = JSON.parse(marker.exec(output)[1]);
 });
 test.afterAll(async () => {
   if (fixture && fixture.exitCode === null) {

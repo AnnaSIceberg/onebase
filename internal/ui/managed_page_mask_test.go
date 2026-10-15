@@ -189,9 +189,10 @@ func TestManagedPageMaskHTTPMatrix(t *testing.T) {
 
 // Playwright starts this isolated, public HTTP fixture as a compiled Go test.
 // Closing its stdin stops it; normal Go runs skip it and never wait for input.
+// The record URLs go to stdout as one marked line: a file path taken from the
+// environment would be a tainted write target (gosec G703).
 func TestManagedPageMaskBrowserFixture(t *testing.T) {
-	ready := os.Getenv("ONEBASE_PAGE_MASK_FIXTURE")
-	if ready == "" {
+	if os.Getenv("ONEBASE_PAGE_MASK_FIXTURE") != "1" {
 		t.Skip("started by managed-page-mask.spec.js")
 	}
 	db, err := storage.ConnectSQLite(t.Context(), filepath.Join(t.TempDir(), "browser.db"))
@@ -222,7 +223,7 @@ func TestManagedPageMaskBrowserFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(ready, data, 0600); err != nil {
+	if _, err := fmt.Fprintf(os.Stdout, "ONEBASE_PAGE_MASK_URLS %s\n", data); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := io.Copy(io.Discard, os.Stdin); err != nil {
