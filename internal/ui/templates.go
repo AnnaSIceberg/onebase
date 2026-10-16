@@ -1233,6 +1233,12 @@ func isListStateQueryKey(key string) bool {
 	switch key {
 	case "q", "sort", "dir", "activity", "view", "lm", "parent", "subsystem", "limit", "page":
 		return true
+	// Снятый отбор по умолчанию формы списка переносится, как поиск и отбор:
+	// иначе «Применить» отбора, поиск, сортировка и страницы молча включали
+	// его обратно, и, например, «Выполнена = Да» при снятом «Невыполненные»
+	// давало пустой список.
+	case listFormFilterOffParam:
+		return true
 	default:
 		return strings.HasPrefix(key, "f.")
 	}
