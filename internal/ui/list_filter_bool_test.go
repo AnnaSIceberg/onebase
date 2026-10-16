@@ -3,10 +3,12 @@ package ui
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"golang.org/x/net/html"
 
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -68,6 +70,78 @@ func TestUI_EntityList_BoolFilter(t *testing.T) {
 	if strings.Contains(нет, "Позвонить клиенту") || !strings.Contains(нет, "Проверить отказ") {
 		t.Fatal("отбор «Нет»: только невыполненная задача")
 	}
+
+	// Ревью #2184: старый адрес с «нет»/«да»/1/0 хранилище понимает — панель
+	// обязана показать то же значение выбранным, иначе «Применить» отправит
+	// пустое и молча вернёт весь список. Повторное применение — это отправка
+	// формы панели: значение выбранного option.
+	for raw, want := range map[string]string{"нет": "false", "Нет": "false", "0": "false", "да": "true", "1": "true", "истина": "true"} {
+		html := список("f.Выполнена=" + url.QueryEscape(raw))
+		if got := selectedFilterOption(t, html, "f.Выполнена"); got != want {
+			t.Fatalf("f.Выполнена=%s: выбран %q, want %q:\n%s", raw, got, want, filterPanelFragment(html, "f.Выполнена"))
+		}
+		again := список("f.Выполнена=" + want)
+		if (want == "true") != strings.Contains(again, "Позвонить клиенту") || (want == "false") != strings.Contains(again, "Проверить отказ") {
+			t.Fatalf("повторное применение %s изменило отбор", raw)
+		}
+	}
+	// Непонятное значение: список пуст, и панель держит его выбранным — повторное
+	// «Применить» не расширяет отбор до всего списка.
+	bad := список("f.Выполнена=может")
+	if strings.Contains(bad, "Позвонить клиенту") || strings.Contains(bad, "Проверить отказ") {
+		t.Fatal("непонятное значение открыло список")
+	}
+	if got := selectedFilterOption(t, bad, "f.Выполнена"); got != "может" {
+		t.Fatalf("непонятное значение не сохранено в панели: %q", got)
+	}
+}
+
+// selectedFilterOption — значение, которое отправит select панели «Отбор»:
+// value выбранного option, иначе первого.
+func selectedFilterOption(t *testing.T, page, name string) string {
+	t.Helper()
+	doc, err := html.Parse(strings.NewReader(page))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sel *html.Node
+	var find func(*html.Node)
+	find = func(n *html.Node) {
+		if sel != nil {
+			return
+		}
+		if n.Type == html.ElementNode && n.Data == "select" {
+			if v, _ := managedHTMLAttr(n, "name"); v == name {
+				sel = n
+				return
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			find(c)
+		}
+	}
+	find(doc)
+	if sel == nil {
+		t.Fatalf("нет select %s", name)
+	}
+	first, chosen := "", ""
+	firstSet := false
+	for c := sel.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type != html.ElementNode || c.Data != "option" {
+			continue
+		}
+		v, _ := managedHTMLAttr(c, "value")
+		if !firstSet {
+			first, firstSet = v, true
+		}
+		if _, ok := managedHTMLAttr(c, "selected"); ok {
+			chosen = v
+		}
+	}
+	if chosen != "" {
+		return chosen
+	}
+	return first
 }
 
 func filterPanelFragment(html, name string) string {
