@@ -368,6 +368,17 @@ const tplAppShell = `{{define "page-app-shell"}}
   }
   window.obCloseTabByURL=closeTabByURL;
 
+  // frameShows — фрейм вкладки сейчас показывает адрес u. obFrameURLChanged
+  // документ шлёт после replaceState, но до доставки сообщения фрейм может
+  // перейти на другую форму: WindowProxy тот же, Document новый. Запоздавшее
+  // сообщение старого документа не должно ни переписать адрес вкладки, ни
+  // отдать ей отложенное закрытие — иначе закрылась бы уже другая форма.
+  // Адрес недоступен (чужой origin) — сверить нечем, сообщение принимается.
+  function frameShows(t,u){
+    var href='';
+    try{ href=String(t.frame.contentWindow.location.href||''); }catch(e){ return true; }
+    return !href || sameURL(href,u);
+  }
   function tabByWindow(win){ for(var i=0;i<tabs.length;i++){ if(tabs[i].frame.contentWindow===win)return tabs[i]; } return null; }
   window.addEventListener('message',function(ev){
     // Принимаем сообщения только от своего origin: иначе любой сторонний фрейм
@@ -378,7 +389,7 @@ const tplAppShell = `{{define "page-app-shell"}}
     var d=ev.data; if(!d||typeof d!=='object')return;
     if(d.source==='obOpenTab' && d.url){ var ou=String(d.url); if(!openable(ou))return; openTab(ou, d.title?String(d.title):'Форма', {allowDup:!!d.allowDup}); }
     else if(d.source==='obCloseTab'){ if(d.url){ closeTabByURL(String(d.url),d.reason||'programmatic'); } else { var ct=tabByWindow(ev.source); if(ct)closeTab(ct,d.reason||'cross',d.mode||''); } }
-    else if(d.source==='obFrameURLChanged' && d.url){ var ut=tabByWindow(ev.source); if(ut){ syncFrameURL(ut,String(d.url)); var pc=takePendingClose(ut); if(pc)closeTab(ut,pc.reason); } }
+    else if(d.source==='obFrameURLChanged' && d.url){ var ut=tabByWindow(ev.source); if(ut && frameShows(ut,String(d.url))){ syncFrameURL(ut,String(d.url)); var pc=takePendingClose(ut); if(pc)closeTab(ut,pc.reason); } }
     else if(d.source==='obSetTitle' && active && d.title){ active.title=String(d.title); active.label.textContent=active.title; active.btn.title=active.title; persist(); }
     else if(d.source==='obDirty'){ var dt=tabByWindow(ev.source); if(dt){ dt.dirty=!!d.dirty; dt.btn.classList.toggle('dirty',dt.dirty); } } // фаза 3
   });

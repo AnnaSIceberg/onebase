@@ -269,6 +269,14 @@ function shell(storage, search = '', confirmClose = () => true, requestFrameClos
       frame.contentWindow.location = {href};
       frame.dispatch('load');
     },
+    // Сообщение фрейма без смены его адреса: так доходит запоздавший
+    // obFrameURLChanged документа, который фрейм уже покинул.
+    postFromFrame(index, data) {
+      const frame = frames()[index];
+      for (const listener of windowListeners.get('message') || []) {
+        listener({origin: context.location.origin, source: frame.contentWindow, data});
+      }
+    },
     replaceWithoutLoad(index, href) {
       const frame = frames()[index];
       frame.contentWindow.location = {href};
@@ -840,4 +848,24 @@ test('a waiting close command is used once', () => {
   assert.equal(app.count(), 1);
   app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/звонок/42');
   assert.equal(app.count(), 1);
+});
+
+// Ревью #2151: форма /new записалась, получила ui.закрытьФорму по /42 и
+// отправила obFrameURLChanged, но фрейм успел перейти на другую форму.
+// WindowProxy тот же — сообщение старого документа не должно ни переписать
+// адрес вкладки, ни закрыть новую форму.
+test('a stale url message of a left document neither renames nor closes the tab', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/document/call/new', 'Звонок');
+  assert.equal(app.closeByURL('/ui/document/call/42'), 0);
+  app.navigate(0, 'http://127.0.0.1:8080/ui/document/other/7');
+  app.postFromFrame(0, {source: 'obFrameURLChanged', url: '/ui/document/call/42'});
+  assert.equal(app.count(), 1);
+  assert.equal(savedTabs(storage)[0].url, '/ui/document/other/7');
+  // Тот же документ, оставшийся во фрейме, своё закрытие получает как раньше.
+  app.navigate(0, 'http://127.0.0.1:8080/ui/document/call/new');
+  assert.equal(app.closeByURL('/ui/document/call/43'), 0);
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/call/43');
+  assert.equal(app.count(), 0);
 });
