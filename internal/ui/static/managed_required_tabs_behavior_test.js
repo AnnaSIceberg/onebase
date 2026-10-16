@@ -101,8 +101,8 @@ class Element {
     return null;
   }
 
-  // Как в браузере: выборка идёт по всем потомкам, а не по прямым детям.
-  // Именно поэтому переключение внешней группы гасит и вложенные страницы.
+  // Как в браузере: выборка идёт по всем потомкам, а не по прямым детям —
+  // переключение обязано отсекать вложенные наборы само (obManagedOwnTabParts).
   querySelectorAll(selector) {
     const parsed = parseSelector(selector);
     const found = [];
@@ -251,6 +251,26 @@ test('обработчик слушает фазу перехвата — invali
   assert.equal(app.invalidListeners.length, 1);
   // Без capture=true документ не увидит событие вовсе: invalid не всплывает.
   assert.equal(app.invalidListeners[0].capture, true);
+});
+
+test('внешняя закладка не гасит вложенный набор: его первая страница видна', () => {
+  const app = boot();
+  app.click('Страницы', 1);
+  // Раньше переключение внешнего набора снимало active и прятало страницы
+  // вложенного: открытая «Дополнительно» показывала одни заголовки.
+  assert.deepEqual(app.activeTabIndexes(), ['1', '0']);
+  assert.equal(app.visible(app.control('Заметка')), true, 'первая страница вложенного набора скрыта');
+});
+
+test('выбор во вложенном наборе переживает уход с внешней закладки и возврат', () => {
+  const app = boot();
+  app.click('Страницы', 1);
+  app.click('ВложенныеСтраницы', 1);
+  app.click('Страницы', 0);
+  app.click('Страницы', 1);
+  assert.deepEqual(app.activeTabIndexes(), ['1', '1']);
+  assert.equal(app.visible(app.control('ПолеВложенное')), true, 'выбранная вложенная страница скрыта');
+  assert.equal(app.visible(app.control('Заметка')), false, 'вложенный набор показывает две страницы сразу');
 });
 
 test('ПриСменеСтраницы: щелчок по другой закладке шлёт событие набору с именем страницы', () => {
