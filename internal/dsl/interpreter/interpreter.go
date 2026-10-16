@@ -38,6 +38,19 @@ type userError struct {
 	Err  error // исходная ошибка (например i18nerr) для локализации по цепочке
 }
 
+// asDSLError сохраняет место возбуждения даже после вложенного вызова или
+// повторного возбуждения. Для ошибок внешних методов без позиции остаётся
+// прежний fallback на текущий оператор исполнения.
+func (u userError) asDSLError(file string, line int) *DSLError {
+	if u.File != "" {
+		file = u.File
+	}
+	if u.Line > 0 {
+		line = u.Line
+	}
+	return &DSLError{File: file, Line: line, Msg: u.Msg, Err: u.Err}
+}
+
 // RaiseUserError panics with a DSL user error. Предназначено для
 // внешних пакетов (например ui), которым нужно прервать выполнение DSL
 // из метода объекта (CallMethod) с осмысленным сообщением — оно
@@ -140,7 +153,7 @@ func (i *Interpreter) Call(proc *ast.ProcedureDecl, this This, args []any, extra
 			case dslStop:
 				err = s.err
 			case userError:
-				err = &DSLError{File: e.ec.curFile, Line: e.ec.curLine, Msg: s.Msg, Err: s.Err}
+				err = s.asDSLError(e.ec.curFile, e.ec.curLine)
 			default:
 				panic(r)
 			}
@@ -177,7 +190,7 @@ func (i *Interpreter) RunWithResult(proc *ast.ProcedureDecl, this This, result *
 			case dslStop:
 				err = s.err
 			case userError:
-				err = &DSLError{File: e.ec.curFile, Line: e.ec.curLine, Msg: s.Msg, Err: s.Err}
+				err = s.asDSLError(e.ec.curFile, e.ec.curLine)
 			case dslReturn:
 				if result != nil {
 					*result = s.val
@@ -217,7 +230,7 @@ func (i *Interpreter) Run(proc *ast.ProcedureDecl, this This, extraVars ...map[s
 			case dslStop:
 				err = s.err
 			case userError:
-				err = &DSLError{File: e.ec.curFile, Line: e.ec.curLine, Msg: s.Msg, Err: s.Err}
+				err = s.asDSLError(e.ec.curFile, e.ec.curLine)
 			case dslReturn:
 				// early return from procedure — not an error
 			default:
@@ -474,7 +487,11 @@ func (i *Interpreter) execStmt(s ast.Stmt, e *env) {
 					}
 				}
 			} else {
-				RaiseUserError("Цикл «Для Каждого»: значение не является коллекцией")
+				panic(userError{
+					Msg:  "Цикл «Для Каждого»: значение не является коллекцией",
+					File: v.Var.File,
+					Line: v.Var.Line,
+				})
 			}
 		}
 	case *ast.AssignStmt:
