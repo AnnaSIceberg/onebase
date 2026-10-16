@@ -358,6 +358,8 @@ func (s *Server) Mount(r chi.Router) {
 	r.Get("/ui/", s.index)
 	r.Get("/ui/app", s.appShell)           // оболочка вкладок (issue #129/#130, фаза 1)
 	r.Post("/ui/form-mode", s.setFormMode) // переключение режима открытия форм
+	// Поля панели «Отбор», добавленные пользователем (list_filters сущности).
+	r.Post("/ui/_list-filters", s.listFilterFieldsSave)
 	// Порядок колонок таблицы управляемой формы за пользователем (как в 1С).
 	r.Post("/ui/_grid-order", s.gridOrderSave)
 
