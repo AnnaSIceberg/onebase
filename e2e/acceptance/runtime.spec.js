@@ -127,7 +127,7 @@ test('runtime open picker keeps current A options through A→B→A delivery wit
   });
   await open(page);
   const initial = page.waitForResponse((response) => response.url().includes('element=fault-picker'));
-  await page.locator('[data-ob-ref-picker="ref-Неисправность"]').click();
+  await target(page).locator('..').locator('[data-ob-ref-picker="closest"]').click();
   await (await initial).finished();
   await expect(page.locator('#_rp-status')).not.toHaveText('Загрузка...');
   const held = await holdResponses(page);
@@ -227,7 +227,7 @@ test('runtime hierarchy, eq, folder scope and RLS remain ANDed in select and pic
   const exact = await options(page, query(ids.a, undefined, { element: 'exact-picker', limit: '100' }));
   expect(exact.total).toBe(26); // root items only; child A.1 is excluded by eq
   // Click the actual picker button beside the target select.
-  await page.locator('[data-ob-ref-picker="ref-Неисправность"]').click();
+  await target(page).locator('..').locator('[data-ob-ref-picker="closest"]').click();
   await expect(page.locator('#_rp-list ._rp-item')).toHaveCount(50);
   await page.locator('#_rp-search').fill('needle');
   await expect(page.locator('#_rp-list ._rp-item')).toHaveCount(2);
