@@ -184,11 +184,11 @@ func (s *Server) listFilterQueryPredicate(ctx context.Context, entity *metadata.
 	closed := storage.Predicate{Field: "id", Op: "in", Value: []any{}}
 	ids, err := s.listFilterQueryIDs(ctx, cond.Query, user)
 	if err != nil {
-		slog.Warn("list form filter query failed", "entity", entity.Name, "error", err)
+		slog.Warn("list form filter query failed", "error", err)
 		return closed, true
 	}
 	if len(ids) > listFormFilterMaxRows {
-		slog.Warn("list form filter query returned too many rows", "entity", entity.Name, "rows", len(ids))
+		slog.Warn("list form filter query returned too many rows", "rows", len(ids))
 		return closed, true
 	}
 	values := make([]any, 0, len(ids))
