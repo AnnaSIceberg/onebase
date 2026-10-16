@@ -3339,6 +3339,8 @@ function obGridColumnIds(columns) {
       if (c && c.hidden) continue;
       var col = {id: c.id, name: c.name, field: c.id, width: 120, resizable: true, sortable: true,
                  metaIndex: (c && typeof c.index === "number") ? c.index : -1};
+      // Ширина из `width` элемента Колонка (или виртуальной колонки).
+      if (c.width) col.width = c.width;
       if (c.virtual) {
         // Виртуальная колонка (#845): значение приехало с сервера по ссылке из
         // строки и в базе не хранится. Без редактора и в сером — иначе правка
@@ -3346,7 +3348,6 @@ function obGridColumnIds(columns) {
         col.virtual = true;
         col.focusable = false;
         col.cssClass = "ob-virtual";
-        if (c.width) col.width = c.width;
         col.formatter = function(row, cell, value) {
           if (value == null || value === "") return "";
           return "<span style='color:#64748b'>" + obManagedEscapeHTML(value) + "</span>";
