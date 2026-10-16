@@ -345,9 +345,12 @@ func (s *Server) loadInitialRefOptions(ctx context.Context, entity *metadata.Ent
 	return opts, nil
 }
 
-func (s *Server) loadInitialRefFilterOptions(ctx context.Context, entity *metadata.Entity, params storage.ListParams) (map[string][]map[string]any, error) {
+// loadInitialRefFilterOptions — варианты ссылочных полей панели «Отбор». fields —
+// поля, которые панель покажет (listFilterPanelFields); остальным варианты не
+// нужны.
+func (s *Server) loadInitialRefFilterOptions(ctx context.Context, entity *metadata.Entity, params storage.ListParams, fields []metadata.Field) (map[string][]map[string]any, error) {
 	opts := make(map[string][]map[string]any)
-	for _, f := range entity.Fields {
+	for _, f := range fields {
 		if f.RefEntity == "" {
 			continue
 		}
