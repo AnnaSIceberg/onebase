@@ -2050,6 +2050,15 @@ const tplList = `
           <button type="button" data-ob-ref-picker="flt-{{$f.Name}}" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;flex-shrink:0" title="{{t $.Lang "Выбрать из списка"}}">...</button>
         </div>
       </div>
+    {{else if eq (str .Type) "bool"}}{{$bv := (filterVal $params .Name).Value}}
+      <div>
+        <label>{{.DisplayName $.Lang}}</label>
+        <select name="f.{{.Name}}">
+          <option value="">{{t $.Lang "— все —"}}</option>
+          <option value="true" {{if eq $bv "true"}}selected{{end}}>{{t $.Lang "Да"}}</option>
+          <option value="false" {{if eq $bv "false"}}selected{{end}}>{{t $.Lang "Нет"}}</option>
+        </select>
+      </div>
     {{else}}
       <div>
         <label>{{.DisplayName $.Lang}}</label>
