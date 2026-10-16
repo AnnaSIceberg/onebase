@@ -45,6 +45,10 @@ type Result struct {
 	// Имя — исходное имя сущности/регистра; Kind — секция прав ("catalog"|
 	// "document"|"register"|"inforeg"; "" — для неизвестных типов).
 	Sources []SourceRef
+	// SourceOccurrences сохраняет каждое вхождение FROM/JOIN до дедупликации
+	// Sources, включая self-JOIN и авто-JOIN. Полевые маски используют кратность
+	// для проверки неоднозначных физических имён в выдаче «*».
+	SourceOccurrences []SourceOccurrence
 	// ProjectionFields перечисляет логические поля, прочитанные выражениями
 	// SELECT до применения SQL-алиасов. Поле используется security-gate отчётов,
 	// AI и виджетов: сравнение с результирующими именами колонок позволяло
@@ -92,6 +96,19 @@ type Result struct {
 	// запросе; при Projection.Simple == false действует прежний отказ по
 	// ProjectionFields.
 	Projection ProjectionPlan
+}
+
+// SourceOccurrence — отдельный SQL-источник с его фактическим квалификатором.
+// Для Л.* учитывается только Л; голая * включает все вхождения.
+type SourceOccurrence struct {
+	SourceRef
+	Qualifier string
+	// Virtual distinguishes a generated SQL source from a physical table.
+	// OutputColumns preserves its actual projection, including derived names
+	// and duplicates. nil means the output schema could not be proved; callers
+	// must not substitute the register's predicate metadata in that case.
+	Virtual       bool
+	OutputColumns []string
 }
 
 // SourceRef — объект-источник запроса (для проверки прав доступа).
@@ -839,6 +856,7 @@ type translator struct {
 	mainEmitted  bool                          // главная таблица FROM уже эмитирована (refDims авто-JOIN — только для неё)
 	section      querySection                  // current clause context
 	aliases      map[string]struct{}           // имена алиасов вывода (КАК ...) — их не квалифицируем и не CAST'им
+	sourceRefs   []SourceOccurrence            // каждое эмитированное вхождение источника
 	sources      []SourceRef                   // объекты-источники запроса (для RBAC, план 54)
 	rowFilters   []pendingRowFilter            // RLS-фильтры обычных источников, внедряемые в WHERE
 	rowsScoped   bool                          // true после внедрения rowFilters в outer WHERE
@@ -1173,6 +1191,7 @@ type pendingRowFilter struct {
 // addSource фиксирует объект-источник запроса для последующей проверки прав.
 func (tr *translator) addSource(typeUpper, name string) {
 	kind := sourcePermKind(typeUpper)
+	tr.sourceRefs = append(tr.sourceRefs, SourceOccurrence{SourceRef: SourceRef{Kind: kind, Name: name}, Qualifier: sourceToTable(typeUpper, name)})
 	for _, s := range tr.sources {
 		if s.Kind == kind && s.Name == name {
 			return // уже зафиксирован (напр. та же сущность и в FROM, и через ссылку)
@@ -1196,6 +1215,7 @@ func (tr *translator) addRefSource(rd refDimInfo) {
 		return
 	}
 	tr.addSource(rd.refSrcType, rd.refEntity)
+	tr.sourceRefs[len(tr.sourceRefs)-1].Qualifier = rd.joinAlias
 }
 
 func (tr *translator) sourceRowFilter(kind, name string) *storage.Predicate {
@@ -3084,6 +3104,9 @@ func (tr *translator) emitVTSubquery(subq, defaultAlias string) error {
 			}
 		}
 	}
+	tr.sourceRefs[len(tr.sourceRefs)-1].Qualifier = alias
+	tr.sourceRefs[len(tr.sourceRefs)-1].Virtual = true
+	tr.sourceRefs[len(tr.sourceRefs)-1].OutputColumns = generatedSourceColumns(subq)
 	tr.emit("(" + subq + ") AS " + alias)
 	// Авто-JOIN refDims — только для главной таблицы (первого источника FROM),
 	// иначе при присоединении через явный JOIN авто-JOIN вклинивается перед ON
@@ -4240,13 +4263,10 @@ func (ctx sourceContext) scopeProjectsSystemColumn(tokens []tok, scopeID int, na
 	if scopeID < 0 || scopeID >= len(ctx.scopes) || seen[scopeID] {
 		return false
 	}
-	// Алиасы объектов после КАК сохраняются буквально, даже если в той же
+	// Явный выходной алиас сохраняет своё имя, даже если в той же
 	// проекции есть не переименованная системная колонка или звёздочка.
-	// Системные алиасы регистра имеют прежнюю, отдельную семантику.
-	if _, _, objectAlias := entitySystemColAlias(name); objectAlias {
-		if _, explicit := ctx.scopes[scopeID].outputAliases[lowerFast(name)]; explicit {
-			return false
-		}
+	if _, explicit := ctx.scopes[scopeID].outputAliases[lowerFast(name)]; explicit {
+		return false
 	}
 	seen[scopeID] = true
 	defer delete(seen, scopeID)
@@ -4631,6 +4651,17 @@ func (tr *translator) systemColumnAlias(name string, prevDot bool) (string, bool
 	if !hasScope {
 		return "", false
 	}
+	if !prevDot {
+		if tr.inUnionOrder() {
+			scope = tr.sourceCtx.scopes[scope.unionFirst]
+		}
+		section := tr.sourceCtx.sectionAt(tr.pos - 1)
+		if section == sectionOrderBy || section == sectionGroupBy {
+			if _, outputAlias := scope.outputAliases[lowerFast(name)]; outputAlias {
+				return "", false
+			}
+		}
+	}
 	if prevDot && tr.pos >= 3 {
 		qualifier := lowerFast(tr.tokens[tr.pos-3].val)
 		if class, known := scope.qualifiers[qualifier]; known {
@@ -4951,6 +4982,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					}
 				}
 			}
+			tr.sourceRefs[len(tr.sourceRefs)-1].Qualifier = sourceAlias
 			if !isMain || tr.parenDepth > 0 {
 				filtered, ok, err := tr.rowFilteredSourceSQL(upper, entity.val, tableName, sourceAlias)
 				if err != nil {
@@ -5170,9 +5202,12 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			// Системные колонки регистра — PascalCase русские алиасы
 			// (см. systemColAlias). Работает и с префиксом (Х.Период), и без,
 			// но только если соответствующий источник действительно регистр.
-			if col, ok := tr.systemColumnAlias(t.val, prevDot); ok {
-				tr.emit(col)
-				continue
+			// Объявление алиаса и квалификатор источника — не имена колонок.
+			if !prevAlias && !nextIsDot {
+				if col, ok := tr.systemColumnAlias(t.val, prevDot); ok {
+					tr.emit(col)
+					continue
+				}
 			}
 			// Системные колонки самого объекта (Проведен, ПометкаУдаления):
 			// разрешаются по метаданным источника, см. entitySystemColumn.
@@ -5364,16 +5399,17 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	}
 	typedColumns, dslColumnAliases := typedProjectionColumns(projectionPlan, tokens, opts, tr.sourceCtx, tr.refCols)
 	return Result{
-		SQL:              tr.build(),
-		Args:             tr.args,
-		Sources:          tr.sources,
-		ProjectionFields: expandReferenceProjection(projectionFields, tr.refDims),
-		Projection:       expandProjectionRefDims(projectionPlan, tr.refDims),
-		BoolColumns:      boolOutputColumns(projectionPlan, tr.colTypes),
-		DateColumns:      typedOutputColumns(projectionPlan, tr.colTypes, metadata.FieldTypeDate),
-		RefColumns:       refOutputColumns(projectionPlan, tr.refCols),
-		TypedColumns:     typedColumns,
-		DSLColumnAliases: dslColumnAliases,
+		SQL:               tr.build(),
+		Args:              tr.args,
+		Sources:           tr.sources,
+		SourceOccurrences: tr.sourceRefs,
+		ProjectionFields:  expandReferenceProjection(projectionFields, tr.refDims),
+		Projection:        expandProjectionRefDims(projectionPlan, tr.refDims),
+		BoolColumns:       boolOutputColumns(projectionPlan, tr.colTypes),
+		DateColumns:       typedOutputColumns(projectionPlan, tr.colTypes, metadata.FieldTypeDate),
+		RefColumns:        refOutputColumns(projectionPlan, tr.refCols),
+		TypedColumns:      typedColumns,
+		DSLColumnAliases:  dslColumnAliases,
 	}, nil
 }
 

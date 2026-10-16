@@ -215,6 +215,8 @@ func allSchemas() map[string]map[string]any {
 			"name":     stringSchema("Имя параметра"),
 			"type":     stringSchema("Тип параметра"),
 			"label":    stringSchema("Подпись"),
+			"labels":   stringMapSchema(),
+			"default":  map[string]any{"description": "Значение параметра по умолчанию"},
 			"options":  arrayOf(stringSchema("Значение")),
 			"required": boolSchema("Обязательный параметр"),
 		},

@@ -212,6 +212,10 @@ type saveInfoReg struct {
 	Periodic   bool              `yaml:"periodic,omitempty"`
 	Dimensions []saveField       `yaml:"dimensions,omitempty"`
 	Resources  []saveField       `yaml:"resources,omitempty"`
+	// Recorder форма полей не редактирует: сохраняем подчинённость регистратору.
+	Recorder bool `yaml:"recorder,omitempty"`
+	// Indexes форма не редактирует: переносится из файла как есть.
+	Indexes yaml.Node `yaml:"indexes,omitempty"`
 }
 
 type saveAccountReg struct {
