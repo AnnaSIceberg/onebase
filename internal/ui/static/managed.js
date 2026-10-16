@@ -4246,14 +4246,26 @@ function obManagedTabKey(tabs) {
   return 'obtab:' + location.pathname + ':' + (tabs.getAttribute('data-tabs') || '');
 }
 
+// obManagedOwnTabParts — кнопки или страницы именно этого набора. Выборка
+// внутри набора захватывает и вложенные наборы СтраницыФормы; трогать их
+// нельзя: переключение внешней закладки снимало выбор и прятало страницы
+// вложенного набора — открытая внешняя страница показывала одни заголовки.
+function obManagedOwnTabParts(tabs, selector) {
+  var own = [];
+  tabs.querySelectorAll(selector).forEach(function (el) {
+    if (el.closest && el.closest('.managed-tabs') === tabs) own.push(el);
+  });
+  return own;
+}
+
 function obManagedSwitchTab(btn) {
   var tabs = btn && btn.closest ? btn.closest('.managed-tabs') : null;
   if (!tabs) return;
   var idx = btn.getAttribute('data-tab-idx') || '0';
-  tabs.querySelectorAll('.managed-tab-btn').forEach(function (b) { b.classList.remove('active'); });
+  obManagedOwnTabParts(tabs, '.managed-tab-btn').forEach(function (b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  tabs.querySelectorAll('.managed-tab-content').forEach(function (c) { c.style.display = 'none'; });
-  var content = tabs.querySelector('.managed-tab-content[data-tab-content="' + idx + '"]');
+  obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(function (c) { c.style.display = 'none'; });
+  var content = obManagedOwnTabParts(tabs, '.managed-tab-content[data-tab-content="' + idx + '"]')[0];
   if (content) content.style.display = 'block';
   try { sessionStorage.setItem(obManagedTabKey(tabs), idx); } catch (_) {}
   if (window._obResizeGrids) setTimeout(window._obResizeGrids, 0);
@@ -4280,15 +4292,14 @@ obManagedReady(function () {
       var parent = content.parentElement;
       content = parent && parent.closest ? parent.closest('.managed-tab-content') : null;
     }
-    // For nested tab groups, select every ancestor page from outer to inner.
-    // Switching an outer group currently hides descendant pages too, so the
-    // inner selection must be restored even when it was active beforehand.
+    // For nested tab groups, select every ancestor page from outer to inner:
+    // each group switches only its own pages, the inner one is set after.
     for (var i = pages.length - 1; i >= 0; i--) {
       var page = pages[i];
       var tabs = page.closest('.managed-tabs');
       if (!tabs) continue;
       var idx = page.getAttribute('data-tab-content');
-      var btn = tabs.querySelector('.managed-tab-btn[data-tab-idx="' + idx + '"]');
+      var btn = obManagedOwnTabParts(tabs, '.managed-tab-btn[data-tab-idx="' + idx + '"]')[0];
       if (btn) obManagedSwitchTab(btn);
     }
   }, true);
@@ -4314,7 +4325,7 @@ obManagedReady(function () {
     var idx;
     try { idx = sessionStorage.getItem(obManagedTabKey(tabs)); } catch (_) { idx = null; }
     if (idx == null || idx === '0') continue;
-    var btn = tabs.querySelector('.managed-tab-btn[data-tab-idx="' + idx + '"]');
+    var btn = obManagedOwnTabParts(tabs, '.managed-tab-btn[data-tab-idx="' + idx + '"]')[0];
     if (btn) obManagedSwitchTab(btn);
   }
 });
