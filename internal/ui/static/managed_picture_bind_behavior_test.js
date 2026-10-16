@@ -44,7 +44,8 @@ function setup(initial) {
       if (sel === '[data-ob-picture-empty="ПолеФото"]') return empty;
       return null;
     },
-    querySelectorAll(sel) { return sel === 'input[data-ob-picture-for]' ? [input] : []; },
+    // applyValues обновляет все копии реквизита (querySelectorAll по name).
+    querySelectorAll(sel) { return (sel === 'input[data-ob-picture-for]' || sel === '[name="ФотоПревью"]') ? [input] : []; },
   };
   const ctx = {
     window: {},
