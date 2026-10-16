@@ -215,4 +215,12 @@ func TestCheckFormLayout_ColumnWidthApplies(t *testing.T) {
 	if len(warns) != 1 || warns[0].Code != "form.layout-size" {
 		t.Errorf("отрицательная ширина колонки: %+v", warns)
 	}
+	// halign у колонки не действует — об этом одно предупреждение; «ширина не
+	// действует» было бы неправдой: width колонки рантайм применяет.
+	warns = CheckFormLayout(projWithElement(&metadata.FormElement{
+		Kind: metadata.FormElementColumn, Name: "Колонка", Width: 90, HorizontalAlign: "stretch",
+	}))
+	if len(warns) != 1 || warns[0].Code != "form.layout-unsupported-kind" {
+		t.Errorf("width + halign: stretch у колонки: %+v", warns)
+	}
 }

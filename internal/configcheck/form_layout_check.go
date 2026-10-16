@@ -120,8 +120,11 @@ func layoutDiagnostics(el *metadata.FormElement) []layoutDiagnostic {
 
 	// stretch и явная ширина противоречат друг другу: рантайм оставляет
 	// растяжение, а число молча пропадает. Сказать об этом дешевле, чем дать
-	// человеку гадать, почему «ширина 200» не сработала.
-	if h, ok := metadata.NormalizeFormHAlign(el.HorizontalAlign); ok && h == "stretch" && el.Width > 0 {
+	// человеку гадать, почему «ширина 200» не сработала. У колонки наоборот:
+	// width действует, а halign — нет, и об этом уже сказал
+	// form.layout-unsupported-kind выше.
+	if h, ok := metadata.NormalizeFormHAlign(el.HorizontalAlign); ok && h == "stretch" && el.Width > 0 &&
+		el.Kind != metadata.FormElementColumn {
 		out = append(out, layoutDiagnostic{
 			code: "form.layout-size",
 			msg:  fmt.Sprintf("width: %d задан вместе с halign: stretch — элемент растягивается на контейнер, ширина не действует", el.Width),
