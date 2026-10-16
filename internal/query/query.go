@@ -3739,7 +3739,9 @@ func (tr *translator) entityDateFieldAt(idx int) bool {
 func (tr *translator) registerFieldAt(idx int) bool {
 	if idx >= 2 && tr.tokens[idx-1].kind == tDot && tr.tokens[idx-2].kind == tIdent {
 		qualifier := lowerFast(tr.tokens[idx-2].val)
-		scope, ok := tr.sourceCtx.qualifierScopeAt(idx, qualifier)
+		// Локальная ветка: поиска квалификатора во внешних SELECT здесь ещё нет
+		// (qualifierScopeAt появился в main позже) — смотрим текущую область.
+		scope, ok := tr.sourceCtx.scopeAt(idx)
 		if !ok {
 			return false
 		}
