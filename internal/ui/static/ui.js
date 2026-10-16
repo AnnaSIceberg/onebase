@@ -659,16 +659,34 @@ window.obRefreshWidgetCard = function (card) {
    записи. Клик и Enter. Клик не срабатывает при выделении текста и на
    ссылках/кнопках внутри ячеек; Enter работает, только когда фокус на самой
    строке. Делегирование на document: partial-refresh подменяет тело карточки,
-   обработчик его переживает. */
+   обработчик его переживает.
+   В режиме вкладок карточка открывается новой вкладкой оболочки: Главная с
+   виджетами — верхний документ /ui/app, и переход в том же окне уводил из
+   оболочки вместе со всеми открытыми вкладками. */
 (function () {
   if (window.__obWidgetRowNavInit) return;
   window.__obWidgetRowNavInit = true;
   function rowOf(target) {
     return target && target.closest ? target.closest('[data-ob-row-url]') : null;
   }
+  // Подпись вкладки до загрузки карточки — первая ячейка строки; карточка
+  // затем сама сообщает оболочке своё представление (obSetTitle).
+  function rowTitle(el) {
+    var cell = el.querySelector ? el.querySelector('td') : null;
+    var text = cell ? String(cell.textContent || '').trim() : '';
+    return text || 'Форма';
+  }
   function go(el) {
     var url = el.getAttribute('data-ob-row-url');
-    if (url) window.location.assign(url);
+    if (!url) return;
+    try {
+      // Виджет в самой оболочке (Главная /ui/app).
+      if (typeof window.obOpenTab === 'function') { window.obOpenTab(url, rowTitle(el)); return; }
+      // Виджет на странице внутри вкладки оболочки.
+      if (typeof window.obOpenInShell === 'function' && window.obOpenInShell(url, rowTitle(el))) return;
+    } catch (e) {}
+    // Без оболочки (режим страниц) — переход в том же окне, как раньше.
+    window.location.assign(url);
   }
   document.addEventListener('click', function (ev) {
     var el = rowOf(ev.target);
