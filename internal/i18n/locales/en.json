@@ -931,6 +931,7 @@
   "Тот же узел (восстановить очередь обмена)": "Same node (restore the exchange queue)",
   "Точки ост.": "Breakpoints",
   "У вас нет прав для просмотра этого раздела.": "You do not have permission to view this section.",
+  "Показать отмеченные": "Show selected",
   "Стандартный порядок колонок": "Default column order",
   "Колонки можно переставлять, перетаскивая заголовок": "Drag a column header to reorder columns",
   "У каждой базы должен быть уникальный порт. Первая база: 8080, вторая: 8081 и т.д.": "Each database must have a unique port. First: 8080, second: 8081, etc.",
