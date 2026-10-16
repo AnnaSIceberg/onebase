@@ -198,6 +198,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // клиента, и реквизиты запись переживают). Значения кладём в sessionStorage
   // ровно на время перезагрузки: пишем перед отправкой, применяем и СРАЗУ
   // удаляем при следующей загрузке — дольше одной навигации они не живут.
+  // BEGIN onebase-form-attr-stash
   var FORM_ATTRS = Array.isArray(cfg.formAttrs) ? cfg.formAttrs : [];
   // An attribute without a placed control still lives for the open form.
   // Carry it through the same FormData/applyValues path as visible attributes;
@@ -219,20 +220,47 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   }
   obManagedReady(ensureFormAttrControls);
   var ATTR_STASH_KEY = 'ob-form-attrs:' + String(cfg.entity || '');
+  // Реквизит бывает нарисован несколькими копиями: копия, скрытая по
+  // hidden_when, остаётся в DOM внутри disabled fieldset и не отправляется.
+  // Первый контрол с этим name — не обязательно тот, который правил оператор:
+  // сохранять надо значение отправляемой копии, иначе после перезагрузки
+  // возвращалось старое значение скрытой копии, а видимое поле пустело (#1759).
+  function formAttrControls(form, name){
+    var key = window.CSS && CSS.escape ? CSS.escape(name) : name;
+    return Array.prototype.slice.call(form.querySelectorAll('[name="' + key + '"]'));
+  }
+  // Значение реквизита, которое уйдёт с формой. Флажки не сохраняются (как и
+  // раньше). Нет отправляемой копии или копии расходятся — не сохраняем ничего:
+  // восстановить наугад хуже, чем не восстановить.
+  function formAttrSubmittedValue(controls){
+    var value = null;
+    for (var i = 0; i < controls.length; i++) {
+      var c = controls[i];
+      if (c.type === 'checkbox' || c.disabled || (c.closest && c.closest('fieldset[disabled]'))) continue;
+      if (c.type === 'radio' && !c.checked) continue;
+      var v = String(c.value == null ? '' : c.value);
+      if (value === null) value = v;
+      else if (value !== v) return '';
+    }
+    return value || '';
+  }
   function stashFormAttrs(){
     if (!FORM_ATTRS.length) return;
     var form = document.getElementById('main-form');
     if (!form) return;
     var data = {};
     for (var i = 0; i < FORM_ATTRS.length; i++) {
-      var el = form.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(FORM_ATTRS[i]) : FORM_ATTRS[i]) + '"]');
-      if (el && el.type !== 'checkbox' && el.value) data[FORM_ATTRS[i]] = el.value;
+      var v = formAttrSubmittedValue(formAttrControls(form, FORM_ATTRS[i]));
+      if (v) data[FORM_ATTRS[i]] = v;
     }
     try {
       if (Object.keys(data).length) sessionStorage.setItem(ATTR_STASH_KEY, JSON.stringify(data));
       else sessionStorage.removeItem(ATTR_STASH_KEY);
     } catch (e) { /* приватный режим — просто не восстановим */ }
   }
+  // Восстановленное значение получают все пустые копии реквизита — какая из
+  // них видима, решает hidden_when уже после загрузки, и копии должны
+  // совпадать. Заполненную сервером копию не трогаем.
   function restoreFormAttrs(){
     if (!FORM_ATTRS.length) return;
     var raw = null;
@@ -243,10 +271,17 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var form = document.getElementById('main-form');
     if (!form || !data) return;
     Object.keys(data).forEach(function(k){
-      var el = form.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (el && !el.value) el.value = data[k];
+      if (FORM_ATTRS.indexOf(k) < 0) return;
+      var controls = formAttrControls(form, k);
+      var radios = controls.filter(function(c){ return c.type === 'radio'; });
+      if (radios.length && !radios.some(function(r){ return r.checked; })) applyRadioValue(radios, data[k]);
+      controls.forEach(function(c){
+        if (c.type === 'radio' || c.type === 'checkbox') return;
+        if (!c.value) c.value = data[k];
+      });
     });
   }
+  // END onebase-form-attr-stash
 
   window._tpRefOpts = obManagedReadJSON('ob-managed-tp-ref-opts', window._tpRefOpts || {}) || {};
   window._tpEnumLabels = obManagedReadJSON('ob-managed-tp-enum-labels', window._tpEnumLabels || {}) || {};
@@ -346,24 +381,89 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     sel.appendChild(o);
   }
   // BEGIN onebase-ro-apply-values
-  // sent — значения, отправленные с этим событием (URLSearchParams). Поле,
-  // которое пользователь изменил, пока шёл запрос, ответ не трогает, если
-  // сервер вернул ровно отправленное: иначе набранные за это время символы
-  // молча стирались (оператор не досчитывался последней цифры телефона).
-  function applyValues(values, refOptions, sent){
+  // Радиокнопки с одним name — одна группа на всю форму: браузер держит
+  // отмеченной одну кнопку, даже если реквизит нарисован двумя
+  // переключателями. Отмечаем кнопку той копии, которая сейчас отправляется,
+  // то есть не внутри disabled fieldset скрытой копии. Ответ события
+  // применяет состояния элементов раньше значений, поэтому копию, которую он
+  // показал, эта проверка уже видит отправляемой (#1759).
+  // Отправится ли контрол с формой: не disabled сам (readonly_when отключает
+  // input) и не лежит в disabled fieldset (копия, скрытая по hidden_when).
+  function controlSubmittable(c){
+    return !c.disabled && !(c.closest && c.closest('fieldset[disabled]'));
+  }
+  // Отмечается кнопка, которая уйдёт с формой. Видимая, но readonly копия
+  // переключателя не отправляется: отметь её — и у реквизита не останется
+  // отправляемой отмеченной кнопки, запись потеряет значение (#1759, круг 5).
+  // Отправляемой кнопки с этим value нет — отмечается первая, только для показа.
+  function applyRadioValue(radios, v){
+    var val = (v === null || v === undefined) ? '' : String(v);
+    var target = null;
+    radios.forEach(function(r){
+      if (!target && r.value === val && controlSubmittable(r)) target = r;
+    });
+    radios.forEach(function(r){
+      if (!target && r.value === val) target = r;
+    });
+    radios.forEach(function(r){ r.checked = (r === target); });
+  }
+  // Track actual input/change events separately from values repainted by a
+  // server response. A hidden copy can already differ from the submitted copy
+  // before a request; that difference is not a concurrent edit.
+  var controlEditRevisions = new WeakMap();
+  function captureFormControlState(form){
+    var state = new Map();
+    Array.prototype.forEach.call(form.querySelectorAll('[name]'), function(inp){
+      state.set(inp, {
+        value: inp.value,
+        revision: controlEditRevisions.get(inp) || 0,
+        editable: controlSubmittable(inp) && !inp.readOnly && inp.type !== 'hidden'
+      });
+    });
+    return state;
+  }
+  // Preserve a real edit made after this event's snapshot when the server
+  // echoes the submitted value. Apply it to every copy, including the copy
+  // which applyElementStates has just made visible/submittable.
+  function applyValues(values, refOptions, sent, controlState){
     if (!values) return;
     const form = document.getElementById('main-form');
     if (!form) return;
     Object.keys(values).forEach(function(k){
       const v = values[k];
+      const key = window.CSS && CSS.escape ? CSS.escape(k) : k;
       // Пропускаем файловые поля: не подставляем содержимое в поле пути
-      const fc = form.querySelector('[data-ob-file-content-for="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
+      const fc = form.querySelector('[data-ob-file-content-for="' + key + '"]');
       if (fc) return;
-      const inp = form.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (!inp) return;
-      if (inp.type === 'checkbox') {
-        inp.checked = v === true || v === 'true' || v === 1;
-      } else {
+      // Реквизит бывает на форме не один раз: копия, скрытая по hidden_when,
+      // остаётся в DOM (disabled fieldset) рядом с видимой, а после смены
+      // видимости отправляется уже она. Поэтому, как и у табличных частей
+      // (applyTableParts), значение получают ВСЕ представления реквизита:
+      // иначе ответ доходил только до первого контрола, и видимая копия
+      // отправляла старое значение обратно (#1759).
+      const controls = Array.prototype.slice.call(form.querySelectorAll('[name="' + key + '"]'));
+      var newerInput = null;
+      if (sent && controlState) {
+        controls.forEach(function(inp){
+          var before = controlState.get(inp);
+          var revision = controlEditRevisions.get(inp) || 0;
+          if (before && before.editable && inp.type !== 'radio' && inp.type !== 'checkbox' &&
+              revision > before.revision && inp.value !== before.value &&
+              (!newerInput || revision > newerInput.revision)) {
+            newerInput = {value: inp.value, revision: revision};
+          }
+        });
+      }
+      const radios = controls.filter(function(c){ return c.type === 'radio'; });
+      if (radios.length) applyRadioValue(radios, v);
+      controls.forEach(function(inp){
+        // value радиокнопки — её вариант, а не значение реквизита: запись в
+        // него ломала бы переключатель. Отметку выставил applyRadioValue.
+        if (inp.type === 'radio') return;
+        if (inp.type === 'checkbox') {
+          inp.checked = v === true || v === 'true' || v === 1;
+          return;
+        }
         var ref = managedRefParts(v);
         var val;
         if (ref) {
@@ -379,19 +479,20 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         // поле — дата на форме пропадала после первого же события, а следующая
         // запись затирала её в базе.
         if (inp.type === 'date' && val.indexOf('T') > 0) val = val.slice(0, val.indexOf('T'));
-        if (sent && typeof sent.has === 'function' && sent.has(k) && sent.get(k) === val && inp.value !== val) return;
+        if (newerInput && sent.has(k) && sent.get(k) === val) {
+          val = newerInput.value;
+          if (inp.value === val) return; // Keep the active editor/caret intact.
+        }
         if (inp.tagName === 'SELECT') ensureRefOption(inp, val, refOptions && refOptions[k], ref && ref.label);
+        // Зеркало значения (план 181C/#1672) — скрытый input с тем же name:
+        // у запертого select-поля отправляется оно, и этот же проход держит
+        // его синхронным с select при каждом применении значения.
         if (inp.classList && inp.classList.contains('code-field') && inp._obSetCodeValue) {
           inp._obSetCodeValue(val);
         } else {
           inp.value = val;
         }
-        // Зеркало значения (план 181C/#1672): у запертого select-поля value
-        // меняет обработчик через сам select, а отправляется зеркало — держим
-        // их синхронными при каждом применении значения.
-        var mir = document.getElementById('ro-mirror-' + k);
-        if (mir) mir.value = val;
-      }
+      });
     });
     // A form handler may change a choice_filter source without dispatching a
     // native change event. Re-scan fingerprints after the whole response has
@@ -503,6 +604,10 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         el._obDisplay = d === 'none' ? '' : d;
       }
       el.style.display = hidden[path] ? 'none' : el._obDisplay;
+      // A hidden control must not be submitted or participate in native
+      // required validation. The server renders the same disabled fieldset
+      // for the initial state; update it when hidden_when changes.
+      if (el.getAttribute('data-ob-control-fieldset') === '1') el.disabled = !!hidden[path];
     });
     var ro = st.readonly || {};
     // Свой ли это редактирующий контрол: ближайший якорь элемента формы — сам
@@ -943,6 +1048,50 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // obFire(elementName, eventName[, extraParams]) — extraParams (объект)
   // добавляются к телу запроса. Используется подбором (план 46): фаза 2
   // шлёт {_pick_result}, команды ТЧ — {_tp, _tp_selected}.
+  // Match file contents to the actual submitted path control, including its
+  // position among duplicate names. Do not assign contents to a text input:
+  // the browser would strip newlines from a multi-line file.
+  function fileEventFormData(form, fileHelpers) {
+    if (!fileHelpers.length) return new FormData(form);
+    const contents = new Map();
+    const slots = new Map();
+    fileHelpers.forEach(function(helper){
+      const path = document.getElementById(helper.getAttribute('data-ob-file-path'));
+      if (controlSubmittable(helper) && path && path.form === form && controlSubmittable(path) &&
+          (helper.value || helper.dataset.obFileContentReady === '1')) {
+        contents.set(path, helper.value);
+        slots.set(path.name, []);
+      }
+    });
+    // Native FormData omits buttons, unchecked controls and disabled options.
+    // Keep a slot for every successful value of names containing a file path,
+    // so a non-file copy of the same attribute retains its own value too.
+    Array.prototype.forEach.call(form.elements || [], function(control){
+      if (!slots.has(control.name) || !controlSubmittable(control) ||
+          /^(button|submit|reset|image)$/.test(control.type) ||
+          (/^(checkbox|radio)$/.test(control.type) && !control.checked)) return;
+      const values = control.options ? Array.prototype.filter.call(control.options, function(option){
+        return option.selected && !option.disabled && !(option.parentElement.tagName === 'OPTGROUP' && option.parentElement.disabled);
+      }) : (control.type === 'file' ? (control.files && control.files.length ? Array.from(control.files) : [null]) : [null]);
+      values.forEach(function(){ slots.get(control.name).push(control); });
+    });
+    const disabled = fileHelpers.map(function(el){ return el.disabled; });
+    let fd;
+    try {
+      fileHelpers.forEach(function(el){ el.disabled = true; });
+      fd = new FormData(form);
+    } finally {
+      fileHelpers.forEach(function(el, i){ el.disabled = disabled[i]; });
+    }
+    const result = new FormData();
+    fd.forEach(function(value, name){
+      const controls = slots.get(name);
+      const control = controls && controls.shift();
+      result.append(name, contents.has(control) ? contents.get(control) : value);
+    });
+    return result;
+  }
+
   function captureFormEventSelection(extraParams){
 	if (!extraParams || !extraParams._tp) return undefined;
 	var obg = (window._obGrids || {})[extraParams._tp];
@@ -979,32 +1128,20 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     const form = document.getElementById('main-form');
     if (!form) return;
     const fileHelpers = Array.prototype.slice.call(form.querySelectorAll('[data-ob-file-content-for]'));
-    if (fileHelpers.length && !await awaitCurrentFileReads(fileHelpers)) return;
+    if (fileHelpers.length && !await awaitCurrentFileReads(fileHelpers.filter(controlSubmittable))) return;
     // FileReader может работать долго; за это время активная grid-ячейка могла
     // измениться уже после первого snapshot. Непосредственно перед FormData
     // повторяем commit/sync и при любом veto оставляем событие неотправленным.
     if (window.obGridSync && window.obGridSync() === false) return;
     const body = new URLSearchParams();
-    const fileHelperDisabled = fileHelpers.map(function(el){ return el.disabled; });
-    let eventFD;
-    try {
-      fileHelpers.forEach(function(el){ el.disabled = true; });
-      eventFD = new FormData(form);
-    } finally {
-      fileHelpers.forEach(function(el, i){ el.disabled = fileHelperDisabled[i]; });
-    }
+    const eventFD = fileEventFormData(form, fileHelpers);
     eventFD.set(serviceField('_element'), elementName || '');
     eventFD.set(serviceField('_event'), eventName || '');
     eventFD.set(serviceField('_kind'), 'object');
     if (DOC_ID) eventFD.set(serviceField('_id'), DOC_ID);
     eventFD.forEach((v, k) => {
       if (typeof v !== 'string') { body.append(k, ''); return; }
-      // If the rendered file helper has content, prefer it over the path.
-      // The data attribute identifies the actual control without reserving
-      // all legal parameter names beginning with _fc_.
-      const fcEl = form.querySelector('[data-ob-file-content-for="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (fcEl && (fcEl.value || fcEl.dataset.obFileContentReady === '1')) { body.append(k, fcEl.value); }
-      else { body.append(k, v); }
+      body.append(k, v);
     });
     // Команда над ТЧ: подмешать индексы выделенных строк (_tp_selected) по
     // имени ТЧ из extraParams._tp.
@@ -1013,7 +1150,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       Object.keys(extraParams).forEach(k => body.append(serviceField(k), extraParams[k]));
     }
     return {
-	  body: body, form: form, elementName: elementName,
+	  body: body, form: form, controlState: captureFormControlState(form), elementName: elementName,
 	  extraParams: extraParams, wasNew: !DOC_ID,
 	  editRevision: formEditState.revision,
 	  eventName: eventName, pickerRequest: pickerRequest
@@ -1140,7 +1277,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       applyElementStates(data.elementStates);
       window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
       window.applyTableParts(data.tableparts);
-      applyValues(data.values, data.refOptions, snapshot.body);
+      applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
       applyChoiceList(elementName, data.choiceList);
       applyFormTables(data.formTables);
 	  // Server events repaint controls programmatically and therefore do not
@@ -1305,24 +1442,15 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var form = document.getElementById('main-form');
     if (!form) return new URLSearchParams();
     var fileHelpers = Array.prototype.slice.call(form.querySelectorAll('[data-ob-file-content-for]'));
-    if (!await awaitCurrentFileReads(fileHelpers)) return null;
+    if (!await awaitCurrentFileReads(fileHelpers.filter(controlSubmittable))) return null;
     if (window.obGridSync && window.obGridSync() === false) return null;
-    var disabled = fileHelpers.map(function(el){ return el.disabled; });
-    var fd;
-    try {
-      fileHelpers.forEach(function(el){ el.disabled = true; });
-      fd = new FormData(form);
-    } finally {
-      fileHelpers.forEach(function(el, i){ el.disabled = disabled[i]; });
-    }
+    var fd = fileEventFormData(form, fileHelpers);
     fd.set(serviceField('_kind'), closeFormKind());
     if (DOC_ID) fd.set(serviceField('_id'), DOC_ID);
     var body = new URLSearchParams();
     fd.forEach(function(v, k){
       if (typeof v !== 'string') { body.append(k, ''); return; }
-      var helper = form.querySelector('[data-ob-file-content-for="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (helper && (helper.value || helper.dataset.obFileContentReady === '1')) body.append(k, helper.value);
-      else body.append(k, v);
+      body.append(k, v);
     });
     return body;
   }
@@ -1961,11 +2089,14 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   window._obFormDirty = false;
   var _obBaseTitle = document.title;
   setManagedFormDirty(cfg.initialDirty === true);
-  function _obMarkDirty(){
+  function _obMarkDirty(e){
 	window.obSetManagedFormDirty(true);
+    if (e && e.target && controlSubmittable(e.target) && !e.target.readOnly && e.target.type !== 'hidden') {
+      controlEditRevisions.set(e.target, formEditState.revision);
+    }
   }
-  document.addEventListener('input',  function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(); }, true);
-  document.addEventListener('change', function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(); }, true);
+  document.addEventListener('input',  function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(e); }, true);
+  document.addEventListener('change', function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(e); }, true);
   // «Грязный» флаг сбрасывает финальный submit-handler только после всех
   // проверок. Сбрасывать его здесь нельзя: obGridSync ниже ещё может запретить
   // отправку из-за незавершённой/невалидной правки ячейки.
