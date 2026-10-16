@@ -126,7 +126,8 @@ func pictureFormControls(t *testing.T, rendered string) url.Values {
 			_, disabled := managedHTMLAttr(n, "disabled")
 			typ, _ := managedHTMLAttr(n, "type")
 			_, checked := managedHTMLAttr(n, "checked")
-			if name != "" && !disabled && !((typ == "checkbox" || typ == "radio") && !checked) && typ != "file" {
+			toggle := typ == "checkbox" || typ == "radio"
+			if name != "" && !disabled && (!toggle || checked) && typ != "file" {
 				value, _ := managedHTMLAttr(n, "value")
 				if n.Data == "textarea" && n.FirstChild != nil {
 					value = n.FirstChild.Data
