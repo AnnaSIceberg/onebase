@@ -180,11 +180,13 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		return key
 	}
 	return template.FuncMap{
-		"refWriteAllowed": refWriteAllowed,
-		"gridLayoutAttr":  gridLayoutAttr,
-		"gridOrderAttr":   gridOrderAttr,
-		"lower":           strings.ToLower,
-		"infoRegKeyValue": infoRegKeyValue,
+		"refWriteAllowed":       refWriteAllowed,
+		"listFilterPanelFields": listFilterPanelFields,
+		"listFilterChoices":     listFilterChoices,
+		"lower":                 strings.ToLower,
+		"infoRegKeyValue":       infoRegKeyValue,
+		"gridLayoutAttr":        gridLayoutAttr,
+		"gridOrderAttr":         gridOrderAttr,
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
 			if proc == nil {
 				return processorParamPresencePrefix + name
@@ -2026,7 +2028,7 @@ const tplList = `
   <summary>{{t $.Lang "Отбор"}}</summary>
   <form method="GET" action="">
   <div class="filter-body">
-  {{range $entity.Fields}}{{$f := .}}
+  {{range listFilterPanelFields $}}{{$f := .}}
     {{if isActivityField $entity .}}
     {{else}}
     {{if eq (str .Type) "date"}}
@@ -2067,6 +2069,21 @@ const tplList = `
   {{/* Форма владеет отбором f.* — поиск, вид, папку и сортировку переносим. */}}
   {{if .TreeView}}{{listHidden $.Query "f.*" "view"}}{{else}}{{listHidden $.Query "f.*"}}{{end}}
   </form>
+  {{/* list_filters: в панели основной набор; остальные реквизиты пользователь
+       добавляет себе здесь, выбор запоминается за ним (POST /ui/_list-filters). */}}
+  {{with listFilterChoices $}}
+  <details class="ob-filter-more" style="margin-top:8px">
+    <summary>+ {{t $.Lang "Отбор"}}</summary>
+    <form method="POST" action="/ui/_list-filters" style="padding:0 20px 12px">
+      <input type="hidden" name="entity" value="{{$entity.Name}}">
+      <input type="hidden" name="back" value="{{$.RequestURI}}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:4px 16px;max-height:320px;overflow:auto;margin:8px 0">
+      {{range .}}<label style="font-weight:400;display:flex;gap:6px;align-items:center"><input type="checkbox" name="field" value="{{.Field.Name}}"{{if .Checked}} checked{{end}}> {{.Field.DisplayName $.Lang}}</label>
+      {{end}}</div>
+      <button class="btn btn-primary btn-sm" type="submit">{{t $.Lang "Показать отмеченные"}}</button>
+    </form>
+  </details>
+  {{end}}
 </details>
 
 {{$obRefresh := liveListRefreshOn .Entity}}
