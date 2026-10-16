@@ -15,6 +15,15 @@ type managedVTColumn struct {
 	ReadOnly bool
 }
 
+// Width — ширина колонки в пикселях из `width` элемента Колонка; 0 — ширину
+// выбирает таблица (как у колонки табличной части, managedTPColumn.Width).
+func (c managedVTColumn) Width() int {
+	if c.Element == nil {
+		return 0
+	}
+	return metadata.NormalizeFormLayoutSize(c.Element.Width)
+}
+
 // Title — подпись колонки: подпись элемента-ребёнка важнее объявления атрибута.
 func (c managedVTColumn) Title() string {
 	if c.Element != nil {

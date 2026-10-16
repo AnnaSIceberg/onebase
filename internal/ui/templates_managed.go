@@ -476,7 +476,7 @@ const tplManagedForm = `
   <table class="tp-table" data-vt="{{$tpName}}">
     <thead>
       <tr>
-        {{range $vtPlan}}{{if not .Hidden}}<th>{{.Title}}</th>{{end}}{{end}}
+        {{range $vtPlan}}{{if not .Hidden}}<th{{with .Width}} style="width:{{.}}px"{{end}}>{{.Title}}</th>{{end}}{{end}}
         {{if $vtEditable}}<th style="width:40px"></th>{{end}}
       </tr>
     </thead>
