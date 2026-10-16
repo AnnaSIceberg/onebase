@@ -29,23 +29,33 @@ function node(attrs) {
   return el;
 }
 
-function setup(initial) {
-  const input = node({ type: 'hidden', name: 'ФотоПревью', 'data-ob-picture-for': 'ПолеФото', value: initial });
+function setup(initial, withEditor) {
+  // withEditor: реквизит редактирует ПолеВвода — скрытое поле превью без name,
+  // значение у редактора (#2177).
+  const input = node(withEditor
+    ? { type: 'hidden', 'data-ob-picture-for': 'ПолеФото', 'data-ob-picture-field': 'ФотоПревью', value: initial }
+    : { type: 'hidden', name: 'ФотоПревью', 'data-ob-picture-for': 'ПолеФото', 'data-ob-picture-field': 'ФотоПревью', value: initial });
   input.type = 'hidden';
   input.tagName = 'INPUT';
+  const editor = withEditor ? node({ type: 'text', name: 'ФотоПревью', value: initial }) : null;
+  if (editor) { editor.type = 'text'; editor.tagName = 'INPUT'; }
+  const named = editor || input;
   const img = node({ src: '' });
   const link = node({ href: '' });
   link.children.push(img);
   const empty = node({});
   const form = {
     querySelector(sel) {
-      if (sel === '[name="ФотоПревью"]') return input;
+      if (sel === '[name="ФотоПревью"]') return named;
       if (sel === '[data-ob-picture-link="ПолеФото"]') return link;
       if (sel === '[data-ob-picture-empty="ПолеФото"]') return empty;
       return null;
     },
     // applyValues обновляет все копии реквизита (querySelectorAll по name).
-    querySelectorAll(sel) { return (sel === 'input[data-ob-picture-for]' || sel === '[name="ФотоПревью"]') ? [input] : []; },
+    querySelectorAll(sel) {
+      if (sel === 'input[data-ob-picture-for]') return [input];
+      return sel === '[name="ФотоПревью"]' ? [named] : [];
+    },
   };
   const ctx = {
     window: {},
@@ -55,7 +65,7 @@ function setup(initial) {
   };
   vm.createContext(ctx);
   vm.runInContext(src, ctx);
-  return { ctx, input, img, link, empty };
+  return { ctx, input, editor, img, link, empty };
 }
 
 test('ответ события с идентификатором вложения показывает картинку и ссылку', () => {
@@ -76,4 +86,14 @@ test('не-UUID прячет картинку и не подставляет а�
   assert.equal(t.empty.hidden, false);
   assert.notEqual(t.img.getAttribute('src'), 'javascript:alert(1)');
   assert.notEqual(t.link.getAttribute('href'), 'javascript:alert(1)');
+});
+
+test('реквизит с полем ввода: превью берёт значение у редактора', () => {
+  const t = setup('3f2504e0-4f89-11d3-9a0c-0305e82c3301', true);
+  const id = '9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d';
+  t.ctx.applyValues({ 'ФотоПревью': id });
+  assert.equal(t.editor.value, id, 'applyValues обновляет редактор');
+  assert.equal(t.input.value, id, 'скрытое поле превью синхронизировано с редактором');
+  assert.equal(t.img.getAttribute('src'), '/ui/attachments/' + id + '/download');
+  assert.equal(t.link.hidden, false);
 });

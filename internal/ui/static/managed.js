@@ -512,6 +512,13 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var esc = function(s){ return (window.CSS && CSS.escape) ? CSS.escape(s) : s; };
     form.querySelectorAll('input[data-ob-picture-for]').forEach(function(inp){
       var name = inp.getAttribute('data-ob-picture-for');
+      // Реквизит редактирует другой элемент — значение берётся у него: скрытое
+      // поле без name applyValues не обновляет и с формой не отправляется.
+      var field = inp.getAttribute('data-ob-picture-field');
+      if (field && !inp.getAttribute('name')) {
+        var editor = form.querySelector('[name="' + esc(field) + '"]');
+        if (editor) inp.value = editor.value;
+      }
       var id = String(inp.value || '').trim().toLowerCase();
       var ok = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id) &&
         id !== '00000000-0000-0000-0000-000000000000';
