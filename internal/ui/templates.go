@@ -3012,6 +3012,7 @@ const tplRegister = `
 {{template "reg-filter-form" (dict "Fields" .FilterFields "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" .ShowPeriodFilter "ShowToOnly" false "HasFilters" .HasFilters "ResetURL" (printf "/ui/register/%s" (lower .Register.Name)) "Lang" $.Lang)}}
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   {{if .ShowMovementKind}}<th>{{t $.Lang "Вид движения"}}</th>{{end}}
   {{if .ShowRecorder}}<th>{{t $.Lang "Регистратор"}}</th>{{end}}
@@ -3027,6 +3028,7 @@ const tplRegister = `
   {{range $.VisibleAttributes}}<td>{{index $row .Name}}</td>{{end}}
 </tr>{{end}}
 </tbody></table>
+</div>
 {{else}}<p class="empty">{{t $.Lang "Движений нет"}}</p>{{end}}
 </div></main></div></body></html>
 {{end}}
@@ -3041,6 +3043,7 @@ const tplRegister = `
 {{template "reg-filter-form" (dict "Fields" .FilterFields "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" false "ShowToOnly" .ShowPeriodFilter "HasFilters" .HasFilters "ResetURL" (printf "/ui/register/%s/balances" (lower .Register.Name)) "Lang" $.Lang)}}
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   {{range .VisibleDimensions}}<th>{{.DisplayName $.Lang}}</th>{{end}}
   {{range .VisibleResources}}<th>{{.DisplayName $.Lang}}</th>{{end}}
@@ -3050,6 +3053,7 @@ const tplRegister = `
   {{range $.VisibleResources}}<td style="font-weight:600">{{index $row .Name}}</td>{{end}}
 </tr>{{end}}
 </tbody></table>
+</div>
 {{else}}<p class="empty">{{t $.Lang "Остатков нет"}}</p>{{end}}
 </div></main></div></body></html>
 {{end}}
@@ -3491,6 +3495,7 @@ const tplInfoReg = `
 <div class="ob-list-wrap">
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   {{if .InfoReg.Periodic}}<th>{{t $.Lang "Период"}}</th>{{end}}
   {{range .InfoReg.Dimensions}}<th>{{.DisplayName $.Lang}}</th>{{end}}
@@ -3512,6 +3517,7 @@ const tplInfoReg = `
   </td>{{end}}
 </tr>{{end}}
 </tbody></table>
+</div>
 {{else}}<p class="empty">{{t $.Lang "Записей нет"}}</p>{{end}}
 </div>
 {{template "detail-panel" .}}
@@ -3737,6 +3743,7 @@ const tplJournal = `
 <div class="ob-list-wrap">
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   <th>{{t $.Lang "Документ"}}</th>
   {{range .JournalColumns}}<th>{{.DisplayLabel $.Lang}}</th>{{end}}
@@ -3757,6 +3764,7 @@ const tplJournal = `
 </tr>
 {{end}}
 </tbody></table>
+</div>
 {{else}}
 <p class="empty">{{t $.Lang "Документов нет"}}</p>
 {{end}}
