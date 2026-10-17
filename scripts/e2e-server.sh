@@ -24,6 +24,12 @@ chmod -R u+w "$WORK" 2>/dev/null || true
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
+# Exercise hidden_when through the real loader/renderer without adding
+# test-only documents to examples/trade.
+cp -R "$PROJ" "$WORK/project"
+cp -R "$REPO/e2e/fixtures/." "$WORK/project/"
+PROJ="$WORK/project"
+
 # Собираем с обычным HOME, чтобы переиспользовать общий кеш модулей.
 OB="${OB_BIN:-$WORK/onebase}"
 if [ ! -x "$OB" ]; then
@@ -52,6 +58,13 @@ printf '%s' "${OB_USER_PASSWORD:-Us3r-P@ssw0rd!}" |
 # Роль назначается ДО старта сервера: права разбираются при загрузке, и
 # назначение роли работающему серверу подхватывается только после перезапуска.
 "$OB" user role assign "${OB_USER_LOGIN:-user}" "${OB_USER_ROLE:-Кладовщик}" \
+  --project "$PROJ" --sqlite "$DB" >/dev/null
+
+# Независимая личная раскладка второго обычного пользователя (#1362).
+printf '%s' "${OB_SECOND_USER_PASSWORD:-Us3r-P@ssw0rd!}" |
+  "$OB" user add "${OB_SECOND_USER_LOGIN:-second-user}" --name "Второй пользователь" \
+    --project "$PROJ" --sqlite "$DB" --password-stdin
+"$OB" user role assign "${OB_SECOND_USER_LOGIN:-second-user}" "${OB_USER_ROLE:-Кладовщик}" \
   --project "$PROJ" --sqlite "$DB" >/dev/null
 
 # Демо-данные: без них список справочника пуст и проводить нечего.

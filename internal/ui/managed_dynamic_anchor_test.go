@@ -1,12 +1,8 @@
 package ui
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,7 +14,10 @@ import (
 func managedDynamicAnchorEntity() *metadata.Entity {
 	entity := &metadata.Entity{
 		Name: "ЗаявкаСДинамическимОформлением", Kind: metadata.KindCatalog,
-		Fields: []metadata.Field{{Name: "Стадия", Type: metadata.FieldTypeString}},
+		Fields: []metadata.Field{
+			{Name: "Стадия", Type: metadata.FieldTypeString},
+			{Name: "Срочно", Type: metadata.FieldTypeBool},
+		},
 	}
 	whenAccepted := `Стадия = "Принята"`
 	form := &metadata.FormModule{
@@ -31,6 +30,7 @@ func managedDynamicAnchorEntity() *metadata.Entity {
 			{Kind: metadata.FormElementLabel, Name: "НадписьСтатуса", TitleMap: map[string]string{"ru": "Черновик"}, HiddenWhen: whenAccepted},
 			{Kind: metadata.FormElementPicture, Name: "КартинкаСФайлом", Picture: "logo.png", HiddenWhen: whenAccepted},
 			{Kind: metadata.FormElementPicture, Name: "КартинкаБезФайла", HiddenWhen: whenAccepted},
+			{Kind: metadata.FormElementCheckbox, Name: "ФлажокСрочно", DataPath: "Объект.Срочно", HiddenWhen: whenAccepted},
 			{Kind: metadata.FormElementCommandBar, Name: "ПанельКоманд", ReadOnlyWhen: whenAccepted},
 			{Kind: metadata.FormElementField, Name: "ПолеСтадии", DataPath: "Объект.Стадия"},
 		},
@@ -101,7 +101,7 @@ func managedDescendantButton(root *html.Node) *html.Node {
 
 func TestManagedDynamicAnchorsRenderThroughPublicForm(t *testing.T) {
 	draft := renderManagedDynamicAnchorPage(t, "Черновик")
-	for _, name := range []string{"НадписьСтатуса", "КартинкаСФайлом", "КартинкаБезФайла", "ПанельКоманд"} {
+	for _, name := range []string{"НадписьСтатуса", "КартинкаСФайлом", "КартинкаБезФайла", "ФлажокСрочно", "ПанельКоманд"} {
 		if managedAnchorNode(t, draft, name) == nil {
 			t.Errorf("draft form has no dynamic-state anchor %q", name)
 		}
@@ -115,7 +115,7 @@ func TestManagedDynamicAnchorsRenderThroughPublicForm(t *testing.T) {
 	}
 
 	accepted := renderManagedDynamicAnchorPage(t, "Принята")
-	for _, name := range []string{"НадписьСтатуса", "КартинкаСФайлом", "КартинкаБезФайла"} {
+	for _, name := range []string{"НадписьСтатуса", "КартинкаСФайлом", "КартинкаБезФайла", "ФлажокСрочно"} {
 		if managedAnchorNode(t, accepted, name) != nil {
 			t.Errorf("server render did not hide %q", name)
 		}
@@ -129,34 +129,8 @@ func TestManagedDynamicAnchorsRenderThroughPublicForm(t *testing.T) {
 	}
 }
 
-func TestManagedDynamicAnchorsApplyProductionClientState(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is required for the managed dynamic-anchor regression test")
-	}
-
-	rendered := renderManagedDynamicAnchorPage(t, "Черновик")
-	doc, err := html.Parse(strings.NewReader(rendered))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := findHTMLElement(doc, "body")
-	if body == nil {
-		t.Fatalf("rendered managed form has no body:\n%s", rendered)
-	}
-	tree, err := json.Marshal(domElementNode(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	domPath := filepath.Join(t.TempDir(), "managed-dynamic-anchors.json")
-	if err := os.WriteFile(domPath, tree, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	cmd := exec.Command(node, "--test", "static/managed_dynamic_anchor_behavior_test.js") //nolint:gosec // test-only executable resolved by exec.LookPath
-	cmd.Env = append(os.Environ(), "ONEBASE_DYNAMIC_ANCHORS_DOM="+domPath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("node managed dynamic-anchor behavior test: %v\n%s", err, output)
-	}
-}
+// Поведение клиента (применение готовых состояний hidden/readonly к живой
+// форме) с #1587 проверяет браузерный сценарий e2e/tests/dynamic-anchors.spec.js
+// на настоящем DOM. Проверка прав повторных размещений сохраняет отдельную
+// обвязку managed_placement_behavior_test.js. Здесь остаётся отрисовка через
+// публичный обработчик — она идёт тем же путём, что и браузерная страница.
