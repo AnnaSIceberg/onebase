@@ -575,7 +575,7 @@ func infoRegListRows(ir *metadata.InfoRegister, raw []map[string]any) []map[stri
 			row[name] = value
 		}
 		period := source["period"].(time.Time)
-		row["period"] = period.In(time.Local).Format("02.01.2006")
+		row["period"] = FormatDisplayDate(period)
 		// Ключ — В UTC. Иначе его текст зависит от таймзоны ПРОЦЕССА: pgx по
 		// умолчанию сканирует timestamptz в time.Local, и одна и та же запись у
 		// приложения в Europe/Moscow давала «…T12:30:45.123+03:00», а в UTC —
@@ -796,7 +796,7 @@ func (db *DB) writeInfoMovementsInTx(ctx context.Context, regName, recorderType 
 			if err := db.checkInfoRegMovementKey(ctx, ir, regName, recorderType, recorderID, writeKey, dimKey, rowPeriod); err != nil {
 				return err
 			}
-			return fmt.Errorf("write info movement %s row %d: ownership conflict", regName, i+1)
+			return infoRegOwnershipError{message: fmt.Errorf("write info movement %s row %d: ownership conflict", regName, i+1)}
 		}
 	}
 	return nil
@@ -834,8 +834,8 @@ func (db *DB) checkInfoRegMovementKey(ctx context.Context, ir *metadata.InfoRegi
 	}
 	// Имя из метаданных, а не regName: коллектор движений отдаёт его в нижнем
 	// регистре, а сообщение читает человек.
-	return i18nerr.Errorf("регистр сведений %s: запись с ключом %s уже записана документом %s %s — второй документ её не перехватывает",
-		ir.Name, infoRegKeyDescription(ir, dimKey, period), typ, *owner)
+	return infoRegOwnershipError{message: i18nerr.Errorf("регистр сведений %s: запись с ключом %s уже записана документом %s %s — второй документ её не перехватывает",
+		ir.Name, infoRegKeyDescription(ir, dimKey, period), typ, *owner)}
 }
 
 // infoRegKeyDescription — ключ записи регистра сведений для сообщения:
