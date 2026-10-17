@@ -15,6 +15,7 @@ const window = {};
 const sandbox = {window, document: {createElement: select, getElementsByName() { return []; }},
   JSON, Array, Object, String, encodeURIComponent, obRefFilterParam() { return ''; }};
 vm.createContext(sandbox);
+vm.runInContext(ui.slice(ui.indexOf('function obRefSourceValue(scope, name)'), ui.indexOf('// obRefFilterParam')), sandbox);
 vm.runInContext(ui.slice(ui.indexOf('function obRefChoiceSnapshot(sel)'), ui.indexOf('function obChoiceSelectIsLive(sel)')), sandbox);
 let carrier;
 if (input.grid) {

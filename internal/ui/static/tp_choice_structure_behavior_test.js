@@ -39,6 +39,7 @@ function runtime() {
     obReady() {}, obElementVisible() { return true; }, obIsTypingTarget() { return false; }};
   vm.createContext(sandbox);
   vm.runInContext(ui.slice(ui.indexOf('function obDOMTableFromTarget'), ui.indexOf('function obInitDOMTables')), sandbox);
+  vm.runInContext(ui.slice(ui.indexOf('function obRefSourceValue(scope, name)'), ui.indexOf('// obRefFilterParam')), sandbox);
   vm.runInContext(ui.slice(ui.indexOf('function obRefChoiceSnapshot(sel)'), ui.indexOf('function obAttachTPChoiceContexts')), sandbox);
   sandbox.obRefFilterParam = () => '';
   sandbox.obChoiceApplyResponse = (sel, data) => applied.push(data.marker);

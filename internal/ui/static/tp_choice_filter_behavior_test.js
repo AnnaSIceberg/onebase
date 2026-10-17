@@ -70,3 +70,27 @@ test('the grid reference editor sends row context and never falls back to anothe
  assert.equal(picked[0].getAttribute('data-ref-row-id'),'1');assert.strictEqual(picked[0]._obChoiceRow,args.item);
  editor.destroy();
 });
+
+test('TP snapshots read the submitted source copy for global and row-local fields', () => {
+ const env=runtime([],()=>{});
+ const hidden={value:'hidden-copy',matches(selector){assert.equal(selector,':disabled');return true;}};
+ const mirror={value:'readonly-mirror',type:'hidden'};
+ const visible={value:'visible-copy',tagName:'SELECT'};
+ let copies=[hidden,mirror];
+ const names=[];
+ env.form.elements.namedItem=name=>{names.push(name);return copies;};
+ function sources(context,row){
+  const carrier=row===null?env.sandbox.document.createElement('select'):
+   env.window.obTPChoiceCarrier(JSON.stringify(context),row,2,env.form,'Выбор','Цель','');
+  if(row===null){carrier.form=env.form;carrier.name='tp.Строки.2.Выбор';carrier.setAttribute('data-ref-choice-context',JSON.stringify(context));carrier.setAttribute('data-ref-row-id','2');}
+  return JSON.parse(new URLSearchParams(env.window.obRefChoiceSnapshot(carrier).query).get('sources'));
+ }
+ const global={form_entity:'Заявка',form:'Объекта',element:'Строки.global',table_part:'Строки',sources:{'Объект.Направление':'Направление'}};
+ assert.deepEqual(sources(global,{}),{'Объект.Направление':'readonly-mirror'});
+ copies=[hidden,visible];
+ assert.deepEqual(sources(global,{}),{'Объект.Направление':'visible-copy'});
+ const local={...global,element:'Строки.local',sources:{'Строки.Направление':'Направление'}};
+ assert.deepEqual(sources(local,null),{'Строки.Направление':'visible-copy'});
+ assert.equal(names.at(-1),'tp.Строки.2.Направление');
+ assert.deepEqual(sources(local,{направление:'grid-row'}),{'Строки.Направление':'grid-row'});
+});
