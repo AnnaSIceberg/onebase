@@ -160,6 +160,7 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 	} else if entity, _ := data["Entity"].(*metadata.Entity); entity != nil {
 		data["FormCloseSchema"] = entityFormCloseSchema(entity, form)
 	}
+	s.prepareGridOrders(ctx, data, form)
 	if css := formConditionalCSS(form); css != "" {
 		data["FormConditionalCSS"] = template.CSS(css) //nolint:gosec // G203: стиль собран cssStyle → csssafe.Color, произвольная строка в CSS не попадает
 	}
