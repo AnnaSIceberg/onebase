@@ -38,14 +38,13 @@ type grid struct {
 // readGrid разбирает лист в матрицу ячеек: тексты, оформление, объединения,
 // картинки, размеры колонок/строк и параметры страницы.
 func readGrid(f *excelize.File, name string, w *warnings) (*grid, error) {
-	rows, cols := usedRange(f, name, w)
+	texts, textRows, textCols, err := readRows(f, name)
+	if err != nil {
+		return nil, err
+	}
+	rows, cols := usedRange(f, name, textRows, textCols, w)
 	if rows == 0 || cols == 0 {
 		return nil, ErrEmptySheet
-	}
-
-	texts, err := f.GetRows(name)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrParse, err)
 	}
 
 	g := &grid{Rows: rows, Cols: cols}
@@ -89,12 +88,60 @@ func readGrid(f *excelize.File, name string, w *warnings) (*grid, error) {
 
 	readSizes(f, name, g)
 	g.Page = readPage(f, name, w)
-	g.Named, g.PrintTitles = readDefinedNames(f, name, g.Rows)
+	g.Named, g.PrintTitles = readDefinedNames(f, name, g.Rows, w)
 
 	if cfs, cerr := f.GetConditionalFormats(name); cerr == nil && len(cfs) > 0 {
 		w.add("Условное форматирование не переносится — цвета и правила придётся задать в макете.")
 	}
 	return g, nil
+}
+
+// readRows читает значения листа одним потоковым проходом. Rows.Next()
+// возвращает в том числе пропуски перед sparse-строкой, поэтому MaxRows+1
+// достаточно, чтобы предупредить об обрезке, не доходя до содержимого, например,
+// строки 1 048 576. В texts никогда не копится больше MaxRows x MaxCols значений.
+func readRows(f *excelize.File, name string) (texts [][]string, rows, cols int, err error) {
+	it, openErr := f.Rows(name)
+	if openErr != nil {
+		return nil, 0, 0, fmt.Errorf("%w: %v", ErrParse, openErr)
+	}
+	defer func() {
+		if closeErr := it.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("%w: %v", ErrParse, closeErr)
+		}
+	}()
+
+	scannedRows := 0
+	for it.Next() {
+		scannedRows++
+		if scannedRows > MaxRows {
+			// Точного номера дальней sparse-строки узнавать не нужно: для
+			// прежнего предупреждения достаточно sentinel за границей.
+			rows = MaxRows + 1
+			break
+		}
+
+		row, rowErr := it.Columns()
+		if rowErr != nil {
+			return nil, 0, 0, fmt.Errorf("%w: %v", ErrParse, rowErr)
+		}
+		// GetRows, который был здесь раньше, не включал в результат хвостовые
+		// явно пустые строки. Сохраняем этот контракт used range.
+		if len(row) > 0 {
+			rows = scannedRows
+		}
+		cols = max(cols, len(row))
+		if len(row) > MaxCols {
+			row = row[:MaxCols]
+		}
+		// Копия с ограниченной capacity не удерживает целиком широкий backing
+		// array, который Columns был вынужден собрать для текущей строки.
+		texts = append(texts, append([]string(nil), row...))
+	}
+	if iterErr := it.Error(); iterErr != nil {
+		return nil, 0, 0, fmt.Errorf("%w: %v", ErrParse, iterErr)
+	}
+	return texts, rows, cols, nil
 }
 
 // usedRange определяет размеры разбираемой области.
@@ -104,20 +151,15 @@ func readGrid(f *excelize.File, name string, w *warnings) (*grid, error) {
 // диапазон». Одного диапазона мало — книга, записанная программно, объявляет
 // «A1», и импорт увидел бы одну ячейку; одних заполненных строк тоже мало —
 // пустая ячейка с рамкой (клетка под подпись) текста не имеет, но в бланке
-// нужна. Хвост лишнего потом срезает trim.
-func usedRange(f *excelize.File, name string, w *warnings) (rows, cols int) {
+// нужна. Хвост лишнего потом срезает trim. Заполненные строки уже измерены
+// потоковым readRows, повторно лист здесь не читается.
+func usedRange(f *excelize.File, name string, textRows, textCols int, w *warnings) (rows, cols int) {
+	rows, cols = textRows, textCols
 	grow := func(r, c int) {
 		rows = max(rows, r)
 		cols = max(cols, c)
 	}
 
-	if data, err := f.GetRows(name); err == nil {
-		for i, row := range data {
-			if len(row) > 0 {
-				grow(i+1, len(row))
-			}
-		}
-	}
 	if merges, err := f.GetMergeCells(name); err == nil {
 		for _, m := range merges {
 			if c, r, cerr := excelize.CellNameToCoordinates(m.GetEndAxis()); cerr == nil {
@@ -154,8 +196,8 @@ func usedRange(f *excelize.File, name string, w *warnings) (rows, cols int) {
 	return min(rows, MaxRows), min(cols, MaxCols)
 }
 
-// cellText достаёт текст ячейки из результата GetRows (там строки короче на
-// хвост пустых ячеек, а сами строки могут отсутствовать).
+// cellText достаёт текст ячейки из результата потокового чтения (там строки
+// короче на хвост пустых ячеек).
 func cellText(texts [][]string, r, c int) string {
 	if r >= len(texts) || c >= len(texts[r]) {
 		return ""
@@ -334,6 +376,10 @@ func cellBlank(g *grid, r, c int) bool {
 // (пункты → px). Высота пишется только там, где отличается от умолчания листа:
 // иначе height: попал бы в каждую строку макета.
 func readSizes(f *excelize.File, name string, g *grid) {
+	scale := 1.0
+	if layout, err := f.GetPageLayout(name); err == nil && layout.AdjustTo != nil && *layout.AdjustTo > 0 {
+		scale = float64(*layout.AdjustTo) / 100
+	}
 	g.ColW = make([]string, g.Cols)
 	for c := 0; c < g.Cols; c++ {
 		col, err := excelize.ColumnNumberToName(c + 1)
@@ -341,7 +387,7 @@ func readSizes(f *excelize.File, name string, g *grid) {
 			continue
 		}
 		if wch, werr := f.GetColWidth(name, col); werr == nil && wch > 0 {
-			g.ColW[c] = fmt.Sprintf("%dpx", int(math.Round(wch*7+5)))
+			g.ColW[c] = fmt.Sprintf("%dpx", int(math.Round((wch*7+5)*scale)))
 		}
 	}
 
@@ -410,7 +456,9 @@ func paperFormat(size int) string {
 // readDefinedNames собирает именованные диапазоны листа, сведённые к строкам.
 // Служебные имена Excel пропускаются — кроме «сквозных строк», которые как раз
 // и означают повтор шапки на каждой странице.
-func readDefinedNames(f *excelize.File, name string, rows int) (named, titles []namedRange) {
+func readDefinedNames(f *excelize.File, name string, rows int, w *warnings) (named, titles []namedRange) {
+	ignored := 0
+	fieldNameWorkbook := hasWorkbookFieldNames(f, name)
 	for _, dn := range f.GetDefinedName() {
 		// В одном имени может быть несколько диапазонов через запятую
 		// (у «сквозных строк» это строки плюс колонки — колонки нас не касаются).
@@ -431,11 +479,77 @@ func readDefinedNames(f *excelize.File, name string, rows int) (named, titles []
 			case strings.HasPrefix(dn.Name, "_xlnm."):
 				// Print_Area и прочая служебка областями не являются.
 			default:
-				named = append(named, nr)
+				if areaName, ok := layoutAreaName(dn.Name); ok {
+					nr.Name = areaName
+					named = append(named, nr)
+				} else if !fieldNameWorkbook && !singleCellRef(ref) {
+					// Исторически произвольное имя многоклеточного диапазона —
+					// явная область макета. Сохраняем совместимость, если книга
+					// не использует имена главным образом как карту полей.
+					named = append(named, nr)
+				} else {
+					ignored++
+				}
 			}
 		}
 	}
+	if ignored > 0 {
+		w.addf("Пропущены пользовательские именованные диапазоны (%d): книга использует их как поля Excel, а не области макета. Для явной области используйте Шапка, Строка, ШапкаТаблицы, Подвал или префикс OB_/ONEBASE_.", ignored)
+	}
 	return named, titles
+}
+
+func hasWorkbookFieldNames(f *excelize.File, sheet string) bool {
+	count := 0
+	for _, dn := range f.GetDefinedName() {
+		if strings.HasPrefix(dn.Name, "_xlnm.") {
+			continue
+		}
+		if _, explicitArea := layoutAreaName(dn.Name); explicitArea {
+			continue
+		}
+		for _, part := range strings.Split(dn.RefersTo, ",") {
+			name, ref, ok := splitRef(part)
+			if ok && strings.EqualFold(name, sheet) && singleCellRef(ref) {
+				count++
+				if count >= 3 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func singleCellRef(ref string) bool {
+	ref = strings.ReplaceAll(strings.TrimSpace(ref), "$", "")
+	if strings.Contains(ref, ":") {
+		parts := strings.SplitN(ref, ":", 2)
+		return strings.EqualFold(parts[0], parts[1])
+	}
+	_, _, err := excelize.CellNameToCoordinates(ref)
+	return err == nil
+}
+
+func layoutAreaName(name string) (string, bool) {
+	for _, canonical := range []string{"Шапка", "Строка", "ШапкаТаблицы", "Подвал"} {
+		if strings.EqualFold(name, canonical) {
+			return canonical, true
+		}
+	}
+	for _, prefix := range []string{"OB_", "ONEBASE_"} {
+		if rest, ok := cutPrefixFoldLocal(name, prefix); ok && strings.TrimSpace(rest) != "" {
+			return strings.TrimSpace(rest), true
+		}
+	}
+	return "", false
+}
+
+func cutPrefixFoldLocal(s, prefix string) (string, bool) {
+	if len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+		return s[len(prefix):], true
+	}
+	return "", false
 }
 
 // splitRef разбирает ссылку вида «Лист1!$A$1:$D$3» или «'Мой лист'!$1:$3».

@@ -104,6 +104,17 @@ func (h *handler) configuratorImportXLSXLayout(w http.ResponseWriter, r *http.Re
 		h.layoutCreateError(w, r, b, lang, layoutWriteMessage(lang, werr))
 		return
 	}
+	templatePath := "printforms/" + layoutName + ".template.xlsx"
+	if werr := h.writeLayoutFile(r.Context(), b, templatePath, buf.Bytes()); werr != nil {
+		// Макет и исходная книга образуют одну печатную форму. Если второй файл
+		// записать не удалось, не оставляем половину импорта.
+		msg := layoutWriteMessage(lang, werr)
+		if rerr := h.removeLayoutFile(r.Context(), b, relPath); rerr != nil {
+			msg += ". " + tr(lang, "Не удалось удалить незавершённый макет") + ": " + rerr.Error()
+		}
+		h.layoutCreateError(w, r, b, lang, msg)
+		return
+	}
 
 	data := h.loadCfgData(r.Context(), b, "tree")
 	data.FieldsSaved = true
@@ -165,28 +176,83 @@ func layoutWriteMessage(lang string, err error) string {
 // эти полсотни строк с двумя ветками хранилища и guard-ом от traversal стояли
 // в каждом обработчике своей копией.
 func (h *handler) writeLayoutFile(ctx context.Context, b *Base, relPath string, src []byte) error {
+	if h.beforeLayoutCreate != nil {
+		h.beforeLayoutCreate()
+	}
 	if b.ConfigSource == "database" {
+		if h.createConfigFile != nil {
+			if err := h.createConfigFile(ctx, b, relPath, src); errors.Is(err, configdb.ErrFileExists) {
+				return errLayoutExists
+			} else {
+				return err
+			}
+		}
 		db, err := OpenDB(ctx, b)
 		if err != nil {
 			return err
 		}
 		defer db.Close()
 		repo := configdb.New(db)
-		if _, ok, _ := repo.ReadFile(ctx, relPath); ok {
+		if err := repo.CreateFile(ctx, relPath, src); errors.Is(err, configdb.ErrFileExists) {
 			return errLayoutExists
+		} else {
+			return err
 		}
-		return repo.SaveFile(ctx, relPath, src)
 	}
 
 	fullPath, err := configdb.SafeJoin(b.Path, relPath)
 	if err != nil {
 		return err
 	}
-	if _, serr := os.Stat(fullPath); serr == nil { //nolint:gosec // G703: fullPath построен configdb.SafeJoin — это и есть guard от traversal
-		return errLayoutExists
-	}
 	if merr := os.MkdirAll(filepath.Dir(fullPath), fsmode.Dir); merr != nil { //nolint:gosec // G703: fullPath построен configdb.SafeJoin
 		return merr
 	}
-	return os.WriteFile(fullPath, src, fsmode.File) //nolint:gosec // G703: fullPath построен configdb.SafeJoin
+	return createLayoutFile(fullPath, src)
+}
+
+// createLayoutFile создаёт файл без перезаписи. Если запись или Close
+// завершились ошибкой, созданный этим вызовом частичный файл удаляется.
+func createLayoutFile(fullPath string, src []byte) (retErr error) {
+	f, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fsmode.File) //nolint:gosec // G703: fullPath построен configdb.SafeJoin
+	if os.IsExist(err) {
+		return errLayoutExists
+	}
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := f.Close(); retErr == nil {
+			retErr = closeErr
+		}
+		if retErr != nil {
+			if removeErr := os.Remove(fullPath); removeErr != nil && !os.IsNotExist(removeErr) {
+				retErr = errors.Join(retErr, removeErr)
+			}
+		}
+	}()
+
+	n, err := f.Write(src)
+	if err != nil {
+		return err
+	}
+	if n != len(src) {
+		return io.ErrShortWrite
+	}
+	return nil
+}
+
+func (h *handler) removeLayoutFile(ctx context.Context, b *Base, relPath string) error {
+	if b.ConfigSource == "database" {
+		db, err := OpenDB(ctx, b)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		return configdb.New(db).DeleteFile(ctx, relPath)
+	}
+	fullPath, err := configdb.SafeJoin(b.Path, relPath)
+	if err != nil {
+		return err
+	}
+	return os.Remove(fullPath) //nolint:gosec // G703: fullPath построен configdb.SafeJoin
 }

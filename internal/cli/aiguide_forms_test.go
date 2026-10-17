@@ -31,6 +31,8 @@ func TestAIGuide_РазделыСобытийИПустыхЗначений(t *t
 		"debounce 250 мс",
 		"ТОЛЬКО `ИмяТабличнойЧасти`",
 		"readonly",
+		"Обычная кнопка «Записать»",
+		"ПередЗакрытием(Отказ)",
 	} {
 		if !strings.Contains(g, want) {
 			t.Errorf("в guide нет ожидаемого фрагмента: %q", want)
@@ -66,6 +68,30 @@ func TestAIGuide_ИменаСобытийФормЖивые(t *testing.T) {
 		if !strings.Contains(section, "`"+string(event)+"`") {
 			t.Errorf("раздел о событиях не упоминает %q, а браузер его отправляет", event)
 		}
+	}
+}
+
+// TestAIGuide_НевызываемыеСобытияНазваны — руководство обязано назвать каждое
+// имя, которое платформа принимает, но не вызывает (#1153). Промолчать здесь
+// дороже, чем не описать рабочее событие: конфигуратор пишет обработчик,
+// получает зелёный `onebase check` и не получает вызова — искать нечего, всё
+// зелёное. Перечень берётся из metadata (там он вычисляется), поэтому
+// реализованное событие исчезнет из требований теста само.
+func TestAIGuide_НевызываемыеСобытияНазваны(t *testing.T) {
+	section := guideSection(t, generateAIGuide(""), "## События управляемых форм")
+	uncalled := metadata.UncalledFormEvents()
+	if len(uncalled) == 0 {
+		t.Fatal("перечень невызываемых пуст — сторож руководства сверяет пустоту")
+	}
+	for _, event := range uncalled {
+		if !strings.Contains(section, "`"+string(event)+"`") {
+			t.Errorf("раздел о событиях не упоминает %q, а движок его не вызывает", event)
+		}
+	}
+	// Мало назвать имя — надо сказать, что оно не работает: имя в разделе о
+	// событиях читается как «событие есть».
+	if !strings.Contains(section, "принимает, но не вызывает") {
+		t.Error("раздел не говорит, что эти имена не вызываются")
 	}
 }
 
@@ -154,8 +180,9 @@ func TestAIGuide_ПеременныеКонтекстаТЧИзСловаря(t 
 	for _, v := range metadata.FormTablePartContextVars() {
 		known[strings.ToLower(v)] = true
 	}
-	// Переменные вне словаря контекста ТЧ: их кладёт не addValidatedTPEventContext.
-	for _, extra := range []string{"объект", "этотобъект", "подборрезультат"} {
+	// Переменные вне словаря контекста ТЧ: их кладёт не addValidatedTPEventContext
+	// (ТекущаяСтраница — addPageChangeContext события ПриСменеСтраницы).
+	for _, extra := range []string{"объект", "этотобъект", "подборрезультат", "подборзапрос", "текущаястраница"} {
 		known[extra] = true
 	}
 	for _, name := range backquoted(section) {

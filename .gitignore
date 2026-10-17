@@ -58,8 +58,7 @@ Thumbs.db
 .codex/
 .superpowers/
 
-# Local agent instructions
-AGENTS.md
+# Shared agent instructions are tracked in AGENTS.md.
 
 # IDE
 .idea/
@@ -70,9 +69,11 @@ AGENTS.md
 docs/*
 !docs/forms.md
 !docs/forms-1c-converter.md
+!docs/migrate-scan.md
 !docs/ai-assistant.md
 !docs/features.md
 !docs/mcp.md
+!docs/vibe-coding.md
 !docs/rest-api-v2.md
 !docs/roadmap.json
 !docs/publications.md
@@ -88,6 +89,9 @@ docs/*
 # не сработало бы, и новые заметки молча не попадали бы в коммит (#988, А3).
 !docs/releases/
 !docs/history/
+# Скриншоты для README. Каталог, а не маска — по той же причине, что выше:
+# правило `!docs/images/*.png` не сработает, git в исключённый каталог не зайдёт.
+!docs/images/
 
 # Генерируется `onebase langref`; сверяется тестом TestDSLReferenceUpToDate.
 !docs/dsl-reference.md
@@ -119,3 +123,4 @@ loadtest/reports/
 e2e/node_modules/
 e2e/test-results/
 e2e/playwright-report/
+govulnpolicy.exe

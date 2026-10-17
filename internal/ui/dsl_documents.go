@@ -120,6 +120,7 @@ func (s *Server) refManagerForSrc(entity *metadata.Entity, ctxSrc interpreter.Ct
 	switch entity.Kind {
 	case metadata.KindCatalog:
 		return interpreter.NewCatalogProxy(entity, s.store, ctxSrc).
+			WithEntityLookup(s.reg).
 			WithRowAccessChecker(s.dslRowAccessChecker()).
 			WithFieldSearchChecker(s.dslFieldSearchChecker()).
 			WithExchangeRegistrar(s.exchangeRegistrar()).
@@ -168,6 +169,31 @@ func (d *docsRoot) Get(name string) any {
 }
 
 func (d *docsRoot) Set(_ string, _ any) {}
+
+// GetDynamicField / SetDynamicField — индексный доступ Документы["Имя"] (#1434).
+//
+// Раньше такое выражение компилировалось, но возвращало Неопределено: корни
+// менеджеров не реализовывали DynamicFieldAccessor, и универсальный цикл по
+// списку типов приходилось заменять Соответствием из литералов.
+//
+// Только чтение. Имя сопоставляется без учёта регистра — этим занимается сам
+// поиск в реестре. Неизвестное имя даёт ошибку, а не Неопределено: опечатка
+// обязана падать там, где она написана.
+func (d *docsRoot) GetDynamicField(name string) (any, bool) {
+	v := d.Get(name)
+	if v == nil {
+		return nil, false
+	}
+	return v, true
+}
+
+// Индексная запись корню менеджера не открывается: Документы["Имя"] — способ
+// получить менеджер, а не ячейка. Отказ явный, потому что молчаливое false
+// дало бы сообщение «неизвестный реквизит» про существующий менеджер.
+func (d *docsRoot) SetDynamicField(name string, _ any) bool {
+	interpreter.RaiseUserError("Документы[\"" + name + "\"]: индексная запись не поддерживается, доступно только чтение")
+	return false
+}
 
 // docProxy — Документы.ПоступлениеТоваров.
 type docProxy struct {
@@ -268,6 +294,26 @@ func (p *docProxy) CallMethod(method string, args []any) any {
 		}
 		if err := p.DeleteRef(ref.UUID); err != nil {
 			interpreter.RaiseUserError("Удалить(" + p.entity.Name + "): " + err.Error())
+		}
+		return nil
+	case "провести", "post":
+		// Прикладная процедура «Провести» в модуле менеджера СТАРШЕ встроенного
+		// метода: пока метода не было, одноимённая процедура была единственным
+		// способом провести документ по ссылке (#1168), и встроенный case
+		// перекрыл бы её молча — ровно та беда, которую заявка и чинит. break
+		// уводит на откат к модулю менеджера в конце функции.
+		if p.s.reg.GetManagerProc(p.entity.Name, method) != nil {
+			break
+		}
+		if len(args) == 0 {
+			interpreter.RaiseUserError("Провести(" + p.entity.Name + "): не передана ссылка")
+		}
+		ref, ok := args[0].(*interpreter.Ref)
+		if !ok {
+			interpreter.RaiseUserError(fmt.Sprintf("Провести(%s): ожидается ссылка, получено %T", p.entity.Name, args[0]))
+		}
+		if err := p.postRef(ref.UUID); err != nil {
+			interpreter.RaiseUserError("Провести(" + p.entity.Name + "): " + err.Error())
 		}
 		return nil
 	case "отменитьпроведение", "unpost":
@@ -463,6 +509,27 @@ func (p *docProxy) DeleteRef(uuidStr string) error {
 	return nil
 }
 
+// postRef проводит уже записанный документ по ссылке — с теми же наблюдаемыми
+// последствиями, что кнопка «Провести» в списке: грузит объект целиком (шапка +
+// ТЧ), проверяет построчное право post, запускает ОбработкаПроведения, пишет
+// движения, признак проведения и веб-хук document.post в одной транзакции.
+// Паритет зафиксирован тестом TestПроведение_ПаритетПутей.
+//
+// ОбработкаЗаписи при этом НЕ запускается: метод парный к ОтменитьПроведение и
+// меняет только состояние проведения уже записанного документа. Нужна запись
+// вместе с проведением — это объектный путь, Ссылка.ПолучитьОбъект().Провести().
+func (p *docProxy) postRef(uuidStr string) error {
+	obj, err := p.LoadObject(uuidStr)
+	if err != nil {
+		return err
+	}
+	w, ok := obj.(*docWriter)
+	if !ok {
+		return fmt.Errorf("неожиданный тип объекта документа: %T", obj)
+	}
+	return w.post()
+}
+
 // unpostRef отменяет проведение документа через entityservice.Unpost — тем же
 // путём, что UI-кнопка «Отменить проведение» и REST unpost: чистит движения,
 // снимает posted и запускает ОбработкаУдаленияПроведения (OnUnpost) в одной
@@ -517,7 +584,7 @@ func (p *docProxy) LoadObject(uuidStr string) (any, error) {
 	}
 	// loadRuntimeObject грузит шапку + ТЧ и обогащает ссылочные поля до
 	// *Ref{…,Manager}, чтобы DSL мог писать Док.СсылочноеПоле.ПолучитьОбъект().
-	obj, err := p.s.loadRuntimeObject(p.ctx(), p.entity, id)
+	obj, row, err := p.s.loadRuntimeObjectRow(p.ctx(), p.entity, id)
 	if err != nil {
 		return nil, err
 	}
@@ -525,7 +592,7 @@ func (p *docProxy) LoadObject(uuidStr string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &docWriter{
+	w := &docWriter{
 		s:               p.s,
 		ctxSrc:          p.ctxSrc,
 		entity:          p.entity,
@@ -533,7 +600,9 @@ func (p *docProxy) LoadObject(uuidStr string) (any, error) {
 		messages:        p.messages,
 		loaded:          true,
 		expectedVersion: &version,
-	}, nil
+	}
+	w.setStandardAttrs(row)
+	return w, nil
 }
 
 // docWriter — записываемый/проводимый документ.
@@ -558,6 +627,32 @@ type docWriter struct {
 	// assigned — реквизиты, присвоенные модулем в этой сессии: их чтение не
 	// маскируется, значение принадлежит текущей операции (план 88E).
 	assigned map[string]bool
+	resolver *dslRefAttrResolver
+	// posted и deletionMark — стандартные реквизиты Проведен и ПометкаУдаления.
+	// В obj.Fields их нет: объект несёт только объявленные реквизиты, и без
+	// отдельного состояния Д.Проведен читался как Неопределено.
+	posted       bool
+	deletionMark bool
+}
+
+// setStandardAttrs берёт Проведен и ПометкаУдаления из строки шапки, прочитанной
+// из БД.
+func (w *docWriter) setStandardAttrs(row map[string]any) {
+	w.posted = asBool(row["posted"])
+	w.deletionMark = asBool(row["deletion_mark"])
+}
+
+// standardAttr отдаёт стандартный реквизит документа по имени. Реквизит только
+// для чтения: его меняют Провести(), ОтменитьПроведение() и пометка на удаление,
+// а присваивание, как и раньше, в базу не попадает.
+func (w *docWriter) standardAttr(name string) (any, bool) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "проведен", "проведён", "posted":
+		return w.posted, true
+	case "пометкаудаления", "deletionmark":
+		return w.deletionMark, true
+	}
+	return nil, false
 }
 
 func (w *docWriter) ctx() context.Context {
@@ -567,20 +662,68 @@ func (w *docWriter) ctx() context.Context {
 	return context.Background()
 }
 
+func (w *docWriter) refResolver() *dslRefAttrResolver {
+	if w.resolver == nil && w.s != nil {
+		w.resolver = w.s.newDSLRefAttrResolver(w.ctx())
+		w.resolver.ctxSrc = w.ctxSrc
+		w.resolver.attachObject(w.entity, w.obj)
+	}
+	return w.resolver
+}
+
 // Get: имя табличной части → tpProxy, иначе значение поля шапки. Реквизит
 // прочитанного из БД документа отдаётся по полевой политике роли (план 88E) —
 // значение, присвоенное самим модулем, возвращается как есть.
 func (w *docWriter) Get(name string) any {
-	for _, tp := range w.entity.TableParts {
+	for i := range w.entity.TableParts {
+		tp := &w.entity.TableParts[i]
 		if strings.EqualFold(tp.Name, name) {
-			return &tpProxy{obj: w.obj, tpName: tp.Name}
+			return &tpProxy{obj: w.obj, tpName: tp.Name, tp: tp, resolver: w.refResolver()}
 		}
 	}
 	v := w.obj.Get(name)
-	if !w.loaded || w.assigned[strings.ToLower(strings.TrimSpace(name))] {
+	field := findObjectAttributeField(w.entity, name)
+	if field == nil {
+		// Объявленный реквизит с тем же именем старше стандартного: такие
+		// конфигурации читают прежнее значение.
+		if std, ok := w.standardAttr(name); ok {
+			return std
+		}
+		if isSelfRefName(name) {
+			return w.selfRef(v)
+		}
 		return v
 	}
-	return w.s.maskDSLValue(w.ctx(), w.entity, name, v)
+	maskStored := w.loaded && !w.assigned[strings.ToLower(strings.TrimSpace(name))]
+	if maskStored && w.s.dslFieldMasked(w.ctx(), w.entity, field.Name) {
+		return w.s.maskDSLValue(w.ctx(), w.entity, field.Name, v)
+	}
+	return w.s.declaredEntityFieldValue(field, v, w.refResolver())
+}
+
+// selfRef отдаёт собственную ссылку документа копией, привязанной к живому
+// контексту модуля. В объекте она лежит без менеджера (ensureSelfRef), и
+// Д.Ссылка.ПолучитьОбъект() после Записать() отвечал «ссылка не привязана к
+// менеджеру». У объекта из Ссылка.ПолучитьОбъект() и после Прочитать() ссылки
+// в объекте нет вовсе — её строим по идентификатору. У нового, ещё не
+// записанного документа ссылки нет, как и раньше.
+func (w *docWriter) selfRef(stored any) any {
+	ref, ok := stored.(*interpreter.Ref)
+	if !ok {
+		if !w.loaded && !w.saved {
+			return stored
+		}
+		ref = &interpreter.Ref{UUID: w.obj.ID.String(), Name: w.displayName(), Type: w.entity.Name, Kind: w.entity.Kind}
+	} else if ref != nil && ref.Name == "" && (w.loaded || w.saved) {
+		// После Записать() ссылку кладёт в объект запись (entityservice.Save) —
+		// без представления, и Строка(Об.Ссылка) давала пустую строку, хотя
+		// представление у записанного объекта есть. Имя — копии: хранимая
+		// ссылка остаётся как есть.
+		named := *ref
+		named.Name = w.displayName()
+		ref = &named
+	}
+	return w.refResolver().bindRefToContext(ref, w.entity.Name)
 }
 
 func (w *docWriter) Set(name string, v any) {
@@ -589,6 +732,24 @@ func (w *docWriter) Set(name string, v any) {
 	}
 	w.assigned[strings.ToLower(strings.TrimSpace(name))] = true
 	w.obj.Set(name, v)
+}
+
+func (w *docWriter) GetDynamicField(name string) (any, bool) {
+	if w == nil || w.entity == nil || w.obj == nil {
+		return nil, false
+	}
+	if findObjectAttributeField(w.entity, name) == nil {
+		return w.standardAttr(name)
+	}
+	return w.Get(name), true
+}
+
+func (w *docWriter) SetDynamicField(name string, value any) bool {
+	if w == nil || w.entity == nil || w.obj == nil || findObjectAttributeField(w.entity, name) == nil {
+		return false
+	}
+	w.Set(name, value)
+	return true
 }
 
 func (w *docWriter) CallMethod(method string, args []any) any {
@@ -663,6 +824,9 @@ func (w *docWriter) read() error {
 	}
 	w.obj.Fields = fields
 	w.obj.TablePartRows = tpRows
+	w.setStandardAttrs(row)
+	w.obj.DeletionMark = asBool(row["deletion_mark"])
+	w.obj.Posted = asBool(row["posted"])
 	// Прочитанный объект целиком приехал из БД: присвоенного модулем в нём
 	// больше нет, а сохранённый признак снимал бы маску с реальных значений.
 	w.assigned = nil
@@ -681,8 +845,9 @@ func (w *docWriter) read() error {
 
 // fill реализует Документы.X.СоздатьДокумент().Заполнить(Источник): запускает
 // ОбработкаЗаполнения у приёмника, переносит результат в obj.Fields/TablePartRows.
-// Источник — *interpreter.Ref или *runtime.Object. Делегирует entityservice.Fill,
-// единая точка вызова OnFill вместе с UI-handler'ом.
+// Источник — *interpreter.Ref либо *runtime.Object напрямую или внутри адаптера
+// lifecycle-хука. Делегирует entityservice.Fill, единую точку вызова OnFill
+// вместе с UI-handler'ом.
 func (w *docWriter) fill(src any) error {
 	var srcType string
 	var srcID uuid.UUID
@@ -703,6 +868,13 @@ func (w *docWriter) fill(src any) error {
 		}
 		srcType = v.Type
 		srcID = v.ID
+	case interface{ runtimeObject() *runtime.Object }:
+		obj := v.runtimeObject()
+		if obj == nil {
+			return fmt.Errorf("объект-основание пустой")
+		}
+		srcType = obj.Type
+		srcID = obj.ID
 	default:
 		return fmt.Errorf("ожидается ссылка или объект, получено %T", src)
 	}
@@ -748,7 +920,7 @@ func (w *docWriter) withLockScope(fn func(ctx context.Context) error) error {
 	if runtime.LockCollectorFromContext(base) != nil {
 		return w.s.store.WithTxScope(base, fn)
 	}
-	lc := runtime.NewLockCollector()
+	lc := runtime.NewLockCollectorIn(base)
 	defer lc.ReleaseAll()
 	return w.s.store.WithTxScope(base, func(ctx context.Context) error {
 		return fn(runtime.ContextWithLockCollector(ctx, lc))
@@ -822,7 +994,14 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 	w.ensureSelfRef()
 	mc := runtime.NewMovementsCollector(w.entity.Name, w.obj.ID).WillPersist()
 	setPeriodFromFields(mc, w.entity, w.obj.Fields)
-	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc)
+	if posting && isNew {
+		// Keep a tx-local FK parent available to both hooks. Its lifecycle is
+		// finalized only after OnPost; the intermediate snapshot is not a create.
+		if err := w.s.store.UpsertProvisional(ctx, w.entity.Name, w.obj.ID, w.obj.Fields, w.entity); err != nil {
+			return err
+		}
+	}
+	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc, w.hookXDTOState())
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
@@ -844,7 +1023,7 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 	}
 	switch {
 	case posting && isNew:
-		if err := w.s.store.UpsertProvisional(ctx, w.entity.Name, w.obj.ID, w.obj.Fields, w.entity); err != nil {
+		if err := w.s.store.UpdateProvisional(ctx, w.entity.Name, w.obj.ID, w.obj.Fields, w.entity); err != nil {
 			return err
 		}
 	case posting:
@@ -869,10 +1048,10 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 			return err
 		}
 	}
-	// Регистрация изменения для планов обмена (план 86): запись документа из DSL
-	// идёт мимо entityservice.Save. Провести() зовёт write() → регистрируется и оно.
-	if err := exchange.RegisterOnSave(ctx, w.s.store, w.s.reg.ExchangePlans(), w.entity, w.obj.ID, false); err != nil {
-		return err
+	if !posting {
+		if err := exchange.RegisterOnSave(ctx, w.s.store, w.s.reg.ExchangePlans(), w.entity, w.obj.ID, false); err != nil {
+			return err
+		}
 	}
 	// Для непроводимых документов движения, записанные в ПриЗаписи, фиксируем.
 	// У проводимых документов движения формирует проведение (post).
@@ -892,11 +1071,12 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 		w.saved = wasSaved
 		w.expectedVersion = previousVersion
 	})
-	// Живой список (план 87): отложенная до commit публикация «данные.<сущность>».
-	w.s.publishDocChange(ctx, w.entity, w.obj.ID, "записан", changeBefore)
-	// Веб-хук document.save (план 29) — Провести() зовёт write(), поэтому событие
-	// записи приходит и перед document.post, как на пути entityservice.Save.
-	w.s.dispatchDocWebhook(ctx, "document.save", w.entity, w.obj.ID, w.obj.Fields)
+	if !posting {
+		entityservice.NotifySaveObserver(ctx, w.entity, entityservice.SaveResult{ID: w.obj.ID, Version: version})
+		w.s.publishDocChange(ctx, w.entity, w.obj.ID, "записан", changeBefore)
+		w.s.dispatchDocWebhook(ctx, "document.save", w.entity, w.obj.ID, w.obj.Fields)
+	}
+
 	return nil
 }
 
@@ -912,10 +1092,14 @@ func (w *docWriter) accessID() uuid.UUID {
 func (w *docWriter) conduct() error {
 	return w.withLockScope(func(ctx context.Context) error {
 		provisionalCreate := !w.loaded && !w.saved
+		var before map[string]any
+		if w.entity.NotifyChanges && !provisionalCreate {
+			before, _ = w.s.store.GetByID(ctx, w.entity.Name, w.obj.ID, w.entity)
+		}
 		if err := w.writeInContextForAction(ctx, true); err != nil {
 			return err
 		}
-		return w.postInContextAfterAccess(ctx, true, provisionalCreate)
+		return w.postInContextAfterAccess(ctx, true, provisionalCreate, before)
 	})
 }
 
@@ -929,10 +1113,10 @@ func (w *docWriter) postInContext(ctx context.Context) error {
 	if err := w.s.checkDSLRowAccess(ctx, w.entity, "post", w.obj.ID, w.obj.Fields); err != nil {
 		return err
 	}
-	return w.postInContextAfterAccess(ctx, false, false)
+	return w.postInContextAfterAccess(ctx, false, false, nil)
 }
 
-func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, provisionalCreate bool) error {
+func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, provisionalCreate bool, before map[string]any) error {
 	// Инвариант: помеченный на удаление документ нельзя провести (как в 1С).
 	if marked, err := w.s.store.IsMarkedForDeletion(ctx, w.entity.Name, w.obj.ID); err != nil {
 		return err
@@ -943,15 +1127,22 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 	mc := runtime.NewMovementsCollector(w.entity.Name, w.obj.ID).WillPersist()
 	setPeriodFromFields(mc, w.entity, w.obj.Fields)
 	// Дата запрета проведения (свёртка базы, план 151).
-	if mc.Period != nil {
+	if !hasPrelude && mc.Period != nil {
 		if lock, ok := w.s.store.GetPostingLockDate(ctx); ok && storage.PostingFrozen(lock, *mc.Period) {
 			return storage.PostingFrozenError(lock)
 		}
 	}
-	errMsg, hookMessages := w.s.runOnPostCtx(ctx, w.obj, mc)
+	errMsg, hookMessages := w.s.runOnPostCtx(ctx, w.obj, mc, w.hookXDTOState())
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
+	}
+	mc.Period = nil
+	setPeriodFromFields(mc, w.entity, w.obj.Fields)
+	if mc.Period != nil {
+		if lock, ok := w.s.store.GetPostingLockDate(ctx); ok && storage.PostingFrozen(lock, *mc.Period) {
+			return storage.PostingFrozenError(lock)
+		}
 	}
 	// Хук мог присвоить реквизиту-перечислению недопустимое значение (#977):
 	// входная проверка была до него. Транзакция ещё открыта — откат бесплатен.
@@ -1005,11 +1196,25 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 	if err := w.s.store.SetPosted(ctx, w.entity.Name, w.obj.ID, true); err != nil {
 		return err
 	}
+	// Признак объекта следует за транзакцией, как saved и версия: откат
+	// проведения возвращает прежнее значение.
+	wasPosted, wasXDTOPosted := w.posted, w.obj.Posted
+	w.posted = true
+	w.obj.Posted = true
+	storage.DeferUntilTxRollback(ctx, func() {
+		w.posted = wasPosted
+		w.obj.Posted = wasXDTOPosted
+	})
 	if err := exchange.RegisterOnSave(ctx, w.s.store, w.s.reg.ExchangePlans(), w.entity, w.obj.ID, false); err != nil {
 		return err
 	}
+	version, err := w.s.store.EntityVersion(ctx, w.entity.Name, w.obj.ID)
+	if err != nil {
+		return err
+	}
+	entityservice.NotifySaveObserver(ctx, w.entity, entityservice.SaveResult{ID: w.obj.ID, Version: version})
 	// Живой список (план 87): «проведён» после успешного проведения из DSL.
-	w.s.publishDocChange(ctx, w.entity, w.obj.ID, "проведён", nil)
+	w.s.publishDocChange(ctx, w.entity, w.obj.ID, "проведён", before)
 	// Веб-хук document.post (план 29).
 	w.s.dispatchDocWebhook(ctx, "document.post", w.entity, w.obj.ID, w.obj.Fields)
 	return nil
@@ -1083,8 +1288,10 @@ func (w *docWriter) displayName() string {
 // tpProxy — табличная часть документа (Док.Товары).
 // tpProxy — табличная часть записываемого объекта (документа или справочника).
 type tpProxy struct {
-	obj    *runtime.Object
-	tpName string
+	obj      *runtime.Object
+	tpName   string
+	tp       *metadata.TablePart
+	resolver *dslRefAttrResolver
 }
 
 func (t *tpProxy) Get(_ string) any    { return nil }
@@ -1095,6 +1302,15 @@ func (t *tpProxy) Set(_ string, _ any) {}
 // (Ссылка.ПолучитьОбъект / НайтиПоНомеру), нельзя было прочитать в DSL.
 func (t *tpProxy) IterateRows() []map[string]any {
 	return t.obj.TablePartRows[t.tpName]
+}
+
+func (t *tpProxy) IterateThis() []interpreter.This {
+	rows := t.IterateRows()
+	out := make([]interpreter.This, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, newRefAwareMapThis(row, t.tp, t.resolver))
+	}
+	return out
 }
 
 // KnownMethods реализует interpreter.MethodLister: опечатка в имени метода
@@ -1111,7 +1327,7 @@ func (t *tpProxy) CallMethod(method string, args []any) any {
 	case "добавить", "add":
 		row := map[string]any{}
 		t.obj.TablePartRows[t.tpName] = append(rows, row)
-		return &interpreter.MapThis{M: row}
+		return newRefAwareMapThis(row, t.tp, t.resolver)
 	case "очистить", "clear":
 		t.obj.TablePartRows[t.tpName] = nil
 	case "количество", "count":
@@ -1119,7 +1335,7 @@ func (t *tpProxy) CallMethod(method string, args []any) any {
 	case "получить", "get":
 		if len(args) > 0 {
 			if idx := runtime.RowIndexArg(args[0]); idx >= 0 && idx < len(rows) {
-				return &interpreter.MapThis{M: rows[idx]}
+				return newRefAwareMapThis(rows[idx], t.tp, t.resolver)
 			}
 		}
 	case "удалить", "delete":
@@ -1146,3 +1362,21 @@ func (c dslFieldSearch) IsFieldSearchDenied(ctx context.Context, entity *metadat
 }
 
 func (s *Server) dslFieldSearchChecker() interpreter.FieldSearchChecker { return dslFieldSearch{s: s} }
+
+// XDTOObject отдаёт внутреннее представление документа сериализатору XDTO:
+// шапку вместе с табличными частями. Без этого СериализаторXDTO.ЗаписатьXML
+// видел бы только Get/Set обёртки и не смог бы прочитать строки ТЧ.
+func (w *docWriter) XDTOObject() *runtime.Object { return w.obj }
+
+func (w *docWriter) hookXDTOState() *entityHookXDTOState {
+	if w.assigned == nil {
+		w.assigned = map[string]bool{}
+	}
+	return &entityHookXDTOState{loaded: w.loaded, assigned: w.assigned}
+}
+
+// XDTOMaskField — полевая политика для СериализаторXDTO.ЗаписатьXML: XDTOObject()
+// отдаёт сырой объект, минуя маскирование в Get().
+func (w *docWriter) XDTOMaskField() func(string, any) any {
+	return w.s.xdtoFieldMask(w.ctx(), w.entity, w.loaded, w.assigned)
+}

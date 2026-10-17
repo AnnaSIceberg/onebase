@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -17,6 +16,7 @@ import (
 	"github.com/ivantit66/onebase/internal/query"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/report/compose"
+	"github.com/ivantit66/onebase/internal/scheduler"
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
@@ -69,6 +69,10 @@ func (h *handler) mountV2(r chi.Router) {
 		r.Post("/document/{name}/{id}/unpost", h.unpostDocumentV2())
 
 		r.Get("/report/{name}", h.runReportV2())
+
+		// Чтение регистра сведений (issue #1423). Только GET: запись,
+		// регистры накопления и виртуальные таблицы — отдельные решения.
+		r.Get("/inforeg/{name}", h.listInfoRegV2())
 
 		// Глобальный поиск (план 82) — те же права, что в списках объектов.
 		r.Get("/search", h.searchV2())
@@ -395,7 +399,12 @@ func (h *handler) runReportV2() http.HandlerFunc {
 		if limit > restMaxLimit {
 			limit = restMaxLimit
 		}
-		params, err := reportParamsFromQuery(r.URL.Query(), rep)
+		page, err := parsePositiveInt(r.URL.Query().Get("page"), 1)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid page", "", 0)
+			return
+		}
+		params, err := reportParamsFromQuery(r.URL.Query(), rep, scheduler.NewConstantResolver(r.Context(), h.store, h.reg))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
 			return
@@ -414,18 +423,18 @@ func (h *handler) runReportV2() http.HandlerFunc {
 			writeError(w, http.StatusForbidden, "masked field: "+maskPlan.Denied, "", 0)
 			return
 		}
-		rows, cols, truncated, err := query.RunLimit(r.Context(), h.store, &compiled, limit)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error(), "", 0)
-			return
-		}
-		// Маска ПДн до компоновки (план 88E): в JSON и в группировки уходит уже
-		// замаскированное значение.
-		if err := maskPlan.Apply(rows); err != nil {
-			writeError(w, http.StatusForbidden, "masked field: "+err.Error(), "", 0)
-			return
-		}
 		if wantsReportComposition(r.URL.Query()) {
+			rows, cols, err := query.Run(r.Context(), h.store, &compiled)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error(), "", 0)
+				return
+			}
+			// Маска ПДн до компоновки (план 88E): в JSON и в группировки уходит уже
+			// замаскированное значение.
+			if err := maskPlan.Apply(rows); err != nil {
+				writeError(w, http.StatusForbidden, "masked field: "+err.Error(), "", 0)
+				return
+			}
 			variant := r.URL.Query().Get("variant")
 			if variant == "" {
 				variant = r.URL.Query().Get("__variant")
@@ -440,15 +449,15 @@ func (h *handler) runReportV2() http.HandlerFunc {
 				writeError(w, http.StatusBadRequest, "report composition error: "+err.Error(), "", 0)
 				return
 			}
+			total := len(rows)
 			writeJSONV2(w, http.StatusOK, restV2Envelope{
 				Data: data,
 				Meta: &restV2Meta{
-					Total:      len(rows),
+					Total:      total,
 					Page:       1,
-					Limit:      limit,
-					TotalPages: 1,
+					Limit:      total,
+					TotalPages: totalPages(total, total),
 					Columns:    cols,
-					Truncated:  truncated,
 					Composed:   true,
 					Variant:    variant,
 					Kind:       kind,
@@ -456,18 +465,48 @@ func (h *handler) runReportV2() http.HandlerFunc {
 			})
 			return
 		}
+
+		offset, ok := reportPageOffset(page, limit)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid page", "", 0)
+			return
+		}
+		total, err := h.store.CountQuery(r.Context(), compiled.SQL, compiled.Args)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error(), "", 0)
+			return
+		}
+		rows, cols, err := query.RunPage(r.Context(), h.store, &compiled, limit, offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error(), "", 0)
+			return
+		}
+		truncated := offset < total && len(rows) < total-offset
+		// Маска ПДн до компоновки (план 88E): в JSON и в группировки уходит уже
+		// замаскированное значение.
+		if err := maskPlan.Apply(rows); err != nil {
+			writeError(w, http.StatusForbidden, "masked field: "+err.Error(), "", 0)
+			return
+		}
 		writeJSONV2(w, http.StatusOK, restV2Envelope{
 			Data: rows,
 			Meta: &restV2Meta{
-				Total:      len(rows),
-				Page:       1,
+				Total:      total,
+				Page:       page,
 				Limit:      limit,
-				TotalPages: 1,
+				TotalPages: totalPages(total, limit),
 				Columns:    cols,
 				Truncated:  truncated,
 			},
 		})
 	}
+}
+
+func reportPageOffset(page, limit int) (int, bool) {
+	if page <= 0 || limit <= 0 || page-1 > int(^uint(0)>>1)/limit {
+		return 0, false
+	}
+	return (page - 1) * limit, true
 }
 
 func (h *handler) composeReportV2(rows []map[string]any, spec *reportpkg.Composition) (string, restV2ReportComposition, error) {
@@ -639,49 +678,33 @@ func totalPages(total, limit int) int {
 	if total <= 0 || limit <= 0 {
 		return 0
 	}
-	return (total + limit - 1) / limit
+	return 1 + (total-1)/limit
 }
 
-func reportParamsFromQuery(q url.Values, rep *reportpkg.Report) (map[string]any, error) {
+func reportParamsFromQuery(q url.Values, rep *reportpkg.Report, res scheduler.ConstantResolver) (map[string]any, error) {
 	params := make(map[string]any, len(rep.Params))
 	for _, p := range rep.Params {
 		raw := q.Get(p.Name)
-		if raw == "" {
-			if p.Type == "bool" {
-				params[p.Name] = false
-			} else {
-				params[p.Name] = nil
+		if _, ok := q[p.Name]; !ok {
+			// Параметра в запросе нет — подставляем умолчание той же грамматикой
+			// подстановок, что и на экране. Иначе REST расходится с UI на том
+			// самом дефекте, ради которого умолчание и заводилось: отчёт с
+			// необязательной датой приходит пустым, потому что «Срок < NULL» не
+			// выбирает ничего. Явно переданное пустое значение — выбор клиента,
+			// его умолчание не перебивает.
+			d, derr := scheduler.ResolveParamTemplateText(p.Default, p.Type, res)
+			if derr != nil {
+				return nil, derr
 			}
-			continue
+			raw = d
 		}
-		v, err := parseReportParamValue(raw, p.Type)
+		v, err := reportpkg.ParseParamValue(raw, p, reportpkg.ParamParseAPI)
 		if err != nil {
 			return nil, fmt.Errorf("invalid report parameter %s: %w", p.Name, err)
 		}
 		params[p.Name] = v
 	}
 	return params, nil
-}
-
-func parseReportParamValue(raw, typ string) (any, error) {
-	switch strings.ToLower(strings.TrimSpace(typ)) {
-	case "date":
-		t, err := time.ParseInLocation("2006-01-02", raw, time.Local)
-		if err != nil {
-			return nil, errors.New("expected date YYYY-MM-DD")
-		}
-		return t, nil
-	case "bool", "boolean":
-		return parseReportBool(raw), nil
-	case "number":
-		n, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
-			return nil, errors.New("expected number")
-		}
-		return n, nil
-	default:
-		return raw, nil
-	}
 }
 
 func parseReportBool(raw string) bool {
@@ -813,6 +836,17 @@ func buildOpenAPIV2(entities []*metadata.Entity, reports []*reportpkg.Report) ma
 	schemas["DocumentListEnvelope"] = dataEnvelopeSchema(map[string]any{
 		"type":  "array",
 		"items": map[string]any{"$ref": "#/components/schemas/DocumentObject"},
+	}, map[string]any{"$ref": "#/components/schemas/ListMeta"})
+	// Регистр сведений (issue #1423): состав колонок зависит от конкретного
+	// регистра, поэтому строка описана свободным объектом. Точные измерения и
+	// ресурсы клиент берёт из describe, а не из спецификации REST.
+	schemas["InfoRegRecord"] = map[string]any{
+		"type":                 "object",
+		"additionalProperties": true,
+	}
+	schemas["InfoRegListEnvelope"] = dataEnvelopeSchema(map[string]any{
+		"type":  "array",
+		"items": map[string]any{"$ref": "#/components/schemas/InfoRegRecord"},
 	}, map[string]any{"$ref": "#/components/schemas/ListMeta"})
 	schemas["SearchHit"] = map[string]any{
 		"type": "object",
@@ -1029,6 +1063,7 @@ func openAPIV2Paths() map[string]any {
 		"/api/v2/document/{name}/{id}/post":        actionPath("postDocument", "Post document", nameParam, idParam, mutationEnvelope, errorResponses),
 		"/api/v2/document/{name}/{id}/unpost":      actionPath("unpostDocument", "Unpost document", nameParam, idParam, mutationEnvelope, errorResponses),
 		"/api/v2/report/{name}":                    reportPath(nameParam, reportEnvelope, errorResponses),
+		"/api/v2/inforeg/{name}":                   infoRegPath(nameParam, errorResponses),
 		"/api/v2/search":                           searchPath(errorResponses),
 		"/api/v2/openapi.json": map[string]any{
 			"get": map[string]any{
@@ -1037,6 +1072,46 @@ func openAPIV2Paths() map[string]any {
 				"tags":        []string{"openapi"},
 				"responses":   mergeResponses(map[string]any{"200": openAPIResponse}, errorResponses),
 			},
+		},
+	}
+}
+
+// infoRegPath — чтение регистра сведений (issue #1423). Отбор по измерениям
+// записан общим `filter[Измерение]`, как у списков объектов: конкретные имена
+// зависят от регистра, и перечислить их в статической спецификации нельзя.
+func infoRegPath(nameParam any, errors map[string]any) map[string]any {
+	return map[string]any{
+		"get": map[string]any{
+			"operationId": "listInfoRegister",
+			"summary":     "Read information-register records",
+			"tags":        []string{"inforeg"},
+			"parameters": []any{
+				nameParam,
+				map[string]any{"name": "limit", "in": "query", "schema": map[string]any{"type": "integer", "minimum": 1, "maximum": restMaxLimit}},
+				map[string]any{"name": "page", "in": "query", "schema": map[string]any{"type": "integer", "minimum": 1}},
+				map[string]any{"name": "offset", "in": "query", "schema": map[string]any{"type": "integer", "minimum": 0}},
+				map[string]any{
+					"name": "filter[Dimension]", "in": "query",
+					"description": "Exact match on a register dimension. The value is compared verbatim: " +
+						"surrounding spaces are significant and an empty value selects records whose " +
+						"dimension is the empty string. An unknown name is rejected with 400 rather " +
+						"than ignored.",
+					"schema": map[string]any{"type": "string"},
+				},
+				map[string]any{
+					"name": "filter[period.from]", "in": "query",
+					"description": "Periodic registers only. ISO date or RFC3339 instant.",
+					"schema":      map[string]any{"type": "string"},
+				},
+				map[string]any{
+					"name": "filter[period.to]", "in": "query",
+					"description": "Periodic registers only; the whole day is included.",
+					"schema":      map[string]any{"type": "string"},
+				},
+			},
+			"responses": mergeResponses(map[string]any{
+				"200": responseWithSchema("OK", "#/components/schemas/InfoRegListEnvelope"),
+			}, errors),
 		},
 	}
 }
@@ -1089,13 +1164,19 @@ func reportPath(nameParam, okEnvelope map[string]any, errors map[string]any) map
 	limitParam := map[string]any{
 		"name":        "limit",
 		"in":          "query",
-		"description": "Maximum rows to return; report parameters are also passed as query parameters by name.",
+		"description": "Maximum rows in a flat response page. Ignored when composition=true; report parameters are also passed as query parameters by name.",
 		"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": restMaxLimit},
+	}
+	pageParam := map[string]any{
+		"name":        "page",
+		"in":          "query",
+		"description": "1-based flat-response page number. Ignored when composition=true.",
+		"schema":      map[string]any{"type": "integer", "minimum": 1},
 	}
 	compositionParam := map[string]any{
 		"name":        "composition",
 		"in":          "query",
-		"description": "Set to 1/true to return the YAML report composition instead of a flat row array.",
+		"description": "Set to 1/true to return the complete, unpaginated YAML report composition instead of a flat row array.",
 		"schema":      map[string]any{"type": "boolean"},
 	}
 	variantParam := map[string]any{
@@ -1109,7 +1190,7 @@ func reportPath(nameParam, okEnvelope map[string]any, errors map[string]any) map
 			"operationId": "runReport",
 			"summary":     "Run report",
 			"tags":        []string{"report"},
-			"parameters":  []any{nameParam, limitParam, compositionParam, variantParam},
+			"parameters":  []any{nameParam, limitParam, pageParam, compositionParam, variantParam},
 			"responses":   mergeResponses(map[string]any{"200": okEnvelope}, errors),
 		},
 	}
@@ -1213,6 +1294,14 @@ func reportParamOpenAPISchema(p reportpkg.Param) map[string]any {
 	switch strings.ToLower(p.Type) {
 	case "date":
 		return map[string]any{"type": "string", "format": "date"}
+	case "datetime":
+		return map[string]any{
+			"type": "string",
+			"description": "Local date and time in the server's local time zone, without a time zone suffix: " +
+				"YYYY-MM-DDTHH:MM[:SS] (for example, 2026-09-28T12:30 or 2026-09-28T12:30:41). " +
+				"A date alone, YYYY-MM-DD (for example, 2026-09-28), is also accepted and interpreted as midnight.",
+			"example": "2026-09-28T12:30:41",
+		}
 	case "number":
 		return map[string]any{"type": "number"}
 	case "bool", "boolean":

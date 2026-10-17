@@ -24,7 +24,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/storage"
+	"github.com/ivantit66/onebase/internal/typedempty"
 )
 
 // queryRunner — то, что умеет исполнять SQL. Интерфейс, а не *storage.DB,
@@ -32,6 +34,7 @@ import (
 type queryRunner interface {
 	RunQuery(ctx context.Context, sql string, args []any) ([]map[string]any, []string, error)
 	RunQueryLimit(ctx context.Context, sql string, args []any, maxRows int) ([]map[string]any, []string, bool, error)
+	RunQueryPage(ctx context.Context, sql string, args []any, limit, offset int) ([]map[string]any, []string, error)
 }
 
 // Run исполняет скомпилированный запрос и приводит типизированные колонки.
@@ -55,6 +58,17 @@ func RunLimit(ctx context.Context, db queryRunner, res *Result, maxRows int) ([]
 	return rows, cols, truncated, nil
 }
 
+// RunPage executes one page in the database and applies the same typed-column
+// normalization as Run and RunLimit.
+func RunPage(ctx context.Context, db queryRunner, res *Result, limit, offset int) ([]map[string]any, []string, error) {
+	rows, cols, err := db.RunQueryPage(ctx, res.SQL, res.Args, limit, offset)
+	if err != nil {
+		return rows, cols, err
+	}
+	NormalizeColumns(res, rows)
+	return rows, cols, nil
+}
+
 // NormalizeColumns приводит значения всех типизированных колонок результата.
 //
 // Одна точка вместо перечисления типов у каждого вызывающего: датам приведение
@@ -67,6 +81,31 @@ func NormalizeColumns(res *Result, rows []map[string]any) {
 	}
 	NormalizeBoolColumns(res.BoolColumns, rows)
 	NormalizeDateColumns(res.DateColumns, rows)
+	NormalizeTypedDateColumns(res.TypedColumns, rows)
+}
+
+// NormalizeTypedDateColumns applies the common database-date conversion to
+// DSL-only descriptors as well. Register system fields are not part of the
+// metadata field list used by DateColumns, but their non-empty values still
+// have to cross the same SQLite TEXT -> time.Time boundary.
+func NormalizeTypedDateColumns(cols map[string]typedempty.Descriptor, rows []map[string]any) {
+	if len(cols) == 0 {
+		return
+	}
+	for _, row := range rows {
+		for col, desc := range cols {
+			if desc.Type != metadata.FieldTypeDate {
+				continue
+			}
+			v, ok := row[col]
+			if !ok || v == nil {
+				continue
+			}
+			if t, converted := ToDateValue(v); converted {
+				row[col] = t
+			}
+		}
+	}
 }
 
 // NormalizeDateColumns приводит значения перечисленных колонок к значению даты.
