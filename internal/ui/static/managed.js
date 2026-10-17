@@ -198,22 +198,69 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // клиента, и реквизиты запись переживают). Значения кладём в sessionStorage
   // ровно на время перезагрузки: пишем перед отправкой, применяем и СРАЗУ
   // удаляем при следующей загрузке — дольше одной навигации они не живут.
+  // BEGIN onebase-form-attr-stash
   var FORM_ATTRS = Array.isArray(cfg.formAttrs) ? cfg.formAttrs : [];
+  // An attribute without a placed control still lives for the open form.
+  // Carry it through the same FormData/applyValues path as visible attributes;
+  // values are client input, never an authorization boundary.
+  function ensureFormAttrControls(){
+    var form = document.getElementById('main-form');
+    if (!form) return;
+    var initial = cfg.formAttrValues || {};
+    for (var i = 0; i < FORM_ATTRS.length; i++) {
+      var name = FORM_ATTRS[i];
+      if (form.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(name) : name) + '"]')) continue;
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      var value = Object.prototype.hasOwnProperty.call(initial, name) ? initial[name] : '';
+      input.value = value == null ? '' : String(value);
+      form.appendChild(input);
+    }
+  }
+  obManagedReady(ensureFormAttrControls);
   var ATTR_STASH_KEY = 'ob-form-attrs:' + String(cfg.entity || '');
+  // Реквизит бывает нарисован несколькими копиями: копия, скрытая по
+  // hidden_when, остаётся в DOM внутри disabled fieldset и не отправляется.
+  // Первый контрол с этим name — не обязательно тот, который правил оператор:
+  // сохранять надо значение отправляемой копии, иначе после перезагрузки
+  // возвращалось старое значение скрытой копии, а видимое поле пустело (#1759).
+  function formAttrControls(form, name){
+    var key = window.CSS && CSS.escape ? CSS.escape(name) : name;
+    return Array.prototype.slice.call(form.querySelectorAll('[name="' + key + '"]'));
+  }
+  // Значение реквизита, которое уйдёт с формой. Флажки не сохраняются (как и
+  // раньше). Нет отправляемой копии или копии расходятся — не сохраняем ничего:
+  // восстановить наугад хуже, чем не восстановить.
+  function formAttrSubmittedValue(controls){
+    var value = null;
+    for (var i = 0; i < controls.length; i++) {
+      var c = controls[i];
+      if (c.type === 'checkbox' || c.disabled || (c.closest && c.closest('fieldset[disabled]'))) continue;
+      if (c.type === 'radio' && !c.checked) continue;
+      var v = String(c.value == null ? '' : c.value);
+      if (value === null) value = v;
+      else if (value !== v) return '';
+    }
+    return value || '';
+  }
   function stashFormAttrs(){
     if (!FORM_ATTRS.length) return;
     var form = document.getElementById('main-form');
     if (!form) return;
     var data = {};
     for (var i = 0; i < FORM_ATTRS.length; i++) {
-      var el = form.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(FORM_ATTRS[i]) : FORM_ATTRS[i]) + '"]');
-      if (el && el.type !== 'checkbox' && el.value) data[FORM_ATTRS[i]] = el.value;
+      var v = formAttrSubmittedValue(formAttrControls(form, FORM_ATTRS[i]));
+      if (v) data[FORM_ATTRS[i]] = v;
     }
     try {
       if (Object.keys(data).length) sessionStorage.setItem(ATTR_STASH_KEY, JSON.stringify(data));
       else sessionStorage.removeItem(ATTR_STASH_KEY);
     } catch (e) { /* приватный режим — просто не восстановим */ }
   }
+  // Восстановленное значение получают все пустые копии реквизита — какая из
+  // них видима, решает hidden_when уже после загрузки, и копии должны
+  // совпадать. Заполненную сервером копию не трогаем.
   function restoreFormAttrs(){
     if (!FORM_ATTRS.length) return;
     var raw = null;
@@ -224,10 +271,17 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     var form = document.getElementById('main-form');
     if (!form || !data) return;
     Object.keys(data).forEach(function(k){
-      var el = form.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (el && !el.value) el.value = data[k];
+      if (FORM_ATTRS.indexOf(k) < 0) return;
+      var controls = formAttrControls(form, k);
+      var radios = controls.filter(function(c){ return c.type === 'radio'; });
+      if (radios.length && !radios.some(function(r){ return r.checked; })) applyRadioValue(radios, data[k]);
+      controls.forEach(function(c){
+        if (c.type === 'radio' || c.type === 'checkbox') return;
+        if (!c.value) c.value = data[k];
+      });
     });
   }
+  // END onebase-form-attr-stash
 
   window._tpRefOpts = obManagedReadJSON('ob-managed-tp-ref-opts', window._tpRefOpts || {}) || {};
   window._tpEnumLabels = obManagedReadJSON('ob-managed-tp-enum-labels', window._tpEnumLabels || {}) || {};
@@ -326,20 +380,90 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     o.textContent = label;
     sel.appendChild(o);
   }
-  function applyValues(values, refOptions){
+  // BEGIN onebase-ro-apply-values
+  // Радиокнопки с одним name — одна группа на всю форму: браузер держит
+  // отмеченной одну кнопку, даже если реквизит нарисован двумя
+  // переключателями. Отмечаем кнопку той копии, которая сейчас отправляется,
+  // то есть не внутри disabled fieldset скрытой копии. Ответ события
+  // применяет состояния элементов раньше значений, поэтому копию, которую он
+  // показал, эта проверка уже видит отправляемой (#1759).
+  // Отправится ли контрол с формой: не disabled сам (readonly_when отключает
+  // input) и не лежит в disabled fieldset (копия, скрытая по hidden_when).
+  function controlSubmittable(c){
+    return !c.disabled && !(c.closest && c.closest('fieldset[disabled]'));
+  }
+  // Отмечается кнопка, которая уйдёт с формой. Видимая, но readonly копия
+  // переключателя не отправляется: отметь её — и у реквизита не останется
+  // отправляемой отмеченной кнопки, запись потеряет значение (#1759, круг 5).
+  // Отправляемой кнопки с этим value нет — отмечается первая, только для показа.
+  function applyRadioValue(radios, v){
+    var val = (v === null || v === undefined) ? '' : String(v);
+    var target = null;
+    radios.forEach(function(r){
+      if (!target && r.value === val && controlSubmittable(r)) target = r;
+    });
+    radios.forEach(function(r){
+      if (!target && r.value === val) target = r;
+    });
+    radios.forEach(function(r){ r.checked = (r === target); });
+  }
+  // Track actual input/change events separately from values repainted by a
+  // server response. A hidden copy can already differ from the submitted copy
+  // before a request; that difference is not a concurrent edit.
+  var controlEditRevisions = new WeakMap();
+  function captureFormControlState(form){
+    var state = new Map();
+    Array.prototype.forEach.call(form.querySelectorAll('[name]'), function(inp){
+      state.set(inp, {
+        value: inp.value,
+        revision: controlEditRevisions.get(inp) || 0,
+        editable: controlSubmittable(inp) && !inp.readOnly && inp.type !== 'hidden'
+      });
+    });
+    return state;
+  }
+  // Preserve a real edit made after this event's snapshot when the server
+  // echoes the submitted value. Apply it to every copy, including the copy
+  // which applyElementStates has just made visible/submittable.
+  function applyValues(values, refOptions, sent, controlState){
     if (!values) return;
     const form = document.getElementById('main-form');
     if (!form) return;
     Object.keys(values).forEach(function(k){
       const v = values[k];
+      const key = window.CSS && CSS.escape ? CSS.escape(k) : k;
       // Пропускаем файловые поля: не подставляем содержимое в поле пути
-      const fc = form.querySelector('[data-ob-file-content-for="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
+      const fc = form.querySelector('[data-ob-file-content-for="' + key + '"]');
       if (fc) return;
-      const inp = form.querySelector('[name="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (!inp) return;
-      if (inp.type === 'checkbox') {
-        inp.checked = v === true || v === 'true' || v === 1;
-      } else {
+      // Реквизит бывает на форме не один раз: копия, скрытая по hidden_when,
+      // остаётся в DOM (disabled fieldset) рядом с видимой, а после смены
+      // видимости отправляется уже она. Поэтому, как и у табличных частей
+      // (applyTableParts), значение получают ВСЕ представления реквизита:
+      // иначе ответ доходил только до первого контрола, и видимая копия
+      // отправляла старое значение обратно (#1759).
+      const controls = Array.prototype.slice.call(form.querySelectorAll('[name="' + key + '"]'));
+      var newerInput = null;
+      if (sent && controlState) {
+        controls.forEach(function(inp){
+          var before = controlState.get(inp);
+          var revision = controlEditRevisions.get(inp) || 0;
+          if (before && before.editable && inp.type !== 'radio' && inp.type !== 'checkbox' &&
+              revision > before.revision && inp.value !== before.value &&
+              (!newerInput || revision > newerInput.revision)) {
+            newerInput = {value: inp.value, revision: revision};
+          }
+        });
+      }
+      const radios = controls.filter(function(c){ return c.type === 'radio'; });
+      if (radios.length) applyRadioValue(radios, v);
+      controls.forEach(function(inp){
+        // value радиокнопки — её вариант, а не значение реквизита: запись в
+        // него ломала бы переключатель. Отметку выставил applyRadioValue.
+        if (inp.type === 'radio') return;
+        if (inp.type === 'checkbox') {
+          inp.checked = v === true || v === 'true' || v === 1;
+          return;
+        }
         var ref = managedRefParts(v);
         var val;
         if (ref) {
@@ -350,20 +474,34 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         } else {
           val = (v === null || v === undefined) ? '' : String(v);
         }
-        // Сервер сериализует дату как «2026-08-04T00:00» (формат datetime-local).
+        // Сервер сериализует дату как «2026-08-04T00:00:00» (формат datetime-local).
         // Для <input type="date"> это невалидное значение: браузер молча очищает
         // поле — дата на форме пропадала после первого же события, а следующая
         // запись затирала её в базе.
         if (inp.type === 'date' && val.indexOf('T') > 0) val = val.slice(0, val.indexOf('T'));
+        if (newerInput && sent.has(k) && sent.get(k) === val) {
+          val = newerInput.value;
+          if (inp.value === val) return; // Keep the active editor/caret intact.
+        }
         if (inp.tagName === 'SELECT') ensureRefOption(inp, val, refOptions && refOptions[k], ref && ref.label);
+        // Зеркало значения (план 181C/#1672) — скрытый input с тем же name:
+        // у запертого select-поля отправляется оно, и этот же проход держит
+        // его синхронным с select при каждом применении значения.
         if (inp.classList && inp.classList.contains('code-field') && inp._obSetCodeValue) {
           inp._obSetCodeValue(val);
         } else {
           inp.value = val;
         }
-      }
+      });
     });
+    // A form handler may change a choice_filter source without dispatching a
+    // native change event. Re-scan fingerprints after the whole response has
+    // been applied, so dependants see the final source and selected values.
+    if (typeof window.obRefreshChoiceFilters === 'function') {
+      window.obRefreshChoiceFilters();
+    }
   }
+  // END onebase-ro-apply-values
   // applyChoiceList — заполняет <select> элемента ПолеСписка динамическим списком
   // значений из ответа НачалоВыбора (choiceList). Текущее значение сохраняется,
   // если присутствует в новом списке.
@@ -427,30 +565,83 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // показывать их редактируемыми. В картах приходит и false — условие могло
   // перестать выполняться, и запрет нужно снять.
   //
+  // Ключ карты — путь размещения элемента в дереве формы, он же атрибут
+  // data-ob-el-path рядом с человекомочитаемым data-ob-el. Имя ключом быть
+  // не может: оно бывает пустым (Надписи) и повторяющимся (ТЧ размещена
+  // дважды), и безымянный потомок условного контейнера попадал в общий ключ,
+  // по которому находился первый попавшийся безымянный элемент (#1543).
+  //
   // Обратный ход есть не у всего: элемент, скрытый ещё серверной отрисовкой, в
-  // DOM отсутствует, якорь data-ob-el не находится, и hidden=false для него —
-  // пустая операция. Снова показать такой элемент может только перезагрузка
-  // страницы; скрыть уже отрисованный — можно.
+  // DOM отсутствует, якорь data-ob-el-path не находится, и hidden=false для
+  // него — пустая операция. Снова показать такой элемент может только
+  // перезагрузка страницы; скрыть уже отрисованный — можно.
+  //
+  // Клиент НИЧЕГО не выводит сам. Условие на контейнере каскадит на потомков,
+  // но считает каскад сервер: в карте лежит готовое состояние каждого
+  // затронутого элемента, а здесь оно только применяется к контролам этого
+  // элемента и никого больше (#1184). Разбирать дерево тут нельзя: клиент не
+  // знает ни статического readonly потомка, ни права на запись, и обход
+  // потомков скопом отпирал бы при ложном условии поле, которое сервер
+  // отрисовал нередактируемым навсегда.
+  // BEGIN onebase-ro-apply-states
   function applyElementStates(st) {
     if (!st) return;
-    var byName = function (name) {
-      return document.querySelector('[data-ob-el="' + (window.CSS && CSS.escape ? CSS.escape(name) : name) + '"]');
+    var byPath = function (path) {
+      return document.querySelector('[data-ob-el-path="' + (window.CSS && CSS.escape ? CSS.escape(path) : path) + '"]');
     };
     var hidden = st.hidden || {};
-    Object.keys(hidden).forEach(function (name) {
-      var el = byName(name);
-      if (el) el.style.display = hidden[name] ? 'none' : '';
+    Object.keys(hidden).forEach(function (path) {
+      var el = byPath(path);
+      if (!el) return;
+      // Some managed elements keep their layout only in an inline display
+      // declaration (checkbox and command bar use flex). Remember that value
+      // before the first state update instead of erasing it on hidden=false.
+      if (!Object.prototype.hasOwnProperty.call(el, '_obDisplay')) {
+        var d = el.style.display || '';
+        // Элемент с hidden_when рендерится сервером с display:none, но его
+        // натуральное состояние — видимый (''). Не запоминаем 'none' как
+        // значение для восстановления, иначе поле останется скрытым навсегда.
+        el._obDisplay = d === 'none' ? '' : d;
+      }
+      el.style.display = hidden[path] ? 'none' : el._obDisplay;
+      // A hidden control must not be submitted or participate in native
+      // required validation. The server renders the same disabled fieldset
+      // for the initial state; update it when hidden_when changes.
+      if (el.getAttribute('data-ob-control-fieldset') === '1') el.disabled = !!hidden[path];
     });
     var ro = st.readonly || {};
-    Object.keys(ro).forEach(function (name) {
-      var el = byName(name);
+    // Свой ли это редактирующий контрол: ближайший якорь элемента формы — сам
+    // el. У контрола вложенного элемента якорь ближе, и его состояние приедет
+    // отдельной строкой карты. Навигацию (переход к выбранной ссылке, вкладки)
+    // сервер намеренно оставляет доступной при readonly; шаблон помечает её,
+    // чтобы обработка события сохранила ту же классификацию. Содержимое
+    // табличной части (data-ob-tp) не трогаем вовсе: там состояние складывается
+    // ещё и из права на запись, которого в карте нет, а сама ТЧ каскад получает
+    // при отрисовке.
+    var ownControl = function (el, node) {
+      if (node.closest('[data-ob-tp]')) return false;
+      if (node.dataset && node.dataset.obReadonlyNavigation === '1') return false;
+      return node.closest('[data-ob-el]') === el;
+    };
+    Object.keys(ro).forEach(function (path) {
+      var el = byPath(path);
       if (!el) return;
-      var on = !!ro[name];
+      var on = !!ro[path];
       // Сам элемент может быть кнопкой (kind: Кнопка) — тогда управляем им же.
       if (el.tagName === 'BUTTON') { el.disabled = on; return; }
       // input/textarea оставляем видимыми и выделяемыми (readonly), select и
       // кнопку подбора гасим (disabled) — как это делает серверный рендер.
+      // Зеркало значения (план 181C/#1672): select под запретом браузер не
+      // отправляет, поэтому успешным делаем зеркало — и только на время
+      // запрета; при разблокировке значение снова возит сам select.
+      var roMirror = null;
       el.querySelectorAll('input, textarea').forEach(function (inp) {
+        if (!ownControl(el, inp)) return;
+        if (inp.dataset && inp.dataset.obRoMirror === '1') {
+          inp.disabled = !on;
+          roMirror = inp;
+          return;
+        }
         // Hidden presence-marker distinguishes an unchecked checkbox from a
         // checkbox absent from the submitted form. It must be successful only
         // while the checkbox itself is editable; otherwise marker-without-value
@@ -459,10 +650,22 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         if (inp.type === 'checkbox' || inp.type === 'radio' || checkboxPresence) inp.disabled = on;
         else inp.readOnly = on;
       });
-      el.querySelectorAll('select, button').forEach(function (n) { n.disabled = on; });
+      // Кнопка «Открыть карточку» из гашения исключена: сервер под $ro рисует её
+      // БЕЗ disabled намеренно (templates_managed.go:94) — посмотреть связанный
+      // объект не значит его править, и на нередактируемом поле переход нужен
+      // чаще всего. Гася её скопом, клиент расходился с той же страницей,
+      // отрисованной сервером. Предел тот же, что у скрытых элементов выше:
+      // при $ro и пустом значении сервер кнопку не рисует вовсе, и показать её
+      // клиент не может — вернуть её способна только перезагрузка страницы.
+      el.querySelectorAll('select, button:not([data-ob-ref-current])').forEach(function (n) {
+        if (!ownControl(el, n)) return;
+        n.disabled = on;
+        if (n.tagName === 'SELECT' && roMirror) roMirror.value = n.value || '';
+      });
     });
   }
   window.applyElementStates = applyElementStates;
+  // END onebase-ro-apply-states
   // Перерисовка табчастей по ответу сервера. tbody у нас имеет
   // id=mtp-body-<TP> и атрибут data-tp-fields="name|type[:Ref],name|type,..."
   // где field-meta использовалось для определения типа input при первичном рендере;
@@ -717,7 +920,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         var btn = document.createElement('button');
         btn.type = 'button'; btn.className = 'del-btn'; btn.textContent = '×';
         btn.disabled = readOnly;
-        if (!readOnly) btn.onclick = function(){ tr.remove(); };
+        if (!readOnly) btn.setAttribute('data-ob-remove-row', '');
         tdDel.appendChild(btn);
         tr.appendChild(tdDel);
         tbody.appendChild(tr);
@@ -845,83 +1048,139 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // obFire(elementName, eventName[, extraParams]) — extraParams (объект)
   // добавляются к телу запроса. Используется подбором (план 46): фаза 2
   // шлёт {_pick_result}, команды ТЧ — {_tp, _tp_selected}.
-  window.obFire = async function(elementName, eventName, extraParams){
-   try {
+  // Match file contents to the actual submitted path control, including its
+  // position among duplicate names. Do not assign contents to a text input:
+  // the browser would strip newlines from a multi-line file.
+  function fileEventFormData(form, fileHelpers) {
+    if (!fileHelpers.length) return new FormData(form);
+    const contents = new Map();
+    const slots = new Map();
+    fileHelpers.forEach(function(helper){
+      const path = document.getElementById(helper.getAttribute('data-ob-file-path'));
+      if (controlSubmittable(helper) && path && path.form === form && controlSubmittable(path) &&
+          (helper.value || helper.dataset.obFileContentReady === '1')) {
+        contents.set(path, helper.value);
+        slots.set(path.name, []);
+      }
+    });
+    // Native FormData omits buttons, unchecked controls and disabled options.
+    // Keep a slot for every successful value of names containing a file path,
+    // so a non-file copy of the same attribute retains its own value too.
+    Array.prototype.forEach.call(form.elements || [], function(control){
+      if (!slots.has(control.name) || !controlSubmittable(control) ||
+          /^(button|submit|reset|image)$/.test(control.type) ||
+          (/^(checkbox|radio)$/.test(control.type) && !control.checked)) return;
+      const values = control.options ? Array.prototype.filter.call(control.options, function(option){
+        return option.selected && !option.disabled && !(option.parentElement.tagName === 'OPTGROUP' && option.parentElement.disabled);
+      }) : (control.type === 'file' ? (control.files && control.files.length ? Array.from(control.files) : [null]) : [null]);
+      values.forEach(function(){ slots.get(control.name).push(control); });
+    });
+    const disabled = fileHelpers.map(function(el){ return el.disabled; });
+    let fd;
+    try {
+      fileHelpers.forEach(function(el){ el.disabled = true; });
+      fd = new FormData(form);
+    } finally {
+      fileHelpers.forEach(function(el, i){ el.disabled = disabled[i]; });
+    }
+    const result = new FormData();
+    fd.forEach(function(value, name){
+      const controls = slots.get(name);
+      const control = controls && controls.shift();
+      result.append(name, contents.has(control) ? contents.get(control) : value);
+    });
+    return result;
+  }
+
+  function captureFormEventSelection(extraParams){
+	if (!extraParams || !extraParams._tp) return undefined;
+	var obg = (window._obGrids || {})[extraParams._tp];
+	if (obg && !obg.readOnly) {
+	  var selected = [];
+	  try { selected = obg.grid.getSelectedRows() || []; } catch (e) { selected = []; }
+	  var canonicalItems = obg.dataView.getItems().slice().sort(function(a, b) {
+		return (a._ord || 0) - (b._ord || 0);
+	  });
+	  selected = selected.map(function(displayIndex) {
+		var item = obg.dataView.getItem(displayIndex);
+		if (!item) return -1;
+		for (var i = 0; i < canonicalItems.length; i++) {
+		  if (canonicalItems[i] && canonicalItems[i].id === item.id) return i;
+		}
+		return -1;
+	  }).filter(function(index) { return index >= 0; });
+	  return selected.join(',');
+	}
+	var tbody = obManagedWritableTableBody('tp-body-' + extraParams._tp, 'data-tp-fields');
+	if (!tbody) return undefined;
+	var legacySelected = [];
+	Array.prototype.forEach.call(tbody.rows, function(tr, i){
+	  var cb = tr.querySelector('._tp-sel');
+	  if (cb && cb.checked) legacySelected.push(i);
+	});
+	return legacySelected.join(',');
+  }
+
+  async function snapshotFormEvent(elementName, eventName, extraParams, triggerSelection, pickerRequest){
     // Зафиксировать активную правку и синхронизировать ТЧ. При невалидной
     // ссылке или исключении editor-lock отправлять старое tp_json нельзя.
     if (window.obGridSync && window.obGridSync() === false) return;
     const form = document.getElementById('main-form');
     if (!form) return;
     const fileHelpers = Array.prototype.slice.call(form.querySelectorAll('[data-ob-file-content-for]'));
-    if (!await awaitCurrentFileReads(fileHelpers)) return;
+    if (fileHelpers.length && !await awaitCurrentFileReads(fileHelpers.filter(controlSubmittable))) return;
     // FileReader может работать долго; за это время активная grid-ячейка могла
     // измениться уже после первого snapshot. Непосредственно перед FormData
     // повторяем commit/sync и при любом veto оставляем событие неотправленным.
     if (window.obGridSync && window.obGridSync() === false) return;
     const body = new URLSearchParams();
-    const fileHelperDisabled = fileHelpers.map(function(el){ return el.disabled; });
-    let eventFD;
-    try {
-      fileHelpers.forEach(function(el){ el.disabled = true; });
-      eventFD = new FormData(form);
-    } finally {
-      fileHelpers.forEach(function(el, i){ el.disabled = fileHelperDisabled[i]; });
-    }
+    const eventFD = fileEventFormData(form, fileHelpers);
     eventFD.set(serviceField('_element'), elementName || '');
     eventFD.set(serviceField('_event'), eventName || '');
     eventFD.set(serviceField('_kind'), 'object');
     if (DOC_ID) eventFD.set(serviceField('_id'), DOC_ID);
     eventFD.forEach((v, k) => {
       if (typeof v !== 'string') { body.append(k, ''); return; }
-      // If the rendered file helper has content, prefer it over the path.
-      // The data attribute identifies the actual control without reserving
-      // all legal parameter names beginning with _fc_.
-      const fcEl = form.querySelector('[data-ob-file-content-for="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (fcEl && (fcEl.value || fcEl.dataset.obFileContentReady === '1')) { body.append(k, fcEl.value); }
-      else { body.append(k, v); }
+      body.append(k, v);
     });
     // Команда над ТЧ: подмешать индексы выделенных строк (_tp_selected) по
     // имени ТЧ из extraParams._tp.
-    if (extraParams && extraParams._tp) {
-      // Plan 48: check if SlickGrid exists for this TP
-      var obg = (window._obGrids || {})[extraParams._tp];
-      if (obg && !obg.readOnly) {
-        // getSelectedRows бросает «Selection model is not set», если модель
-        // выделения не установлена (плагин не завендорен). Командам подбора/
-        // пересчёта/очистки выделение не нужно — гасим ошибку и шлём пусто.
-        var sel = [];
-        try { sel = obg.grid.getSelectedRows() || []; } catch (e) { sel = []; }
-        // tp_json is serialized in canonical _ord order, while SlickGrid
-        // selection indices follow the current visual sort. Translate selected
-        // rows to the exact array indices sent to the server.
-        var canonicalItems = obg.dataView.getItems().slice().sort(function(a, b) {
-          return (a._ord || 0) - (b._ord || 0);
-        });
-        sel = sel.map(function(displayIndex) {
-          var item = obg.dataView.getItem(displayIndex);
-          if (!item) return -1;
-          for (var i = 0; i < canonicalItems.length; i++) {
-            if (canonicalItems[i] && canonicalItems[i].id === item.id) return i;
-          }
-          return -1;
-        }).filter(function(index) { return index >= 0; });
-        body.append(serviceField('_tp_selected'), sel.join(','));
-      } else {
-        // Legacy: read from DOM checkboxes
-        const tbody = obManagedWritableTableBody('tp-body-' + extraParams._tp, 'data-tp-fields');
-        if (tbody) {
-          const sel = [];
-          Array.prototype.forEach.call(tbody.rows, (tr, i) => {
-            const cb = tr.querySelector('._tp-sel');
-            if (cb && cb.checked) sel.push(i);
-          });
-          body.append(serviceField('_tp_selected'), sel.join(','));
-        }
-      }
-    }
+    if (triggerSelection !== undefined) body.append(serviceField('_tp_selected'), triggerSelection);
     if (extraParams) {
       Object.keys(extraParams).forEach(k => body.append(serviceField(k), extraParams[k]));
     }
+    return {
+	  body: body, form: form, controlState: captureFormControlState(form), elementName: elementName,
+	  extraParams: extraParams, wasNew: !DOC_ID,
+	  editRevision: formEditState.revision,
+	  eventName: eventName, pickerRequest: pickerRequest
+	};
+  }
+
+  function refreshQueuedFormEventIdentity(snapshot){
+    if (!snapshot || !snapshot.body) return;
+    if (DOC_ID) snapshot.body.set(serviceField('_id'), DOC_ID);
+    var form = snapshot.form || document.getElementById('main-form');
+    var versionName = serviceField('_version');
+    var versionInput = form && form.querySelector('[name="' + versionName + '"]');
+    if (versionInput && versionInput.value) snapshot.body.set(versionName, String(versionInput.value));
+  }
+
+  async function dispatchFormEvent(snapshot){
+    if (!snapshot || reloadRequired || formEventWriteUnknown || manualReconcileRequired) return;
+    refreshQueuedFormEventIdentity(snapshot);
+    var body = snapshot.body;
+    var form = snapshot.form;
+    var elementName = snapshot.elementName;
+	var extraParams = snapshot.extraParams;
+    var responseKnown = false;
+	function fenceUnknownResult(){
+	  formEventWriteUnknown = true;
+	  setManagedFormDirty(true);
+	}
+	// Окно могли закрыть, пока событие ждало своей очереди или чтения файлов:
+	// диалог уже не тот — ответ некуда применять.
+	if (snapshot.pickerRequest && snapshot.pickerRequest.search && !window.obPickerRequestCurrent(snapshot.pickerRequest)) return;
     try {
       const res = await fetch(URL, {
         method: 'POST',
@@ -930,57 +1189,810 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         credentials: 'same-origin'
       });
       const data = await res.json();
+      if (snapshot.pickerRequest && snapshot.pickerRequest.search && !window.obPickerRequestCurrent(snapshot.pickerRequest)) return;
+	  // A JSON proxy/error page is not a trusted application envelope. `ok` is
+	  // mandatory in every formEventResponse, including server-side failures.
+      if (!data || typeof data !== 'object' || typeof data.ok !== 'boolean') {
+		throw new Error('invalid form-event response');
+	  }
+      responseKnown = true;
+	  // Even parseable JSON on non-2xx may come from an intermediary after the
+	  // application committed. No subsequent write is safe on this document.
+	  if (!res.ok) fenceUnknownResult();
+      // A handler may have durably created this object. Adopt its identity and
+      // optimistic version before any renderer, picker or message callback can
+      // throw, so a later queued action updates the row instead of inserting it.
+      applySavedIdentity(data);
+      // The user can type after FormData was sent. An old response must not
+      // navigate away or repaint those newer edits, even when the handler
+      // saved the old snapshot and returned dirty=false.
+      if (data.navigation && data.navigation.url && formEditState.revision !== snapshot.editRevision) {
+        setManagedFormDirty(true);
+        var revisionBeforeRead = formEditState.revision;
+        var currentBody = null;
+        try { currentBody = await closeSnapshotBody('', ''); } catch (_) {}
+        if (currentBody && formEditState.revision === revisionBeforeRead) {
+          // Reuse the close controller's field/table merge: only unchanged
+          // controls may receive values from the older server snapshot.
+          applyCloseResponse(data, snapshot.body, currentBody);
+        } else {
+          (data.messages || []).forEach(m => flash(m, 'ok'));
+          if (data.error) flash(data.error, 'err');
+        }
+        setManagedFormDirty(true);
+        flash(closeMessage('navigationFormChanged', 'Форма изменилась во время выполнения команды — переход не выполнен'), 'err');
+        return;
+      }
+      // Навигация (#1557): переход только у инициатора, адрес построен
+      // сервером. Несохранённая форма остаётся на месте — переход отменяется.
+      // Решает состояние формы ПОСЛЕ этого ответа, а не до него. dirty=true
+      // значит, что обработчик изменил объект перед ОткрытьФорму, а флаг формы
+      // ещё не поднят. dirty=false вместе с savedId/version доказывает запись
+      // в этом же ответе — форма чиста, даже если до обработчика её правили.
+      // При отмене ответ применяется целиком — пользователь видит изменения,
+      // ради которых переход не выполнен, — и сообщение идёт последним.
+      var navigationBlocked = false;
+      if (data.navigation && data.navigation.url) {
+        var savedByResponse = data.dirty === false && !!(data.savedId || data.version);
+        if (data.dirty !== true && (!window._obFormDirty || savedByResponse)) {
+          window.location.assign(data.navigation.url);
+          return;
+        }
+        navigationBlocked = true;
+      }
       // Подбор фазы 1: сервер вернул pickerData — открыть диалог, не трогая
       // ТЧ (её обновит фаза 2 после «Перенести»).
       if (data.pickerData) {
+        if (snapshot.pickerRequest && !window.obPickerRequestCurrent(snapshot.pickerRequest)) return;
         (data.messages || []).forEach(m => flash(m, 'ok'));
         if (data.error) flash(data.error, 'err');
-        openItemPicker(data.pickerData, elementName, extraParams || null);
+        openItemPicker(data.pickerData, elementName, extraParams || null, snapshot.pickerRequest);
         return;
       }
+      // Поиск в уже открытом диалоге не дал строк: обработчик ограничился
+      // сообщением и ПоказатьПодбор не позвал. Прежнюю выдачу оставлять нельзя —
+      // её прочитают как ответ на новый запрос.
+      if (snapshot.eventName === 'Поиск' && !data.error && typeof window.obPickerSearchEmpty === 'function') {
+        window.obPickerSearchEmpty(snapshot.pickerRequest);
+      }
+      // Вопрос фазы 1 (#1528): открыть модал; ответ вернётся событием Ответ
+      // через _question_answer — сервер положит его в ВопросОтвет.
+      if (data.question) {
+        (data.messages || []).forEach(m => flash(m, 'ok'));
+        if (data.error) flash(data.error, 'err');
+        if (window.obOpenQuestion) window.obOpenQuestion(data.question, elementName);
+        return;
+      }
+      // dirty=true is an authoritative safety signal and must survive a
+      // partially failing renderer. Programmatic response application does
+      // not emit input/change, so raise it before touching mutable DOM state.
+      if (data.dirty === true) setManagedFormDirty(true);
       if (Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
       applyElementStates(data.elementStates);
       window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
       window.applyTableParts(data.tableparts);
-      applyValues(data.values, data.refOptions);
+      applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
       applyChoiceList(elementName, data.choiceList);
       applyFormTables(data.formTables);
-      // Обработчик записал новую форму (Объект.Записать()): дальше она работает
-      // с этой записью. Без подмены _id второе действие подряд ушло бы как
-      // «новый документ» и создало дубль, а адрес страницы остался бы /new.
-      if (data.savedId && !DOC_ID) {
-        DOC_ID = String(data.savedId);
-        var idInput = document.querySelector('#main-form [name="_id"]');
-        if (idInput) idInput.value = DOC_ID;
-        if (window.history && history.replaceState) {
-          history.replaceState(null, '', location.pathname.replace(/\/new$/, '/' + DOC_ID));
-        }
-        window._obFormDirty = false;
-      }
-      // Обработчик, записавший объект, поднял его версию. Форма держит версию,
-      // прочитанную при отрисовке, — без обновления следующая «Записать»
-      // упирается в «объект изменён другим пользователем».
-      if (data.version) {
-        var verInput = form.querySelector('[name="_version"]');
-        if (!verInput) {
-          verInput = document.createElement('input');
-          verInput.type = 'hidden';
-          verInput.name = '_version';
-          form.appendChild(verInput);
-        }
-        verInput.value = String(data.version);
-      }
+	  // Server events repaint controls programmatically and therefore do not
+	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
+	  // it only when this response proves a successful Object.Write and no
+	  // user edits followed the snapshot that was saved.
+	  if (data.dirty === false && (data.savedId || data.version)) {
+		setManagedFormDirty(formEditState.revision !== snapshot.editRevision);
+	  }
       (data.messages || []).forEach(m => flash(m, 'ok'));
       if (data.error) flash(data.error, 'err');
+      if (navigationBlocked) flash(closeMessage('navigationDirty', 'Форма содержит несохранённые изменения — переход не выполнен'), 'err');
     } catch (e) {
+      // A lost/unparseable response for /new may hide a committed insert and
+      // there is no identity with which to issue another safe write. Fence all
+      // write-capable actions for this document; the user can leave the form,
+      // but this page must never guess and create a duplicate.
+      if (snapshot.pickerRequest && snapshot.pickerRequest.search && !window.obPickerRequestCurrent(snapshot.pickerRequest)) return;
+      // Серверный поиск открытого диалога подбора — исключение: его обработчик
+      // не пишет документ (фаза 1 того же диалога), а вечный фенс делал бы
+      // ошибку поиска фатальной для всей формы.
+      if (!responseKnown && snapshot.wasNew && !DOC_ID && !(snapshot.pickerRequest && snapshot.pickerRequest.search)) fenceUnknownResult();
       flash('Сетевая ошибка: ' + (e && e.message ? e.message : e), 'err');
     }
-   } catch (e) {
-      // Синхронные ошибки (obGridSync, сборка формы) больше не «глотаются»
-      // как unhandled rejection — показываем баннер, чтобы причина была видна.
-      flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
-   }
+  }
+
+  window.obFire = function(elementName, eventName, extraParams, pickerRequest){
+	pickerRequest = pickerRequest || (window.obPickerRequest ? window.obPickerRequest() : null);
+	if (formEventWriteUnknown || manualReconcileRequired) {
+	  flash(closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
+	  return Promise.resolve();
+	}
+	if (reloadRequired) {
+	  flash(closeMessage('reloadRequired', 'Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.'), 'err');
+	  return Promise.resolve();
+	}
+	if (closePending || closeHandoffPending || retryableClose) {
+	  flash(closeMessage('closePending', 'Сначала завершите или восстановите проверку закрытия формы.'), 'err');
+	  return Promise.resolve();
+	}
+	var capturedExtra = null;
+	if (extraParams && typeof extraParams === 'object') {
+	  capturedExtra = {};
+	  Object.keys(extraParams).forEach(function(key){ capturedExtra[key] = extraParams[key]; });
+	}
+	var capturedElement = String(elementName || '');
+	var capturedEvent = String(eventName || '');
+	var capturedSelection;
+	try { capturedSelection = captureFormEventSelection(capturedExtra); }
+	catch (e) {
+	  flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
+	  return Promise.resolve();
+	}
+	// The leading event snapshots synchronously (until a possible FileReader
+	// wait). A queued event keeps its immutable trigger context but snapshots the
+	// form only after the previous response was applied. Otherwise a fresh
+	// optimistic version combined with pre-response fields could undo handler A.
+	var snapshotPromise = null;
+	var deferSnapshot = formEventPendingCount > 0;
+	if (!deferSnapshot) {
+	  try { snapshotPromise = snapshotFormEvent(capturedElement, capturedEvent, capturedExtra, capturedSelection, pickerRequest); }
+	  catch (e) {
+		flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
+		return Promise.resolve();
+	  }
+	}
+	var runEvent = async function(){
+	  var snapshot;
+	  if (reloadRequired || formEventWriteUnknown || manualReconcileRequired) return;
+	  try {
+		snapshot = snapshotPromise
+		  ? await snapshotPromise
+		  : await snapshotFormEvent(capturedElement, capturedEvent, capturedExtra, capturedSelection, pickerRequest);
+	  }
+	  catch (e) {
+		flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
+		return;
+	  }
+	  if (!snapshot || reloadRequired || formEventWriteUnknown || manualReconcileRequired) return;
+	  return dispatchFormEvent(snapshot);
+	};
+	// Серверный поиск диалога не пишет документ: гоняем его вне общей очереди
+	// записи, чтобы он не ждал обычные события формы и не блокировал их.
+	var standaloneSearch = !!(pickerRequest && pickerRequest.search);
+	var queued;
+	if (standaloneSearch) {
+	  queued = runEvent();
+	} else {
+	  formEventPendingCount++;
+	  formEventPending = true;
+	  queued = formEventQueue.catch(function(){}).then(runEvent);
+	  formEventQueue = queued.catch(function(){});
+	}
+	if (standaloneSearch && typeof window.obPickerSearchFinished === 'function') {
+	  queued = queued.finally(function(){ window.obPickerSearchFinished(pickerRequest); });
+	}
+	return queued.finally(function(){
+	  if (standaloneSearch) return;
+	  formEventPendingCount = Math.max(0, formEventPendingCount - 1);
+	  formEventPending = formEventPendingCount > 0;
+	});
   };
+
+  // One close controller for every managed-form adapter. It snapshots the
+  // current form exactly like obFire, calls the dedicated lifecycle endpoint,
+  // applies returned state/messages first and only then returns a decision.
+  // Shell/popup/standalone code decides how to destroy its own UI.
+  var CLOSE_URL = String(cfg.closeUrl || '');
+  var CLOSE_TIMEOUT_MS = Number(cfg.closeTimeoutMs || 30000);
+  var CLOSE_MESSAGES = cfg.closeMessages || {};
+  // Declared with the close controller because browser behavior tests extract
+  // this whole concurrency domain. obFire is defined above but only invoked
+  // after this IIFE has initialized every shared state variable.
+  var formEventQueue = Promise.resolve();
+  var formEventPendingCount = 0;
+  var formEventPending = false;
+  var formEventWriteUnknown = false;
+	var manualReconcileRequired = false;
+  var formEditState = {revision: 0};
+  var closePending = null;
+  // Embedded OK/post first crosses a postMessage boundary before the parent
+  // asks this child for its close decision. Keep native submit fail-closed in
+  // that handoff window as well as while the actual controller is running.
+  var closeHandoffPending = false;
+  window.obBeginManagedCloseHandoff = function(){ closeHandoffPending = true; };
+  window.obCancelManagedCloseHandoff = function(){ closeHandoffPending = false; };
+  // Reuse an intent only while its terminal result is unknown. Once a
+  // correlated terminal response arrives, the server has recorded it in the
+  // replay ledger and another explicit close attempt needs a fresh UUID.
+  var retryableClose = null;
+	var reloadRequired = false;
+	var CLOSE_EPOCH = cfg.closeEpoch == null ? '' : String(cfg.closeEpoch);
+	var closeClockServerBase = Number(cfg.closeServerNowMs);
+	if (!Number.isFinite(closeClockServerBase)) closeClockServerBase = Date.now();
+	var closeClockUsesPerformance = !!(window.performance && typeof window.performance.now === 'function');
+	var closeClockClientBase = closeClockUsesPerformance ? window.performance.now() : Date.now();
+	function closeIssuedAtNow(){
+	  var now = closeClockUsesPerformance ? window.performance.now() : Date.now();
+	  return Math.round(closeClockServerBase + Math.max(0, now - closeClockClientBase));
+	}
+
+  function closeMessage(name, fallback){
+    var value = CLOSE_MESSAGES && CLOSE_MESSAGES[name];
+    return value == null || value === '' ? fallback : String(value);
+  }
+  window.obManagedCloseMessage = closeMessage;
+
+  function freshCloseIntentID(){
+    try { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); } catch (_) {}
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(ch){
+      var n = Math.floor(Math.random() * 16);
+      return (ch === 'x' ? n : ((n & 3) | 8)).toString(16);
+    });
+  }
+
+  function closeFormKind(){
+    return cfg.kind === 'processor' ? 'processor' : 'object';
+  }
+
+  async function closeSnapshotBody(reason, mode){
+    if (window.obGridSync && window.obGridSync() === false) return null;
+    var form = document.getElementById('main-form');
+    if (!form) return new URLSearchParams();
+    var fileHelpers = Array.prototype.slice.call(form.querySelectorAll('[data-ob-file-content-for]'));
+    if (!await awaitCurrentFileReads(fileHelpers.filter(controlSubmittable))) return null;
+    if (window.obGridSync && window.obGridSync() === false) return null;
+    var fd = fileEventFormData(form, fileHelpers);
+    fd.set(serviceField('_kind'), closeFormKind());
+    if (DOC_ID) fd.set(serviceField('_id'), DOC_ID);
+    var body = new URLSearchParams();
+    fd.forEach(function(v, k){
+      if (typeof v !== 'string') { body.append(k, ''); return; }
+      body.append(k, v);
+    });
+    return body;
+  }
+
+  function closeChoice(){
+    if (!window._obFormDirty) return Promise.resolve('discard');
+    var existing = document.getElementById('ob-managed-close-confirm');
+    if (existing && existing._obChoicePromise) return existing._obChoicePromise;
+    var overlay = document.createElement('div');
+    overlay.id = 'ob-managed-close-confirm';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'ob-managed-close-confirm-title');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:12000;display:flex;align-items:center;justify-content:center;padding:16px';
+    var box = document.createElement('div');
+    box.style.cssText = 'width:min(420px,100%);background:#fff;border-radius:12px;box-shadow:0 18px 50px rgba(15,23,42,.28);padding:22px';
+    var title = document.createElement('div');
+    title.id = 'ob-managed-close-confirm-title';
+    title.textContent = closeMessage('dirtyTitle', 'Данные были изменены.');
+    title.style.cssText = 'font-size:16px;font-weight:650;color:#0f172a;margin-bottom:6px';
+    var question = document.createElement('div');
+    var processorForm = cfg.kind === 'processor';
+    question.textContent = processorForm
+      ? closeMessage('processorQuestion', 'Закрыть без сохранения?')
+      : closeMessage('dirtyQuestion', 'Сохранить изменения?');
+    question.style.cssText = 'font-size:14px;color:#475569;margin-bottom:20px';
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap';
+    function button(label, value, primary){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.setAttribute('data-ob-close-choice', value);
+      btn.style.cssText = primary
+        ? 'border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:7px;padding:7px 16px;cursor:pointer'
+        : 'border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:7px;padding:7px 16px;cursor:pointer';
+      return btn;
+    }
+	var yes = processorForm ? null : button(closeMessage('yes', 'Да'), 'save', true);
+    var no = button(processorForm ? closeMessage('processorDiscard', 'Закрыть') : closeMessage('no', 'Нет'), 'discard', processorForm);
+    var cancel = button(closeMessage('cancel', 'Отмена'), 'cancel', false);
+	if (yes) row.appendChild(yes);
+	row.appendChild(no); row.appendChild(cancel);
+    box.appendChild(title); box.appendChild(question); box.appendChild(row);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+    overlay._obChoicePromise = new Promise(function(resolve){
+      var done = false;
+      function finish(value){
+        if (done) return;
+        done = true;
+        overlay.remove();
+        resolve(value);
+      }
+      // The document-level Escape handler runs in capture phase, before this
+      // dialog can see the key itself. Expose the same cancel operation so a
+      // single Escape only dismisses the prompt and never starts another
+      // close request.
+      overlay._obClose = function(){ finish('cancel'); };
+      row.addEventListener('click', function(e){
+        var target = e.target && e.target.closest ? e.target.closest('[data-ob-close-choice]') : null;
+        if (target) finish(target.getAttribute('data-ob-close-choice') || 'cancel');
+      });
+      overlay.addEventListener('keydown', function(e){
+        if (e.key !== 'Escape' && e.keyCode !== 27) return;
+        e.preventDefault(); e.stopPropagation(); finish('cancel');
+      });
+      cancel.focus();
+    });
+    return overlay._obChoicePromise;
+  }
+  window.obManagedCloseChoice = closeChoice;
+
+  function closeSnapshotKey(body){
+    var keyBody = new URLSearchParams(body.toString());
+    if (keyBody.sort) keyBody.sort();
+    return keyBody.toString();
+  }
+
+  function closeBodyEntries(body, predicate){
+    var values = [];
+    if (!body || typeof body.forEach !== 'function') return values;
+    body.forEach(function(value, key){
+      if (predicate(String(key).toLowerCase())) values.push(String(key).toLowerCase() + '=' + String(value));
+    });
+    values.sort();
+    return values.join('\n');
+  }
+
+  function closeFieldUnchanged(before, current, name){
+    var want = String(name || '').toLowerCase();
+    return closeBodyEntries(before, function(key){ return key === want; }) ===
+      closeBodyEntries(current, function(key){ return key === want; });
+  }
+
+  function closeTableUnchanged(before, current, kind, name){
+    var prefix = String(kind || '').toLowerCase() + '.' + String(name || '').toLowerCase();
+    var rowPrefix = prefix + '.';
+    var jsonName = kind === 'tp' ? 'tp_json.' + String(name || '').toLowerCase() : '';
+    var matches = function(key){ return key === jsonName || key.indexOf(rowPrefix) === 0; };
+    return closeBodyEntries(before, matches) === closeBodyEntries(current, matches);
+  }
+
+  function filterCloseMap(values, keep){
+    if (!values || typeof values !== 'object') return values;
+    var filtered = {};
+    Object.keys(values).forEach(function(name){ if (keep(name)) filtered[name] = values[name]; });
+    return filtered;
+  }
+
+  function setManagedFormDirty(dirty){
+    dirty = !!dirty;
+    window._obFormDirty = dirty;
+    if (typeof _obBaseTitle === 'string' && _obBaseTitle) {
+      document.title = dirty ? ('● ' + _obBaseTitle) : _obBaseTitle;
+    }
+    if (typeof window.obSetEmbeddedDirty === 'function') {
+      window.obSetEmbeddedDirty(dirty);
+      return;
+    }
+    try {
+      if (window.__obEmbedded && window.parent && window.parent !== window) {
+        window.parent.postMessage({source: 'obDirty', dirty: dirty}, window.location.origin);
+      }
+    } catch (_) {}
+  }
+  // Grid operations and native inputs share the same edit clock. Count every
+  // user mutation, even when the form was already dirty. Applying a server
+  // response uses the private setter and does not count as new user input.
+  window.obSetManagedFormDirty = function(dirty){
+    if (dirty) formEditState.revision++;
+    setManagedFormDirty(dirty);
+  };
+
+  function applySavedIdentity(data){
+    if (!data || typeof data !== 'object') return;
+    var form = document.getElementById('main-form');
+	var savedURL = '';
+    if (data.savedId && !DOC_ID) {
+      DOC_ID = String(data.savedId);
+	  var idName = serviceField('_id');
+	  var idInput = form && form.querySelector('[name="' + idName + '"]');
+      if (idInput) idInput.value = DOC_ID;
+	  savedURL = location.pathname.replace(/\/new$/, '/' + DOC_ID);
+	  // A denied/failed save-and-select keeps the iframe open. Preserve its
+	  // popup identity so a refresh still renders the specialized
+	  // Save-and-select/Cancel controls instead of turning it into a normal card.
+	  if (location.search && new URLSearchParams(location.search).get('_popup') === '1') {
+		savedURL += '?_popup=1';
+	  }
+    }
+    if (data.version && form) {
+	  var versionName = serviceField('_version');
+	  var verInput = form.querySelector('[name="' + versionName + '"]');
+      if (!verInput) {
+        verInput = document.createElement('input');
+        verInput.type = 'hidden';
+		verInput.name = versionName;
+        form.appendChild(verInput);
+      }
+      verInput.value = String(data.version);
+    }
+	// URL/shell synchronization is deliberately last and guarded: even a host
+	// history shim that throws cannot prevent adoption of the durable id/version.
+	if (savedURL) {
+	  try {
+		if (window.history && history.replaceState) history.replaceState(null, '', savedURL);
+	  } catch (_) {}
+	  try {
+		if (window.parent && window.parent !== window) {
+		  window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
+		}
+	  } catch (_) {}
+	}
+  }
+
+  function applyCloseResponse(data, before, current){
+    if (!data || typeof data !== 'object') return;
+	var merging = !!(before && current);
+	var values = merging ? filterCloseMap(data.values, function(name){
+	  return closeFieldUnchanged(before, current, name);
+	}) : data.values;
+	var tableparts = merging ? filterCloseMap(data.tableparts, function(name){
+	  return closeTableUnchanged(before, current, 'tp', name);
+	}) : data.tableparts;
+	var formTables = merging ? filterCloseMap(data.formTables, function(name){
+	  return closeTableUnchanged(before, current, 'vt', name);
+	}) : data.formTables;
+	var refOptions = merging ? filterCloseMap(data.refOptions, function(name){
+	  return closeFieldUnchanged(before, current, name);
+	}) : data.refOptions;
+	var tpRefOptions = merging ? filterCloseMap(data.tpRefOptions, function(name){
+	  return closeTableUnchanged(before, current, 'tp', name);
+	}) : data.tpRefOptions;
+	// Derived visibility/readonly/CSS was calculated for the old snapshot and
+	// cannot be merged safely after concurrent input. Data and reference
+	// options are merged per unchanged field/table below; derived state waits
+	// for the retry based on the current snapshot.
+	if (!merging && Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
+	if (!merging) applyElementStates(data.elementStates);
+	window.obManagedApplyTablePartRefOptions(tpRefOptions);
+	window.applyTableParts(tableparts);
+	applyValues(values, refOptions);
+	applyFormTables(formTables);
+    (data.messages || []).forEach(function(message){ flash(message, 'ok'); });
+    if (data.error) flash(data.error, 'err');
+  }
+
+  window.obRequestFormClose = function(options){
+    options = options || {};
+	if (formEventPending) {
+	  // An embedded adapter may already have raised the handoff flag before its
+	  // parent asks for this decision. This early refusal completes that handoff;
+	  // leaving it set would permanently block later form events and submits.
+	  closeHandoffPending = false;
+	  flash(closeMessage('operationPending', 'Команда формы ещё выполняется. Дождитесь её завершения и повторите закрытие.'), 'err');
+	  return Promise.resolve({allowed: false, intentId: '', error: 'form-event-pending'});
+	}
+	if (formEventWriteUnknown) {
+	  closeHandoffPending = false;
+	  flash(closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
+	  return Promise.resolve({allowed: false, intentId: '', reload: true, error: 'form-event-unknown'});
+	}
+	if (manualReconcileRequired) {
+	  closeHandoffPending = false;
+	  flash(closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
+	  return Promise.resolve({allowed: false, intentId: '', reconcile: true, error: 'manual-reconciliation-required'});
+	}
+	if (reloadRequired) {
+	  closeHandoffPending = false;
+	  flash(closeMessage('reloadRequired', 'Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.'), 'err');
+	  return Promise.resolve({allowed: false, intentId: '', reload: true, error: 'reload-required'});
+	}
+    if (closePending) {
+      closeHandoffPending = false;
+      return closePending;
+    }
+    var reason = String(options.reason || 'close');
+    closePending = (async function(){
+      if (!CLOSE_URL) {
+        flash(closeMessage('controllerUnavailable', 'Проверка закрытия недоступна. Форма оставлена открытой.'), 'err');
+        return {allowed: false, intentId: '', error: 'controller-not-ready'};
+      }
+      var mode = options.mode ? String(options.mode) : await closeChoice();
+      if (mode === 'cancel') return {allowed: false, intentId: '', error: 'user-cancelled'};
+      var body = await closeSnapshotBody(reason, mode);
+      if (!body) return {allowed: false, intentId: '', error: 'form-state'};
+      var snapshotKey = closeSnapshotKey(body);
+	  var requestedReason = reason;
+	  var requestedMode = mode;
+	  var requestedSnapshotKey = snapshotKey;
+      // A transport-unknown save may already have committed. Recover that
+      // exact old payload/UUID before processing a newer edited snapshot;
+      // otherwise a new-form retry could insert a duplicate.
+      var pendingRetry = retryableClose;
+	  var replayingPrior = !!(pendingRetry && pendingRetry.body &&
+		(pendingRetry.key !== requestedSnapshotKey || pendingRetry.mode !== requestedMode ||
+		  pendingRetry.reason !== requestedReason));
+	  var envelope;
+      if (pendingRetry && pendingRetry.body) {
+        body = new URLSearchParams(pendingRetry.body);
+        snapshotKey = pendingRetry.key;
+		envelope = Object.assign({}, pendingRetry.envelope);
+		// Повтор неизвестного исхода не вправе претендовать на «первую
+		// попытку»: после перезапуска сервера он обязан остаться под фенсом
+		// (reconcile), как и раньше (#1685).
+		envelope.first = '';
+      } else {
+		envelope = {
+		  intentId: freshCloseIntentID(),
+		  epoch: CLOSE_EPOCH,
+		  issuedAt: String(closeIssuedAtNow()),
+		  first: '1',
+		  reason: reason,
+		  mode: mode,
+		  formKind: closeFormKind(),
+		  recordId: DOC_ID == null ? '' : String(DOC_ID),
+		  clientId: cfg.closeClientId == null ? '' : String(cfg.closeClientId),
+		  schema: cfg.closeSchema == null ? '' : String(cfg.closeSchema)
+		};
+      }
+	  var intentID = String(envelope.intentId || '');
+	  mode = String(envelope.mode || 'discard');
+	  reason = String(envelope.reason || 'close');
+	  function rememberRetry(){
+		retryableClose = {
+		  key: snapshotKey, intentId: intentID, body: body.toString(),
+		  mode: mode, reason: reason, envelope: Object.assign({}, envelope)
+		};
+	  }
+
+      var controller = typeof AbortController === 'function' ? new AbortController() : null;
+      var timer = setTimeout(function(){ if (controller) controller.abort(); }, Math.max(1000, CLOSE_TIMEOUT_MS));
+      var retryIntentAfterFailure = true;
+      try {
+        var response = await fetch(CLOSE_URL, {
+          method: 'POST', body: body,
+		  // Lifecycle metadata never enters the form body: `_close_*` are legal
+		  // user field names. Fixed headers form a collision-free recovery envelope
+		  // and the exact envelope is retained with an unknown intent for replay.
+          headers: {
+			'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+			'X-OneBase-Close-Intent': intentID,
+			'X-OneBase-Close-Epoch': String(envelope.epoch || ''),
+			'X-OneBase-Close-Issued-At': String(envelope.issuedAt || ''),
+			'X-OneBase-Close-First-Attempt': String(envelope.first || ''),
+			'X-OneBase-Close-Reason': reason,
+			'X-OneBase-Close-Mode': mode,
+			'X-OneBase-Form-Kind': String(envelope.formKind || ''),
+			'X-OneBase-Record-ID': String(envelope.recordId || ''),
+			'X-OneBase-Close-Client': String(envelope.clientId || ''),
+			'X-OneBase-Close-Schema': String(envelope.schema || '')
+		  },
+          credentials: 'same-origin', signal: controller ? controller.signal : undefined
+        });
+        var data;
+        try { data = await response.json(); }
+        catch (parseErr) {
+		  // Without a valid correlated JSON envelope the client cannot know
+		  // whether a save committed. Preserve the UUID for exact replay even
+		  // when a proxy returned truncated HTML/SyntaxError.
+		  retryIntentAfterFailure = true;
+          throw new Error(closeMessage('invalidResponse', 'Сервер вернул некорректный ответ при проверке закрытия.'));
+        }
+        if (!data || typeof data !== 'object' || !data.close || String(data.close.intentId || '') !== intentID) {
+		  rememberRetry();
+          flash(closeMessage('correlationMismatch', 'Ответ закрытия не совпал с запросом. Форма оставлена открытой.'), 'err');
+          return {allowed: false, intentId: intentID, error: 'stale-correlation'};
+        }
+		if (data.close.reconcile === true && data.close.terminal !== true) {
+		  // The server restarted or expired its ledger while this exact result was
+		  // unknown. Retain the old UUID/body for diagnostics and permanently fence
+		  // every write-capable action in this document; a fresh UUID could repeat a
+		  // save whose durable outcome cannot be established automatically.
+		  rememberRetry();
+		  manualReconcileRequired = true;
+		  setManagedFormDirty(true);
+		  flash(data.error || closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
+		  return {
+			allowed: false, intentId: intentID, mode: mode, reconcile: true,
+			error: data.error || 'manual-reconciliation-required', saved: false,
+			savedId: '', savedLabel: '', formUrl: ''
+		  };
+		}
+		if (data.close.terminal === true) {
+		  // The durable row is no longer readable by this caller. There is no
+		  // safe retry or merge target, so this explicit server decision wins over
+		  // an in-flight local edit and lets the owning shell destroy the form.
+		  retryIntentAfterFailure = false;
+		  retryableClose = null;
+		  setManagedFormDirty(false);
+		  return {
+			allowed: true, intentId: intentID, mode: mode, terminal: true,
+			error: '', saved: false, savedId: '', savedLabel: '', formUrl: ''
+		  };
+		}
+		if (data.close.reload === true) {
+		  // A transport retry recovered a durable result whose full merge state
+		  // was intentionally not retained in the bounded replay ledger. Preserve
+		  // edits made while the first response was lost, but block every further
+		  // write until the user has copied them and reloaded explicitly.
+		  retryIntentAfterFailure = false;
+		  retryableClose = null;
+		  applySavedIdentity(data);
+		  setManagedFormDirty(true);
+		  reloadRequired = true;
+		  var reloadURL = String(data.close.formUrl || '');
+		  flash(closeMessage('reloadRequired', 'Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.'), 'err');
+		  return {
+			allowed: false, intentId: intentID, mode: mode, reload: true,
+			error: data.error || 'reload-required', saved: true,
+			savedId: data.savedId || '', savedLabel: data.savedLabel || '', formUrl: reloadURL
+		  };
+		}
+        // Preserve the server's fail-safe dirty signal even if re-snapshot or
+        // a later response renderer throws. Clearing dirty is deferred until a
+        // confirmed save response has been applied completely.
+        if (data.dirty === true) setManagedFormDirty(true);
+        retryIntentAfterFailure = response.status === 408;
+		if (retryIntentAfterFailure) rememberRetry();
+		else retryableClose = null;
+        // The user may keep editing while the server executes BeforeClose.
+        // Re-snapshot before applying returned values: an answer for an older
+        // form must neither overwrite newer input nor authorize its removal.
+        var currentBody;
+		try {
+		  currentBody = await closeSnapshotBody(requestedReason, requestedMode);
+		} catch (snapshotErr) {
+		  // A terminal save result is already durable even if the live form can
+		  // no longer be serialized. Adopt it before leaving the form open so a
+		  // later action cannot insert the same new record again.
+		  if (data.close.saved === true) {
+			applySavedIdentity(data);
+			setManagedFormDirty(true);
+		  }
+		  throw snapshotErr;
+		}
+		if (data.close.saved === true) {
+		  // Snapshot comparison above must use the pre-request id/version. After
+		  // it is captured, adopt durable identity before any renderer can throw.
+		  // Dirty stays fail-safe until every mutable response part is applied.
+		  applySavedIdentity(data);
+		  setManagedFormDirty(true);
+		}
+        if (replayingPrior || !currentBody || closeSnapshotKey(currentBody) !== snapshotKey) {
+		  if (!retryIntentAfterFailure) retryableClose = null;
+          // The save may already have committed before the user typed again.
+          // Retain the new input, but adopt the canonical identity/version so
+          // the retry updates that record instead of creating a duplicate.
+		  if (data.close && data.close.saved === true) {
+			if (currentBody) applyCloseResponse(data, body, currentBody);
+			else {
+			  (data.messages || []).forEach(function(message){ flash(message, 'ok'); });
+			  if (data.error) flash(data.error, 'err');
+			}
+          }
+		  // A mismatched/currently-unserializable form necessarily contains
+		  // state newer than the request, regardless of whether BeforeClose
+		  // also saved a durable object.
+		  setManagedFormDirty(true);
+          flash(closeMessage('formChanged', 'Форма изменилась во время проверки закрытия. Повторите закрытие.'), 'err');
+          return {allowed: false, intentId: intentID, error: 'form-changed'};
+        }
+        applyCloseResponse(data);
+		if (data.close && data.close.saved === true) {
+		  // A canonical save gives the server an authoritative baseline and may
+		  // therefore clear dirty. Missing dirty is fail-safe for mixed versions.
+		  setManagedFormDirty(data.dirty === false ? false : true);
+		} else if (data.dirty === true) {
+		  // An unsaved response can prove that BeforeClose introduced more
+		  // changes, but dirty=false cannot prove that pre-existing form-only
+		  // state was clean relative to the originally opened document.
+		  setManagedFormDirty(true);
+		}
+        // A 408 is produced when this duplicate stopped waiting for an older
+        // still-running request. It is not stored as this intent's terminal
+        // replay result, so retry the same UUID. Every other correlated reply,
+        // including data.ok=false, is terminal and releases the UUID.
+        var requiresSavedResult = mode === 'save' || mode === 'post' || mode === 'save_and_select';
+        return {
+          allowed: response.ok && data.ok === true && data.close.allowed === true &&
+            (!requiresSavedResult || data.close.saved === true),
+          intentId: intentID,
+		  mode: mode,
+          error: data.error || '',
+          saved: data.close.saved === true,
+          savedId: data.savedId || '',
+          savedLabel: data.savedLabel || '',
+          formUrl: data.close.formUrl || ''
+        };
+      } catch (err) {
+		if (retryIntentAfterFailure) rememberRetry();
+		else retryableClose = null;
+        var timeout = err && err.name === 'AbortError';
+        flash((timeout
+          ? closeMessage('timeout', 'Превышено время проверки закрытия')
+          : closeMessage('network', 'Сетевая ошибка при закрытии')) +
+          ': ' + (err && err.message ? err.message : err), 'err');
+        return {allowed: false, intentId: intentID, error: timeout ? 'timeout' : 'network'};
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    closeHandoffPending = false;
+    closePending = closePending.finally(function(){ closePending = null; });
+    return closePending;
+  };
+
+  window.obFinalizeFormClose = function(){
+	setManagedFormDirty(false);
+    return true;
+  };
+
+  // A native submit must not race an unfinished close request. A lost close
+  // response is also an unknown commit outcome: BeforeClose may call
+  // Object.Write even for discard. Until the exact UUID/body is replayed, a
+  // native Save against /new could insert a duplicate outside the close-intent
+  // ledger. Reconcile identity first and require a separate submit afterward.
+  document.addEventListener('submit', function(e){
+    var form = e.target;
+    var requestInFlight = closePending;
+    var pending = retryableClose;
+    var recoveryMode = pending && String(pending.mode || '');
+    if (!form || form.id !== 'main-form') return;
+	if (formEventPending || formEventWriteUnknown || manualReconcileRequired) {
+	  e.preventDefault();
+	  if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+	  else if (e.stopPropagation) e.stopPropagation();
+	  flash((formEventWriteUnknown || manualReconcileRequired)
+		? closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.')
+		: closeMessage('operationPending', 'Команда формы ещё выполняется. Дождитесь её завершения.'), 'err');
+	  return;
+	}
+	if (reloadRequired) {
+	  e.preventDefault();
+	  if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+	  else if (e.stopPropagation) e.stopPropagation();
+	  flash(closeMessage('reloadRequired', 'Результат уже сохранён. Скопируйте текущие правки и перезагрузите форму перед продолжением.'), 'err');
+	  return;
+	}
+    var popupSubmit = false;
+    try {
+      popupSubmit = !!(form.querySelector && form.querySelector('[name="_popup"]')) ||
+        !!(location.search && new URLSearchParams(location.search).get('_popup') === '1');
+    } catch (_) {}
+    if (!requestInFlight && !closeHandoffPending && !pending && !popupSubmit) return;
+    e.preventDefault();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    else if (e.stopPropagation) e.stopPropagation();
+    // The active controller already owns this snapshot and will adopt any
+    // durable identity when it completes. Starting another request is unsafe.
+    if (requestInFlight || closeHandoffPending) return;
+    if (pending) {
+      Promise.resolve(window.obRequestFormClose({reason: pending.reason, mode: recoveryMode})).then(function(decision){
+        // An implicit popup submit is itself the save-and-select adapter. If
+        // this exact retry recovers a lost terminal result, publish it now;
+        // requiring a third Enter would start a fresh intent unnecessarily.
+        if (popupSubmit && recoveryMode === 'save_and_select' && decision && decision.allowed) {
+		  if (decision.terminal && typeof window.obManagedPostRefCancel === 'function') window.obManagedPostRefCancel(decision);
+		  else if (typeof window.obManagedPostRefSaved === 'function') window.obManagedPostRefSaved(decision);
+        }
+      });
+      return;
+    }
+    // Implicit Enter/requestSubmit in a managed picker must use the same exact
+    // save-and-select close intent as its explicit button. A native popup POST
+    // would bypass BeforeClose and return the legacy uncorrelated result page.
+    Promise.resolve(window.obRequestFormClose({reason: 'ok', mode: 'save_and_select'})).then(function(decision){
+      if (!decision || !decision.allowed) return;
+		  if (decision.terminal && typeof window.obManagedPostRefCancel === 'function') window.obManagedPostRefCancel(decision);
+		  else if (typeof window.obManagedPostRefSaved === 'function') window.obManagedPostRefSaved(decision);
+    });
+  }, true);
+
+  // Standalone managed form: shell/popup adapters handle their own final step.
+  // Here the allowed decision permits a same-origin navigation back to the list.
+  document.addEventListener('click', function(e){
+    if (e.defaultPrevented || window.__obEmbedded || !e.target || !e.target.closest) return;
+    var link = e.target.closest('[data-ob-close-tab]');
+    if (!link) return;
+    e.preventDefault();
+    var reason = (link.dataset && link.dataset.obCloseReason) || 'cross';
+    Promise.resolve(window.obRequestFormClose({reason: reason})).then(function(decision){
+      if (!decision || !decision.allowed) return;
+      window.obFinalizeFormClose();
+      var href = link.getAttribute('href') || '/ui/';
+      window.location.assign(href);
+    });
+  });
 
   // Отслеживание «грязной» формы — чтобы Esc/закрытие спрашивало подтверждение
   // только при наличии несохранённых изменений. Плюс пометка несохранённого
@@ -1051,7 +2063,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
           form.appendChild(submitterInput);
         }
         try {
-          if (form.id === 'main-form') window._obFormDirty = false;
+		  if (form.id === 'main-form') window.obSetManagedFormDirty(false);
           nativeSubmit.call(form);
         } finally {
           if (submitterInput) submitterInput.remove();
@@ -1070,12 +2082,15 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
   window._obFormDirty = false;
   var _obBaseTitle = document.title;
-  function _obMarkDirty(){
-    window._obFormDirty = true;
-    if (document.title.charAt(0) !== '●') document.title = '● ' + _obBaseTitle;
+  setManagedFormDirty(cfg.initialDirty === true);
+  function _obMarkDirty(e){
+	window.obSetManagedFormDirty(true);
+    if (e && e.target && controlSubmittable(e.target) && !e.target.readOnly && e.target.type !== 'hidden') {
+      controlEditRevisions.set(e.target, formEditState.revision);
+    }
   }
-  document.addEventListener('input',  function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(); }, true);
-  document.addEventListener('change', function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(); }, true);
+  document.addEventListener('input',  function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(e); }, true);
+  document.addEventListener('change', function(e){ if (e.target && e.target.closest && e.target.closest('#main-form')) _obMarkDirty(e); }, true);
   // «Грязный» флаг сбрасывает финальный submit-handler только после всех
   // проверок. Сбрасывать его здесь нельзя: obGridSync ниже ещё может запретить
   // отправку из-за незавершённой/невалидной правки ячейки.
@@ -1094,35 +2109,42 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   // ВАЖНО: слушатель в ФАЗЕ ПЕРЕХВАТА (capture=true). В фазе всплытия SlickGrid
   // успевал отменить правку РАНЬШЕ нас, editor-lock становился неактивным, и мы
   // ошибочно закрывали документ прямо из редактирования ячейки.
+  function consumeManagedEscape(e){
+    e.preventDefault();
+    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    else e.stopPropagation();
+  }
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape' && e.keyCode !== 27) return;
-    var modal = document.getElementById('_ref-create-modal') || document.getElementById('_item-picker-modal') || document.getElementById('_ref-picker-modal');
+    var modal = document.getElementById('ob-managed-close-confirm') || document.getElementById('_ref-create-modal') || document.getElementById('_item-picker-modal') || document.getElementById('_ref-picker-modal');
     if (modal) {
       if (typeof modal._obClose === 'function') modal._obClose();
       else modal.remove();
-      e.preventDefault(); e.stopPropagation(); return;
+      consumeManagedEscape(e); return;
     }
     // Выпадающий список ячейки-ссылки закрываем ДО проверки editor-lock: этот
     // слушатель в фазе перехвата, и без отдельной ветки Esc из подбора отменял
     // бы всю правку ячейки, а не только список.
     if (window._obRefDropdown && window._obRefDropdown.close) {
-      window._obRefDropdown.close(); e.preventDefault(); e.stopPropagation(); return;
+      window._obRefDropdown.close(); consumeManagedEscape(e); return;
     }
     var grids = window._obGrids || {};
     for (var tp in grids) {
       var lock = grids[tp].grid && grids[tp].grid.getEditorLock && grids[tp].grid.getEditorLock();
-      if (lock && lock.isActive()) { lock.cancelCurrentEdit(); e.preventDefault(); e.stopPropagation(); return; }
+      if (lock && lock.isActive()) { lock.cancelCurrentEdit(); consumeManagedEscape(e); return; }
     }
     var ae = document.activeElement;
     if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName) && !ae.readOnly && ae.type !== 'submit' && ae.type !== 'button') {
-      ae.blur(); e.preventDefault(); e.stopPropagation(); return;
+      ae.blur(); consumeManagedEscape(e); return;
     }
-    var cancel = document.querySelector('a.btn-cancel');
+    // The canonical object-form Close control is a button. Keep legacy
+    // anchors as fallbacks for older/custom templates, but always route Esc
+    // through the same close controller as an explicit Close click.
+    var cancel = document.querySelector('button[data-ob-form-close=""], [data-ob-close-tab], a.btn-cancel');
     if (cancel) {
-      if (window._obFormDirty && !confirm('Данные были изменены и не записаны. Закрыть форму?')) {
-        e.preventDefault(); e.stopPropagation(); return;
-      }
-      e.preventDefault(); e.stopPropagation(); cancel.click();
+      if (cancel.dataset) cancel.dataset.obCloseReason = 'escape';
+      consumeManagedEscape(e); cancel.click();
+      if (cancel.dataset) delete cancel.dataset.obCloseReason;
     }
   }, true);
 })();
@@ -1222,6 +2244,23 @@ function obManagedAddVtRow(btn) {
   if (!vtName || !tbody || typeof addVtRow !== 'function') return;
   var fields = obManagedParseFieldMeta(tbody.getAttribute('data-vt-fields') || '').map(function (f) { return f.name; });
   addVtRow(vtName, fields, tbody);
+  if (window.obSetManagedFormDirty) window.obSetManagedFormDirty(true);
+}
+
+function obManagedRemoveRow(btn) {
+  var tr = btn && btn.closest && btn.closest('tr');
+  if (!tr) return false;
+  var table = tr.closest && tr.closest('table[data-ob-dom-table]');
+  var body = tr.parentElement;
+  var index = tr.sectionRowIndex;
+  tr.remove();
+  if (window.obSetManagedFormDirty) window.obSetManagedFormDirty(true);
+  if (table && body && window.obDOMFinishMutation) {
+    var next = body.rows.length ? body.rows[Math.min(Math.max(index, 0), body.rows.length - 1)] : null;
+    window.obDOMFinishMutation(table, next, false);
+    if (window.obDOMNotifyMutation) window.obDOMNotifyMutation(table, 'delete');
+  }
+  return true;
 }
 
 function obManagedSubmitAllowed(form) {
@@ -1239,19 +2278,106 @@ function obManagedGridSubmitAllowed(form) {
   return true;
 }
 
+var obManagedFrameDocumentToken = typeof window.obFrameCloseDocumentToken === 'string'
+  ? window.obFrameCloseDocumentToken : '';
+
+function obManagedPostRefCancel(decision) {
+	if (!decision || decision.allowed !== true || !decision.intentId ||
+		(decision.mode === 'save_and_select' && decision.terminal !== true)) return false;
+  try {
+    parent.postMessage({
+      source: 'obRefCancel',
+      allowed: true,
+      intentId: String(decision.intentId),
+      documentToken: obManagedFrameDocumentToken,
+      error: decision.error ? String(decision.error) : ''
+    }, window.location.origin);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function obManagedPostRefSaved(decision) {
+	if (!decision || decision.allowed !== true || !decision.intentId || !decision.savedId || decision.mode !== 'save_and_select') return false;
+  try {
+    parent.postMessage({
+      source: 'obRefCreate',
+      id: String(decision.savedId),
+      label: decision.savedLabel ? String(decision.savedLabel) : String(decision.savedId),
+      allowed: true,
+      intentId: String(decision.intentId),
+      documentToken: obManagedFrameDocumentToken,
+      error: decision.error ? String(decision.error) : ''
+    }, window.location.origin);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+window.obManagedPostRefSaved = obManagedPostRefSaved;
+
 function obManagedInitDelegates() {
   document.addEventListener('click', function (e) {
     // data-ob-toggle-next НЕ обрабатываем здесь: managed-форма всегда грузит и
     // ui.js (из шаблона "head"), где этот же делегат уже висит на document.
     // Дублирование переключало бы display дважды (none→block→none) за один клик
     // и dropdown «Печать ▾»/«Ввести на основании» не открывался бы — issue #309.
-    var btn = e.target && e.target.closest ? e.target.closest('[data-ob-ref-picker],[data-ob-ref-current],[data-ob-file-trigger],[data-ob-fire-click],[data-ob-grid-add],[data-ob-grid-del],[data-ob-add-tp],[data-ob-add-vt],[data-ob-remove-row],[data-ob-ref-cancel]') : null;
+    var btn = e.target && e.target.closest ? e.target.closest('[data-ob-ref-picker],[data-ob-ref-current],[data-ob-file-trigger],[data-ob-fire-click],[data-ob-grid-add],[data-ob-grid-del],[data-ob-add-tp],[data-ob-add-vt],[data-ob-remove-row],[data-ob-ref-cancel],[data-ob-form-close]') : null;
     if (!btn) return;
     if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
 
+    if (btn.hasAttribute('data-ob-form-close')) {
+      e.preventDefault();
+      var mode = btn.getAttribute('data-ob-form-close') || '';
+      var reason = btn.getAttribute('data-ob-close-reason') || (mode === 'save' ? 'ok' : (mode === 'post' ? 'post_and_close' : 'close'));
+      if (window.__obEmbedded && mode !== 'save_and_select' && window.parent && window.parent !== window) {
+        if (typeof window.obBeginManagedCloseHandoff === 'function') window.obBeginManagedCloseHandoff();
+        try {
+          window.parent.postMessage({source: 'obCloseTab', reason: reason, mode: mode}, window.location.origin);
+        } catch (_) {
+          if (typeof window.obCancelManagedCloseHandoff === 'function') window.obCancelManagedCloseHandoff();
+        }
+        return;
+      }
+      var request = window.obRequestFormClose;
+      if (typeof request !== 'function') return;
+      btn.disabled = true;
+      Promise.resolve(request({reason: reason, mode: mode || undefined})).then(function(decision){
+        if (!decision || !decision.allowed) return;
+        if (mode === 'save_and_select') {
+		  if (decision.terminal) obManagedPostRefCancel(decision);
+		  else obManagedPostRefSaved(decision);
+          return;
+        }
+        window.obFinalizeFormClose();
+        var href = btn.getAttribute('data-ob-close-href') || btn.getAttribute('href') || '/ui/';
+        window.location.assign(href);
+      }).finally(function(){ btn.disabled = false; });
+      return;
+    }
+
     if (btn.hasAttribute('data-ob-ref-cancel')) {
       e.preventDefault();
-      try { parent.postMessage({ source: 'obRefCancel' }, '*'); } catch (_) {}
+      var requestClose = window.obRequestFormClose;
+      if (typeof requestClose !== 'function') {
+        if (window.obFlash) {
+          var unavailable = window.obManagedCloseMessage
+            ? window.obManagedCloseMessage('controllerUnavailable', 'Проверка закрытия недоступна. Форма оставлена открытой.')
+            : 'Проверка закрытия недоступна. Форма оставлена открытой.';
+          window.obFlash(unavailable, 'err');
+        }
+        return;
+      }
+      Promise.resolve(requestClose({reason: 'popup_cancel'})).then(function(decision){
+        if (!decision || !decision.allowed) return;
+        if (!obManagedPostRefCancel(decision) && window.obFlash) {
+          var notConfirmed = window.obManagedCloseMessage
+            ? window.obManagedCloseMessage('controllerUnavailable', 'Проверка закрытия недоступна. Форма оставлена открытой.')
+            : 'Проверка закрытия недоступна. Форма оставлена открытой.';
+          window.obFlash(notConfirmed, 'err');
+        }
+      });
       return;
     }
     if (btn.hasAttribute('data-ob-ref-picker')) {
@@ -1302,18 +2428,7 @@ function obManagedInitDelegates() {
     }
     if (btn.hasAttribute('data-ob-remove-row')) {
       e.preventDefault();
-      var tr = btn.closest && btn.closest('tr');
-      if (tr) {
-        var table = tr.closest && tr.closest('table[data-ob-dom-table]');
-        var body = tr.parentElement;
-        var index = tr.sectionRowIndex;
-        tr.remove();
-        if (table && body && window.obDOMFinishMutation) {
-          var next = body.rows.length ? body.rows[Math.min(Math.max(index, 0), body.rows.length - 1)] : null;
-          window.obDOMFinishMutation(table, next, false);
-          if (window.obDOMNotifyMutation) window.obDOMNotifyMutation(table, 'delete');
-        }
-      }
+      obManagedRemoveRow(btn);
     }
   });
 
@@ -1443,13 +2558,50 @@ function obManagedInitDelegates() {
     }
     // Все синхронные veto пройдены: штатная навигация после submit не должна
     // показывать предупреждение о несохранённых данных.
-    if (form.id === 'main-form' && !e.defaultPrevented) window._obFormDirty = false;
+	if (form.id === 'main-form' && !e.defaultPrevented) window.obSetManagedFormDirty(false);
   });
 }
 
 obManagedReady(obManagedInitDelegates);
 
 // SlickGrid initializer for managed-form table parts (plan 48).
+// Порядок колонок таблицы формы за пользователем (как в 1С): сервер отдаёт
+// сохранённый порядок в data-sg-order, перетаскивание заголовка его меняет.
+// Перестановка идёт НА МЕСТЕ массива columns: обработчики грида берут
+// колонку как columns[args.cell], и копия массива разошлась бы с показом.
+function obGridParseOrder(raw) {
+  var order;
+  try { order = JSON.parse(raw || "null"); } catch (e) { return []; }
+  if (!Array.isArray(order)) return [];
+  return order.filter(function(id) { return typeof id === "string" && id !== ""; });
+}
+function obGridApplyOrder(columns, order) {
+  if (!columns || !order || !order.length) return false;
+  var byId = Object.create(null), used = Object.create(null), out = [], i;
+  for (i = 0; i < columns.length; i++) byId[columns[i].id] = columns[i];
+  for (i = 0; i < order.length; i++) {
+    var id = order[i];
+    if (Object.prototype.hasOwnProperty.call(byId, id) && !used[id]) { out.push(byId[id]); used[id] = true; }
+  }
+  // Колонки, которых нет в сохранённом порядке (добавили в форму позже), —
+  // после переставленных, в своём порядке.
+  for (i = 0; i < columns.length; i++) if (!used[columns[i].id]) out.push(columns[i]);
+  var changed = false;
+  for (i = 0; i < out.length; i++) if (out[i] !== columns[i]) { changed = true; break; }
+  columns.length = 0;
+  Array.prototype.push.apply(columns, out);
+  return changed;
+}
+function obGridMoveColumn(columns, from, to) {
+  if (!columns || from === to || from < 0 || to < 0 || from >= columns.length || to >= columns.length) return false;
+  var col = columns.splice(from, 1)[0];
+  columns.splice(to, 0, col);
+  return true;
+}
+function obGridColumnIds(columns) {
+  return (columns || []).map(function(c) { return c.id; });
+}
+
 // Grids are stored in window._obGrids = {tpName: {grid, dataView, columns}}.
 (function(){
   window._obGrids = window._obGrids || {};
@@ -1465,6 +2617,85 @@ obManagedReady(obManagedInitDelegates);
     g.grid.resizeCanvas();
     g.grid.autosizeColumns();
     updateTotals(g); // footer-ячейки пересоздаются при re-render — обновляем суммы
+  }
+
+  // enableColumnReorder — перетаскивание заголовков колонок (HTML5 drag and
+  // drop: vendored SlickGrid без Sortable.js свой reorder не включает) и
+  // сохранение порядка за пользователем; «Стандартный порядок колонок»
+  // возвращает порядок формы.
+  function enableColumnReorder(state, defaultIds) {
+    var div = state.div, grid = state.grid;
+    var key = div.getAttribute("data-sg-layout");
+    if (!key) return;
+    var host = div.parentNode;
+    var resetBtn = host && host.querySelector ? host.querySelector('[data-ob-grid-order-reset]') : null;
+    var dragFrom = -1;
+    function headerCells() {
+      return Array.prototype.slice.call(div.querySelectorAll(".slick-header-columns .slick-header-column"));
+    }
+    function headerOf(target) {
+      var h = target && target.closest ? target.closest(".slick-header-column") : null;
+      return h && div.contains(h) ? h : null;
+    }
+    function markDraggable() {
+      headerCells().forEach(function(h) { h.setAttribute("draggable", "true"); });
+    }
+    function save(order) {
+      if (!window.fetch) return;
+      var body = "grid=" + encodeURIComponent(key) + "&order=" + encodeURIComponent(order);
+      window.fetch("/ui/_grid-order", {
+        method: "POST", credentials: "same-origin",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: body
+      }).catch(function() {});
+    }
+    function applyColumns() {
+      grid.setColumns(state.columns);
+      markDraggable();
+      try { updateTotals(state); } catch (e) {}
+      var isDefault = obGridColumnIds(state.columns).join("\u0001") === defaultIds.join("\u0001");
+      if (resetBtn) resetBtn.style.display = isDefault ? "none" : "";
+      return isDefault;
+    }
+    markDraggable();
+    if (grid.onHeaderCellRendered) {
+      grid.onHeaderCellRendered.subscribe(function(e, args) {
+        if (args && args.node) args.node.setAttribute("draggable", "true");
+      });
+    }
+    div.addEventListener("dragstart", function(e) {
+      var h = headerOf(e.target);
+      if (!h) return;
+      // Ручка изменения ширины — своё перетаскивание SlickGrid.
+      if (e.target.closest && e.target.closest(".slick-resizable-handle")) { e.preventDefault(); return; }
+      dragFrom = headerCells().indexOf(h);
+      try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", ""); } catch (er) {}
+    });
+    div.addEventListener("dragover", function(e) {
+      if (dragFrom >= 0 && headerOf(e.target)) e.preventDefault();
+    });
+    div.addEventListener("drop", function(e) {
+      if (dragFrom < 0) return;
+      var h = headerOf(e.target);
+      var from = dragFrom;
+      dragFrom = -1;
+      if (!h) return;
+      e.preventDefault();
+      // setColumns уничтожает редактор: сначала сохранить ввод или оставить
+      // таблицу без изменений, если валидация редактора отклонила значение.
+      if (!grid.getEditorLock().commitCurrentEdit()) return;
+      if (!obGridMoveColumn(state.columns, from, headerCells().indexOf(h))) return;
+      var isDefault = applyColumns();
+      save(isDefault ? "" : JSON.stringify(obGridColumnIds(state.columns)));
+    });
+    div.addEventListener("dragend", function() { dragFrom = -1; });
+    if (resetBtn) {
+      resetBtn.addEventListener("click", function() {
+        if (!grid.getEditorLock().commitCurrentEdit()) return;
+        obGridApplyOrder(state.columns, defaultIds);
+        applyColumns();
+        save("");
+      });
+    }
   }
 
   // updateTotals — строка итогов (footer row SlickGrid). Для каждой числовой
@@ -1539,7 +2770,23 @@ obManagedReady(obManagedInitDelegates);
     var wrapper, input, dropBtn, list;
     var isOpen = false, selectedId = '', defaultValue = '';
     var refEntity = (args.column && args.column.refEntity) || '';
+    var refFilter = (args.column && args.column.refFilter) || '';
+    var initialFilter = '';
+    try {
+      if (refFilter) {
+        var spec = JSON.parse(refFilter), initial = {};
+        Object.keys(spec).forEach(function(key) { initial[key] = (spec[key] && spec[key].value) || ''; });
+        initialFilter = '&flt=' + encodeURIComponent(JSON.stringify(initial));
+      }
+    } catch (e) {}
+    function filterParam() {
+      if (!refFilter || typeof window.obRefFilterParam !== 'function') return '';
+      var carrier = document.createElement('select');
+      carrier.setAttribute('data-ref-filter', refFilter);
+      return window.obRefFilterParam(carrier);
+    }
     var serverRows = [];   // последний ответ серверного поиска
+    var serverFilter = '';
     var shown = [];        // что сейчас отрисовано в списке (для ↑/↓ и Enter)
     var activeIdx = -1;    // подсвеченный пункт списка, -1 — нет подсветки
     var searchTimer = null, searchSeq = 0;
@@ -1559,7 +2806,7 @@ obManagedReady(obManagedInitDelegates);
       for (var k = 0; k < refOptsList.length; k++) {
         if (String(refOptsList[k].id) === String(opt.id)) return;
       }
-      refOptsList.push({id: opt.id, _label: opt._label});
+      refOptsList.push({id: opt.id, _label: opt._label, _ownerFilter: filterParam()});
     }
 
     // candidates — предзагруженные опции + серверные результаты, отфильтрованные
@@ -1576,8 +2823,13 @@ obManagedReady(obManagedInitDelegates);
         seen[key] = true;
         out.push({id: o.id, _label: lbl});
       }
-      for (var i = 0; i < refOptsList.length; i++) push(refOptsList[i]);
-      for (var j = 0; j < serverRows.length; j++) push(serverRows[j]);
+      var currentFilter = filterParam();
+      for (var i = 0; i < refOptsList.length; i++) {
+        if ((refOptsList[i]._ownerFilter || initialFilter) === currentFilter) push(refOptsList[i]);
+      }
+      if (currentFilter === serverFilter) {
+        for (var j = 0; j < serverRows.length; j++) push(serverRows[j]);
+      }
       return out;
     }
 
@@ -1672,16 +2924,18 @@ obManagedReady(obManagedInitDelegates);
     function searchServer(q) {
       if (!refEntity || !window.fetch) return;
       var seq = ++searchSeq;
+      var requestFilter = filterParam();
       var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) +
-                '?limit=50&q=' + encodeURIComponent(q || '');
+                '?limit=50&q=' + encodeURIComponent(q || '') + requestFilter;
       fetch(url, {credentials: 'same-origin', headers: {'Accept': 'application/json'}})
         .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
         .then(function(data) {
-          if (seq !== searchSeq) return; // ответ устарел (или редактор уже закрыт)
+          if (seq !== searchSeq || requestFilter !== filterParam()) return; // ответ устарел
           var keep = (activeIdx >= 0 && shown[activeIdx]) ? shown[activeIdx].id : '';
           serverRows = ((data && data.items) || []).map(function(row) {
             return {id: row && row.id != null ? String(row.id) : '', _label: String((row && row._label) || '')};
           }).filter(function(o) { return o.id !== ''; });
+          serverFilter = requestFilter;
           if (isOpen) buildList(input.value, keep);
         })
         .catch(function() { /* сеть/ошибка — остаются предзагруженные опции */ });
@@ -1721,6 +2975,7 @@ obManagedReady(obManagedInitDelegates);
       if (typeof window.openRefPicker !== 'function') return;
       var selEl = document.createElement('select');
       selEl.setAttribute('data-ref-entity', refEntity);
+      if (refFilter) selEl.setAttribute('data-ref-filter', refFilter);
       // «+ Создать» в форме подбора включается тем же признаком колонки, что и
       // в автоформе (allow_inline_create у поля ТЧ). Без переноса на временный
       // select подбор из ячейки не давал создать элемент НИКОГДА, даже когда
@@ -1959,12 +3214,14 @@ obManagedReady(obManagedInitDelegates);
   function obManagedSplitDate(value) {
     if (value == null || value === '') return null;
     var s = String(value);
-    var m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(s);
+    var m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
     if (!m) return null;
     return {
       date: m[1] + '-' + m[2] + '-' + m[3],
       day: m[3] + '.' + m[2] + '.' + m[1],
-      time: (m[4] !== undefined) ? (m[4] + ':' + m[5]) : ''
+      time: (m[4] !== undefined) ? (m[4] + ':' + m[5]) : '',
+      // Секунды нужны редактору: без них правка строки отрезала бы их от даты.
+      seconds: (m[6] !== undefined) ? m[6] : ''
     };
   }
 
@@ -1994,6 +3251,9 @@ obManagedReady(obManagedInitDelegates);
     this.init = function() {
       input = document.createElement('input');
       input.type = 'datetime-local';
+      // Шаг в секунду, как у поля даты в шапке: иначе значение с секундами
+      // не проходит проверку поля, а без секунд правка строки отрезала бы их.
+      input.step = '1';
       input.className = 'editor-text';
       input.style.cssText = 'width:100%;height:100%;border:none;outline:none;padding:2px 4px;font-size:13px';
       args.container.appendChild(input);
@@ -2006,8 +3266,12 @@ obManagedReady(obManagedInitDelegates);
     this.setValue = function(val) { input.value = (val == null) ? '' : String(val); };
     this.loadValue = function(item) {
       var parts = obManagedSplitDate(item[args.column.field]);
-      defaultValue = parts ? (parts.date + 'T' + (parts.time || '00:00')) : '';
-      input.value = defaultValue;
+      input.value = parts
+        ? (parts.date + 'T' + (parts.time || '00:00') + (parts.seconds ? ':' + parts.seconds : ''))
+        : '';
+      // Браузер нормализует значение (нулевые секунды опускает), поэтому
+      // «не изменено» сверяется с тем, что поле показало, а не с исходной строкой.
+      defaultValue = input.value;
     };
     // Пустая ячейка отдаётся пустой строкой: сервер понимает её как «значения
     // нет» и пишет NULL. Отдавать сюда «0001-01-01» нельзя — это уже значение.
@@ -2111,6 +3375,7 @@ obManagedReady(obManagedInitDelegates);
         // него в ячейке были видны только предзагруженные опции, а модалка
         // подбора уходила в локальный фильтр вместо /ui/_ref-options.
         col.refEntity = c.ref;
+        col.refFilter = c.refFilter || '';
         // allowCreate приходит из allow_inline_create поля ТЧ (сервер кладёт
         // его в data-sg-cols только когда создание разрешено).
         col.allowCreate = !!c.allowCreate;
@@ -2344,7 +3609,7 @@ obManagedReady(obManagedInitDelegates);
     var cols = g.columnsMeta || [];
     for (var i = 0; i < cols.length; i++) item[cols[i].id] = "";
     g.dataView.addItem(item);
-    window._obFormDirty = true;
+	window.obSetManagedFormDirty(true);
     g.grid.invalidate();
     // scrollRowIntoView ждёт ИНДЕКС отображаемой строки, не id записи —
     // после удалений они расходятся. Берём индекс из getRowById.
@@ -2402,7 +3667,7 @@ obManagedReady(obManagedInitDelegates);
     }
     if (!toRemove.length) return false;
     for (var j = 0; j < toRemove.length; j++) g.dataView.deleteItem(toRemove[j].id);
-    window._obFormDirty = true;
+	window.obSetManagedFormDirty(true);
     try { g.grid.invalidate(); } catch (e) {
       if (window.console) window.console.error("SlickGrid delete refresh error [" + tpName + "]:", e);
     }
@@ -2454,7 +3719,7 @@ obManagedReady(obManagedInitDelegates);
     copy._obCellClasses = Object.assign({}, src._obCellClasses || {});
     g.dataView.addItem(copy);
     g.dataView.setItems(reindexOrd(byOrd(g)));
-    window._obFormDirty = true;
+	window.obSetManagedFormDirty(true);
     g.grid.invalidate();
     var rowIdx = g.dataView.getRowById(nextId);
     if (rowIdx !== undefined) {
@@ -2488,7 +3753,7 @@ obManagedReady(obManagedInitDelegates);
     if (pos < 0 || to < 0 || to >= items.length) return;
     items.splice(to, 0, items.splice(pos, 1)[0]);
     g.dataView.setItems(reindexOrd(items));
-    window._obFormDirty = true;
+	window.obSetManagedFormDirty(true);
     g.grid.invalidate();
     var rowIdx = g.dataView.getRowById(cur.id);
     if (rowIdx !== undefined) {
@@ -2687,6 +3952,8 @@ obManagedReady(obManagedInitDelegates);
     // алфавитный, а список должен идти в порядке объявления values:.
     var enumOrder = (window._tpEnumOrder && window._tpEnumOrder[tpName]) || {};
     var columns = buildColumns(colsRaw, refOpts, enumLabels, enumOrder);
+    var defaultColumnIds = obGridColumnIds(columns);
+    obGridApplyOrder(columns, obGridParseOrder(div.getAttribute("data-sg-order")));
     // _ord — исходный порядок строки. Клиентская сортировка меняет ПОРЯДОК
     // ОТОБРАЖЕНИЯ (dataView.sort), но при сохранении (obGridSync) строки
     // сериализуются по _ord — чтобы сортировка «для просмотра» не переставляла
@@ -2741,6 +4008,7 @@ obManagedReady(obManagedInitDelegates);
     };
     div._obGridState = gridState;
     window._obGridViews.push(gridState);
+    enableColumnReorder(gridState, defaultColumnIds);
     var registered = window._obGrids[tpName];
     if (!registered || (!readOnly && registered.readOnly)) {
       window._obGrids[tpName] = gridState;
@@ -2800,7 +4068,7 @@ obManagedReady(obManagedInitDelegates);
     var colPrice = autoSum ? findColId(["цена", "price"]) : null;
     var colSum = autoSum ? findColId(["сумма", "amount", "sum"]) : null;
     grid.onCellChange.subscribe(function(e, args) {
-      window._obFormDirty = true;
+	  window.obSetManagedFormDirty(true);
       if (colQty && colPrice && colSum && args && args.item && args.cell != null) {
         var changed = columns[args.cell] && columns[args.cell].field;
         // Пересчитываем сумму при правке количества/цены; саму сумму не трогаем,
@@ -2978,14 +4246,26 @@ function obManagedTabKey(tabs) {
   return 'obtab:' + location.pathname + ':' + (tabs.getAttribute('data-tabs') || '');
 }
 
+// obManagedOwnTabParts — кнопки или страницы именно этого набора. Выборка
+// внутри набора захватывает и вложенные наборы СтраницыФормы; трогать их
+// нельзя: переключение внешней закладки снимало выбор и прятало страницы
+// вложенного набора — открытая внешняя страница показывала одни заголовки.
+function obManagedOwnTabParts(tabs, selector) {
+  var own = [];
+  tabs.querySelectorAll(selector).forEach(function (el) {
+    if (el.closest && el.closest('.managed-tabs') === tabs) own.push(el);
+  });
+  return own;
+}
+
 function obManagedSwitchTab(btn) {
   var tabs = btn && btn.closest ? btn.closest('.managed-tabs') : null;
   if (!tabs) return;
   var idx = btn.getAttribute('data-tab-idx') || '0';
-  tabs.querySelectorAll('.managed-tab-btn').forEach(function (b) { b.classList.remove('active'); });
+  obManagedOwnTabParts(tabs, '.managed-tab-btn').forEach(function (b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  tabs.querySelectorAll('.managed-tab-content').forEach(function (c) { c.style.display = 'none'; });
-  var content = tabs.querySelector('.managed-tab-content[data-tab-content="' + idx + '"]');
+  obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(function (c) { c.style.display = 'none'; });
+  var content = obManagedOwnTabParts(tabs, '.managed-tab-content[data-tab-content="' + idx + '"]')[0];
   if (content) content.style.display = 'block';
   try { sessionStorage.setItem(obManagedTabKey(tabs), idx); } catch (_) {}
   if (window._obResizeGrids) setTimeout(window._obResizeGrids, 0);
@@ -3012,15 +4292,14 @@ obManagedReady(function () {
       var parent = content.parentElement;
       content = parent && parent.closest ? parent.closest('.managed-tab-content') : null;
     }
-    // For nested tab groups, select every ancestor page from outer to inner.
-    // Switching an outer group currently hides descendant pages too, so the
-    // inner selection must be restored even when it was active beforehand.
+    // For nested tab groups, select every ancestor page from outer to inner:
+    // each group switches only its own pages, the inner one is set after.
     for (var i = pages.length - 1; i >= 0; i--) {
       var page = pages[i];
       var tabs = page.closest('.managed-tabs');
       if (!tabs) continue;
       var idx = page.getAttribute('data-tab-content');
-      var btn = tabs.querySelector('.managed-tab-btn[data-tab-idx="' + idx + '"]');
+      var btn = obManagedOwnTabParts(tabs, '.managed-tab-btn[data-tab-idx="' + idx + '"]')[0];
       if (btn) obManagedSwitchTab(btn);
     }
   }, true);
@@ -3028,7 +4307,17 @@ obManagedReady(function () {
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('.managed-tab-btn') : null;
     if (!btn) return;
+    var wasActive = btn.classList.contains('active');
     obManagedSwitchTab(btn);
+    // ПриСменеСтраницы — только когда пользователь действительно открыл другую
+    // страницу: щелчок по уже открытой закладке страницу не меняет, а
+    // восстановление запомненной закладки и переход к невалидному полю
+    // пользовательской сменой не являются.
+    var tabs = btn.closest ? btn.closest('.managed-tabs') : null;
+    var owner = tabs ? tabs.getAttribute('data-ob-fire-pagechange') : '';
+    if (!wasActive && owner && window.obFire) {
+      obFire(owner, 'ПриСменеСтраницы', { _page: btn.getAttribute('data-tab-page') || '' });
+    }
   });
   var groups = document.querySelectorAll('.managed-tabs');
   for (var i = 0; i < groups.length; i++) {
@@ -3036,7 +4325,7 @@ obManagedReady(function () {
     var idx;
     try { idx = sessionStorage.getItem(obManagedTabKey(tabs)); } catch (_) { idx = null; }
     if (idx == null || idx === '0') continue;
-    var btn = tabs.querySelector('.managed-tab-btn[data-tab-idx="' + idx + '"]');
+    var btn = obManagedOwnTabParts(tabs, '.managed-tab-btn[data-tab-idx="' + idx + '"]')[0];
     if (btn) obManagedSwitchTab(btn);
   }
 });

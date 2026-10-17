@@ -7,8 +7,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/metadata"
+	processorpkg "github.com/ivantit66/onebase/internal/processor"
 	"github.com/ivantit66/onebase/internal/report/compose"
 )
 
@@ -99,10 +102,19 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 		// Фикс B: реквизиты формы (save:false) ссылочного типа получают пикер —
 		// грузим их опции и домешиваем в RefOptions (у полей сущности пикер уже был).
 		s.mergeFormLocalRefOptions(r.Context(), managed, data)
+		// Plan 170/B: только для элементов с choice_filter заменяем
+		// общий список на серверно отфильтрованный и кладём в разметку
+		// только идентичность формы/элемента и имена источников. Field/Op
+		// остаются только в metadata на сервере.
+		s.applyManagedChoiceFilters(r.Context(), entity, managed, data)
 		// Списки значений (СписокВыбора) объявлены на элементах формы, а не на
 		// полях сущности, поэтому собираем их из самой managed-формы. Единая
 		// точка покрывает все пути рендера (new/edit/повторный показ с ошибкой).
 		data["ChoiceOptions"] = loadChoiceOptions(managed, s.resolveLang(r))
+		// Поля под маской показываются точками, как пароль: и маска из базы, и
+		// номер, который пользователь набирает сам (ответ события отдаёт его
+		// без маски — см. submittedFieldsToEcho).
+		data["ProtectedFields"] = s.protectedFieldSet(r.Context(), entity)
 		s.prepareManagedFormData(r.Context(), data, managed)
 		s.render(w, r, "page-managed-form", data)
 		return
@@ -135,17 +147,39 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 	if form == nil || data == nil {
 		return
 	}
+	opKind := opFormEvent
+	if processor, _ := data["IsProcessor"].(bool); processor {
+		opKind = opProcessorRun
+	}
+	data["FormCloseTimeoutMS"] = formCloseClientTimeoutMS(s.operationTimeout(opKind))
+	data["FormCloseEpoch"] = formCloseProcessEpoch
+	data["FormCloseClientID"] = uuid.NewString()
+	data["FormCloseServerNowMS"] = time.Now().UnixMilli()
+	if processor, _ := data["Processor"].(*processorpkg.Processor); processor != nil {
+		data["FormCloseSchema"] = processorFormCloseSchema(processor, form)
+	} else if entity, _ := data["Entity"].(*metadata.Entity); entity != nil {
+		data["FormCloseSchema"] = entityFormCloseSchema(entity, form)
+	}
+	s.prepareGridOrders(ctx, data, form)
 	if css := formConditionalCSS(form); css != "" {
 		data["FormConditionalCSS"] = template.CSS(css) //nolint:gosec // G203: стиль собран cssStyle → csssafe.Color, произвольная строка в CSS не попадает
 	}
 	entity, _ := data["Entity"].(*metadata.Entity)
 	header := managedFormHeaderValues(entity, data["Values"])
 
+	// Якори размещений нужны и без интерпретатора: editable_admin_only
+	// вычисляется независимо от DSL и возвращается после события формы.
+	paths := make(map[*metadata.FormElement]string)
+	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+		paths[visit.element] = visit.path
+	})
+	data["ElPaths"] = paths
+
 	// Условная доступность элементов (readonly_when/hidden_when) — по полям
 	// ЗАПИСИ, поэтому считается здесь же, где известны Values, и заново после
 	// каждого события формы.
 	if s.interp != nil {
-		ro, hidden, warns := managedFormElementStates(form, header, newInterpEvaluator(s.interp))
+		ro, hidden, _, warns := managedFormElementStates(form, header, newInterpEvaluator(s.interp))
 		if len(ro) > 0 {
 			data["ElReadOnly"] = ro
 		}
@@ -173,8 +207,16 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 }
 
 // managedFormElementStates вычисляет состояние readonly/hidden каждого элемента
-// формы по полям записи. Возвращает множества имён элементов, которые должны
-// быть нередактируемы и скрыты, и предупреждения по нерабочим условиям.
+// формы по полям записи. Возвращает карты состояний, ключ которых — путь
+// размещения элемента (индексы от корня, см. browserFormElementVisit.path),
+// карту указатель элемента → путь для шаблона и предупреждения по нерабочим
+// условиям.
+//
+// Ключ — не имя: имя бывает пустым (Надпись, декорации) и повторяющимся (одна
+// ТЧ размещена дважды). После #1226 в карту попадает каждый потомок условного
+// контейнера, поэтому безымянный потомок клал состояние под общий ключ «», и
+// клиент находил по нему первый попавшийся безымянный элемент страницы, а
+// одноимённые размещения делили одну строку карты (#1543).
 //
 // В карту readonly кладётся ИТОГОВОЕ состояние элемента — «условие ИЛИ
 // эффективный статический readonly», — а не одно условие. Карту применяет
@@ -187,16 +229,26 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 // walkBrowserFormElements — тот же обход, которым его берёт серверная отрисовка
 // ($ro в шаблоне managed-element).
 //
+// Условие КАСКАДИТ на потомков ровно так же, как статический readonly (#1184):
+// «после проведения группа реквизитов замерзает» пишется одним условием на
+// группе. Итоговое состояние элемента — «статический readonly (свой или
+// предка) ИЛИ истинное условие (своё или предка)», и считается оно ЗДЕСЬ, в
+// одном месте, а не тремя способами. Раньше правило было размазано по трём
+// исполнителям и в каждом получалось своё: шаблон условие предка не смотрел
+// вовсе, а клиент запирал потомков обходом DOM — и до первого события формы
+// поле было редактируемым, после первого запиралось.
+//
 // Ошибка вычисления НЕ скрывает и НЕ блокирует элемент: неверное условие — это
 // ошибка конфигурации, и молча запертое поле объяснить пользователю нечем.
 // Вместо этого условие игнорируется, а конфигуратор получает предупреждение на
 // форме — тем же способом, что и у условного оформления.
-func managedFormElementStates(form *metadata.FormModule, header map[string]any, ev compose.Evaluator) (map[string]bool, map[string]bool, []string) {
+func managedFormElementStates(form *metadata.FormModule, header map[string]any, ev compose.Evaluator) (map[string]bool, map[string]bool, map[*metadata.FormElement]string, []string) {
 	if form == nil || ev == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	ro := map[string]bool{}
 	hidden := map[string]bool{}
+	paths := map[*metadata.FormElement]string{}
 	wc := &formWarnCollector{}
 	row := compose.Row(header)
 	eval := func(expr, kind, elName string) bool {
@@ -210,27 +262,52 @@ func managedFormElementStates(form *metadata.FormModule, header map[string]any, 
 		}
 		return ok
 	}
+	// Условие каждого элемента считается ровно один раз — на его собственном
+	// заходе, — и потомки берут результат отсюда. Так предупреждение о сломанном
+	// выражении достаётся тому элементу, который его объявил, и не размножается
+	// по всей ветке. Обход прямой (предок раньше потомков), поэтому к моменту
+	// захода потомка условие предка в карте уже лежит.
+	conds := map[*metadata.FormElement]bool{}
 	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
 		el := visit.element
 		if el == nil {
 			return
 		}
-		// В карту попадает КАЖДЫЙ элемент с условием — в том числе с ложным.
-		// Ответ события формы переносит эти карты на клиент, и без явного
-		// «false» он не смог бы снять запрет, когда условие перестало
-		// выполняться (отличить «условия нет» от «условие ложно» было бы нечем).
-		if strings.TrimSpace(el.ReadOnlyWhen) != "" {
+		paths[el] = visit.path
+		own := strings.TrimSpace(el.ReadOnlyWhen) != ""
+		if own {
 			// Условие считается всегда, даже под постоянным запретом: иначе
 			// сломанное выражение под readonly-группой молчало бы вместо
 			// предупреждения конфигуратору.
-			cond := eval(el.ReadOnlyWhen, "условие readonly_when", el.Name)
-			ro[el.Name] = cond || visit.effectiveReadOnly
+			conds[el] = eval(el.ReadOnlyWhen, "условие readonly_when", el.Name)
+		}
+		// В карту попадает КАЖДЫЙ элемент, на который условие влияет, — в том
+		// числе с ложным. Ответ события формы переносит эти карты на клиент, и
+		// без явного «false» он не смог бы снять запрет, когда условие перестало
+		// выполняться (отличить «условия нет» от «условие ложно» было бы нечем).
+		if own || len(visit.readOnlyWhenAncestors) > 0 {
+			state := visit.effectiveReadOnly || conds[el]
+			for _, ancestor := range visit.readOnlyWhenAncestors {
+				state = state || conds[ancestor]
+			}
+			ro[visit.path] = state
 		}
 		if strings.TrimSpace(el.HiddenWhen) != "" {
-			hidden[el.Name] = eval(el.HiddenWhen, "условие hidden_when", el.Name)
+			hidden[visit.path] = eval(el.HiddenWhen, "условие hidden_when", el.Name)
 		}
 	})
-	return ro, hidden, wc.msgs
+	return ro, hidden, paths, wc.msgs
+}
+
+// elementStatePath — ключ элемента в картах состояний: путь его размещения в
+// дереве формы. Для элементов вне дерева (например, синтетических в редакторе)
+// путь пуст, и состояние по нему не найдётся — карты путей ключа «» не пишут.
+func elementStatePath(ctx map[string]any, el *metadata.FormElement) string {
+	if el == nil {
+		return ""
+	}
+	paths, _ := ctx["ElPaths"].(map[*metadata.FormElement]string)
+	return paths[el]
 }
 
 // unplacedCommands возвращает команды формы, НЕ размещённые вручную элементом
@@ -333,7 +410,12 @@ func (s *Server) mergeFormLocalRefOptions(ctx context.Context, form *metadata.Fo
 		if refEntity == nil {
 			continue
 		}
-		rows, err := s.initialReferenceOptions(ctx, refEntity, refOptionsChoice, nil)
+		ownerID, asked := "", false
+		if hf, ok := ownerHolderField(entity, refEntity.Owner); ok {
+			ownerID, asked = formValueForPath(data["Values"], "Объект."+hf.Name), true
+		}
+		selected := formValueForPath(data["Values"], "Форма."+a.Name)
+		rows, err := s.initialReferenceOptionsOwned(ctx, refEntity, refOptionsChoice, []string{selected}, ownerID, asked)
 		if err != nil {
 			continue
 		}
