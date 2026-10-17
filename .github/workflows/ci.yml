@@ -542,6 +542,21 @@ jobs:
     name: e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Browser fixtures exercise the same public routes on SQLite and PostgreSQL.
+    services:
+      postgres:
+        image: ${{ (needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs') && 'postgres:16' || '' }}
+        env:
+          POSTGRES_USER: onebase
+          POSTGRES_PASSWORD: onebase
+          POSTGRES_DB: onebase_browser_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U onebase -d onebase_browser_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Docs-only success
         if: ${{ needs.classify.result == 'success' && needs.classify.outputs.mode == 'docs' }}
@@ -589,6 +604,14 @@ jobs:
         env:
           CI: '1'
         run: npx playwright test
+
+      - name: Run choice_filter public browser acceptance
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
+        env:
+          CI: '1'
+          ONEBASE_BROWSER_ACCEPTANCE: '1'
+          TEST_DATABASE_URL: postgres://onebase:onebase@127.0.0.1:5432/onebase_browser_test?sslmode=disable
+        run: go test -count=1 -v ./internal/ui ./internal/launcher -run 'Test(ChoiceFilter(Configurator)?|HiddenCopies)BrowserAcceptance$'
 
       # Без артефактов упавший браузерный тест разбирать нечем: трассировка
       # показывает шаги, снимок — что было на экране в момент падения.
@@ -764,23 +787,33 @@ jobs:
           # Гоним весь пакет, чтобы новый матричный тест нельзя было добавить
           # рядом с checks_matrix_test.go и случайно оставить вне PG-гейта.
           go test -race -count=1 -timeout 15m ./internal/dbcheck
+          # Fresh migrate/test databases must initialize auth before creating
+          # reference:_users foreign keys; run both dialects and dry-run here.
+          # Include procrun row indexing; verbose output confirms the PostgreSQL
+          # subtests execute instead of being skipped.
+          go test -race -count=1 -v -timeout 5m ./internal/cli \
+            -run '^(TestMigrateUserReferencesMatrix|TestTestUserReferencesMatrix|TestMigrateUserReferencesDryRunMatrix|TestProcrunInfoRegRowIndexMatrix)$'
           # Очередь фоновых заданий (план 130). Юнит-джоб гоняет её на SQLite,
           # где исполнитель ровно один по построению — то есть ГЛАВНОЕ свойство
           # подсистемы, параллельная работа N исполнителей и расхождение
           # конкурентов через FOR UPDATE SKIP LOCKED, там не проверяется вообще.
           # Без этой строки пул на 16–32 исполнителя не доказан ни одним гейтом.
           go test -race -count=1 -timeout 15m ./internal/jobqueue
-          # Table-part shape compatibility is dialect-matrix tested in
-          # internal/exchange. The regular unit job has no TEST_DATABASE_URL,
-          # so explicitly gate the PostgreSQL half here.
-          go test -race -count=1 -timeout 5m ./internal/exchange \
-            -run '^TestApplyPackage_НедостающееПолеТЧПринимается$/^postgres$'
+          # Run the whole exchange package while TEST_DATABASE_URL is present:
+          # table-part compatibility and receiver movement cleanup are matrix
+          # tested, and new matrix tests must enter the PostgreSQL gate too.
+          # The regular unit job only executes their SQLite branches.
+          go test -race -count=1 -timeout 15m ./internal/exchange
           # DR-01 (issue #784): сквозной backup→restore PostgreSQL. Проверяет,
           # что pg_dump снимает дамп, а psql-restore возвращает те же данные
           # (round-trip на выделенной базе, чтобы разрушительный restore не
           # затронул общую onebase_test). Требует pg_dump/psql — см. шаг выше.
           go test -race -count=1 -timeout 10m -tags integration ./internal/backup \
             -run '^(TestPostgresBackupRestoreRoundTrip|TestUniversalBackupRoundTripInNonPublicSchema|TestUniversalNavigationSettingsMatrix)$'
+          # REST v2 матрицы (включая TestInfoRegV2*) должны исполнять
+          # PostgreSQL-подтесты в обязательном job. Запускаем весь пакет
+          # последовательно; -v показывает выполненные диалекты в журнале CI.
+          go test -race -count=1 -timeout 15m -v ./internal/api
           # Run the whole UI package while TEST_DATABASE_URL is present. Every
           # dbtest.ForEachDialect call therefore executes its PostgreSQL branch,
           # including a newly added matrix test without maintaining a fragile
