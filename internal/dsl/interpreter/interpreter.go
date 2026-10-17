@@ -38,6 +38,19 @@ type userError struct {
 	Err  error // исходная ошибка (например i18nerr) для локализации по цепочке
 }
 
+// asDSLError сохраняет место возбуждения даже после вложенного вызова или
+// повторного возбуждения. Для ошибок внешних методов без позиции остаётся
+// прежний fallback на текущий оператор исполнения.
+func (u userError) asDSLError(file string, line int) *DSLError {
+	if u.File != "" {
+		file = u.File
+	}
+	if u.Line > 0 {
+		line = u.Line
+	}
+	return &DSLError{File: file, Line: line, Msg: u.Msg, Err: u.Err}
+}
+
 // RaiseUserError panics with a DSL user error. Предназначено для
 // внешних пакетов (например ui), которым нужно прервать выполнение DSL
 // из метода объекта (CallMethod) с осмысленным сообщением — оно
@@ -140,7 +153,7 @@ func (i *Interpreter) Call(proc *ast.ProcedureDecl, this This, args []any, extra
 			case dslStop:
 				err = s.err
 			case userError:
-				err = &DSLError{File: e.ec.curFile, Line: e.ec.curLine, Msg: s.Msg, Err: s.Err}
+				err = s.asDSLError(e.ec.curFile, e.ec.curLine)
 			default:
 				panic(r)
 			}
@@ -177,7 +190,7 @@ func (i *Interpreter) RunWithResult(proc *ast.ProcedureDecl, this This, result *
 			case dslStop:
 				err = s.err
 			case userError:
-				err = &DSLError{File: e.ec.curFile, Line: e.ec.curLine, Msg: s.Msg, Err: s.Err}
+				err = s.asDSLError(e.ec.curFile, e.ec.curLine)
 			case dslReturn:
 				if result != nil {
 					*result = s.val
@@ -217,7 +230,7 @@ func (i *Interpreter) Run(proc *ast.ProcedureDecl, this This, extraVars ...map[s
 			case dslStop:
 				err = s.err
 			case userError:
-				err = &DSLError{File: e.ec.curFile, Line: e.ec.curLine, Msg: s.Msg, Err: s.Err}
+				err = s.asDSLError(e.ec.curFile, e.ec.curLine)
 			case dslReturn:
 				// early return from procedure — not an error
 			default:
@@ -405,6 +418,13 @@ func (i *Interpreter) execStmt(s ast.Stmt, e *env) {
 		}
 	case *ast.ForEachStmt:
 		coll := i.evalExpr(v.Collection, e)
+		// Debugger conditions wrap a native structure snapshot to forbid writes.
+		// Unwrap only that data snapshot, keeping external capabilities guarded.
+		if wrapped, ok := coll.(*readOnlyThis); ok {
+			if structure, ok := wrapped.inner.(*Struct); ok {
+				coll = structure
+			}
+		}
 		switch items := coll.(type) {
 		case []map[string]any:
 			for _, row := range items {
@@ -423,6 +443,13 @@ func (i *Interpreter) execStmt(s ast.Stmt, e *env) {
 		case *Array:
 			for _, item := range items.Iterate() {
 				e.setLocal(v.Var.Literal, item)
+				if !i.execLoopBody(v.Body, e) {
+					break
+				}
+			}
+		case *Struct:
+			for _, key := range items.keys {
+				e.setLocal(v.Var.Literal, &KeyValue{Key: key, Value: items.vals[key]})
 				if !i.execLoopBody(v.Body, e) {
 					break
 				}
@@ -459,6 +486,12 @@ func (i *Interpreter) execStmt(s ast.Stmt, e *env) {
 						break
 					}
 				}
+			} else {
+				panic(userError{
+					Msg:  "Цикл «Для Каждого»: значение не является коллекцией",
+					File: v.Var.File,
+					Line: v.Var.Line,
+				})
 			}
 		}
 	case *ast.AssignStmt:
@@ -666,7 +699,16 @@ func (i *Interpreter) evalExprUnchecked(expr ast.Expr, e *env) any {
 
 func (i *Interpreter) evalNew(n *ast.NewExpr, e *env) any {
 	args := i.evalArgs(n.Args, e)
-	typeName := strings.ToLower(n.TypeName.Literal)
+	// План 173, срез A: dispatch вынесен в construct, чтобы динамическая форма
+	// Новый(<Тип>, <Параметры>) в срезе B пошла через ту же точку создания.
+	return i.construct(strings.ToLower(n.TypeName.Literal), args, e, n.TypeName.Literal)
+}
+
+// construct создаёт объект по нормализованному имени типа и готовым аргументам.
+// typeName ожидается в нижнем регистре (единственная нормализация —
+// normalizeTypeName для публичных имён типов значений); displayName — имя так,
+// как его написал автор модуля, для текстов ошибок.
+func (i *Interpreter) construct(typeName string, args []any, e *env, displayName string) any {
 	switch typeName {
 	case "массив", "array":
 		return &Array{}
@@ -688,11 +730,11 @@ func (i *Interpreter) evalNew(n *ast.NewExpr, e *env) any {
 	// Расширяемые типы через env: "__factory_<ИмяТипа>"
 	if factory, ok := e.get("__factory_" + typeName); ok {
 		if fn, ok := factory.(func([]any) any); ok {
-			refuseReadOnly(e.ec, "создание объекта «"+n.TypeName.Literal+"» через внешнюю фабрику")
+			refuseReadOnly(e.ec, "создание объекта «"+displayName+"» через внешнюю фабрику")
 			return fn(args)
 		}
 	}
-	panic(userError{Msg: "Новый: неизвестный тип " + n.TypeName.Literal})
+	panic(userError{Msg: "Новый: неизвестный тип " + displayName})
 }
 
 func (i *Interpreter) evalUnary(u *ast.UnaryExpr, e *env) any {

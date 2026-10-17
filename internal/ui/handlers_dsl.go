@@ -62,9 +62,21 @@ func langFromCtx(ctx context.Context) string {
 // со статическим контекстом такой вызов уходит за вторым соединением, а пул
 // SQLite — одно соединение, и запрос виснет до таймаута.
 func (s *Server) buildDSLVarsTx(ctx context.Context, mc *runtime.MovementsCollector) (map[string]any, *interpreter.TxState) {
+	// Сборщик исполнения: блокировки, взятые кодом вне записи документа
+	// (обработка, событие формы, задание, тест), отпускаются в конце
+	// исполнения. Без него ключ без явного Разблокировать() жил до конца
+	// процесса, и следующий запрос с тем же ключом висел навсегда.
+	var execLocks *runtime.LockCollector
+	if runtime.LockCollectorFromContext(ctx) == nil && runtime.ExecutionLockCollectorFromContext(ctx) == nil {
+		execLocks = runtime.NewLockCollector()
+		ctx = runtime.ContextWithExecutionLockCollector(ctx, execLocks)
+	}
 	// TxState is created before the common variable set so path resolvers and
 	// all write-capable DSL objects observe the same live transaction context.
 	txState := interpreter.NewTxState(ctx)
+	if execLocks != nil {
+		txState.AddExecutionCleanup(execLocks.ReleaseAll)
+	}
 	// Базовый набор (Перечисления, Константы, Запрос, Предопределённые,
 	// Движения, HTTP, Email) — общий с scheduler, см. internal/dslvars.
 	vars := dslvars.Common{
@@ -74,6 +86,9 @@ func (s *Server) buildDSLVarsTx(ctx context.Context, mc *runtime.MovementsCollec
 		Notifier:          s.notifier(),
 		Interp:            s.interp, // для hook-правила конфликта в ПланыОбмена.ЗагрузитьПакет
 		EmailFileResolver: s.emailAttachmentPathResolver(txState.Ctx),
+		// Подписи ссылочных констант: живой контекст, RowLabel, полевая
+		// политика роли — в отличие от доверенного StoreRefPresenter (#1536).
+		ConstantRefPresenter: s.constantsRefPresenter(txState),
 	}.Build()
 
 	// TxState несёт «живой» контекст. Транзакционные функции
@@ -103,7 +118,11 @@ func (s *Server) buildDSLVarsTx(ctx context.Context, mc *runtime.MovementsCollec
 	// транзакции (обработка без НачатьТранзакцию) поведение прежнее:
 	// только внутрипроцессный мьютекс.
 	lockFactory := interpreter.BuiltinFunc(func(_ []any, _ string, _ int) (any, error) {
-		lo := runtime.NewLockObjectWithCollector(s.lockMgr, runtime.LockCollectorFromContext(ctx))
+		collector := runtime.LockCollectorFromContext(ctx)
+		if collector == nil {
+			collector = runtime.ExecutionLockCollectorFromContext(ctx)
+		}
+		lo := runtime.NewLockObjectWithCollector(s.lockMgr, collector)
 		lo.WithAdvisory(func(keys []string) {
 			c := txState.Ctx()
 			if !storage.HasTx(c) {
@@ -386,8 +405,27 @@ func (s *Server) buildDSLVarsWithMessagesTx(ctx context.Context, mc *runtime.Mov
 
 type entityHookThis struct {
 	*runtime.Object
-	entity   *metadata.Entity
-	resolver *dslRefAttrResolver
+	entity    *metadata.Entity
+	resolver  *dslRefAttrResolver
+	xdtoState *entityHookXDTOState
+	xdtoMask  func(string, any) any
+}
+
+// entityHookXDTOState preserves the originating writer's distinction between
+// stored fields and values supplied by this operation. The assignment map is
+// shared so writes in either the module or its hook have the same export policy.
+type entityHookXDTOState struct {
+	loaded   bool
+	assigned map[string]bool
+}
+
+func (o *entityHookThis) XDTOObject() *runtime.Object { return o.runtimeObject() }
+
+func (o *entityHookThis) XDTOMaskField() func(string, any) any { return o.xdtoMask }
+
+func (o *entityHookThis) Set(name string, value any) {
+	o.Object.Set(name, value)
+	o.xdtoState.assigned[strings.ToLower(strings.TrimSpace(name))] = true
 }
 
 func (o *entityHookThis) Get(name string) any {
@@ -445,7 +483,7 @@ func (o *entityHookThis) runtimeObject() *runtime.Object {
 // переживать запрос, продолжая держать транзакцию после ухода клиента. При
 // ненастроенном лимите поведение прежнее — нулевое значение означает «предел не
 // задан», и менять на нём поведение молча нельзя.
-func (s *Server) runEntityHook(ctx context.Context, proc *ast.ProcedureDecl, obj *runtime.Object, vars map[string]any) error {
+func (s *Server) runEntityHook(ctx context.Context, proc *ast.ProcedureDecl, obj *runtime.Object, vars map[string]any, xdtoState *entityHookXDTOState) error {
 	this := interpreter.This(obj)
 	if obj != nil {
 		entity := s.reg.GetEntity(obj.Type)
@@ -455,7 +493,15 @@ func (s *Server) runEntityHook(ctx context.Context, proc *ast.ProcedureDecl, obj
 			// name when this["Field"] is used, so opt in only at this execution edge.
 			resolver := s.newDSLRefAttrResolver(ctx)
 			resolver.attachObject(entity, obj)
-			this = &entityHookThis{Object: obj, entity: entity, resolver: resolver}
+			if xdtoState == nil {
+				// A hook without an originating DSL writer must not expose stored
+				// values by treating them as a newly created module object.
+				xdtoState = &entityHookXDTOState{loaded: true, assigned: map[string]bool{}}
+			}
+			this = &entityHookThis{
+				Object: obj, entity: entity, resolver: resolver, xdtoState: xdtoState,
+				xdtoMask: s.xdtoFieldMask(ctx, entity, xdtoState.loaded, xdtoState.assigned),
+			}
 		}
 	}
 	if wall := interpreter.ClampWallClock(ctx, s.operationTimeout(opEntitySave)); wall > 0 {
@@ -464,7 +510,7 @@ func (s *Server) runEntityHook(ctx context.Context, proc *ast.ProcedureDecl, obj
 	return s.interp.Run(proc, this, vars)
 }
 
-func (s *Server) runOnWriteCtx(ctx context.Context, obj *runtime.Object, mc *runtime.MovementsCollector) (string, []string) {
+func (s *Server) runOnWriteCtx(ctx context.Context, obj *runtime.Object, mc *runtime.MovementsCollector, source ...*entityHookXDTOState) (string, []string) {
 	proc := s.reg.GetProcedure(obj.Type, "OnWrite")
 	if proc == nil {
 		return "", nil
@@ -491,7 +537,11 @@ func (s *Server) runOnWriteCtx(ctx context.Context, obj *runtime.Object, mc *run
 	var msgs []string
 	vars, txState := s.buildDSLVarsWithMessagesTx(ctx, mc, &msgs)
 	defer rollbackDSLExecution(txState)
-	runErr := s.runEntityHook(ctx, proc, obj, vars)
+	var xdtoState *entityHookXDTOState
+	if len(source) > 0 {
+		xdtoState = source[0]
+	}
+	runErr := s.runEntityHook(ctx, proc, obj, vars, xdtoState)
 	if runErr = finishDSLExecution(txState, runErr); runErr != nil {
 		return interpreter.FormatUserError(runErr), msgs
 	}
@@ -530,7 +580,7 @@ func (m *managerCaller) CallManager(entityName, method string, args []any) (any,
 	return m.s.callManagerProc(m.ctxSrc.Ctx(), entityName, method, args)
 }
 
-func (s *Server) runOnPostCtx(ctx context.Context, obj *runtime.Object, mc *runtime.MovementsCollector) (string, []string) {
+func (s *Server) runOnPostCtx(ctx context.Context, obj *runtime.Object, mc *runtime.MovementsCollector, source ...*entityHookXDTOState) (string, []string) {
 	proc := s.reg.GetProcedure(obj.Type, "OnPost")
 	if proc == nil {
 		return "", nil
@@ -547,7 +597,11 @@ func (s *Server) runOnPostCtx(ctx context.Context, obj *runtime.Object, mc *runt
 	var msgs []string
 	vars, txState := s.buildDSLVarsWithMessagesTx(ctx, mc, &msgs)
 	defer rollbackDSLExecution(txState)
-	runErr := s.runEntityHook(ctx, proc, obj, vars)
+	var xdtoState *entityHookXDTOState
+	if len(source) > 0 {
+		xdtoState = source[0]
+	}
+	runErr := s.runEntityHook(ctx, proc, obj, vars, xdtoState)
 	if runErr = finishDSLExecution(txState, runErr); runErr != nil {
 		return interpreter.FormatUserError(runErr), msgs
 	}
