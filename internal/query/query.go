@@ -698,7 +698,7 @@ func (tr *translator) systemRefQualifierAt(pos int) *refDimInfo {
 	if pos < 0 || pos >= len(tr.tokens) || tr.tokens[pos].kind != tIdent {
 		return nil
 	}
-	rd := tr.findRefDim(lowerFast(tr.tokens[pos].val))
+	rd := tr.findRefDimAt(pos, lowerFast(tr.tokens[pos].val))
 	if rd == nil || !metadata.IsSystemRefTarget(rd.refEntity) {
 		return nil
 	}
@@ -850,8 +850,6 @@ type translator struct {
 	colMap       map[string]string             // lowercase field name → actual column name (for reference dims)
 	colTypes     map[string]metadata.FieldType // legacy-типы первого источника для проекции и ссылок
 	refDims      []refDimInfo                  // reference dimensions with auto-JOIN info
-	refScope     int                           // SELECT, которому принадлежат авто-JOIN
-	refSources   map[string]bool               // имена и алиас источника этих JOIN
 	mainTable    string                        // main FROM table/alias (set when source is emitted)
 	mainEmitted  bool                          // главный FROM текущей SELECT-области уже эмитирован
 	section      querySection                  // current clause context
@@ -1509,7 +1507,7 @@ func (tr *translator) dropSourceQualifier(rd *refDimInfo) bool {
 	// Поиск останавливается на ближайшем alias, даже если у него нет нужной
 	// ссылки. Авто-JOIN принадлежит одному источнику одного SELECT: одинаковые
 	// имена полей во вложенной или присоединённой таблице его не заимствуют.
-	if !ok || scopeID != tr.refScope || !tr.refSources[qualifier] {
+	if !ok || !tr.selectStates[scopeID].refSources[qualifier] {
 		return false
 	}
 	// Даже верно найденный внешний источник нельзя читать через alias JOIN,
@@ -3062,11 +3060,11 @@ func (tr *translator) refAttrColumnForPrevQualifier(pos int, attr string) (col, 
 	if tr.tokens[pos-1].kind != tDot || tr.tokens[pos-2].kind != tIdent {
 		return "", "", ""
 	}
-	return tr.refAttrColumn(lowerFast(tr.tokens[pos-2].val), attr)
+	return tr.refAttrColumn(pos-2, lowerFast(tr.tokens[pos-2].val), attr)
 }
 
-func (tr *translator) refAttrColumn(qualifier, attr string) (col, refEntity string, fieldType metadata.FieldType) {
-	rd := tr.findRefDim(qualifier)
+func (tr *translator) refAttrColumn(pos int, qualifier, attr string) (col, refEntity string, fieldType metadata.FieldType) {
+	rd := tr.findRefDimAt(pos, qualifier)
 	if rd == nil || rd.refEntity == "" {
 		return "", "", ""
 	}
@@ -3085,21 +3083,59 @@ func (tr *translator) refAttrColumn(qualifier, attr string) (col, refEntity stri
 }
 
 func (tr *translator) findRefDim(name string) *refDimInfo {
-	for i := range tr.refDims {
-		if tr.refDims[i].fieldName == name {
-			return &tr.refDims[i]
-		}
+	return tr.findRefDimAt(tr.pos-1, name)
+}
+
+// findRefDimAt binds qualified navigation to the nearest visible source,
+// including correlated references. A local source without the field must not
+// borrow another SELECT's metadata or auto-JOIN.
+func (tr *translator) findRefDimAt(pos int, name string) *refDimInfo {
+	id, ok := tr.sourceCtx.scopeIDAt(pos)
+	if !ok {
+		return nil
 	}
-	if id, ok := tr.sourceCtx.scopeIDAt(tr.pos - 1); ok {
-		owner := tr.referenceOwner(id, name)
-		if owner >= 0 && owner != id {
-			for i := range tr.selectStates[owner].refDims {
-				rd := &tr.selectStates[owner].refDims[i]
-				if rd.fieldName == name {
-					return rd
-				}
+	owner := id
+	if pos >= 2 && tr.tokens[pos-1].kind == tDot && tr.tokens[pos-2].kind == tIdent {
+		qualifier := lowerFast(tr.tokens[pos-2].val)
+		owner, ok = tr.sourceCtx.qualifierScopeIDAt(pos, qualifier)
+		if !ok || !tr.selectStates[owner].refSources[qualifier] {
+			return nil
+		}
+	} else {
+		// Virtual tables can export a reference dimension absent from the
+		// physical source's colTypes. Keep its local auto-JOIN authoritative.
+		local := false
+		for _, rd := range tr.refDims {
+			if rd.fieldName == name {
+				local = true
+				break
 			}
 		}
+		if !local {
+			owner = tr.referenceOwner(id, name)
+			if owner < 0 {
+				return nil
+			}
+		}
+	}
+	dims := tr.selectStates[owner].refDims
+	if owner == tr.activeSelect {
+		dims = tr.refDims
+	}
+	for i := range dims {
+		rd := &dims[i]
+		if rd.fieldName != name {
+			continue
+		}
+		for child := id; child != owner; child = tr.sourceCtx.scopes[child].parent {
+			scope := tr.sourceCtx.scopes[child]
+			_, source := scope.qualifiers[rd.joinAlias]
+			_, derived := scope.derivedAliases[rd.joinAlias]
+			if source || derived {
+				return nil
+			}
+		}
+		return rd
 	}
 	return nil
 }
@@ -3302,7 +3338,7 @@ func (tr *translator) refEntityForQualifier(pos int) string {
 		return ""
 	}
 	lower := lowerFast(tr.tokens[pos].val)
-	if rd := tr.findRefDim(lower); rd != nil {
+	if rd := tr.findRefDimAt(pos, lower); rd != nil {
 		return rd.refEntity
 	}
 	if tr.mainRef.Qualifiers[lower] {
@@ -4636,7 +4672,7 @@ func (tr *translator) entitySystemColumnAlias(name string, prevDot bool) (string
 		qualifier = lowerFast(tr.tokens[tr.pos-3].val)
 		// Навигация уже заменила исходный квалификатор на alias авто-JOIN.
 		// Метаданные цели относятся только к уже эмитированному alias JOIN.
-		if rd := tr.findRefDim(qualifier); rd != nil && len(tr.parts) >= 2 &&
+		if rd := tr.findRefDimAt(tr.pos-3, qualifier); rd != nil && len(tr.parts) >= 2 &&
 			tr.parts[len(tr.parts)-1] == "." && tr.parts[len(tr.parts)-2] == rd.joinAlias {
 			if target, found := scopeEntityInfo(rd.refEntity, tr.opts); found {
 				return target.systemColumn(name)
@@ -4701,7 +4737,7 @@ func (tr *translator) systemColumnAlias(name string, prevDot bool) (string, bool
 		}
 		// Обращение через ссылочное поле регистра ведёт к документу или
 		// справочнику, поэтому Регистр.Документ.Период — не системный period.
-		if tr.findRefDim(qualifier) != nil {
+		if tr.findRefDimAt(tr.pos-3, qualifier) != nil {
 			return "", false
 		}
 	}
@@ -4864,24 +4900,6 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		activeSelect: -1,
 	}
 	tr.initSelectStates()
-	tr.refScope = -1
-	// Тот же первый источник, что preScanRefDims: сохраняем его область и
-	// квалификаторы до эмиссии SELECT, когда FROM ещё не обработан.
-	for i := 0; i+2 < len(tokens); i++ {
-		if tokens[i].kind != tIdent || !isSourceType(upperFast(tokens[i].val)) ||
-			tokens[i+1].kind != tDot || tokens[i+2].kind != tIdent {
-			continue
-		}
-		if scopeID, ok := tr.sourceCtx.scopeIDAt(i); ok {
-			tr.refScope = scopeID
-			tr.refSources = map[string]bool{
-				lowerFast(tokens[i+2].val):                               true,
-				sourceToTable(upperFast(tokens[i].val), tokens[i+2].val): true,
-				tr.sourceCtx.scopes[scopeID].mainTable:                   true,
-			}
-		}
-		break
-	}
 	tr.columnSources = indexColumnSources(tokens, opts, tr.sourceCtx)
 	tr.textComparisons = scalarTextComparisons(tokens, tr.sourceCtx)
 	tr.textEqIndex = positiveTextEqualities(tokens, tr.sourceCtx)

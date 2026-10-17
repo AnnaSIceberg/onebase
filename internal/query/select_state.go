@@ -1,6 +1,10 @@
 package query
 
-import "github.com/ivantit66/onebase/internal/metadata"
+import (
+	"strconv"
+
+	"github.com/ivantit66/onebase/internal/metadata"
+)
 
 // The token scope, rather than parenthesis depth, owns reference navigation:
 // sibling UNION branches and nested SELECTs may reuse names for different targets.
@@ -8,6 +12,7 @@ import "github.com/ivantit66/onebase/internal/metadata"
 type selectTranslationState struct {
 	colMap      map[string]string
 	colTypes    map[string]metadata.FieldType
+	refSources  map[string]bool
 	refDims     []refDimInfo
 	mainTable   string
 	mainRef     mainRefSource
@@ -28,6 +33,12 @@ func (tr *translator) initSelectStates() {
 	for id, tokens := range scopedTokens {
 		scope := tr.sourceCtx.scopes[id]
 		allDims[id] = preScanAllRefDims(tokens, tr.opts)
+		// A child's auto-JOIN must not shadow an ancestor's correlated JOIN.
+		if id > 0 {
+			for i := range allDims[id] {
+				allDims[id][i].joinAlias += "_s" + strconv.Itoa(id)
+			}
+		}
 		state := selectTranslationState{
 			colMap:    buildColMap(tokens, tr.opts),
 			colTypes:  buildColTypes(tokens, tr.opts),
@@ -36,6 +47,16 @@ func (tr *translator) initSelectStates() {
 			mainRef:   preScanMainRefSource(tokens, tr.opts),
 			section:   sectionOther,
 			aliases:   map[string]struct{}{},
+		}
+		state.refSources = map[string]bool{}
+		for i := 0; i+2 < len(tokens); i++ {
+			if tokens[i].kind == tIdent && isSourceType(upperFast(tokens[i].val)) &&
+				tokens[i+1].kind == tDot && tokens[i+2].kind == tIdent {
+				state.refSources[lowerFast(tokens[i+2].val)] = true
+				state.refSources[sourceToTable(upperFast(tokens[i].val), tokens[i+2].val)] = true
+				state.refSources[scope.mainTable] = true
+				break
+			}
 		}
 		// Direct qualified references also occur only inside correlated children.
 		// Their physical columns do not require an auto-JOIN in the owner SELECT.
@@ -51,6 +72,7 @@ func (tr *translator) initSelectStates() {
 			state.mainRef = mainRefSource{}
 			state.mainTable = scope.mainTable
 			state.mainEmitted = true
+			state.refSources = nil
 		}
 		tr.selectStates[id] = state
 	}
@@ -78,9 +100,7 @@ func (tr *translator) initSelectStates() {
 				}
 			}
 		}
-		if pos > 0 && tr.tokens[pos-1].kind == tDot {
-			continue // qualified fields keep their local prescan path
-		}
+
 		id, ok := tr.sourceCtx.scopeIDAt(pos)
 		if !ok {
 			continue
@@ -103,6 +123,14 @@ func (tr *translator) initSelectStates() {
 			}
 		}
 		owner := tr.referenceOwner(id, name)
+		if pos >= 2 && tr.tokens[pos-1].kind == tDot {
+			qualifier := lowerFast(tr.tokens[pos-2].val)
+			var found bool
+			owner, found = tr.sourceCtx.qualifierScopeIDAt(pos, qualifier)
+			if !found || !tr.selectStates[owner].refSources[qualifier] {
+				continue
+			}
+		}
 		if owner < 0 || owner == id {
 			continue
 		}
@@ -261,6 +289,7 @@ func (tr *translator) activateSelect(id int) {
 			colMap: tr.colMap, colTypes: tr.colTypes, refDims: tr.refDims,
 			mainTable: tr.mainTable, mainRef: tr.mainRef, mainEmitted: tr.mainEmitted,
 			section: tr.section, aliases: tr.aliases,
+			refSources: tr.selectStates[tr.activeSelect].refSources,
 		}
 	}
 	state := tr.selectStates[id]
