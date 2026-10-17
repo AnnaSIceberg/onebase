@@ -25,7 +25,6 @@ import (
 var (
 	completionLine    = regexp.MustCompile(`(?m)^<!-- pp:head-reviewed ([0-9a-f]{40}) review-comment=([0-9]+) claim=([0-9]+) epoch-sha256=([0-9a-f]{64}) -->$`)
 	claimLine         = regexp.MustCompile(`(?m)^<!-- pp:review-claim ([0-9a-f]{40}) review-comment=([0-9]+) epoch-sha256=([0-9a-f]{64}) -->$`)
-	reviewAgain       = regexp.MustCompile(`(?m)^pp:review-again$`)
 	displayRepair     = regexp.MustCompile(`(?m)^<!-- pp:display-repair comment=([0-9]+) -->$`)
 	baseSyncIntent    = regexp.MustCompile(`(?m)^<!-- pp:base-sync-intent from=([0-9a-f]{40}) base=([0-9a-f]{40}) review-comment=([0-9]+) claim=([0-9]+) completion=([0-9]+) ship-event=([A-Za-z0-9_=-]+) previous=([0-9]+|none) -->$`)
 	baseSyncDone      = regexp.MustCompile(`(?m)^<!-- pp:base-sync-done intent=([0-9]+) from=([0-9a-f]{40}) to=([0-9a-f]{40}) base=([0-9a-f]{40}) previous=([0-9]+|none) ship-event=([A-Za-z0-9_=-]+) -->$`)
@@ -159,7 +158,7 @@ func main() {
 	var err error
 	switch selectedTransport {
 	case "graphql":
-		prs, issues, err = loadPipelineInputsGraphQL(newGHPipelineGraphQLClient(), *repo, *fixture, *issueFixture, *owner)
+		prs, issues, err = loadPipelineInputsGraphQL(newGHPipelineGraphQLClient(), *repo, *owner, *fixture, *issueFixture)
 	case "rest":
 		var github *githubRESTClient
 		if *fixture == "" {
@@ -170,7 +169,7 @@ func main() {
 			}
 		}
 		if err == nil {
-			prs, err = loadPulls(github, *repo, *fixture, *owner)
+			prs, err = loadPulls(github, *repo, *owner, *fixture)
 		}
 		if err == nil {
 			issues, err = loadIssues(github, *repo, *issueFixture, *fixture != "")
@@ -210,7 +209,7 @@ func fail(err error) {
 	os.Exit(2)
 }
 
-func loadPulls(github *githubRESTClient, repo, fixture, owner string) ([]apiPull, error) {
+func loadPulls(github *githubRESTClient, repo, trustedOwner, fixture string) ([]apiPull, error) {
 	if fixture != "" {
 		data, err := os.ReadFile(fixture)
 		if err != nil {
@@ -253,7 +252,7 @@ func loadPulls(github *githubRESTClient, repo, fixture, owner string) ([]apiPull
 					continue
 				}
 				prs[index].Comments = comments
-				if !needsHeadParents(prs[index], owner) {
+				if !needsHeadParents(prs[index], trustedOwner) {
 					continue
 				}
 				var commitResponse struct {
@@ -314,7 +313,7 @@ func loadIssues(github *githubRESTClient, repo, fixture string, skipLive bool) (
 	}
 	issues := make([]apiIssue, 0, len(all))
 	for _, issue := range all {
-		if issue.PullRequest == nil && issue.CommentCount > 0 {
+		if issue.PullRequest == nil {
 			issues = append(issues, issue)
 		}
 	}
@@ -331,6 +330,9 @@ func loadIssues(github *githubRESTClient, repo, fixture string, skipLive bool) (
 		go func() {
 			defer wg.Done()
 			for index := range jobs {
+				if issues[index].CommentCount == 0 {
+					continue
+				}
 				path := fmt.Sprintf("repos/%s/issues/%d/comments?per_page=100", repo, issues[index].Number)
 				comments, err := getAllPages[apiComment](github, path)
 				if err != nil {
@@ -985,15 +987,14 @@ func (result *report) addIssue(severity, code string, issue int, message string)
 }
 
 // needsHeadParents limits the extra commit read to pull requests whose stage
-// can depend on it: ship candidates, v1-abort diagnostics, and reviewed heads
-// with older review proof.
+// can depend on it: ship candidates and reviewed heads with older review proof.
 // The latter need their parents before we can safely ask the owner for ship.
 func needsHeadParents(pr apiPull, owner string) bool {
 	if pr.State != "open" || pr.Base.Ref != "main" || pr.Draft || pr.Head.SHA == "" {
 		return false
 	}
 	labels := labelSet(pr.Labels)
-	if labels["ship"] || abortMarkerWantsHeadParents(pr, owner) {
+	if labels["ship"] {
 		return true
 	}
 	if !labels["reviewed"] || labels["hold"] || labels["needs-decision"] || labels["changes-requested"] {
@@ -1001,30 +1002,6 @@ func needsHeadParents(pr apiPull, owner string) bool {
 	}
 	current, _, _ := currentProtocolState(pr.Comments, owner, pr.Head.SHA)
 	return reviewDepth(pr.Comments, owner) > current
-}
-
-// abortMarkerWantsHeadParents расширяет чтение родителей на PR, у которого
-// есть доверенный неотредактированный abort-маркер ровно для текущего HEAD.
-// В штатном состоянии после v1-abort метка ship уже снята, поэтому лимит
-// needsHeadParents оставлял диагностику base_sync_v1_abort_waiting_review
-// без данных — parents не загружались и abort не распознавался (#1605).
-// Сам маркер ничего не разрешает: форма двух родителей, связь с intent и
-// доверенный автор по-прежнему проверяются там, где abort распознаётся.
-func abortMarkerWantsHeadParents(pr apiPull, owner string) bool {
-	if pr.State != "open" || pr.Base.Ref != "main" || pr.Draft || pr.Head.SHA == "" {
-		return false
-	}
-	for _, comment := range pr.Comments {
-		if !trustedUnedited(comment, owner) {
-			continue
-		}
-		for _, match := range baseSyncV1Abort.FindAllStringSubmatch(comment.Body, -1) {
-			if match[2] == pr.Head.SHA {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // headIsBaseSyncMerge reports whether the head commit has the shape every
@@ -1050,6 +1027,40 @@ func trustedUnedited(comment apiComment, owner string) bool {
 	return comment.User.Login == owner && comment.CreatedAt != "" && comment.UpdatedAt == comment.CreatedAt
 }
 
+// hasReviewAgain accepts the exact protocol line outside Markdown fenced code.
+// An unclosed fence quotes the rest of the comment, including any instructions
+// that happen to spell the marker. Fences use at least three backticks or tildes
+// and at most three leading spaces; a close must use the same character, be at
+// least as long as the opener, and contain only trailing spaces or tabs.
+func hasReviewAgain(body string) bool {
+	var fence byte
+	var fenceLength int
+	for _, line := range strings.Split(body, "\n") {
+		if fence == 0 && line == "pp:review-again" {
+			return true
+		}
+		text := strings.TrimLeft(line, " ")
+		if len(line)-len(text) > 3 || len(text) < 3 || (text[0] != '`' && text[0] != '~') {
+			continue
+		}
+		length := 1
+		for length < len(text) && text[length] == text[0] {
+			length++
+		}
+		if fence != 0 {
+			if text[0] == fence && length >= fenceLength && strings.Trim(text[length:], " \t\r") == "" {
+				fence, fenceLength = 0, 0
+			}
+			continue
+		}
+		// A backtick in the info string makes a backtick opener invalid.
+		if length >= 3 && (text[0] != '`' || !strings.Contains(text[length:], "`")) {
+			fence, fenceLength = text[0], length
+		}
+	}
+	return false
+}
+
 func reviewDepth(comments []apiComment, owner string) int {
 	ids := map[string]bool{}
 	for _, comment := range comments {
@@ -1069,7 +1080,7 @@ func currentProtocolState(comments []apiComment, owner, head string) (count int,
 		if !trustedUnedited(comment, owner) {
 			continue
 		}
-		if reviewAgain.MatchString(comment.Body) {
+		if hasReviewAgain(comment.Body) {
 			latestOverride = comment.ID
 		}
 		for _, match := range completionLine.FindAllStringSubmatch(comment.Body, -1) {
@@ -1238,7 +1249,7 @@ func duplicateCompletionEpoch(comments []apiComment, owner, head string) bool {
 		if !trustedUnedited(comment, owner) {
 			continue
 		}
-		if reviewAgain.MatchString(comment.Body) {
+		if hasReviewAgain(comment.Body) {
 			ids = map[int64]bool{}
 		}
 		for _, match := range completionLine.FindAllStringSubmatch(comment.Body, -1) {
