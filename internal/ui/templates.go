@@ -180,9 +180,20 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		return key
 	}
 	return template.FuncMap{
-		"refWriteAllowed": refWriteAllowed,
-		"lower":           strings.ToLower,
-		"infoRegKeyValue": infoRegKeyValue,
+		"refWriteAllowed":       refWriteAllowed,
+		"listFilterPanelFields": listFilterPanelFields,
+		"listFilterChoices":     listFilterChoices,
+		"lower":                 strings.ToLower,
+		"infoRegKeyValue":       infoRegKeyValue,
+		"gridLayoutAttr":        gridLayoutAttr,
+		"gridOrderAttr":         gridOrderAttr,
+		// enterSubmitsForm — форма явно вернула себе прежний Enter-submit.
+		// Данные шаблона — карта, и ключа Form у автогенерённой формы может не
+		// быть вовсе: nil читается как «умолчание платформы», то есть навигация.
+		"enterSubmitsForm": func(v any) bool {
+			form, _ := v.(*metadata.FormModule)
+			return form != nil && form.EnterSubmitsForm
+		},
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
 			if proc == nil {
 				return processorParamPresencePrefix + name
@@ -569,6 +580,18 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"elLayout": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementLayoutCSS(el)) //nolint:gosec // G203: стиль собран из словаря выравнивания и целых размеров 1…4000 px
 		},
+		// elLayoutEx — elLayout + display:none для элементов с hidden_when,
+		// скрытых при первичном рендере. Без этого такие элементы не попадали
+		// в DOM и applyElementStates не мог показать их при смене условия.
+		"elLayoutEx": func(ctx map[string]any, el *metadata.FormElement) template.CSS {
+			css := metadata.FormElementLayoutCSS(el)
+			if el != nil && el.HiddenWhen != "" {
+				if set, _ := ctx["ElHidden"].(map[string]bool); set[elementStatePath(ctx, el)] {
+					css = "display:none;" + css
+				}
+			}
+			return template.CSS(css) //nolint:gosec // G203: стиль собран из словаря выравнивания и целых размеров 1…4000 px
+		},
 		"elAlign": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementAlignCSS(el)) //nolint:gosec // G203: стиль собран только из нормализованных значений словаря выравнивания
 		},
@@ -610,7 +633,40 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				return false
 			}
 			set, _ := ctx["ElHidden"].(map[string]bool)
-			return set[elementStatePath(ctx, el)]
+			if !set[elementStatePath(ctx, el)] {
+				return false
+			}
+			if el.HiddenWhen == "" {
+				return true // статически скрыт — не рисуем
+			}
+			// Элемент с hidden_when скрыт ДИНАМИЧЕСКИ: пропускать его нельзя,
+			// иначе он не попадёт в DOM и applyElementStates не сможет
+			// показать его при смене условия. Контейнеры (ТабличнаяЧасть,
+			// ГруппаФормы, СтраницыФормы) по-прежнему пропускаются — у них
+			// рендеринг с display:none ломает отправку tp_json и флажков.
+			// Только простые поля ввода и переключатели рендерятся с
+			// display:none. Остальное (контейнеры, ТЧ, флажки, картинки,
+			// надписи, кнопки) пропускается как раньше.
+			switch el.Kind {
+			case metadata.FormElementField,
+				metadata.FormElementSwitch,
+				metadata.FormElementDatePicker:
+				return false // рисуем с display:none
+			}
+			return true // остальные типы — пропускаем как раньше
+		},
+		// elHiddenStyle возвращает "display:none;" для элемента, который
+		// скрыт условием hidden_when при первичном рендере. Элемент
+		// остаётся в DOM, и applyElementStates переключает видимость.
+		"elHiddenStyle": func(ctx map[string]any, el *metadata.FormElement) template.CSS {
+			if el == nil || el.HiddenWhen == "" {
+				return ""
+			}
+			set, _ := ctx["ElHidden"].(map[string]bool)
+			if set[elementStatePath(ctx, el)] {
+				return "display:none;"
+			}
+			return ""
 		},
 		// elPath — путь размещения элемента для якоря data-ob-el-path: по нему
 		// клиент находит свой элемент после события формы, когда имя элемента
@@ -1978,7 +2034,7 @@ const tplList = `
   <summary>{{t $.Lang "Отбор"}}</summary>
   <form method="GET" action="">
   <div class="filter-body">
-  {{range $entity.Fields}}{{$f := .}}
+  {{range listFilterPanelFields $}}{{$f := .}}
     {{if isActivityField $entity .}}
     {{else}}
     {{if eq (str .Type) "date"}}
@@ -2019,6 +2075,21 @@ const tplList = `
   {{/* Форма владеет отбором f.* — поиск, вид, папку и сортировку переносим. */}}
   {{if .TreeView}}{{listHidden $.Query "f.*" "view"}}{{else}}{{listHidden $.Query "f.*"}}{{end}}
   </form>
+  {{/* list_filters: в панели основной набор; остальные реквизиты пользователь
+       добавляет себе здесь, выбор запоминается за ним (POST /ui/_list-filters). */}}
+  {{with listFilterChoices $}}
+  <details class="ob-filter-more" style="margin-top:8px">
+    <summary>+ {{t $.Lang "Отбор"}}</summary>
+    <form method="POST" action="/ui/_list-filters" style="padding:0 20px 12px">
+      <input type="hidden" name="entity" value="{{$entity.Name}}">
+      <input type="hidden" name="back" value="{{$.RequestURI}}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:4px 16px;max-height:320px;overflow:auto;margin:8px 0">
+      {{range .}}<label style="font-weight:400;display:flex;gap:6px;align-items:center"><input type="checkbox" name="field" value="{{.Field.Name}}"{{if .Checked}} checked{{end}}> {{.Field.DisplayName $.Lang}}</label>
+      {{end}}</div>
+      <button class="btn btn-primary btn-sm" type="submit">{{t $.Lang "Показать отмеченные"}}</button>
+    </form>
+  </details>
+  {{end}}
 </details>
 
 {{$obRefresh := liveListRefreshOn .Entity}}
@@ -2370,7 +2441,7 @@ const tplForm = `
 {{end}}{{/* end if not .IsPopup */}}
 
 <div class="card">
-<form id="main-form" method="POST" data-ob-dirty-watch="1">
+<form id="main-form" method="POST" data-ob-dirty-watch="1"{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}>
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{if .IsPopup}}<input type="hidden" name="_popup" value="1">{{end}}
 {{if .Entity.Hierarchical}}
@@ -3051,6 +3122,14 @@ const tplProcessor = `
            не недоделка. Поэтому после запуска поле пустое, и повторное
            «Выполнить» без файла обязано останавливаться здесь, а не улетать на
            сервер за ошибкой прикладного модуля. */}}
+      <input type="file" name="{{$pname}}" {{if .Required}}required{{end}}>
+    </div>
+    {{else if eq .Type "binary"}}
+    <div class="form-group" style="margin-bottom:0;grid-column:1/-1">
+      <label>{{.DisplayLabel $.Lang}}{{if .Required}} <span style="color:#dc2626">*</span>{{end}}</label>
+      {{/* Двоичный файл уходит как есть: обработка получит путь к временной
+           копии. Поле такое же, как у text-файла, — разница только в том, что
+           попадает в значение параметра. */}}
       <input type="file" name="{{$pname}}" {{if .Required}}required{{end}}>
     </div>
     {{else if eq .Type "text"}}
