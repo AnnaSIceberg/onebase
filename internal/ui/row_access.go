@@ -71,10 +71,22 @@ func (s *Server) applyListFormFilter(r *http.Request, entity *metadata.Entity, p
 	if len(extra) == 0 {
 		return params
 	}
-	if params.RowFilter != nil {
-		extra = append(extra, *params.RowFilter)
+	cond := storage.Predicate{All: extra}
+	// Папки иерархического справочника отбор не скрывает: по ним идёт
+	// навигация, и без папки без автора до своей записи внутри неё из списка
+	// и дерева было бы не дойти. Строковый доступ (row_access) на папки
+	// по-прежнему действует — он добавляется ниже через «И».
+	if entity.Hierarchical {
+		cond = storage.Predicate{Any: []storage.Predicate{
+			{Field: "is_folder", Op: "eq", Value: true},
+			cond,
+		}}
 	}
-	combined := storage.Predicate{All: extra}
+	parts := []storage.Predicate{cond}
+	if params.RowFilter != nil {
+		parts = append(parts, *params.RowFilter)
+	}
+	combined := storage.Predicate{All: parts}
 	params.RowFilter = &combined
 	return params
 }
