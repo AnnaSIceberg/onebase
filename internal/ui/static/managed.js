@@ -3000,6 +3000,13 @@ function obGridColumnIds(columns) {
       window.openRefPicker(selEl);
     }
 
+    function ownsEnter(target) {
+      return target === input && isOpen && activeIdx >= 0 && !!shown[activeIdx];
+    }
+    // Document-capture навигации должен дать редактору выбрать подсказку
+    // раньше, чем коммитить ячейку. Состояние принадлежит этому редактору.
+    this.ownsEnter = ownsEnter;
+
     function onKeyDown(e) {
       var key = e.key || '';
       if (key === 'ArrowDown' && e.altKey) { e.preventDefault(); e.stopPropagation(); openPicker(); return; }
@@ -3018,7 +3025,7 @@ function obGridColumnIds(columns) {
         return;
       }
       if (key === 'Enter') {
-        if (isOpen && activeIdx >= 0 && shown[activeIdx]) {
+        if (ownsEnter(e.target)) {
           // Подставляем значение и ОСТАЁМСЯ в ячейке (ввод по строке в 1С);
           // следующий Enter/Tab уже коммитит правку средствами SlickGrid.
           e.preventDefault();
@@ -3763,6 +3770,70 @@ function obGridColumnIds(columns) {
     updateTotals(g);
   };
 
+  // gridFirstEditableCell — первая колонка строки, в которую можно встать.
+  // Служебные колонки (маркер выбора, номер) редактировать нельзя, и вставать
+  // на них оператору незачем.
+  function gridFirstEditableCell(g, row) {
+    var cols = g.grid.getColumns() || [];
+    for (var i = 0; i < cols.length; i++) {
+      if (g.grid.isCellEditable && !g.grid.isCellEditable(row, i)) continue;
+      return i;
+    }
+    return 0;
+  }
+
+  // gridEnterNavigate — коммит текущей ячейки и переход к следующей.
+  function gridEnterNavigate(g) {
+    if (!g || !g.grid) return false;
+    var grid = g.grid;
+    var lock = grid.getEditorLock && grid.getEditorLock();
+    if (lock && lock.isActive() && !lock.commitCurrentEdit()) {
+      // Значение не принято редактором — остаёмся в ячейке, чтобы человек
+      // увидел отказ там же, где ввёл.
+      return true;
+    }
+    var active = grid.getActiveCell();
+    var rows = (g.dataView && g.dataView.getLength) ? g.dataView.getLength() : 0;
+    if (!active) {
+      if (rows > 0) grid.setActiveCell(0, gridFirstEditableCell(g, 0));
+      return true;
+    }
+    var cols = (grid.getColumns() || []).length;
+    if (active.row >= rows - 1 && active.cell >= cols - 1) {
+      // Конец таблицы: ни новой строки, ни записи.
+      return true;
+    }
+    if (grid.navigateNext) grid.navigateNext();
+    return true;
+  }
+
+  // obGridFocusFirstCell — вход в табличную часть из шапки формы: фокус
+  // становится в первую доступную ячейку. Зовёт ui.js, когда следующей
+  // остановкой маршрута Enter оказывается грид.
+  window.obGridFocusFirstCell = function(host) {
+    var tpName = host && host.getAttribute ? (host.getAttribute("data-sg-tp") || "") : "";
+    // Одна ТЧ может иметь readonly и writable представления. Проверяем именно
+    // host маршрута, а не канонический writable grid с тем же именем.
+    var g = host && host._obGridState;
+    if (!g || !g.grid || g.div !== host || g.readOnly ||
+        !document.contains(host) || !managedElementVisible(host)) return false;
+    var rows = (g.dataView && g.dataView.getLength) ? g.dataView.getLength() : 0;
+    if (rows <= 0) return false;
+    var lock = g.grid.getEditorLock && g.grid.getEditorLock();
+    if (lock && lock.isActive() && !lock.commitCurrentEdit()) {
+      // setActiveCell уничтожает редактор без коммита. При отказе валидации
+      // редактор сохраняет ввод и фокус; нажатие обработано, маршрут не продолжаем.
+      return true;
+    }
+    var cell = gridFirstEditableCell(g, 0);
+    g.grid.setActiveCell(0, cell);
+    if (g.grid.focus) g.grid.focus();
+    var active = g.grid.getActiveCell();
+    if (!active || active.row !== 0 || active.cell !== cell || !host.contains(document.activeElement)) return false;
+    rememberActiveGrid(tpName);
+    return true;
+  };
+
   function gridNameFromTarget(el) {
     var host = el && el.closest ? el.closest(".ob-grid[data-sg-tp]") : null;
     return host ? (host.getAttribute("data-sg-tp") || "") : "";
@@ -3871,6 +3942,26 @@ function obGridColumnIds(columns) {
       if (e.key === "Insert" && !e.ctrlKey) {
         take();
         if (window.obGridAddRow) window.obGridAddRow(tp);
+        return;
+      }
+      // Enter в табличной части — переход к следующей колонке, а из последней
+      // колонки к первой колонке следующей строки (#1486). На конце таблицы
+      // фокус остаётся на месте: строку не создаём и форму не записываем.
+      // Штатный Enter грида коммитит ячейку и остаётся в ней, поэтому берём
+      // клавишу себе в фазе перехвата и делаем оба шага явно.
+      if (e.key === "Enter" && !e.ctrlKey && direct) {
+        if (e.isComposing === true || e.keyCode === 229) {
+          // Оставляем браузеру подтверждение IME, но не передаём Enter
+          // SlickGrid: при keyCode=13 он тоже завершил бы редактор.
+          e.stopPropagation();
+          return;
+        }
+        var form = active.div && active.div.closest('form');
+        if (form && form.getAttribute('data-ob-enter-submits') === '1') return;
+        var editor = active.grid.getCellEditor();
+        if (editor && editor.ownsEnter && editor.ownsEnter(e.target)) return;
+        take();
+        gridEnterNavigate(active);
         return;
       }
       // Явный hotkey кнопки формы важнее встроенного значения клавиши.
@@ -4246,14 +4337,26 @@ function obManagedTabKey(tabs) {
   return 'obtab:' + location.pathname + ':' + (tabs.getAttribute('data-tabs') || '');
 }
 
+// obManagedOwnTabParts — кнопки или страницы именно этого набора. Выборка
+// внутри набора захватывает и вложенные наборы СтраницыФормы; трогать их
+// нельзя: переключение внешней закладки снимало выбор и прятало страницы
+// вложенного набора — открытая внешняя страница показывала одни заголовки.
+function obManagedOwnTabParts(tabs, selector) {
+  var own = [];
+  tabs.querySelectorAll(selector).forEach(function (el) {
+    if (el.closest && el.closest('.managed-tabs') === tabs) own.push(el);
+  });
+  return own;
+}
+
 function obManagedSwitchTab(btn) {
   var tabs = btn && btn.closest ? btn.closest('.managed-tabs') : null;
   if (!tabs) return;
   var idx = btn.getAttribute('data-tab-idx') || '0';
-  tabs.querySelectorAll('.managed-tab-btn').forEach(function (b) { b.classList.remove('active'); });
+  obManagedOwnTabParts(tabs, '.managed-tab-btn').forEach(function (b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  tabs.querySelectorAll('.managed-tab-content').forEach(function (c) { c.style.display = 'none'; });
-  var content = tabs.querySelector('.managed-tab-content[data-tab-content="' + idx + '"]');
+  obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(function (c) { c.style.display = 'none'; });
+  var content = obManagedOwnTabParts(tabs, '.managed-tab-content[data-tab-content="' + idx + '"]')[0];
   if (content) content.style.display = 'block';
   try { sessionStorage.setItem(obManagedTabKey(tabs), idx); } catch (_) {}
   if (window._obResizeGrids) setTimeout(window._obResizeGrids, 0);
@@ -4280,15 +4383,14 @@ obManagedReady(function () {
       var parent = content.parentElement;
       content = parent && parent.closest ? parent.closest('.managed-tab-content') : null;
     }
-    // For nested tab groups, select every ancestor page from outer to inner.
-    // Switching an outer group currently hides descendant pages too, so the
-    // inner selection must be restored even when it was active beforehand.
+    // For nested tab groups, select every ancestor page from outer to inner:
+    // each group switches only its own pages, the inner one is set after.
     for (var i = pages.length - 1; i >= 0; i--) {
       var page = pages[i];
       var tabs = page.closest('.managed-tabs');
       if (!tabs) continue;
       var idx = page.getAttribute('data-tab-content');
-      var btn = tabs.querySelector('.managed-tab-btn[data-tab-idx="' + idx + '"]');
+      var btn = obManagedOwnTabParts(tabs, '.managed-tab-btn[data-tab-idx="' + idx + '"]')[0];
       if (btn) obManagedSwitchTab(btn);
     }
   }, true);
@@ -4314,7 +4416,7 @@ obManagedReady(function () {
     var idx;
     try { idx = sessionStorage.getItem(obManagedTabKey(tabs)); } catch (_) { idx = null; }
     if (idx == null || idx === '0') continue;
-    var btn = tabs.querySelector('.managed-tab-btn[data-tab-idx="' + idx + '"]');
+    var btn = obManagedOwnTabParts(tabs, '.managed-tab-btn[data-tab-idx="' + idx + '"]')[0];
     if (btn) obManagedSwitchTab(btn);
   }
 });
