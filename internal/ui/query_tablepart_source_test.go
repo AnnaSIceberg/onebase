@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/dsl/langref"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/runtime"
 )
@@ -69,5 +71,54 @@ func TestDSLQuery_TablePartSourceUsesOwnerAccessAndTablePartMasks(t *testing.T) 
 	}}}
 	if _, err := run(безПрава); err == nil || !strings.Contains(err.Error(), клиент.Name) {
 		t.Fatalf("без права чтения владельца запрос к его табличной части должен отклоняться: %v", err)
+	}
+}
+
+// Исполняем JOIN из текста справки, чтобы её псевдоним не расходился с тестом.
+func TestDSLQuery_TablePartOwnerJoinFromLangref(t *testing.T) {
+	doc, ok := langref.ByName("из")
+	if !ok {
+		t.Fatal("нет справки ИЗ")
+	}
+	_, join, ok := strings.Cut(doc.Doc, "соедините источник с владельцем: ")
+	if !ok {
+		t.Fatal("нет примера JOIN с владельцем")
+	}
+	join = strings.TrimSuffix(join, ".")
+	for _, kind := range []metadata.Kind{metadata.KindCatalog, metadata.KindDocument} {
+		t.Run(string(kind), func(t *testing.T) {
+			tp := metadata.TablePart{Name: "Строки", Fields: []metadata.Field{{Name: "Текст", Type: metadata.FieldTypeString}}}
+			owner := &metadata.Entity{Name: "ВладелецТЧ", Kind: kind, TableParts: []metadata.TablePart{tp}}
+			prefix, field := "Справочник", "Метка"
+			if kind == metadata.KindDocument {
+				prefix = "Документ"
+			}
+			owner.Fields = []metadata.Field{{Name: field, Type: metadata.FieldTypeString}}
+			s, ctx := newSubmitTestServer(t, []*metadata.Entity{owner})
+			id := uuid.New()
+			if err := s.store.Upsert(ctx, owner.Name, id, map[string]any{field: "Владелец"}, owner); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.store.UpsertTablePartRows(ctx, owner.Name, tp.Name, id, []map[string]any{{"Текст": "Строка"}}, tp); err != nil {
+				t.Fatal(err)
+			}
+			source := prefix + "." + owner.Name
+			text := fmt.Sprintf("ВЫБРАТЬ Вл.%s КАК Имя ИЗ %s.%s КАК С %s", field, source, tp.Name,
+				strings.ReplaceAll(join, "Справочник.Имя", source))
+			prog := mustParse(t, fmt.Sprintf(`Функция Проверка() Экспорт
+				З = Новый Запрос;
+				З.Текст = "%s";
+				Р = З.Выполнить();
+				Возврат Строка(Р.Количество()) + "|" + Строка(Р[0].Имя);
+			КонецФункции`, text))
+			vars, _ := s.buildDSLVarsTx(ctx, runtime.NewMovementsCollector("test", uuid.Nil))
+			var got any
+			if err := s.interp.RunWithResult(prog.Procedures[0], nil, &got, vars); err != nil {
+				t.Fatalf("пример из справки %q: %v", text, err)
+			}
+			if got != "1|Владелец" {
+				t.Fatalf("JOIN из справки: %v", got)
+			}
+		})
 	}
 }
