@@ -223,7 +223,11 @@ func parseProjectionItem(item []tok) (ProjectionColumn, []string) {
 	// [ident, dot, star] не проходил simpleFieldRef, уходил в ветку выражения
 	// с пустыми Fields и до проверок не доживал).
 	if n := len(item); n > 0 && item[n-1].kind == tStar {
-		return ProjectionColumn{Star: true}, nil
+		col := ProjectionColumn{Star: true}
+		if n == 3 && item[0].kind == tIdent && item[1].kind == tDot {
+			col.Path = []string{lowerFast(item[0].val)}
+		}
+		return col, nil
 	}
 	if path, ok := simpleFieldPath(item); ok {
 		field := path[len(path)-1]
