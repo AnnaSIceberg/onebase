@@ -180,21 +180,23 @@ func TestJoinedRefFieldMatrix(t *testing.T) {
 		}
 
 		// Дословный запрос из заявки: до починки падал `no such column`.
-		// Строк он не отдаёт (ссылка плана не равна ссылке базы) — доказывается
-		// именно то, что SQL исполняется.
+		// Несовпавшее ПО сохраняет левую строку Базы и даёт NULL
+		// ссылки ГлавныйУзел: ссылки плана и базы различны.
 		t.Run("запрос из заявки исполняется", func(t *testing.T) {
 			const q = `ВЫБРАТЬ П.ГлавныйУзел ИЗ Справочник.Базы КАК Б ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Планы КАК П ПО П.Ссылка = Б.Ссылка`
 			r, err := query.Compile(q, query.CompileOpts{Entities: ents, Dialect: db.Dialect()})
 			if err != nil {
 				t.Fatalf("компиляция: %v", err)
 			}
-			rows, err := db.Query(ctx, r.SQL, r.Args...)
+			rows, cols, err := query.Run(ctx, db, &r)
 			if err != nil {
 				t.Fatalf("исполнение: %v\nSQL: %s", err, r.SQL)
 			}
-			defer rows.Close()
-			if err := rows.Err(); err != nil {
-				t.Fatalf("выдача: %v\nSQL: %s", err, r.SQL)
+			if len(rows) != 1 || len(cols) != 1 {
+				t.Fatalf("ожидалась одна строка с одной колонкой, получили %v (%v)", rows, cols)
+			}
+			if value, ok := rows[0][cols[0]]; !ok || value != nil {
+				t.Fatalf("ожидалась NULL-ссылка правой строки, получили %v", rows)
 			}
 		})
 	})

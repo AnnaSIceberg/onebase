@@ -5920,7 +5920,10 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					}
 				} else if col, ok := tr.colMap[lower]; ok && !prevDot {
 					tr.emitOwnColumn(col, lower)
-				} else if src, jrd := tr.findJoinedSource(tr.pos-3, lower); prevDot && src != nil {
+				} else if src, jrd := tr.findJoinedSource(tr.pos-3, lower); prevDot && (tr.pos < 4 || tr.tokens[tr.pos-4].kind != tDot) && src != nil {
+					// Только начало пути задаёт источник: средний сегмент
+					// П.Ссылка.Реквизит не переопределяет владельца при
+					// совпадении с алиасом другого JOIN.
 					// Имя разрешается в пределах своего источника, а не по
 					// плоскому словарю главной таблицы: одноимённое поле
 					// присоединённого справочника иначе получало чужой суффикс
