@@ -161,3 +161,105 @@ func longIdentTableColumns(ctx context.Context, db *storage.DB, table string) ([
 	defer rows.Close()
 	return rows.FieldNames(), rows.Err()
 }
+
+// An old SQLite database can contain both full and prefix names. The public
+// dry-run must show the same early conflict as the real migration.
+func TestMigrateDryRunFullLegacyBesideShortOwner(t *testing.T) {
+	for _, kind := range []string{"column", "table"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx := context.Background()
+			dir := t.TempDir()
+			path := dir + "/legacy.db"
+			db, err := storage.ConnectSQLite(ctx, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			short := strings.Repeat("Я", 31)
+			full := short + "Продолжение"
+			writeProcrunFixture(t, dir, "config/app.yaml", "name: legacy-preflight\n")
+			tables := []string{"владелец"}
+			if kind == "column" {
+				writeProcrunFixture(t, dir, "catalogs/Владелец.yaml", "name: Владелец\nfields:\n  - name: "+short+"\n    type: string\n  - name: "+full+"\n    type: string\n")
+				if _, err := db.Exec(ctx, "CREATE TABLE владелец (id TEXT PRIMARY KEY, "+strings.ToLower(short)+" TEXT, "+strings.ToLower(full)+" TEXT)"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				tables = []string{strings.ToLower(short), strings.ToLower(full)}
+				for i, name := range []string{short, full} {
+					writeProcrunFixture(t, dir, "catalogs/"+name+".yaml", "name: "+name+"\nfields:\n  - name: Наименование\n    type: string\n")
+					if _, err := db.Exec(ctx, "CREATE TABLE "+tables[i]+" (id TEXT PRIMARY KEY, наименование TEXT)"); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			before := make([][]string, len(tables))
+			for i, table := range tables {
+				before[i], err = longIdentTableColumns(ctx, db, table)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			for attempt := 0; attempt < 2; attempt++ {
+				out, err := captureStdout(t, func() error {
+					return executeLongIdentCommand(t, []string{"migrate", "--project", dir, "--sqlite", path, "--dry-run"})
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(out, "КОНФЛИКТ") || !strings.Contains(out, "претендуют 2") {
+					t.Errorf("dry-run concealed owner conflict: %s", out)
+				}
+				err = executeLongIdentCommand(t, []string{"migrate", "--project", dir, "--sqlite", path})
+				if err == nil || !strings.Contains(err.Error(), "КОНФЛИКТ") {
+					t.Errorf("migration did not refuse: %v", err)
+				}
+				for i, table := range tables {
+					after, err := longIdentTableColumns(ctx, db, table)
+					if err != nil || !reflect.DeepEqual(before[i], after) {
+						t.Errorf("original schema changed: %s before %v after %v err %v", table, before[i], after, err)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestMigrateDryRunLegacyUpgradeIsIdempotent(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		dir := t.TempDir()
+		name := "СправочникСОченьДлиннымИменемИзКонфигурации1С"
+		field := "РеквизитСОченьДлиннымИменемКоторыйПришёлИзОдинЭс"
+		writeProcrunFixture(t, dir, "config/app.yaml", "name: legacy-upgrade\n")
+		writeProcrunFixture(t, dir, "catalogs/Каталог.yaml", "name: "+name+"\nfields:\n  - name: "+field+"\n    type: string\n")
+		oldTable, oldCol := strings.ToLower(name), strings.ToLower(field)
+		if !db.IsSQLite() {
+			oldTable = metadata.LegacySQLIdents(oldTable)[1]
+			oldCol = metadata.LegacySQLIdents(oldCol)[1]
+		}
+		d := db.Dialect()
+		id := uuid.New()
+		if _, err := db.Exec(ctx, "CREATE TABLE "+oldTable+" (id "+d.TypeUUID()+" PRIMARY KEY, "+oldCol+" TEXT)"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(ctx, "INSERT INTO "+oldTable+" (id, "+oldCol+") VALUES ("+d.Placeholder(1)+", 'original')", id.String()); err != nil {
+			t.Fatal(err)
+		}
+		args := append([]string{"migrate", "--project", dir}, longIdentDatabaseArgs(t, db)...)
+		for attempt := 0; attempt < 2; attempt++ {
+			if err := executeLongIdentCommand(t, args); err != nil {
+				t.Fatal(err)
+			}
+			out, err := captureStdout(t, func() error { return executeLongIdentCommand(t, append(append([]string{}, args...), "--dry-run")) })
+			if err != nil || strings.Contains(out, "Длинные имена (#1946") {
+				t.Fatalf("successful upgrade must have no pending renames: %s %v", out, err)
+			}
+			entity := &metadata.Entity{Name: name, Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: field, Type: metadata.FieldTypeString}}}
+			row, err := db.GetByID(ctx, name, id, entity)
+			if err != nil || row[field] != "original" {
+				t.Fatalf("upgrade lost data: %v %v", row, err)
+			}
+		}
+	})
+}

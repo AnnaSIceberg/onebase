@@ -61,6 +61,10 @@ func (db *DB) planLegacyTable(ctx context.Context, logical string, claims map[st
 	if err != nil {
 		return nil, fmt.Errorf("длинное имя %s: %w", logical, err)
 	}
+	// Сначала обследуем все физически возможные имена. На SQLite полное
+	// прежнее имя не доказывает принадлежность его обрезки: она может быть
+	// действующей таблицей другого объекта. Отказываем до первого ALTER.
+	var foundNames []string
 	for _, old := range db.physicalLegacyNames(legacy) {
 		found, err := db.tableExists(ctx, old)
 		if err != nil {
@@ -73,6 +77,12 @@ func (db *DB) planLegacyTable(ctx context.Context, logical string, claims map[st
 			return &LongIdentAction{Old: old, New: target, Conflict: fmt.Sprintf(
 				"на прежнее имя претендуют %d таблицы конфигурации, чья это таблица — не установить", claims[old])}, nil
 		}
+		foundNames = append(foundNames, old)
+	}
+	if !exists && len(foundNames) > 1 {
+		return &LongIdentAction{Old: foundNames[0], New: target, Conflict: "есть несколько прежних таблиц (" + strings.Join(foundNames, ", ") + "), чья это таблица — не установить"}, nil
+	}
+	for _, old := range foundNames {
 		if exists {
 			has, err := db.tableHasRows(ctx, old)
 			if err != nil {
@@ -237,15 +247,30 @@ func (db *DB) planLegacyColumns(ctx context.Context, table string, logical []str
 	for _, l := range long {
 		target := metadata.SQLIdent(l)
 		_, hasTarget := cols[target]
-		for _, old := range uniqueStrings(metadata.LegacySQLIdents(l)) {
+		// Не выбираем полное SQLite-имя, пока не проверили обрезку и её
+		// владельца. Иначе первый запуск проходит, а повторный отказывает.
+		var foundNames []string
+		conflict := false
+		for _, old := range db.physicalLegacyNames(metadata.LegacySQLIdents(l)) {
 			if _, ok := cols[old]; !ok {
 				continue
 			}
 			if claims[old] > 1 {
 				out = append(out, LongIdentAction{Table: table, Old: old, New: target, Conflict: fmt.Sprintf(
 					"на прежнее имя претендуют %d поля, чьё это значение — не установить", claims[old])})
+				conflict = true
 				break
 			}
+			foundNames = append(foundNames, old)
+		}
+		if conflict || len(foundNames) == 0 {
+			continue
+		}
+		if !hasTarget && len(foundNames) > 1 {
+			out = append(out, LongIdentAction{Table: table, Old: foundNames[0], New: target, Conflict: "есть несколько прежних колонок (" + strings.Join(foundNames, ", ") + "), чьё это значение — не установить"})
+			continue
+		}
+		for _, old := range foundNames {
 			if hasTarget {
 				has, err := db.columnHasData(ctx, table, old)
 				if err != nil {
@@ -255,7 +280,7 @@ func (db *DB) planLegacyColumns(ctx context.Context, table string, logical []str
 					out = append(out, LongIdentAction{Table: table, Old: old, New: target, Conflict: "есть и новая колонка " +
 						target + ", и прежняя с данными — какие данные верные, не установить"})
 				}
-				break
+				continue
 			}
 			out = append(out, LongIdentAction{Table: table, Old: old, New: target})
 			break
