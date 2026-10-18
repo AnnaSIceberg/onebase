@@ -198,3 +198,36 @@ test('restores exact per-control attribute values after repeated suspension', as
     await expect(input).not.toHaveAttribute('data-ob-page-pattern');
   }
 });
+
+for (const scenario of ['unchecked', 'nested', 'local-required', 'checked']) {
+  test(`hidden page checkbox → native Save, ${scenario}`, async ({ page }) => {
+    const name = `PageCheckbox${scenario.replaceAll('-', '')}`;
+    await open(page, name);
+    const flag = page.locator('input[type="checkbox"][name="Flag"]');
+    const marker = page.locator('input[name="_ob_present_Flag"]');
+    await expect(flag).toBeChecked();
+    await expect(marker).toBeEnabled();
+    const data = await event(page, 'HidePage');
+    const checked = scenario === 'checked';
+    expect(data.values.Flag).toBe(checked);
+    expect(Object.values(data.elementStates.hidden)).toContain(true);
+    await expect(flag).toBeEnabled();
+    await expect(marker).toBeEnabled();
+    await expect(flag).not.toHaveAttribute('required');
+    await expect(flag).toBeChecked({ checked });
+    const entries = await page.locator('#main-form').evaluate((form) => Array.from(new FormData(form).entries()));
+    expect(entries.filter(([key]) => key === '_ob_present_Flag')).toEqual([['_ob_present_Flag', '1']]);
+    expect(entries.filter(([key]) => key === 'Flag')).toEqual(checked ? [['Flag', 'true']] : []);
+    const saved = page.waitForResponse((r) => r.url() === urls[name] && r.request().method() === 'POST');
+    const reloaded = page.waitForEvent('domcontentloaded');
+    await page.locator('#main-form').evaluate((form) => form.requestSubmit());
+    expect((await saved).status()).toBe(303);
+    await reloaded;
+    const stored = await page.request.post(urls[name].replace(/\/[^/]+$/, '/form-event'), { form: {
+      _id: urls[name].split('/').pop(), _kind: 'object', _element: 'Read', _event: 'Нажатие',
+    } });
+    const result = await stored.json();
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    expect(result.values.Flag).toBe(checked);
+  });
+}

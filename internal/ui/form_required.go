@@ -83,6 +83,9 @@ func (s *Server) validateManagedFormRequired(
 			hiddenPages = append(hiddenPages, visit.path+".")
 		}
 	})
+	// Share partial-write presence rules: a conditional control without its
+	// marker is absent, rather than an unchecked editable checkbox.
+	checkboxes := checkboxOmittedFields(form, entity, submittedFormKeys(r))
 	seen := make(map[string]bool)
 	var missing []string
 	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
@@ -90,11 +93,6 @@ func (s *Server) validateManagedFormRequired(
 		if element == nil || visit.parentTablePart != nil || visit.effectiveReadOnly ||
 			!managedElementPostsScalar(element) {
 			return
-		}
-		for _, prefix := range hiddenPages {
-			if strings.HasPrefix(visit.path, prefix) {
-				return
-			}
 		}
 		path := strings.TrimSpace(element.DataPath)
 		if path == "" || strings.Count(path, ".") > 1 {
@@ -110,7 +108,7 @@ func (s *Server) validateManagedFormRequired(
 		}
 
 		field, entityField := managedFormElementEntityField(entity, element)
-		if entityField && element.Kind == metadata.FormElementCheckbox && field.Type == metadata.FieldTypeBool {
+		if entityField && element.Kind == metadata.FormElementCheckbox && field.Type == metadata.FieldTypeBool && checkboxes[strings.ToLower(field.Name)] {
 			value, given := maskCIKeyValue(values, field.Name)
 			// An editable checkbox omitted by the browser is the meaningful
 			// value false, not an absent value. Materialise it independently of
@@ -123,6 +121,11 @@ func (s *Server) validateManagedFormRequired(
 				} else {
 					values[field.Name] = false
 				}
+			}
+		}
+		for _, prefix := range hiddenPages {
+			if strings.HasPrefix(visit.path, prefix) {
+				return
 			}
 		}
 		// Field.required is deliberately not checked here. Entityservice

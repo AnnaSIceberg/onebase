@@ -210,11 +210,14 @@ func TestManagedPageMaskBrowserFixture(t *testing.T) {
 		}
 	}
 	entities = append(entities, managedPageMaskEntity(t, true, false, true))
+	for _, scenario := range []string{"unchecked", "nested", "local-required", "checked"} {
+		entities = append(entities, managedPageCheckboxEntity(t, scenario))
+	}
 	ts := tpw1074Server(t, db, entities)
 	urls := make(map[string]string)
 	for _, entity := range entities {
 		id := uuid.New()
-		if err := db.Upsert(t.Context(), entity.Name, id, map[string]any{"Текст": "123", "Скрыть": false, "СкрытьВнутри": false, "Число": "1"}, entity); err != nil {
+		if err := db.Upsert(t.Context(), entity.Name, id, map[string]any{"Текст": "123", "Скрыть": false, "СкрытьВнутри": false, "Число": "1", "Flag": true, "Hide": false}, entity); err != nil {
 			t.Fatal(err)
 		}
 		urls[entity.Name] = ts.URL + "/ui/catalog/" + entity.Name + "/" + id.String()
