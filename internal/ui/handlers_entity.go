@@ -159,7 +159,15 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		treeRows = buildCatalogTree(allRows)
 	}
 
-	refFilterOptions, _ := s.loadInitialRefFilterOptions(r.Context(), entity, params)
+	// Варианты выбора — только полям, которые панель «Отбор» показывает: при
+	// list_filters это основной набор, добавленные пользователем и уже
+	// включённые отборы. Раньше варианты грузились всем ссылочным реквизитам
+	// сущности, и у документа с тремя полями в панели список открывался
+	// секунды: справочник адресов в 600 тыс. строк сортировался ради поля,
+	// которого на экране нет.
+	listFilterExtra := s.listFilterExtra(r, entity)
+	panelFields := listFilterPanelFields(map[string]any{"Entity": entity, "ListFilterExtra": listFilterExtra, "Params": params})
+	refFilterOptions, _ := s.loadInitialRefFilterOptions(r.Context(), entity, params, panelFields)
 
 	user := auth.UserFromContext(r.Context())
 	isAdmin := user == nil || user.IsAdmin
@@ -198,6 +206,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"EnumLabels":       s.buildEnumLabels(entity, lang),
 		"BasedOnActions":   s.basedOnActions(r, entity, lang),
 		"RequestURI":       r.URL.RequestURI(),
+		"ListFilterExtra":  listFilterExtra,
 	})
 }
 
@@ -1231,11 +1240,6 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Тексты просмотра, зависящие от КОНТЕКСТА подбора (choice_preview_proc):
-	// вызывающая форма прислала, например, филиал звонка, и памятка по
-	// направлению собирается уже под него. Ошибка процедуры не валит подбор:
-	// выбирать элемент оператору нужно в любом случае, а текст справа —
-	// вспомогательный (что сломалось, видно в логе сервера).
 	// Динамический preview (choice_preview_proc) обслуживается POST /page:
 	// GET остаётся статическим и обратно совместимым (план 168, инвариант 1).
 	previewField := canonicalChoicePreviewField(ent)

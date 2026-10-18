@@ -473,6 +473,7 @@ func (s *Service) Save(ctx context.Context, req SaveRequest) (SaveResult, error)
 	// при любой последующей ошибке откатываются вместе с родителем.
 	var persistedVersion int64
 	err := s.Store.WithTxScope(ctx, func(txCtx context.Context) error {
+		txCtx = withHookObjectState(txCtx, obj, req.IsNew)
 		if s.ChangePublisher != nil && req.Entity.NotifyChanges && !req.IsNew {
 			changeBefore, _ = s.Store.GetByID(txCtx, req.Entity.Name, req.ID, req.Entity)
 		}
@@ -532,12 +533,21 @@ func (s *Service) Save(ctx context.Context, req SaveRequest) (SaveResult, error)
 			}
 		}
 		SetPeriodFromFields(mc, req.Entity, obj.Fields)
-		if req.Entity.Posting && !req.IsNew && !isPosting {
+		if !req.IsNew {
 			stored, err := s.Store.GetByID(txCtx, req.Entity.Name, req.ID, req.Entity)
 			if err != nil {
 				return err
 			}
 			wasPosted, _ = stored["posted"].(bool)
+			obj.Posted = wasPosted
+			// Unlike posted, GetByID retains SQLite's integer representation of
+			// deletion_mark. Both dialects must supply the same XDTO snapshot.
+			switch marked := stored["deletion_mark"].(type) {
+			case bool:
+				obj.DeletionMark = marked
+			case int64:
+				obj.DeletionMark = marked != 0
+			}
 		}
 		if provisional {
 			if err := s.Store.UpsertProvisional(txCtx, req.Entity.Name, req.ID, obj.Fields, req.Entity); err != nil {
@@ -678,6 +688,9 @@ func (s *Service) Save(ctx context.Context, req SaveRequest) (SaveResult, error)
 				if err := s.Store.SetPosted(txCtx, req.Entity.Name, req.ID, true); err != nil {
 					return err
 				}
+				previousPosted := obj.Posted
+				obj.Posted = true
+				storage.DeferUntilTxRollback(txCtx, func() { obj.Posted = previousPosted })
 			} else if !req.IsNew && wasPosted {
 				// Обычная запись существующего проводимого документа сохраняет
 				// прежнюю семантику: это полноценная отмена проведения. Поэтому
@@ -688,6 +701,8 @@ func (s *Service) Save(ctx context.Context, req SaveRequest) (SaveResult, error)
 				if err := s.unpostInTx(txCtx, req.Entity, req.ID, unpostMovements, &msgs, lockCollector); err != nil {
 					return err
 				}
+				obj.Posted = false
+				storage.DeferUntilTxRollback(txCtx, func() { obj.Posted = wasPosted })
 			}
 		}
 		// Read the authoritative token before this transaction/savepoint is
