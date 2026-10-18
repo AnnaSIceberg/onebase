@@ -833,10 +833,12 @@ function sectionShell({fetchImpl} = {}) {
   replaceable(elements['ob-nav']);
 
   const next = {
+    shell: new Element('main', 'ob-shell-main'),
     bar: Object.assign(new Element('nav'), {className: 'subsys-bar sklad'}),
     nav: new Element('aside', 'ob-nav'),
     homeNodes: [new Element('h2'), new Element('div')],
   };
+  next.shell.setAttribute('data-ob-tab-scope', scopeOf(source));
   const navigationPaths = ['/ui/settings/navigation', '/ui/admin/navigation'];
   const navigation = navigationPaths.map(path => {
     const link = new Element('a');
@@ -858,6 +860,7 @@ function sectionShell({fetchImpl} = {}) {
         title: title === 'Главная' ? title : 'Склад',
         querySelector(sel) { return sel === '.subsys-bar' ? next.bar : navigationLink(sel, nextNavigation); },
         getElementById(id) {
+          if (id === 'ob-shell-main') return next.shell;
           if (id === 'ob-nav') return next.nav;
           if (id === 'ob-tabhome') return {childNodes: next.homeNodes};
           if (id === 'ob-widget-charts') return {textContent: '{"склад":1}'};
@@ -987,6 +990,26 @@ test('раздел не загрузился — прежний переход',
   assert.equal(app.pushed.length, 0);
   assert.equal(app.calls.dashboard, 0);
 });
+
+for (const scope of ['different-scope', '', null, 'missing-shell']) {
+  test('partial navigation requires matching ownership: ' + String(scope), async () => {
+    const app = sectionShell();
+    const bar = app.bar(), nav = app.elements['ob-nav'];
+    const nodes = app.elements['ob-tabhome'].children.slice();
+    if (scope === 'missing-shell') app.next.shell = null;
+    else if (scope === null) app.next.shell.attributes.delete('data-ob-tab-scope');
+    else app.next.shell.setAttribute('data-ob-tab-scope', scope);
+    app.clickSection('/ui/?subsystem=Склад');
+    await app.settle();
+    assert.equal(decodeURIComponent(app.location.href), '/ui/app?home=1&subsystem=Склад');
+    assert.equal(app.bar(), bar);
+    assert.equal(app.elements['ob-nav'], nav);
+    assert.deepEqual(app.elements['ob-tabhome'].children, nodes);
+    assert.equal(app.context.document.title, 'Главная');
+    assert.equal(app.calls.dashboard, 0);
+    assert.equal(app.pushed.length, 0);
+  });
+}
 
 for (const failed of [false, true]) {
   test('Back → Forward отменяет задержанный ' + (failed ? 'отказ' : 'ответ') + ' прошлого раздела', async () => {

@@ -77,7 +77,7 @@ const tplAppShell = `{{define "page-app-shell"}}
 .ob-tabmenu-item:hover{background:#f0f4ff;color:#1a4a80}
 @media (max-width:820px){.ob-tabhome{padding:14px}}
 </style>
-<main class="ob-shell-main" id="ob-shell-main">
+<main class="ob-shell-main" id="ob-shell-main" data-ob-tab-scope="{{.TabStorageScope}}">
   <div class="ob-tabstrip" id="ob-tabstrip" role="tablist"></div>
   <div class="ob-tabbody" id="ob-tabbody">
     <div class="ob-tabhome" id="ob-tabhome">{{template "dashboard-body" .}}</div>
@@ -399,6 +399,10 @@ const tplAppShell = `{{define "page-app-shell"}}
       var target=new URL(res.url,location.origin);
       if(target.origin!==location.origin||!/^\/ui\/app\/?$/.test(target.pathname))throw new Error('unexpected target');
       var doc=new window.DOMParser().parseFromString(res.html,'text/html');
+      // Partial navigation may retain live forms only within the same scope.
+      // Missing ownership also requires the normal full-page initialization.
+      var nextShell=doc.getElementById('ob-shell-main');
+      if(!STORAGE_SCOPE||!nextShell||nextShell.getAttribute('data-ob-tab-scope')!==STORAGE_SCOPE)throw new Error('shell scope differs');
       var nextBar=doc.querySelector('.subsys-bar'), nextNav=doc.getElementById('ob-nav'), nextHome=doc.getElementById('ob-tabhome');
       var bar=document.querySelector('.subsys-bar'), nav=document.getElementById('ob-nav');
       if(!nextHome||!home||!!nextBar!==!!bar||!!nextNav!==!!nav)throw new Error('shell layout differs');
