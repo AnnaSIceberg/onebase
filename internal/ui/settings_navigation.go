@@ -43,10 +43,16 @@ type navigationEditorState struct {
 	adminBase     navigation.Tree
 	layerBase     navigation.Tree
 	effective     navigation.Tree
+	roleTargets   map[string]bool
+	roleScoped    bool
 	previous      navigation.Delta
 }
 
 func (s *Server) navigationEditorState(r *http.Request, sub string) (navigationEditorState, error) {
+	return s.navigationEditorLayerState(r, sub, false)
+}
+
+func (s *Server) navigationEditorLayerState(r *http.Request, sub string, personal bool) (navigationEditorState, error) {
 	var state navigationEditorState
 	if sub != "" {
 		current := s.reg.GetSubsystem(sub)
@@ -55,7 +61,11 @@ func (s *Server) navigationEditorState(r *http.Request, sub string) (navigationE
 		}
 		state.Base, state.Configured = s.configurationNavigation(current.Menu, &current.Contents, false, sub)
 	} else {
-		state.Base, state.Configured, state.Flat = s.homeConfigurationNavigation(r)
+		if personal {
+			state.Base, state.Configured, state.Flat = s.homeNavigationLayerBase(r)
+		} else {
+			state.Base, state.Configured, state.Flat = s.homeConfigurationNavigation(r)
+		}
 	}
 	var err error
 	state.Setting, err = s.store.GetNavigationSettings(r.Context(), storage.NavigationSettingsScope{Layer: navigation.AdminLayer, Context: state.Base.Context})
@@ -68,11 +78,6 @@ func (s *Server) navigationEditorState(r *http.Request, sub string) (navigationE
 	}
 	state.adminBase = state.Base
 	state.Desired, state.Diagnostics = navigation.Compose(state.Base, raw, nil)
-	// nav_by_role «Главной» или подсистемы: личный редактор не видит и не
-	// сохраняет объекты вне меню ролей пользователя (администратор — общее).
-	hp := s.navigationHomePage(sub)
-	state.Base = s.projectRoleNavigation(r, hp, state.Base)
-	state.Desired = s.projectRoleNavigation(r, hp, state.Desired)
 	return state, nil
 }
 
@@ -154,7 +159,9 @@ func (s *Server) renderNavigationEditor(w http.ResponseWriter, r *http.Request, 
 func (s *Server) editorNavigationPreview(r *http.Request, state navigationEditorState, sub string) []NavigationPreviewSection {
 	base, desired := state.Base, state.Desired
 	if state.Personal {
-		base, desired = state.configuration, state.effective
+		hp := s.navigationHomePage(sub)
+		base = s.projectRoleNavigation(r, hp, state.configuration)
+		desired = s.projectRoleNavigation(r, hp, state.effective)
 	}
 	return navigationPreview(s.navigationGroups(r, desired, base, state.Configured, state.Flat, sub))
 }

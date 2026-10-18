@@ -59,7 +59,7 @@ func navDOMID(context, id string) string {
 
 func (s *Server) buildNav(r *http.Request, sub string) []navGroup {
 	if sub == "" {
-		base, configured, flat := s.homeConfigurationNavigation(r)
+		base, configured, flat := s.homeNavigationLayerBase(r)
 		return s.buildNavigationFromBase(r, base, configured, flat, "")
 	}
 	if current := s.reg.GetSubsystem(sub); current != nil {
@@ -71,13 +71,35 @@ func (s *Server) buildNav(r *http.Request, sub string) []navGroup {
 // Keep the common layout intact until its stored layer has been composed.
 // A move may use a destination or predecessor excluded by the user's role.
 func (s *Server) homeConfigurationNavigation(r *http.Request) (navigation.Tree, bool, bool) {
+	return s.homeConfigurationNavigationForRoles(homeNavRoles(r))
+}
+
+// Include every declared role target in the authoritative layer base. A role
+// switch must not turn an existing role-only item into an unknown identity.
+// This complete tree stays server-side; the current role is projected later.
+func (s *Server) homeNavigationLayerBase(r *http.Request) (navigation.Tree, bool, bool) {
+	hp := s.reg.HomePage()
+	if hp == nil || len(hp.NavByRole) == 0 {
+		return s.homeConfigurationNavigation(r)
+	}
+	roles := make([]string, 0, len(hp.NavByRole))
+	for role := range hp.NavByRole {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	base, configured, _ := s.homeConfigurationNavigationForRoles(roles)
+	_, byRole := hp.NavForRoles(homeNavRoles(r))
+	return base, configured, !byRole && hp.Nav.IsEmpty()
+}
+
+func (s *Server) homeConfigurationNavigationForRoles(roles []string) (navigation.Tree, bool, bool) {
 	hp := s.reg.HomePage()
 	if hp == nil {
 		base, configured := s.configurationNavigation(nil, nil, true, "")
 		return base, configured, true
 	}
 	base, configured := s.configurationNavigation(hp.Menu, hp.Nav, true, "")
-	contents, byRole := hp.NavForRoles(homeNavRoles(r))
+	contents, byRole := hp.NavForRoles(roles)
 	if !byRole {
 		return base, configured, hp.Nav.IsEmpty()
 	}
@@ -142,16 +164,9 @@ func (s *Server) navigationHomePage(sub string) *metadata.HomePage {
 // contents подсистемы, проекция не добавляет. Нужен там, где объект роль
 // читает ради ссылок (кладовщику — заказы из ордера), а в меню ему не место.
 func (s *Server) projectRoleNavigation(r *http.Request, hp *metadata.HomePage, tree navigation.Tree) navigation.Tree {
-	contents, byRole := hp.NavForRoles(homeNavRoles(r))
-	if !byRole {
+	allowed := s.roleNavigationTargets(r, hp)
+	if allowed == nil {
 		return tree
-	}
-	scoped := s.roleNavigation(contents)
-	allowed := map[string]bool{}
-	for _, section := range scoped.Sections {
-		for _, item := range section.Items {
-			allowed[item.Target] = true
-		}
 	}
 	items := func(input []navigation.Item) []navigation.Item {
 		var output []navigation.Item
@@ -178,6 +193,32 @@ func (s *Server) projectRoleNavigation(r *http.Request, hp *metadata.HomePage, t
 		}
 	}
 	return result
+}
+
+// A nil set keeps the common menu. For the global fallback, exclude targets
+// supplied only for other roles from the full server-side layer base.
+func (s *Server) roleNavigationTargets(r *http.Request, hp *metadata.HomePage) map[string]bool {
+	contents, byRole := hp.NavForRoles(homeNavRoles(r))
+	var scoped navigation.Tree
+	if byRole {
+		scoped = s.roleNavigation(contents)
+	} else if hp != nil && hp == s.reg.HomePage() && len(hp.NavByRole) > 0 {
+		scoped, _ = s.configurationNavigation(hp.Menu, hp.Nav, true, "")
+	} else {
+		return nil
+	}
+	allowed := map[string]bool{}
+	for _, section := range scoped.Sections {
+		for _, item := range section.Items {
+			allowed[item.Target] = true
+		}
+		for _, group := range section.Groups {
+			for _, item := range group.Items {
+				allowed[item.Target] = true
+			}
+		}
+	}
+	return allowed
 }
 
 // Resolve role contents to metadata spelling before constructing targets. The
@@ -322,10 +363,10 @@ func (s *Server) buildNavigation(r *http.Request, menu *metadata.Menu, contents 
 
 func (s *Server) buildNavigationFromBase(r *http.Request, base navigation.Tree, configured, flat bool, sub string) []navGroup {
 	tree, _ := s.adminNavigationLayer(r, base)
+	tree = s.personalNavigationLayer(r, tree)
 	hp := s.navigationHomePage(sub)
 	base = s.projectRoleNavigation(r, hp, base)
 	tree = s.projectRoleNavigation(r, hp, tree)
-	tree = s.personalNavigationLayer(r, tree)
 	return s.navigationGroups(r, tree, base, configured, flat, sub)
 }
 
