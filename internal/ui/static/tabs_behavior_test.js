@@ -67,6 +67,7 @@ class Element {
       // вне протокола — текстовую ошибку 404.
       this.contentWindow = {
         document: this.contentDocument,
+        obFrameCloseDocumentToken: 'initial-document',
         obAnswersFrameClose: true,
         postMessage: (data, origin) => { this._posted.push({data, origin}); },
       };
@@ -284,7 +285,7 @@ function shell(storage, search = '', confirmClose = () => true, requestFrameClos
         listener({
           origin: context.location.origin,
           source: frame.contentWindow,
-          data: {source: 'obFrameURLChanged', url: href}
+          data: {source: 'obFrameURLChanged', url: href, documentToken: frame.contentWindow.obFrameCloseDocumentToken}
         });
       }
     },
@@ -860,7 +861,7 @@ test('a stale url message of a left document neither renames nor closes the tab'
   app.open('/ui/document/call/new', 'Звонок');
   assert.equal(app.closeByURL('/ui/document/call/42'), 0);
   app.navigate(0, 'http://127.0.0.1:8080/ui/document/other/7');
-  app.postFromFrame(0, {source: 'obFrameURLChanged', url: '/ui/document/call/42'});
+  app.postFromFrame(0, {source: 'obFrameURLChanged', url: '/ui/document/call/42', documentToken: 'initial-document'});
   assert.equal(app.count(), 1);
   assert.equal(savedTabs(storage)[0].url, '/ui/document/other/7');
   // Тот же документ, оставшийся во фрейме, своё закрытие получает как раньше.
@@ -868,4 +869,22 @@ test('a stale url message of a left document neither renames nor closes the tab'
   assert.equal(app.closeByURL('/ui/document/call/43'), 0);
   app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/call/43');
   assert.equal(app.count(), 0);
+});
+
+test('a waiting close belongs to the original Document even when its replacement has the same URL', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/document/call/new', 'Call');
+  app.installManagedDocument(0, 'original');
+  assert.equal(app.closeByURL('/ui/document/call/42'), 0);
+  // Document changes before load; WindowProxy and the saved URL stay the same.
+  app.silentNavigate(0, 'http://127.0.0.1:8080/ui/document/call/42');
+  app.installManagedDocument(0, 'replacement');
+  app.postFromFrame(0, {source: 'obFrameURLChanged', url: '/ui/document/call/42', documentToken: 'original'});
+  assert.equal(savedTabs(storage)[0].url, '/ui/document/call/new');
+  // Even a genuine URL notification of the new Document cannot inherit the
+  // original Document's pending command.
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/call/42');
+  assert.equal(app.count(), 1);
+  assert.equal(app.posted(0).length, 0);
 });

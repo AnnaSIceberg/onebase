@@ -159,30 +159,33 @@ test('tab close: server refusal, dirty cancel and confirmed save use the real cl
   } finally { await held.finish(); }
 });
 
-test('tab close: delayed URL message from the old Document cannot close its replacement', async ({ page }) => {
-  const frame = await openForm(page);
-  const held = await holdSave(page, frame, 'old document');
-  try {
-    await page.evaluate(() => { window.closeAcceptance.holdURL = true; });
-    held.release();
-    await expect.poll(() => page.evaluate(() => !!window.closeAcceptance.held)).toBe(true);
-    await frame.goto(ROOT + 'new?replacement=1', { waitUntil: 'domcontentloaded' });
-    await expect(frame.locator('input[name="Наименование"]')).toHaveValue('');
-    const result = await page.evaluate(() => {
-      const state = window.closeAcceptance;
-      const e = state.held;
-      state.holdURL = false;
-      const sameWindow = document.querySelector('#ob-tabbody iframe').contentWindow === e.source;
-      // Re-deliver precisely the data/source/origin of the production message
-      // held above, after a new Document has occupied the same WindowProxy.
-      window.dispatchEvent(new MessageEvent('message', { data: e.data, source: e.source, origin: e.origin }));
-      return { sameWindow, documentChanged: e.document !== e.source.document };
-    });
-    expect(result).toEqual({ sameWindow: true, documentChanged: true });
-    await frame.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    await expect(frames(page)).toHaveCount(1);
-    expect(closes).toEqual([]);
-    expect(new URL(frame.url()).search).toContain('replacement=1');
-    await persisted(page, held.data.savedId, 'old document');
-  } finally { await held.finish(); }
-});
+for (const sameURL of [false, true]) {
+  test(`tab close: delayed URL message cannot close a replacement Document (${sameURL ? 'same URL' : 'different URL'})`, async ({ page }) => {
+    const frame = await openForm(page);
+    const held = await holdSave(page, frame, 'old document');
+    try {
+      await page.evaluate(() => { window.closeAcceptance.holdURL = true; });
+      held.release();
+      await expect.poll(() => page.evaluate(() => !!window.closeAcceptance.held)).toBe(true);
+      await frame.goto(ROOT + (sameURL ? held.data.savedId : 'new?replacement=1'), { waitUntil: 'domcontentloaded' });
+      await expect(frame.locator('input[name="Наименование"]')).toHaveValue(sameURL ? 'old document' : '');
+      const result = await page.evaluate(() => {
+        const state = window.closeAcceptance;
+        const e = state.held;
+        state.holdURL = false;
+        const sameWindow = document.querySelector('#ob-tabbody iframe').contentWindow === e.source;
+        // Re-deliver precisely the data/source/origin of the production message
+        // held above, after a new Document has occupied the same WindowProxy.
+        window.dispatchEvent(new MessageEvent('message', { data: e.data, source: e.source, origin: e.origin }));
+        return { sameWindow, documentChanged: e.document !== e.source.document };
+      });
+      expect(result).toEqual({ sameWindow: true, documentChanged: true });
+      await frame.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await expect(frames(page)).toHaveCount(1);
+      expect(closes).toEqual([]);
+      if (sameURL) expect(new URL(frame.url()).pathname).toContain('/' + held.data.savedId);
+      else expect(new URL(frame.url()).search).toContain('replacement=1');
+      await persisted(page, held.data.savedId, 'old document');
+    } finally { await held.finish(); }
+  });
+}
