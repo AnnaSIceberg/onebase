@@ -263,3 +263,123 @@ func TestMigrateDryRunLegacyUpgradeIsIdempotent(t *testing.T) {
 		}
 	})
 }
+
+func TestMigrateDryRunCurrentLegacyBeforeDDL_Matrix(t *testing.T) {
+	for _, kind := range []string{"table", "column"} {
+		for _, state := range []string{"empty", "short-owner", "both-modern"} {
+			t.Run(kind+"/"+state, func(t *testing.T) {
+				dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+					ctx := context.Background()
+					dir := t.TempDir()
+					s, l := strings.Repeat("Я", 31), strings.Repeat("Я", 31)+"Продолжение"
+					writeProcrunFixture(t, dir, "config/app.yaml", "name: current-legacy-preflight\n")
+					short := &metadata.Entity{Name: s, Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}}}
+					long := &metadata.Entity{Name: l, Kind: metadata.KindCatalog, Fields: short.Fields}
+					if kind == "table" {
+						for i, name := range []string{s, l} {
+							writeProcrunFixture(t, dir, "catalogs/"+[]string{"Короткий", "Длинный"}[i]+".yaml", "name: "+name+"\nfields:\n  - name: Наименование\n    type: string\n")
+						}
+					} else {
+						short.Name = "Владелец"
+						short.Fields = []metadata.Field{{Name: s, Type: metadata.FieldTypeString}}
+						writeProcrunFixture(t, dir, "catalogs/Владелец.yaml", "name: Владелец\nfields:\n  - name: "+s+"\n    type: string\n  - name: "+l+"\n    type: string\n")
+					}
+					independent := &metadata.Entity{Name: "Независимый", Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: "Значение", Type: metadata.FieldTypeString, ID: "keep"}}}
+					if err := db.Migrate(ctx, []*metadata.Entity{independent}); err != nil {
+						t.Fatal(err)
+					}
+					id := uuid.New()
+					if err := db.Upsert(ctx, independent.Name, id, map[string]any{"Значение": "keep"}, independent); err != nil {
+						t.Fatal(err)
+					}
+					writeProcrunFixture(t, dir, "catalogs/Независимый.yaml", "name: Независимый\nfields:\n  - name: Значение\n    type: string\n    id: keep\n  - name: НовоеПоле\n    type: string\n    id: pending\n")
+					if state == "both-modern" && kind == "table" {
+						if err := db.Migrate(ctx, []*metadata.Entity{long}); err != nil {
+							t.Fatal(err)
+						}
+						if err := db.Upsert(ctx, long.Name, id, map[string]any{"Наименование": "long data"}, long); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if state != "empty" {
+						if err := db.Migrate(ctx, []*metadata.Entity{short}); err != nil {
+							t.Fatal(err)
+						}
+						if err := db.Upsert(ctx, short.Name, id, map[string]any{short.Fields[0].Name: "short data"}, short); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if state == "both-modern" {
+						if kind == "column" {
+							col := metadata.ColumnName(metadata.Field{Name: l, Type: metadata.FieldTypeString})
+							if _, err := db.Exec(ctx, "ALTER TABLE владелец ADD COLUMN "+col+" TEXT"); err != nil {
+								t.Fatal(err)
+							}
+							if _, err := db.Exec(ctx, "UPDATE владелец SET "+col+" = 'long data'"); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+					before := longIdentSchemaSnapshot(t, db)
+					args := append([]string{"migrate", "--project", dir}, longIdentDatabaseArgs(t, db)...)
+					var previous string
+					for attempt := 0; attempt < 2; attempt++ {
+						out, err := captureStdout(t, func() error { return executeLongIdentCommand(t, append(append([]string{}, args...), "--dry-run")) })
+						if err != nil || !strings.Contains(out, "КОНФЛИКТ") || !strings.Contains(out, strings.ToLower(s)) || !strings.Contains(out, strings.ToLower(l)) {
+							t.Errorf("dry-run must expose static owner conflict: %s %v", out, err)
+						}
+						if attempt == 0 {
+							previous = out
+						} else if out != previous {
+							t.Errorf("repeated dry-run differs: %s -> %s", previous, out)
+						}
+						if err := executeLongIdentCommand(t, args); err == nil || !strings.Contains(err.Error(), "КОНФЛИКТ") {
+							t.Errorf("migration must refuse before any DDL: %v", err)
+						}
+						if after := longIdentSchemaSnapshot(t, db); !reflect.DeepEqual(before, after) {
+							t.Errorf("dry-run/migrate changed schema, indexes, FKs or field map")
+						}
+						row, err := db.GetByID(ctx, independent.Name, id, independent)
+						if err != nil || row["Значение"] != "keep" {
+							t.Fatalf("independent data changed: %v %v", row, err)
+						}
+					}
+				})
+			})
+		}
+	}
+}
+
+func longIdentSchemaSnapshot(t *testing.T, db *storage.DB) []string {
+	t.Helper()
+	queries := []string{"SELECT type || ':' || name || ':' || tbl_name || ':' || coalesce(sql,'') FROM sqlite_master ORDER BY type,name"}
+	if !db.IsSQLite() {
+		queries = []string{
+			"SELECT table_name || ':' || column_name || ':' || data_type || ':' || is_nullable || ':' || coalesce(column_default,'') FROM information_schema.columns WHERE table_schema=current_schema() ORDER BY table_name,ordinal_position",
+			"SELECT tablename || ':' || indexname || ':' || indexdef FROM pg_indexes WHERE schemaname=current_schema() ORDER BY tablename,indexname",
+			"SELECT c.relname || ':' || con.conname || ':' || pg_get_constraintdef(con.oid) FROM pg_constraint con JOIN pg_class c ON c.oid=con.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() ORDER BY c.relname,con.conname",
+		}
+	}
+	queries = append(queries, "SELECT table_name || ':' || field_id || ':' || column_name || ':' || field_type FROM _schema_fields ORDER BY table_name,field_id")
+	var out []string
+	for _, q := range queries {
+		rows, err := db.Query(context.Background(), q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rows.Next() {
+			var s string
+			if err := rows.Scan(&s); err != nil {
+				rows.Close()
+				t.Fatal(err)
+			}
+			out = append(out, s)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return out
+}

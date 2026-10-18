@@ -199,6 +199,38 @@ func finalNameConflict(table, target string, names []string) LongIdentAction {
 		len(names), what, strings.Join(names, ", "), object)}
 }
 
+// currentLegacyConflicts проверяет конфигурацию, а не состояние базы: конечное
+// имя одного владельца не может одновременно быть возможным прежним именем
+// другого. Иначе свежая схема сама создаёт неоднозначность для второго запуска.
+// Общая legacy-обрезка двух длинных имён без действующего владельца допустима:
+// только реальные старые данные под ней требуют отказа planLegacy*.
+func (db *DB) currentLegacyConflicts(table string, logicals []string) []LongIdentAction {
+	logicals = uniqueStrings(logicals)
+	current := map[string][]string{}
+	for _, logical := range logicals {
+		target := metadata.SQLIdent(logical)
+		current[target] = append(current[target], logical)
+	}
+	var out []LongIdentAction
+	for _, logical := range logicals {
+		for _, old := range db.physicalLegacyNames(metadata.LegacySQLIdents(logical)) {
+			for _, owner := range current[old] {
+				if owner == logical {
+					continue
+				}
+				what := "таблицы"
+				if table != "" {
+					what = "поля"
+				}
+				out = append(out, LongIdentAction{Table: table, Old: old, New: metadata.SQLIdent(logical), Conflict: fmt.Sprintf(
+					"на прежнее имя претендуют 2 %s конфигурации: конечное имя %s (%s) совпадает с прежним именем %s (конечное %s); пересечение запрещено до создания схемы",
+					what, owner, old, logical, metadata.SQLIdent(logical))})
+			}
+		}
+	}
+	return out
+}
+
 func sortedKeys(m map[string][]string) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -219,6 +251,9 @@ func (db *DB) planLegacyColumns(ctx context.Context, table string, logical []str
 			out = append(out, finalNameConflict(table, target, owners[target]))
 		}
 		return out, nil
+	}
+	if conflicts := db.currentLegacyConflicts(table, logical); len(conflicts) > 0 {
+		return conflicts, nil
 	}
 	claims := map[string]int{}
 	var long []string
@@ -390,16 +425,26 @@ func (db *DB) PlanLongIdents(ctx context.Context, entities []*metadata.Entity, r
 	}
 	claims := legacyTableClaims(logicals)
 	var out []LongIdentAction
-	// Таблицы с общим конечным именем: отказ по каждому имени, и обе таблицы
-	// дальше не обследуются — колонки чужой таблицы не считаем своими.
+	// Таблицы с общим конечным именем: отказ до обследования чужих колонок.
 	shared := finalNameOwners(logicals)
 	for _, target := range sortedKeys(shared) {
 		out = append(out, finalNameConflict("", target, shared[target]))
 	}
+	// Все статические пересечения проверяются до чтения существующей схемы,
+	// включая колонки ещё не созданных таблиц. План на пустой базе и после
+	// частичной/прежней установки сообщает тот же запрет до любого DDL.
+	out = append(out, db.currentLegacyConflicts("", logicals)...)
 	for _, spec := range tables {
-		if _, ok := shared[metadata.SQLIdent(spec.logical)]; ok {
-			continue
+		owners := finalNameOwners(spec.columns)
+		for _, target := range sortedKeys(owners) {
+			out = append(out, finalNameConflict(metadata.SQLIdent(spec.logical), target, owners[target]))
 		}
+		out = append(out, db.currentLegacyConflicts(metadata.SQLIdent(spec.logical), spec.columns)...)
+	}
+	if len(out) > 0 {
+		return out, nil
+	}
+	for _, spec := range tables {
 		action, err := db.planLegacyTable(ctx, spec.logical, claims)
 		if err != nil {
 			return nil, err
