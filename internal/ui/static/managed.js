@@ -1614,7 +1614,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	  } catch (_) {}
 	  try {
 		if (window.parent && window.parent !== window) {
-		  window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
+		  window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL, documentToken: obManagedFrameDocumentToken}, location.origin);
 		}
 	  } catch (_) {}
 	}
