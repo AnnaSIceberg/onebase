@@ -433,7 +433,8 @@ const tplManagedForm = `
   {{$vtRows := index $ctx.TablePartRows $tpName}}
   {{$vtCmds := tpCommandButtons $el}}
   {{$vtLayout := elLayout $el}}
-  {{if $vtLayout}}<div class="managed-vt-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{$vtLayout}}">{{end}}
+  {{/* Заданная высота ограничивает весь блок ValueTable, включая строки и команды. */}}
+  {{if $vtLayout}}<div class="managed-vt-layout{{if elFill $el}} managed-vt-scroll{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{$vtLayout}}">{{end}}
   <h3 style="margin:18px 0 8px;font-size:14px">{{fieldTitleRU $el.TitleMap (or (tablePartTitle $tpMeta) $tpName)}}</h3>
   {{if $vtCmds}}
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
@@ -558,6 +559,12 @@ input[data-ob-protected]{-webkit-text-security:disc}
 /* scroll_x: ряд действий не рвётся на вторую строку, а прокручивается. */
 .managed-group-scrollx>.managed-group-body{flex-wrap:nowrap;overflow-x:auto}
 .managed-group-scrollx>.managed-group-body>*{flex-shrink:0}
+/* ValueTable с заданной высотой прокручивается внутри своего блока, шапка
+   колонок остаётся на месте. overflow:hidden таблицы (скругление углов)
+   сделал бы её саму контейнером прокрутки, и sticky шапка не держалась бы. */
+.managed-vt-scroll{overflow-y:auto}
+.managed-vt-scroll>.tp-table{overflow:visible;margin-bottom:0}
+.managed-vt-scroll>.tp-table thead th{position:sticky;top:0;z-index:1}
 /* Поле в горизонтальной группе не растягивается на всю строку: иначе одинокое
    поле уезжало во всю ширину, а кнопка рядом с ним — к правому краю экрана. */
 .managed-group-horizontal>.managed-group-body>.form-group{flex:0 1 260px;min-width:180px;margin-bottom:0}
@@ -781,7 +788,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
 {{end}}
 
 <div class="card">
-<form id="main-form" method="POST" data-ob-grid-sync {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
+<form id="main-form" method="POST" data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{if .IsPopup}}<input type="hidden" name="_popup" value="1">{{end}}
 {{if .CopySourceID}}<input type="hidden" name="_copy_source_id" value="{{.CopySourceID}}">{{end}}
