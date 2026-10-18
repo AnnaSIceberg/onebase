@@ -17,6 +17,11 @@ import (
 // до секунды, PostgreSQL — до микросекунды.
 func writtenDateServer(t *testing.T, db *storage.DB, handler string) (*Server, *metadata.Entity, uuid.UUID) {
 	t.Helper()
+	return writtenDateServerAt(t, db, handler, time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC))
+}
+
+func writtenDateServerAt(t *testing.T, db *storage.DB, handler string, initialDate time.Time) (*Server, *metadata.Entity, uuid.UUID) {
+	t.Helper()
 	ent := &metadata.Entity{
 		Name: "ЗаявкаСДатой", Kind: metadata.KindCatalog,
 		Fields: []metadata.Field{
@@ -34,7 +39,7 @@ func writtenDateServer(t *testing.T, db *storage.DB, handler string) (*Server, *
 	srv := newSubmitTestServerOn(t, db, []*metadata.Entity{ent})
 	id := uuid.New()
 	if err := srv.store.Upsert(context.Background(), ent.Name, id, map[string]any{
-		"Наименование": "заявка", "ДатаРаспределения": time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC),
+		"Наименование": "заявка", "ДатаРаспределения": initialDate,
 	}, ent); err != nil {
 		t.Fatal(err)
 	}
@@ -120,4 +125,46 @@ func TestTPCellNormDatePrecision(t *testing.T) {
 	if tpCellNormStored(f, a.Add(400*time.Nanosecond), "postgres") != tpCellNormStored(f, a, "postgres") {
 		t.Fatal("PostgreSQL хранит до микросекунды")
 	}
+}
+
+// pgx отбрасывает наносекундный остаток, даже когда округление вверх дало бы
+// другую микросекунду. Проверяем и успешную запись, и несохранённую правку.
+func TestManagedFormEvent_SubmicrosecondDateAtStoragePrecision(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		for _, tc := range []struct {
+			name         string
+			initialNanos int
+			handler      string
+			wantWritten  bool
+			wantDirty    bool
+		}{
+			{"written", 0, "Объект.ДатаРаспределения = Объект.ДатаРаспределения + 0.0000006;\nОбъект.Записать();", true, false},
+			{"unsaved", 1000, "Объект.ДатаРаспределения = Объект.ДатаРаспределения - 0.0000004;", false, true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				initial := time.Date(2026, 10, 16, 12, 0, 0, tc.initialNanos, time.UTC)
+				srv, ent, id := writtenDateServerAt(t, db, tc.handler, initial)
+				resp := writtenDateEvent(t, srv, ent, id)
+				row, err := srv.store.GetByID(t.Context(), ent.Name, id, ent)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantStored := initial
+				if db.Dialect().Name() == "sqlite" {
+					wantStored = initial.Truncate(time.Second)
+				}
+				stored, ok := row["ДатаРаспределения"].(time.Time)
+				if !ok || !stored.Equal(wantStored) {
+					t.Fatalf("дата в базе = %#v, want %v", row["ДатаРаспределения"], wantStored)
+				}
+				if (tc.wantWritten && resp.Version != 2) || (!tc.wantWritten && resp.Version != 0) {
+					t.Fatalf("неожиданная версия после события: %+v", resp)
+				}
+				wantDirty := tc.wantDirty
+				if *resp.Dirty != wantDirty {
+					t.Fatalf("dirty = %v, want %v (%s): %+v", *resp.Dirty, wantDirty, db.Dialect().Name(), resp)
+				}
+			})
+		}
+	})
 }

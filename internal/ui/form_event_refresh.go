@@ -375,7 +375,8 @@ func dateAtStoragePrecision(dialect string, t time.Time) time.Time {
 	case "sqlite":
 		return t.Truncate(time.Second)
 	case "postgres":
-		return t.Round(time.Microsecond)
+		// pgx кодирует timestamptz через Nanosecond()/1000 без округления.
+		return t.Truncate(time.Microsecond)
 	}
 	return t
 }
