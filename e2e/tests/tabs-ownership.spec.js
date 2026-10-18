@@ -86,7 +86,12 @@ test('section navigation initializes the current shell ownership', async ({ page
     const previousScope = await page.evaluate(() => sessionStorage.getItem('obTabsScope'));
     expect(expectedScope).not.toBe(previousScope);
     page.on('dialog', dialog => dialog.accept());
-    await (await sectionLink(page)).click();
+    const link = await sectionLink(page);
+    // Only a new document emits DOMContentLoaded; a partial update does not.
+    await Promise.all([
+      page.waitForEvent('domcontentloaded', { timeout: 10_000 }),
+      link.click(),
+    ]);
     await expect.poll(() => page.evaluate(() => window.shellRun === undefined)).toBe(true);
     await expect(page.locator('#ob-shell-main')).toHaveAttribute('data-ob-tab-scope', expectedScope);
     await expect(page.locator('#ob-tabbody iframe')).toHaveCount(0);
@@ -112,7 +117,12 @@ test('a response without shell ownership uses full initialization', async ({ pag
     await route.fulfill({ response, body });
   });
   page.on('dialog', dialog => dialog.accept());
-  await (await sectionLink(page)).click();
+  const link = await sectionLink(page);
+  // Arm the full-document wait before the click can initiate navigation.
+  await Promise.all([
+    page.waitForEvent('domcontentloaded', { timeout: 10_000 }),
+    link.click(),
+  ]);
   await expect.poll(() => page.evaluate(() => window.shellRun === undefined)).toBe(true);
   await expect(page.locator('#ob-shell-main')).toHaveAttribute('data-ob-tab-scope', /.+/);
 });
