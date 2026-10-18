@@ -29,24 +29,26 @@ function node(attrs) {
   return el;
 }
 
-function setup(initial, withEditor) {
+function setup(initial, withEditor, missingEditor, renderedAttrs) {
   // withEditor: реквизит редактирует ПолеВвода — скрытое поле превью без name,
   // значение у редактора (#2177).
   const input = node(withEditor
     ? { type: 'hidden', 'data-ob-picture-for': 'ПолеФото', 'data-ob-picture-field': 'ФотоПревью', value: initial }
     : { type: 'hidden', name: 'ФотоПревью', 'data-ob-picture-for': 'ПолеФото', 'data-ob-picture-field': 'ФотоПревью', value: initial });
+  if (renderedAttrs) input.attrs = new Map(Object.entries(renderedAttrs));
+  const field = input.getAttribute('data-ob-picture-field');
   input.type = 'hidden';
   input.tagName = 'INPUT';
   const editor = withEditor ? node({ type: 'text', name: 'ФотоПревью', value: initial }) : null;
   if (editor) { editor.type = 'text'; editor.tagName = 'INPUT'; }
-  const named = editor || input;
+  const named = missingEditor ? null : (editor || input);
   const img = node({ src: '' });
   const link = node({ href: '' });
   link.children.push(img);
   const empty = node({});
   const form = {
     querySelector(sel) {
-      if (sel === '[name="ФотоПревью"]') return named;
+      if (sel === '[name="' + field + '"]') return named;
       if (sel === '[data-ob-picture-link="ПолеФото"]') return link;
       if (sel === '[data-ob-picture-empty="ПолеФото"]') return empty;
       return null;
@@ -54,7 +56,7 @@ function setup(initial, withEditor) {
     // applyValues обновляет все копии реквизита (querySelectorAll по name).
     querySelectorAll(sel) {
       if (sel === 'input[data-ob-picture-for]') return [input];
-      return sel === '[name="ФотоПревью"]' ? [named] : [];
+      return sel === '[name="' + field + '"]' && named ? [named] : [];
     },
   };
   const ctx = {
@@ -97,3 +99,26 @@ test('реквизит с полем ввода: превью берёт зна�
   assert.equal(t.img.getAttribute('src'), '/ui/attachments/' + id + '/download');
   assert.equal(t.link.hidden, false);
 });
+
+// The Go regression supplies attributes parsed from the public GET form.
+if (process.argv.includes('--rendered-picture')) {
+  const attrs = JSON.parse(fs.readFileSync(0, 'utf8'));
+  test('GET формы: превью без редактора в DOM обновляется ответом события', () => {
+    const t = setup(attrs.value, false, true, attrs);
+    const field = attrs['data-ob-picture-field'];
+    const id = '9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d';
+    t.ctx.applyValues({ [field]: id });
+    assert.equal(t.input.value, id);
+    assert.equal(t.img.getAttribute('src'), '/ui/attachments/' + id + '/download');
+    assert.equal(t.link.getAttribute('href'), '/ui/attachments/' + id + '/download');
+    assert.equal(t.link.hidden, false);
+    t.ctx.applyValues({ Other: 'unrelated' });
+    assert.equal(t.input.value, id, 'частичный ответ сохраняет превью');
+    t.ctx.applyValues({ [field]: 'javascript:alert(1)' });
+    assert.equal(t.link.hidden, true);
+    assert.equal(t.empty.hidden, false);
+    t.ctx.applyValues({ [field]: null });
+    assert.equal(t.input.value, '');
+    assert.equal(t.link.hidden, true);
+  });
+}

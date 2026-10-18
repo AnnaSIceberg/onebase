@@ -2,10 +2,12 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -234,5 +236,64 @@ func TestManagedFormPictureFieldEnglishLabels(t *testing.T) {
 	}
 	if strings.Contains(body, "Нет изображения") || strings.Contains(body, "Открыть в полном размере") {
 		t.Error("подписи превью остались русскими")
+	}
+}
+
+// Exercise the actual GET markup in the browser applyValues path: metadata
+// contains an editor, but its hidden group is absent from the rendered form.
+func TestManagedFormPictureWithHiddenEditorUpdatesInNode(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for the managed picture binding behavior test")
+	}
+	oldID := uuid.New().String()
+	srv, ent := setupManagedEventsServer(t, ``, nil, []*metadata.FormElement{
+		{Kind: metadata.FormElementPicture, Name: "ПолеФото", DataPath: "Объект.Наименование"},
+		{Kind: metadata.FormElementGroupBox, Name: "СкрытаяГруппа", HiddenWhen: `Наименование <> ""`, Children: []*metadata.FormElement{
+			{Kind: metadata.FormElementField, Name: "РедакторФото", DataPath: "Объект.Наименование"},
+		}},
+	})
+	id := uuid.New()
+	if err := srv.store.Upsert(context.Background(), ent.Name, id, map[string]any{"Наименование": oldID}, ent); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.formEdit(rec, reqWithChi(http.MethodGet, "/ui/catalog/"+ent.Name+"/"+id.String(), nil,
+		map[string]string{"kind": "catalog", "entity": ent.Name, "id": id.String()}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET формы: %d %s", rec.Code, rec.Body.String())
+	}
+	if values := pictureFormControls(t, rec.Body.String()); len(values["Наименование"]) != 0 {
+		t.Fatalf("hidden group unexpectedly rendered a named control: %v", values["Наименование"])
+	}
+	doc, err := html.Parse(strings.NewReader(rec.Body.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var attrs map[string]string
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if name, _ := managedHTMLAttr(n, "data-ob-picture-for"); name == "ПолеФото" {
+			attrs = make(map[string]string)
+			for _, a := range n.Attr {
+				attrs[a.Key] = a.Val
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	if attrs == nil || attrs["value"] != oldID || attrs["name"] != "" {
+		t.Fatalf("unexpected picture state: %v", attrs)
+	}
+	fixture, err := json.Marshal(attrs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(node, "static/managed_picture_bind_behavior_test.js", "--rendered-picture") //nolint:gosec // test-only executable resolved by exec.LookPath
+	cmd.Stdin = strings.NewReader(string(fixture))
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("rendered picture binding: %v\n%s", err, output)
 	}
 }
