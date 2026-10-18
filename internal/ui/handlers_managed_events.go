@@ -111,10 +111,11 @@ func (e *managedCloseSaveError) Error() string { return e.message }
 func (e *managedCloseSaveError) Unwrap() error { return e.cause }
 
 const (
-	managedSaveForbidden  = "forbidden"
-	managedSaveConflict   = "conflict"
-	managedSaveValidation = "validation"
-	managedSaveHook       = "hook"
+	managedSaveForbidden         = "forbidden"
+	managedSaveConflict          = "conflict"
+	managedSaveOwnershipConflict = "ownership_conflict"
+	managedSaveValidation        = "validation"
+	managedSaveHook              = "hook"
 )
 
 // saveManagedObject is the canonical result-returning save layer shared by
@@ -236,6 +237,8 @@ func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, for
 	})
 	if err != nil {
 		switch {
+		case errors.Is(err, storage.ErrInfoRegOwnershipConflict):
+			return hookMessages, 0, &managedCloseSaveError{status: http.StatusConflict, kind: managedSaveOwnershipConflict, message: s.errText(r, err), messages: hookMessages, cause: err}
 		case errors.Is(err, storage.ErrVersionConflict):
 			return hookMessages, 0, &managedCloseSaveError{status: http.StatusConflict, kind: managedSaveConflict, message: "объект был изменён другим пользователем; форма оставлена открытой", messages: hookMessages}
 		case errors.Is(err, errCloseResultUnreadable):
@@ -768,7 +771,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// Построить объект из текущих form-values.
 	obj, err := buildObjectFromForm(r, entity, form, canWrite)
 	if err != nil {
-		respondJSON(enc, formEventResponse{Error: err.Error()})
+		respondJSON(enc, formEventResponse{Error: s.errText(r, err)})
 		return
 	}
 	// Что прислал клиент — до восстановлений и обработчика: ответ события не
@@ -1146,6 +1149,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	defer rollbackDSLExecution(txState)
 	isNewForHandler := strings.TrimSpace(r.FormValue("_id")) == "" && (closeInv == nil || !closeInv.saved)
 	thisObj := s.newFormObjectThisLive(dslCtx, txState, obj, entity, form, isNewForHandler)
+	thisObj.xdtoFormSnapshot = true
 	if isNewForHandler {
 		// Объект.Записать() из обработчика — ещё один путь записи нового объекта:
 		// без этого он писал неразмещённые реквизиты пустыми, хотя «Записать»
@@ -1266,6 +1270,12 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		vars["ПодборРезультат"] = pr
 		vars["PickResult"] = pr
 	}
+	// Значения полей шапки окна подбора (Конфиг.ПоляШапки) — с событиями Поиск
+	// и Выбор: что искать и где выбрано.
+	if pf := parsePickFields(r.FormValue("_pick_fields")); pf != nil {
+		vars["ПодборПоля"] = pf
+		vars["PickFields"] = pf
+	}
 
 	// Повторная фаза 1: набранное в строке поиска открытого диалога приходит как
 	// _pick_query → переменная ПодборЗапрос для обработчика события Поиск.
@@ -1283,6 +1293,11 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	if qa := strings.TrimSpace(r.FormValue("_question_answer")); qa != "" {
 		vars["ВопросОтвет"] = qa
 		vars["QuestionAnswer"] = qa
+	}
+
+	if err := addPageChangeContext(eventName, r.FormValue("_page"), eventTarget, vars); err != nil {
+		respondJSON(enc, formEventResponse{Error: err.Error()})
+		return
 	}
 
 	if err := addEntityTPEventContext(r, entity, form, tableAuthorities, eventTarget, obj, vars); err != nil {
@@ -1867,7 +1882,8 @@ func (st formEventState) response(ok bool) formEventResponse {
 //
 // Снять получается не всё: элемент, скрытый на момент отрисовки, в разметку не
 // попал, и показать его обратно клиенту нечем — hidden=false для него ничего не
-// изменит до перезагрузки страницы. Для readonly обе стороны рабочие.
+// изменит до перезагрузки страницы. Исключение — кнопка: она рисуется с
+// display:none и показывается сразу. Для readonly обе стороны рабочие.
 type elementStates struct {
 	ReadOnly map[string]bool `json:"readonly,omitempty"`
 	Hidden   map[string]bool `json:"hidden,omitempty"`
@@ -2559,12 +2575,15 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
 	}
-	paramValues, err := processorParamValuesFromRequest(
+	paramValues, uploadTemps, err := s.processorParamValuesFromRequest(
 		r,
 		proc.Params,
 		maxSize,
 		requestControls,
 	)
+	// Временные файлы двоичных параметров живут ровно прогон: обработка
+	// получила путь, а после ответа файл платформе не нужен.
+	defer uploadTemps.Cleanup()
 	if err != nil {
 		opStatus = "error"
 		w.WriteHeader(uploadErrorStatus(err))
@@ -2695,6 +2714,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			vars["ПодборРезультат"] = pr
 			vars["PickResult"] = pr
 		}
+		pickFields, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_pick_fields"))
+		if pf := parsePickFields(pickFields); pf != nil {
+			vars["ПодборПоля"] = pf
+			vars["PickFields"] = pf
+		}
 		// Тот же ПодборЗапрос, что и в формах сущностей: серверный поиск обязан
 		// работать и в формах обработок, иначе платформенное поведение молча
 		// разное. Кладём ВСЕГДА при событии Поиск — очистка строки поиска это
@@ -2711,6 +2735,12 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		if qa, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_question_answer")); strings.TrimSpace(qa) != "" {
 			vars["ВопросОтвет"] = qa
 			vars["QuestionAnswer"] = qa
+		}
+		page, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_page"))
+		if err := addPageChangeContext(eventName, page, eventTarget, vars); err != nil {
+			opStatus = "error"
+			respondJSON(enc, formEventResponse{Error: err.Error()})
+			return
 		}
 		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars); err != nil {
 			opStatus = "error"
