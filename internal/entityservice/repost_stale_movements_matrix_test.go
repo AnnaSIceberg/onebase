@@ -2,6 +2,7 @@ package entityservice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"testing"
@@ -169,6 +170,77 @@ func TestRepost_ClearsMovementsOfUntouchedRegisters_Matrix(t *testing.T) {
 		}
 		if got := totals("k1"); got != 100 {
 			t.Fatalf("итоги РегБ по k1 после проведения = %v, ждали 100", got)
+		}
+
+		// Integration with the posting lifecycle: rejected attempts and a late
+		// rollback must preserve both the old collector and the version token.
+		// FinalPreflight runs after movement replacement, so this also detects
+		// cleanup escaping the transaction/savepoint.
+		for _, reason := range []string{"stale-version", "deletion-mark", "late-rollback"} {
+			t.Run(reason, func(t *testing.T) {
+				if reason == "deletion-mark" {
+					if err := db.MarkForDeletion(ctx, doc.Name, first, true); err != nil {
+						t.Fatal(err)
+					}
+					defer func() {
+						if err := db.MarkForDeletion(ctx, doc.Name, first, false); err != nil {
+							t.Fatal(err)
+						}
+					}()
+				}
+				version, err := db.EntityVersion(ctx, doc.Name, first)
+				if err != nil {
+					t.Fatal(err)
+				}
+				req := SaveRequest{Entity: doc, ID: first, Action: "post",
+					Fields:          map[string]any{"Дата": date, "Ключ": "k1", "Флаг": false},
+					ExpectedVersion: &version}
+				rollback := errors.New("reject after movement replacement")
+				switch reason {
+				case "stale-version":
+					stale := version - 1
+					req.ExpectedVersion = &stale
+				case "late-rollback":
+					req.FinalPreflight = func(context.Context, *runtime.Object) error { return rollback }
+				}
+				res, err := svc.Save(ctx, req)
+				switch reason {
+				case "stale-version":
+					if !errors.Is(err, storage.ErrVersionConflict) {
+						t.Fatalf("expected version conflict, got %v / %s", err, res.DSLError)
+					}
+				case "deletion-mark":
+					if err != nil || res.DSLError == "" {
+						t.Fatalf("expected marked-document rejection, got %v / %s", err, res.DSLError)
+					}
+				case "late-rollback":
+					if !errors.Is(err, rollback) {
+						t.Fatalf("expected final rollback, got %v / %s", err, res.DSLError)
+					}
+				}
+				gotVersion, err := db.EntityVersion(ctx, doc.Name, first)
+				if err != nil || gotVersion != version {
+					t.Fatalf("version after rejection = %d, want %d: %v", gotVersion, version, err)
+				}
+				row, err := db.GetByID(ctx, doc.Name, first, doc)
+				if err != nil || row["posted"] != true {
+					t.Fatalf("rejection changed posted state: %v / %v", row, err)
+				}
+				for _, id := range []uuid.UUID{first, other} {
+					for _, reg := range []struct{ table, col string }{
+						{regA, "recorder"}, {regB, "recorder"}, {infoV, "recorder"}, {accG, "регистратор"},
+					} {
+						if n := count(reg.table, reg.col, id); n != 1 {
+							t.Errorf("%s: rejected repost left %d rows for %s, want 1", reg.table, n, id)
+						}
+					}
+				}
+				for _, key := range []string{"k1", "k2"} {
+					if got := totals(key); got != 100 {
+						t.Errorf("%s: totals after rejection = %v, want 100", key, got)
+					}
+				}
+			})
 		}
 
 		// Условие снято — модуль больше не пишет РегБ, ИнфоВ и БухГ.

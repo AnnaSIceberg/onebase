@@ -932,6 +932,11 @@ func (w *docWriter) writeInContext(ctx context.Context) error {
 }
 
 func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) error {
+	if w.loaded || w.saved {
+		if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+			return err
+		}
+	}
 	isNew := !w.loaded && !w.saved
 	// Pre-образ живого списка (план 87): для существующего документа читаем строку
 	// ДО записи, чтобы прежний владелец убрал её из списка при смене прав.
@@ -970,11 +975,6 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 	}
 	if posting {
 		if err := w.s.checkDSLRowAccess(ctx, w.entity, "post", w.accessID(), w.obj.Fields); err != nil {
-			return err
-		}
-	}
-	if w.loaded || w.saved {
-		if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
 			return err
 		}
 	}
@@ -1097,6 +1097,12 @@ func (w *docWriter) accessID() uuid.UUID {
 func (w *docWriter) conduct() error {
 	return w.withLockScope(func(ctx context.Context) error {
 		provisionalCreate := !w.loaded && !w.saved
+		// Capture the pre-image only after a concurrent posting/write finishes.
+		if !provisionalCreate {
+			if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+				return err
+			}
+		}
 		var before map[string]any
 		if w.entity.NotifyChanges && !provisionalCreate {
 			before, _ = w.s.store.GetByID(ctx, w.entity.Name, w.obj.ID, w.entity)
