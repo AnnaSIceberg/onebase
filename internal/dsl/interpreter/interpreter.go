@@ -38,6 +38,19 @@ type userError struct {
 	Err  error // исходная ошибка (например i18nerr) для локализации по цепочке
 }
 
+// asDSLError сохраняет место возбуждения даже после вложенного вызова или
+// повторного возбуждения. Для ошибок внешних методов без позиции остаётся
+// прежний fallback на текущий оператор исполнения.
+func (u userError) asDSLError(file string, line int) *DSLError {
+	if u.File != "" {
+		file = u.File
+	}
+	if u.Line > 0 {
+		line = u.Line
+	}
+	return &DSLError{File: file, Line: line, Msg: u.Msg, Err: u.Err}
+}
+
 // RaiseUserError panics with a DSL user error. Предназначено для
 // внешних пакетов (например ui), которым нужно прервать выполнение DSL
 // из метода объекта (CallMethod) с осмысленным сообщением — оно
@@ -140,7 +153,7 @@ func (i *Interpreter) Call(proc *ast.ProcedureDecl, this This, args []any, extra
 			case dslStop:
 				err = s.err
 			case userError:
-				err = &DSLError{File: e.ec.curFile, Line: e.ec.curLine, Msg: s.Msg, Err: s.Err}
+				err = s.asDSLError(e.ec.curFile, e.ec.curLine)
 			default:
 				panic(r)
 			}
@@ -177,7 +190,7 @@ func (i *Interpreter) RunWithResult(proc *ast.ProcedureDecl, this This, result *
 			case dslStop:
 				err = s.err
 			case userError:
-				err = &DSLError{File: e.ec.curFile, Line: e.ec.curLine, Msg: s.Msg, Err: s.Err}
+				err = s.asDSLError(e.ec.curFile, e.ec.curLine)
 			case dslReturn:
 				if result != nil {
 					*result = s.val
@@ -217,7 +230,7 @@ func (i *Interpreter) Run(proc *ast.ProcedureDecl, this This, extraVars ...map[s
 			case dslStop:
 				err = s.err
 			case userError:
-				err = &DSLError{File: e.ec.curFile, Line: e.ec.curLine, Msg: s.Msg, Err: s.Err}
+				err = s.asDSLError(e.ec.curFile, e.ec.curLine)
 			case dslReturn:
 				// early return from procedure — not an error
 			default:
@@ -474,7 +487,11 @@ func (i *Interpreter) execStmt(s ast.Stmt, e *env) {
 					}
 				}
 			} else {
-				RaiseUserError("Цикл «Для Каждого»: значение не является коллекцией")
+				panic(userError{
+					Msg:  "Цикл «Для Каждого»: значение не является коллекцией",
+					File: v.Var.File,
+					Line: v.Var.Line,
+				})
 			}
 		}
 	case *ast.AssignStmt:
@@ -1185,17 +1202,17 @@ func (i *Interpreter) evalEvalBuiltin(args []any, e *env) any {
 }
 
 func (i *Interpreter) callUserProc(proc *ast.ProcedureDecl, callEnv *env, args []any) (retVal any) {
-	retVal, _ = i.callUserProcAtDepthWithBindings(proc, callEnv, args, callEnv.depth+1)
+	retVal, _ = i.callUserProcAtDepthWithBindings(proc, callEnv, args, callEnv.depth+1, false)
 	return retVal
 }
 
 func (i *Interpreter) callEntryProc(proc *ast.ProcedureDecl, root *env, args []any) (retVal any) {
-	retVal, _ = i.callUserProcAtDepthWithBindings(proc, root, args, root.depth)
+	retVal, _ = i.callUserProcAtDepthWithBindings(proc, root, args, root.depth, false)
 	return retVal
 }
 
 func (i *Interpreter) callEntryProcWithBindings(proc *ast.ProcedureDecl, root *env, args []any) (retVal any, bindings map[string]any) {
-	return i.callUserProcAtDepthWithBindings(proc, root, args, root.depth)
+	return i.callUserProcAtDepthWithBindings(proc, root, args, root.depth, true)
 }
 
 func (i *Interpreter) moduleEnvFor(proc *ast.ProcedureDecl, root *env) *env {
@@ -1237,7 +1254,7 @@ func (i *Interpreter) moduleEnvFor(proc *ast.ProcedureDecl, root *env) *env {
 	return me
 }
 
-func (i *Interpreter) callUserProcAtDepthWithBindings(proc *ast.ProcedureDecl, callEnv *env, args []any, frameDepth int) (retVal any, bindings map[string]any) {
+func (i *Interpreter) callUserProcAtDepthWithBindings(proc *ast.ProcedureDecl, callEnv *env, args []any, frameDepth int, captureBindings bool) (retVal any, bindings map[string]any) {
 	// Страж рекурсии: env нового кадра будет на уровень глубже вызывающего.
 	// Обрываем ДО создания кадра и проброса в отладчик, иначе бесконечная
 	// рекурсия переполнит стек горутины и аварийно уронит процесс (мимо Попытки).
@@ -1254,7 +1271,9 @@ func (i *Interpreter) callUserProcAtDepthWithBindings(proc *ast.ProcedureDecl, c
 	}
 	var child *env
 	defer func() {
-		if child != nil {
+		// Only lifecycle entrypoints request final parameter values. Ordinary
+		// calls discard them and must not allocate a second parameter map.
+		if captureBindings && child != nil {
 			bindings = make(map[string]any, len(proc.Params))
 			for _, param := range proc.Params {
 				bindings[param.Literal] = child.vars[strings.ToLower(param.Literal)]

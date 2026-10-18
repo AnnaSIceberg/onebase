@@ -174,6 +174,7 @@ type saveEntity struct {
 	Indexes       yaml.Node `yaml:"indexes,omitempty"`
 	ListMode      string    `yaml:"list_mode,omitempty"`
 	ListRefreshOn []string  `yaml:"list_refresh_on,omitempty"`
+	ListFilters   []string  `yaml:"list_filters,omitempty"`
 	NotifyChanges bool      `yaml:"notify_changes,omitempty"`
 	// InteractiveCreate — указатель: явное `false` обязано пережить round-trip.
 	InteractiveCreate *bool     `yaml:"interactive_create,omitempty"`

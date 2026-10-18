@@ -141,6 +141,7 @@ type rawEntity struct {
 	Activity      *rawActivity       `yaml:"activity"`
 	ListMode      string             `yaml:"list_mode"`
 	ListRefreshOn []string           `yaml:"list_refresh_on"`
+	ListFilters   []string           `yaml:"list_filters"`
 	NotifyChanges bool               `yaml:"notify_changes"`
 	// InteractiveCreate — указатель: отсутствие ключа значит «можно».
 	InteractiveCreate *bool           `yaml:"interactive_create"`
@@ -260,6 +261,7 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 	}
 	e.NotifyChanges = raw.NotifyChanges
 	e.NoInteractiveCreate = raw.InteractiveCreate != nil && !*raw.InteractiveCreate
+	e.ListFilters = trimStringList(raw.ListFilters)
 	if raw.TileView != nil {
 		e.TileView = &TileView{
 			Image:    strings.TrimSpace(raw.TileView.Image),
