@@ -932,6 +932,11 @@ func (w *docWriter) writeInContext(ctx context.Context) error {
 }
 
 func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) error {
+	if w.loaded || w.saved {
+		if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+			return err
+		}
+	}
 	isNew := !w.loaded && !w.saved
 	// Pre-образ живого списка (план 87): для существующего документа читаем строку
 	// ДО записи, чтобы прежний владелец убрал её из списка при смене прав.
@@ -1092,6 +1097,12 @@ func (w *docWriter) accessID() uuid.UUID {
 func (w *docWriter) conduct() error {
 	return w.withLockScope(func(ctx context.Context) error {
 		provisionalCreate := !w.loaded && !w.saved
+		// Capture the pre-image only after a concurrent posting/write finishes.
+		if !provisionalCreate {
+			if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+				return err
+			}
+		}
 		var before map[string]any
 		if w.entity.NotifyChanges && !provisionalCreate {
 			before, _ = w.s.store.GetByID(ctx, w.entity.Name, w.obj.ID, w.entity)
@@ -1117,6 +1128,9 @@ func (w *docWriter) postInContext(ctx context.Context) error {
 }
 
 func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, provisionalCreate bool, before map[string]any) error {
+	if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+		return err
+	}
 	// Инвариант: помеченный на удаление документ нельзя провести (как в 1С).
 	if marked, err := w.s.store.IsMarkedForDeletion(ctx, w.entity.Name, w.obj.ID); err != nil {
 		return err
