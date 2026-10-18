@@ -87,8 +87,8 @@ type Result struct {
 	// actual key returned by the SQL driver when the compiler rewrites a system
 	// register field (Период -> period, ВидДвижения -> вид_движения).
 	DSLColumnAliases map[string]string
-	// LongIdents — идентификаторы длиннее предела PostgreSQL, которые компилятор
-	// сократил в SQL: короткое имя → полное (#1946). По ней RestoreLongLabels
+	// LongIdents — выбранные выходные колонки с длинными логическими именами:
+	// физическая метка → полная логическая метка (#1946). По ней RestoreLongLabels
 	// возвращает меткам результата полные имена. Пусто почти всегда.
 	LongIdents map[string]string
 	// Projection — поэлементный разбор списка выборки (план 88E). Позволяет
@@ -135,8 +135,7 @@ func Compile(src string, opts CompileOpts) (Result, error) {
 	if err != nil {
 		return res, err
 	}
-	res.SQL, res.LongIdents = shortenLongIdents(res.SQL)
-	addSourceColumnLabels(&res, opts)
+	res.SQL, _ = shortenLongIdents(res.SQL)
 	if !hasLimit {
 		return res, nil
 	}
@@ -5382,9 +5381,15 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	if err := tr.assertRowFiltersApplied(); err != nil {
 		return Result{}, err
 	}
+	sql := tr.build()
+	longLabels, ambiguousLabels := longOutputLabels(tokens, sql, tr.sourceCtx)
+	if ambiguousLabels {
+		projectionPlan.Simple = false
+	}
 	typedColumns, dslColumnAliases := typedProjectionColumns(projectionPlan, tokens, opts, tr.sourceCtx, tr.refCols)
 	return Result{
-		SQL:              tr.build(),
+		SQL:              sql,
+		LongIdents:       longLabels,
 		Args:             tr.args,
 		Sources:          tr.sources,
 		ProjectionFields: expandReferenceProjection(projectionFields, tr.refDims),

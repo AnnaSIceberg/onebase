@@ -123,54 +123,160 @@ func isIdentPartBefore(sql string, i int) bool {
 	return isIdentPart(r) || r == '$'
 }
 
-// addSourceColumnLabels дополняет карту физическими именами длинных полей
-// источников запроса. Колонка, выбранная без псевдонима, приходит из базы под
-// своим физическим именем — уже коротким (его дал metadata.ColumnName), и
-// shortenLongIdents её не видит: в SQL длинного слова нет. Без этого метка
-// такой колонки зависела бы от того, ставит ли компилятор псевдоним, — то есть
-// от детали, которая меняется вместе с ним.
-func addSourceColumnLabels(res *Result, opts CompileOpts) {
-	add := func(fields []metadata.Field) {
-		for _, f := range fields {
-			logical := metadata.LogicalColumnName(f)
-			if len(logical) <= metadata.MaxSQLIdentBytes {
-				continue
+// longOutputLabels describes only the exported SELECT columns. SQL shortening
+// also visits table names, source aliases, predicates and nested SELECTs; none
+// of those names authorizes renaming an unrelated result column.
+func longOutputLabels(tokens []tok, sql string, ctx sourceContext) (map[string]string, bool) {
+	if !hasLongRun(sql) && !hasLongSourceColumns(ctx) {
+		return nil, false
+	}
+	items := selectOutputItems(tokens)
+	sqlItems := selectOutputItems(tokenize(sql))
+	if len(items) != len(sqlItems) {
+		return nil, true
+	}
+	bindings := map[string]string{}
+	ambiguous := false
+	add := func(physical, logical string) {
+		physical = metadata.SQLIdent(physical)
+		if previous, exists := bindings[physical]; exists && previous != logical {
+			ambiguous = true
+		}
+		bindings[physical] = logical
+	}
+	for i, item := range items {
+		col := outputLabelColumn(item)
+		out := outputLabelColumn(sqlItems[i])
+		if col.Star {
+			for _, label := range wildcardOutputLabels(item, tokens, ctx, 0, map[int]bool{}) {
+				add(label.physical, label.logical)
 			}
-			if res.LongIdents == nil {
-				res.LongIdents = make(map[string]string)
+			continue
+		}
+		// The emitted output alias (including aliases added for references and
+		// numeric casts) is authoritative. For a bare physical long field, the
+		// source projection supplies the full logical name missing from SQL.
+		if out.Alias != "" {
+			add(metadata.SQLIdent(out.Alias), out.Alias)
+		} else if len(out.Path) > 0 {
+			physical := lowerFast(out.Path[len(out.Path)-1])
+			logical := physical
+			if len(col.Output) > metadata.MaxSQLIdentBytes {
+				logical = col.Output
+				if metadata.SQLIdent(logical+"_id") == physical {
+					logical += "_id"
+				}
 			}
-			res.LongIdents[metadata.SQLIdent(logical)] = logical
+			add(metadata.SQLIdent(physical), logical)
 		}
 	}
-	for _, src := range res.Sources {
-		name, _, _ := strings.Cut(src.Name, ".")
-		for _, e := range opts.Entities {
-			if strings.EqualFold(e.Name, name) {
-				add(e.Fields)
-				for _, tp := range e.TableParts {
-					add(tp.Fields)
+	if ambiguous {
+		// Duplicate physical output names with different logical owners cannot
+		// be mapped safely after the driver has built a row map. Keep masking
+		// on its existing fail-closed path for an ambiguous projection.
+		return nil, true
+	}
+	var labels map[string]string
+	for physical, logical := range bindings {
+		if physical != logical && len(logical) > metadata.MaxSQLIdentBytes {
+			if labels == nil {
+				labels = map[string]string{}
+			}
+			labels[physical] = logical
+		}
+	}
+	return labels, false
+}
+
+func hasLongSourceColumns(ctx sourceContext) bool {
+	for _, scope := range ctx.scopes {
+		for _, columns := range scope.wildcardColumns {
+			for logical, physical := range columns {
+				if len(logical) > metadata.MaxSQLIdentBytes ||
+					(len(logical)+3 > metadata.MaxSQLIdentBytes && metadata.SQLIdent(logical+"_id") == physical) {
+					return true
 				}
 			}
 		}
-		for _, r := range opts.Registers {
-			if strings.EqualFold(r.Name, name) {
-				add(r.Dimensions)
-				add(r.Resources)
-				add(r.Attributes)
-			}
-		}
-		for _, r := range opts.InfoRegs {
-			if strings.EqualFold(r.Name, name) {
-				add(r.Dimensions)
-				add(r.Resources)
-			}
-		}
-		for _, r := range opts.AccountRegs {
-			if strings.EqualFold(r.Name, name) {
-				add(r.Resources)
-			}
+	}
+	return false
+}
+
+func outputLabelColumn(item []tok) ProjectionColumn {
+	start, end := trimProjectionParentheses(item, 0, len(item))
+	col, _ := parseProjectionItem(item[start:end])
+	return col
+}
+
+type outputLabel struct{ physical, logical string }
+
+func selectOutputItems(tokens []tok) [][]tok {
+	for i, t := range tokens {
+		if kw, ok := sqlKW(t.val); t.kind == tIdent && ok && kw == "SELECT" {
+			return splitProjectionItems(tokens[i+1 : topLevelFrom(tokens, i)])
 		}
 	}
+	return nil
+}
+
+// wildcardOutputLabels follows the selected qualifier, including projections
+// forwarded by a derived table. A JOIN source that is not selected contributes
+// no labels. Reference columns in a physical wildcard retain their _id suffix.
+func wildcardOutputLabels(item, tokens []tok, ctx sourceContext, scopeID int, seen map[int]bool) []outputLabel {
+	var labels []outputLabel
+	if scopeID < 0 || scopeID >= len(ctx.scopes) || seen[scopeID] {
+		return labels
+	}
+	seen[scopeID] = true
+	defer delete(seen, scopeID)
+	scope := ctx.scopes[scopeID]
+	qualifiers := []string{}
+	if len(item) == 3 && item[0].kind == tIdent && item[1].kind == tDot && item[2].kind == tStar {
+		qualifiers = append(qualifiers, lowerFast(item[0].val))
+	} else if len(item) == 1 && item[0].kind == tStar {
+		for qualifier := range scope.wildcardColumns {
+			qualifiers = append(qualifiers, qualifier)
+		}
+		for qualifier := range scope.derivedAliases {
+			qualifiers = append(qualifiers, qualifier)
+		}
+	} else {
+		return labels
+	}
+	for _, qualifier := range qualifiers {
+		for logical, physical := range scope.wildcardColumns[qualifier] {
+			if metadata.SQLIdent(logical+"_id") == physical {
+				logical += "_id"
+			}
+			labels = append(labels, outputLabel{metadata.SQLIdent(physical), logical})
+		}
+		child, derived := scope.derivedAliases[qualifier]
+		if !derived {
+			continue
+		}
+		child = ctx.scopes[child].unionFirst
+		for pos, t := range tokens {
+			id, ok := ctx.scopeIDAt(pos)
+			kw, isKW := sqlKW(t.val)
+			if !ok || id != child || t.kind != tIdent || !isKW || kw != "SELECT" {
+				continue
+			}
+			for _, projected := range splitProjectionItems(tokens[pos+1 : topLevelFrom(tokens, pos)]) {
+				col := outputLabelColumn(projected)
+				if col.Star {
+					labels = append(labels, wildcardOutputLabels(projected, tokens, ctx, child, seen)...)
+				} else if col.Output != "" {
+					physical := col.Output
+					if col.Alias == "" {
+						physical = ctx.derivedOutputColumn(tokens, child, col.Output, map[int]bool{})
+					}
+					labels = append(labels, outputLabel{metadata.SQLIdent(physical), col.Output})
+				}
+			}
+			break
+		}
+	}
+	return labels
 }
 
 // RestoreLongLabels возвращает меткам результата полные имена: колонка,
