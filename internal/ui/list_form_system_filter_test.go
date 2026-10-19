@@ -43,13 +43,21 @@ func TestUIListFormSystemUserIDMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 		dir := t.TempDir()
+		root, err := os.OpenRoot(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := root.Close(); err != nil {
+				t.Error(err)
+			}
+		})
 		write := func(name, body string) {
 			t.Helper()
-			p := filepath.Join(dir, name)
-			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			if err := root.MkdirAll(filepath.Dir(name), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			if err := root.WriteFile(name, []byte(body), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -169,7 +177,11 @@ elements:
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				var direct [][]bool
-				for _, field := range []string{"Author", "Author.id", "author.ID"} {
+				fields := []string{"Author", "Author.id", "author.ID"}
+				if tc.op == "empty" || tc.op == "not_empty" {
+					fields = append(fields, "Инициатор", "инициатор")
+				}
+				for _, field := range fields {
 					form(field, tc.op, tc.value, tc.roles)
 					if res := configcheck.RunFull(dir); !res.OK {
 						t.Fatalf("check %s: %+v", field, res.Issues)
@@ -207,9 +219,12 @@ elements:
 								t.Fatal(err)
 							}
 							rows, err := book.GetRows(book.GetSheetName(0))
-							book.Close()
+							closeErr := book.Close()
 							if err != nil {
 								t.Fatal(err)
+							}
+							if closeErr != nil {
+								t.Fatal(closeErr)
 							}
 							body = fmt.Sprint(rows)
 						}

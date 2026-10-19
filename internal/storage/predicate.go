@@ -221,6 +221,13 @@ func PredicateFieldKnown(entity *metadata.Entity, field string) bool {
 	return ok
 }
 
+// PredicateFieldIsReference resolves UUID fields with the same metadata and
+// synthetic aliases as PredicateSQL, including id and hierarchical parent_id.
+func PredicateFieldIsReference(entity *metadata.Entity, field string) bool {
+	_, resolved, ok := predicateColumn(entity, field)
+	return ok && resolved != nil && resolved.RefEntity != ""
+}
+
 func predicateColumn(entity *metadata.Entity, field string) (string, *metadata.Field, bool) {
 	name := strings.TrimSpace(field)
 	if name == "" {

@@ -144,18 +144,10 @@ func (s *Server) listFilterPredicate(entity *metadata.Entity, cond metadata.Form
 	// _users.id is the reference itself, including its NULL semantics. Do not
 	// resolve it through the configuration registry or expose private user fields.
 	if ok && strings.EqualFold(refField.RefEntity, metadata.SystemUsersEntity) && (!nested || strings.EqualFold(attr, "id")) {
-		// Stored references are UUID or NULL, never an empty string. The generic
-		// empty predicate also compares with '', which PostgreSQL rejects for UUID.
-		switch strings.ToLower(op) {
-		case "empty":
-			return storage.Predicate{Field: head, Op: "eq", Value: nil}, true
-		case "not_empty":
-			return storage.Predicate{Field: head, Op: "ne", Value: nil}, true
-		}
-		return storage.Predicate{Field: head, Op: op, Value: value}, true
+		return listFormFilterLeaf(entity, head, op, value), true
 	}
 	if !nested {
-		return storage.Predicate{Field: head, Op: op, Value: value}, true
+		return listFormFilterLeaf(entity, head, op, value), true
 	}
 	if !ok || refField.RefEntity == "" {
 		return storage.Predicate{}, false
@@ -164,11 +156,28 @@ func (s *Server) listFilterPredicate(entity *metadata.Entity, cond metadata.Form
 	if target == nil {
 		return storage.Predicate{}, false
 	}
+	leaf := listFormFilterLeaf(target, attr, op, value)
 	return storage.Predicate{
 		Field:        head,
 		RefEntity:    target,
-		RefPredicate: &storage.Predicate{Field: attr, Op: op, Value: value},
+		RefPredicate: &leaf,
 	}, true
+}
+
+// Form filters accept empty/not_empty for any reference leaf. UUID columns
+// store NULL rather than empty strings on both dialects; the generic predicate
+// also compares with an empty string, which PostgreSQL rejects for UUID.
+// Normalize only form-filter leaves, preserving string and row-access semantics.
+func listFormFilterLeaf(entity *metadata.Entity, field, op string, value any) storage.Predicate {
+	if storage.PredicateFieldIsReference(entity, field) {
+		switch strings.ToLower(op) {
+		case "empty":
+			op, value = "eq", nil
+		case "not_empty":
+			op, value = "ne", nil
+		}
+	}
+	return storage.Predicate{Field: field, Op: op, Value: value}
 }
 
 func (s *Server) rowAllowed(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, op string, row map[string]any) bool {
