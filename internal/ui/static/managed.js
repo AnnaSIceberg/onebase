@@ -807,6 +807,19 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
               inp.type = 'number';
               inp.step = 'any';
               inp.value = (v == null ? '' : v);
+            } else if (f.type === 'date') {
+              // Как при первичной отрисовке: иначе после первого же события
+              // формы дата снова становилась сырым текстом. Только для
+              // чтения — текст «19.10.2026 09:15:30», иначе поле даты.
+              if (readOnly) {
+                inp.type = 'text';
+                inp.value = window.obManagedDateText(v);
+                inp.setAttribute('data-ob-date-text', '');
+              } else {
+                inp.type = 'datetime-local';
+                inp.step = '1';
+                inp.value = window.obManagedDateInputValue(v);
+              }
             } else {
               inp.type = 'text';
               inp.value = (v == null ? '' : v);
@@ -2228,7 +2241,8 @@ function obManagedAddTpRow(btn) {
   var fields = meta.map(function (f) { return f.name; });
   var nums = meta.filter(function (f) { return f.type === 'number'; }).map(function (f) { return f.name; });
   var bools = meta.filter(function (f) { return f.type === 'bool'; }).map(function (f) { return f.name; });
-  addTpRow(tpName, fields, nums, tbody.rows.length, tbody, obManagedVirtualColumnNames(tbody), bools);
+  var dates = meta.filter(function (f) { return f.type === 'date'; }).map(function (f) { return f.name; });
+  addTpRow(tpName, fields, nums, tbody.rows.length, tbody, obManagedVirtualColumnNames(tbody), bools, dates);
   // Новая строка строится по data-tp-fields, где скрытые колонки перечислены
   // наравне с показываемыми (без них значения не уехали бы на сервер). Прячем
   // их ячейки так же, как это делают первичный рендер и applyTableParts.
@@ -2623,6 +2637,8 @@ function obGridColumnIds(columns) {
   // drop: vendored SlickGrid без Sortable.js свой reorder не включает) и
   // сохранение порядка за пользователем; «Стандартный порядок колонок»
   // возвращает порядок формы.
+  // Очередь общая для одного ключа, включая повторные представления таблицы.
+  var gridOrderSaves = Object.create(null);
   function enableColumnReorder(state, defaultIds) {
     var div = state.div, grid = state.grid;
     var key = div.getAttribute("data-sg-layout");
@@ -2642,11 +2658,28 @@ function obGridColumnIds(columns) {
     }
     function save(order) {
       if (!window.fetch) return;
-      var body = "grid=" + encodeURIComponent(key) + "&order=" + encodeURIComponent(order);
-      window.fetch("/ui/_grid-order", {
-        method: "POST", credentials: "same-origin",
-        headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: body
-      }).catch(function() {});
+      var queue = gridOrderSaves[key] || (gridOrderSaves[key] = {running: false, pending: null});
+      queue.pending = order; // Пустая строка — сброс, null — нет ожидающей записи.
+      if (queue.running) return;
+      function sendNext() {
+        if (queue.pending === null) {
+          queue.running = false;
+          delete gridOrderSaves[key];
+          return;
+        }
+        var body = "grid=" + encodeURIComponent(key) + "&order=" + encodeURIComponent(queue.pending);
+        queue.pending = null;
+        queue.running = true;
+        // Пока сервер не закончил старую запись, новую не отправляем.
+        // Ошибка не должна блокировать более позднее действие пользователя.
+        try {
+          window.fetch("/ui/_grid-order", {
+            method: "POST", credentials: "same-origin",
+            headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: body
+          }).then(sendNext, sendNext);
+        } catch (e) { sendNext(); }
+      }
+      sendNext();
     }
     function applyColumns() {
       grid.setColumns(state.columns);
@@ -3231,6 +3264,37 @@ function obGridColumnIds(columns) {
       seconds: (m[6] !== undefined) ? m[6] : ''
     };
   }
+
+  // obManagedDateInputValue — значение для <input type="datetime-local">:
+  // «ГГГГ-ММ-ДДTчч:мм[:сс]». Сервер отдаёт дату уже стенными часами без зоны;
+  // строку с зоной (Z или ±чч:мм) переводим в местное время браузера, а не
+  // отрезаем зону — иначе время сдвинулось бы на смещение.
+  function obManagedDateInputValue(value) {
+    if (value == null || value === '') return '';
+    var s = String(value);
+    if (/(Z|[+-]\d{2}:?\d{2})$/.test(s)) {
+      var d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        var p = function(n) { return (n < 10 ? '0' : '') + n; };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+          p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+      }
+    }
+    var parts = obManagedSplitDate(s);
+    if (!parts) return '';
+    return parts.date + 'T' + (parts.time || '00:00') + (parts.seconds ? ':' + parts.seconds : '');
+  }
+  window.obManagedDateInputValue = obManagedDateInputValue;
+
+  // obManagedDateText — дата текстом, как fmtDate на сервере: «19.10.2026»,
+  // со временем «19.10.2026 09:15:30», только когда оно ненулевое.
+  function obManagedDateText(value) {
+    var parts = obManagedSplitDate(obManagedDateInputValue(value));
+    if (!parts) return value == null ? '' : String(value);
+    var time = parts.time ? parts.time + ':' + (parts.seconds || '00') : '';
+    return (time && time !== '00:00:00') ? parts.day + ' ' + time : parts.day;
+  }
+  window.obManagedDateText = obManagedDateText;
 
   // obManagedFormatDate — вид даты в ячейке: «14.03.1985», со временем только
   // когда оно ненулевое. Тот же принцип, что у fmtDate на сервере.
