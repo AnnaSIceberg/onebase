@@ -176,6 +176,53 @@ func fmtDateValue(v any) string {
 	return fmt.Sprintf("%v", v)
 }
 
+// tpDateInputValue — значение даты строки табличной части для
+// <input type="datetime-local">: «2006-01-02T15:04:05» в местной зоне.
+// Строка приходит по-разному: из сериализации формы — уже стенными часами без
+// зоны, из базы — RFC3339 или time.Time. Строку без зоны нельзя разбирать как
+// UTC (formatDateValueForInput делает именно так — для значений из базы это
+// верно): время сдвинулось бы на смещение хоста. Что датой не разобралось,
+// отдаётся пустым: браузер всё равно очистил бы невалидное значение поля.
+func tpDateInputValue(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case time.Time:
+		return t.In(time.Local).Format(dateInputLayout)
+	case *time.Time:
+		if t == nil {
+			return ""
+		}
+		return t.In(time.Local).Format(dateInputLayout)
+	}
+	s := strings.TrimSpace(fmt.Sprintf("%v", v))
+	if i := strings.Index(s, " m=+"); i >= 0 {
+		s = s[:i]
+	}
+	if s == "" {
+		return ""
+	}
+	for _, layout := range []string{
+		time.RFC3339, time.RFC3339Nano,
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.In(time.Local).Format(dateInputLayout)
+		}
+	}
+	for _, layout := range []string{
+		"2006-01-02T15:04:05", "2006-01-02 15:04:05",
+		"2006-01-02T15:04", "2006-01-02",
+	} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t.Format(dateInputLayout)
+		}
+	}
+	return ""
+}
+
 func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 	translate := func(lang, key string) string {
 		if bundle != nil {
@@ -191,6 +238,13 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"infoRegKeyValue":       infoRegKeyValue,
 		"gridLayoutAttr":        gridLayoutAttr,
 		"gridOrderAttr":         gridOrderAttr,
+		// enterSubmitsForm — форма явно вернула себе прежний Enter-submit.
+		// Данные шаблона — карта, и ключа Form у автогенерённой формы может не
+		// быть вовсе: nil читается как «умолчание платформы», то есть навигация.
+		"enterSubmitsForm": func(v any) bool {
+			form, _ := v.(*metadata.FormModule)
+			return form != nil && form.EnterSubmitsForm
+		},
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
 			if proc == nil {
 				return processorParamPresencePrefix + name
@@ -359,6 +413,16 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// новая строка должна получить флажок, а не поле ввода (#1010). Имена
 		// перечислений JS достаёт из ob-tp-enum-labels, а тип bool в разметке
 		// автоформы больше ниоткуда не виден.
+		"tpDateInput": tpDateInputValue,
+		"dateFieldNamesCSV": func(fields []metadata.Field) string {
+			names := make([]string, 0, len(fields))
+			for _, f := range fields {
+				if f.Type == metadata.FieldTypeDate {
+					names = append(names, f.Name)
+				}
+			}
+			return strings.Join(names, ",")
+		},
 		"boolFieldNamesCSV": func(fields []metadata.Field) string {
 			names := make([]string, 0, len(fields))
 			for _, f := range fields {
@@ -1809,6 +1873,9 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 .w-list td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#334155}
 .w-list td.right{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .w-list tr:last-child td{border-bottom:none}
+.w-list .ob-row-link{cursor:pointer}
+.w-list .ob-row-link:hover td,.w-list .ob-row-link:focus-visible td{background:#eff6ff}
+.w-list .ob-row-link:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}
 .w-chart{min-height:240px}
 .w-chart-canvas{width:100%;height:240px}
 .w-actions-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
@@ -2444,7 +2511,7 @@ const tplForm = `
 {{end}}{{/* end if not .IsPopup */}}
 
 <div class="card">
-<form id="main-form" method="POST" data-ob-dirty-watch="1">
+<form id="main-form" method="POST" data-ob-dirty-watch="1"{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}>
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{if .IsPopup}}<input type="hidden" name="_popup" value="1">{{end}}
 {{if .Entity.Hierarchical}}
@@ -2574,6 +2641,11 @@ const tplForm = `
             <option value="{{.Value}}"{{if .Selected}} selected{{end}}{{if .Unknown}} style="color:#dc2626"{{end}}>{{if .Unknown}}⚠ {{end}}{{.Label}}</option>
             {{end}}
           </select>
+        {{else if eq (str .Type) "date"}}
+          {{/* Поле даты, а не текст: в текстовом поле стояла сырая метка
+               «2026-10-19T09:15:30». */}}
+          {{if $tpReadOnly}}<input type="text" name="tp.{{$tpName}}.{{$i}}.{{$fn}}" value="{{fmtDate (index $row $fn)}}" disabled data-ob-date-text>{{else}}<input type="datetime-local" step="1" name="tp.{{$tpName}}.{{$i}}.{{$fn}}" value="{{tpDateInput (index $row $fn)}}"
+            data-ob-tp-recalc>{{end}}
         {{else if eq (str .Type) "bool"}}
           {{/* Флажок, а не текст (#1010): в текстовом поле стояло сырое
                значение из БД («1» на SQLite), а разбор сохранения признаёт
@@ -2594,7 +2666,7 @@ const tplForm = `
   </tr></tfoot>
 </table>
 <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569;margin-bottom:8px"
-  data-ob-add-tp-row data-tp-name="{{$tpName}}" data-tp-fields="{{fieldNamesCSV .Fields}}" data-tp-num-fields="{{numberFieldNamesCSV .Fields}}" data-tp-bool-fields="{{boolFieldNamesCSV .Fields}}"
+  data-ob-add-tp-row data-tp-name="{{$tpName}}" data-tp-fields="{{fieldNamesCSV .Fields}}" data-tp-num-fields="{{numberFieldNamesCSV .Fields}}" data-tp-bool-fields="{{boolFieldNamesCSV .Fields}}" data-tp-date-fields="{{dateFieldNamesCSV .Fields}}"
   {{if $tpReadOnly}}disabled{{else}}title="Insert" aria-keyshortcuts="Insert"{{end}}>
   + {{t $.Lang "Добавить строку"}}
 </button>
@@ -3015,6 +3087,7 @@ const tplRegister = `
 {{template "reg-filter-form" (dict "Fields" .FilterFields "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" .ShowPeriodFilter "ShowToOnly" false "HasFilters" .HasFilters "ResetURL" (printf "/ui/register/%s" (lower .Register.Name)) "Lang" $.Lang)}}
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   {{if .ShowMovementKind}}<th>{{t $.Lang "Вид движения"}}</th>{{end}}
   {{if .ShowRecorder}}<th>{{t $.Lang "Регистратор"}}</th>{{end}}
@@ -3030,6 +3103,7 @@ const tplRegister = `
   {{range $.VisibleAttributes}}<td>{{index $row .Name}}</td>{{end}}
 </tr>{{end}}
 </tbody></table>
+</div>
 {{else}}<p class="empty">{{t $.Lang "Движений нет"}}</p>{{end}}
 </div></main></div></body></html>
 {{end}}
@@ -3044,6 +3118,7 @@ const tplRegister = `
 {{template "reg-filter-form" (dict "Fields" .FilterFields "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" false "ShowToOnly" .ShowPeriodFilter "HasFilters" .HasFilters "ResetURL" (printf "/ui/register/%s/balances" (lower .Register.Name)) "Lang" $.Lang)}}
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   {{range .VisibleDimensions}}<th>{{.DisplayName $.Lang}}</th>{{end}}
   {{range .VisibleResources}}<th>{{.DisplayName $.Lang}}</th>{{end}}
@@ -3053,6 +3128,7 @@ const tplRegister = `
   {{range $.VisibleResources}}<td style="font-weight:600">{{index $row .Name}}</td>{{end}}
 </tr>{{end}}
 </tbody></table>
+</div>
 {{else}}<p class="empty">{{t $.Lang "Остатков нет"}}</p>{{end}}
 </div></main></div></body></html>
 {{end}}
@@ -3494,6 +3570,7 @@ const tplInfoReg = `
 <div class="ob-list-wrap">
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   {{if .InfoReg.Periodic}}<th>{{t $.Lang "Период"}}</th>{{end}}
   {{range .InfoReg.Dimensions}}<th>{{.DisplayName $.Lang}}</th>{{end}}
@@ -3515,6 +3592,7 @@ const tplInfoReg = `
   </td>{{end}}
 </tr>{{end}}
 </tbody></table>
+</div>
 {{else}}<p class="empty">{{t $.Lang "Записей нет"}}</p>{{end}}
 </div>
 {{template "detail-panel" .}}
@@ -3740,6 +3818,7 @@ const tplJournal = `
 <div class="ob-list-wrap">
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   <th>{{t $.Lang "Документ"}}</th>
   {{range .JournalColumns}}<th>{{.DisplayLabel $.Lang}}</th>{{end}}
@@ -3760,6 +3839,7 @@ const tplJournal = `
 </tr>
 {{end}}
 </tbody></table>
+</div>
 {{else}}
 <p class="empty">{{t $.Lang "Документов нет"}}</p>
 {{end}}

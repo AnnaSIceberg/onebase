@@ -840,6 +840,19 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
               inp.type = 'number';
               inp.step = 'any';
               inp.value = (v == null ? '' : v);
+            } else if (f.type === 'date') {
+              // Как при первичной отрисовке: иначе после первого же события
+              // формы дата снова становилась сырым текстом. Только для
+              // чтения — текст «19.10.2026 09:15:30», иначе поле даты.
+              if (readOnly) {
+                inp.type = 'text';
+                inp.value = window.obManagedDateText(v);
+                inp.setAttribute('data-ob-date-text', '');
+              } else {
+                inp.type = 'datetime-local';
+                inp.step = '1';
+                inp.value = window.obManagedDateInputValue(v);
+              }
             } else {
               inp.type = 'text';
               inp.value = (v == null ? '' : v);
@@ -1648,7 +1661,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
 	  } catch (_) {}
 	  try {
 		if (window.parent && window.parent !== window) {
-		  window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
+		  window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL, documentToken: obManagedFrameDocumentToken}, location.origin);
 		}
 	  } catch (_) {}
 	}
@@ -2263,7 +2276,8 @@ function obManagedAddTpRow(btn) {
   var fields = meta.map(function (f) { return f.name; });
   var nums = meta.filter(function (f) { return f.type === 'number'; }).map(function (f) { return f.name; });
   var bools = meta.filter(function (f) { return f.type === 'bool'; }).map(function (f) { return f.name; });
-  addTpRow(tpName, fields, nums, tbody.rows.length, tbody, obManagedVirtualColumnNames(tbody), bools);
+  var dates = meta.filter(function (f) { return f.type === 'date'; }).map(function (f) { return f.name; });
+  addTpRow(tpName, fields, nums, tbody.rows.length, tbody, obManagedVirtualColumnNames(tbody), bools, dates);
   // Новая строка строится по data-tp-fields, где скрытые колонки перечислены
   // наравне с показываемыми (без них значения не уехали бы на сервер). Прячем
   // их ячейки так же, как это делают первичный рендер и applyTableParts.
@@ -2658,6 +2672,8 @@ function obGridColumnIds(columns) {
   // drop: vendored SlickGrid без Sortable.js свой reorder не включает) и
   // сохранение порядка за пользователем; «Стандартный порядок колонок»
   // возвращает порядок формы.
+  // Очередь общая для одного ключа, включая повторные представления таблицы.
+  var gridOrderSaves = Object.create(null);
   function enableColumnReorder(state, defaultIds) {
     var div = state.div, grid = state.grid;
     var key = div.getAttribute("data-sg-layout");
@@ -2677,11 +2693,28 @@ function obGridColumnIds(columns) {
     }
     function save(order) {
       if (!window.fetch) return;
-      var body = "grid=" + encodeURIComponent(key) + "&order=" + encodeURIComponent(order);
-      window.fetch("/ui/_grid-order", {
-        method: "POST", credentials: "same-origin",
-        headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: body
-      }).catch(function() {});
+      var queue = gridOrderSaves[key] || (gridOrderSaves[key] = {running: false, pending: null});
+      queue.pending = order; // Пустая строка — сброс, null — нет ожидающей записи.
+      if (queue.running) return;
+      function sendNext() {
+        if (queue.pending === null) {
+          queue.running = false;
+          delete gridOrderSaves[key];
+          return;
+        }
+        var body = "grid=" + encodeURIComponent(key) + "&order=" + encodeURIComponent(queue.pending);
+        queue.pending = null;
+        queue.running = true;
+        // Пока сервер не закончил старую запись, новую не отправляем.
+        // Ошибка не должна блокировать более позднее действие пользователя.
+        try {
+          window.fetch("/ui/_grid-order", {
+            method: "POST", credentials: "same-origin",
+            headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: body
+          }).then(sendNext, sendNext);
+        } catch (e) { sendNext(); }
+      }
+      sendNext();
     }
     function applyColumns() {
       grid.setColumns(state.columns);
@@ -3035,6 +3068,13 @@ function obGridColumnIds(columns) {
       window.openRefPicker(selEl);
     }
 
+    function ownsEnter(target) {
+      return target === input && isOpen && activeIdx >= 0 && !!shown[activeIdx];
+    }
+    // Document-capture навигации должен дать редактору выбрать подсказку
+    // раньше, чем коммитить ячейку. Состояние принадлежит этому редактору.
+    this.ownsEnter = ownsEnter;
+
     function onKeyDown(e) {
       var key = e.key || '';
       if (key === 'ArrowDown' && e.altKey) { e.preventDefault(); e.stopPropagation(); openPicker(); return; }
@@ -3053,7 +3093,7 @@ function obGridColumnIds(columns) {
         return;
       }
       if (key === 'Enter') {
-        if (isOpen && activeIdx >= 0 && shown[activeIdx]) {
+        if (ownsEnter(e.target)) {
           // Подставляем значение и ОСТАЁМСЯ в ячейке (ввод по строке в 1С);
           // следующий Enter/Tab уже коммитит правку средствами SlickGrid.
           e.preventDefault();
@@ -3259,6 +3299,37 @@ function obGridColumnIds(columns) {
       seconds: (m[6] !== undefined) ? m[6] : ''
     };
   }
+
+  // obManagedDateInputValue — значение для <input type="datetime-local">:
+  // «ГГГГ-ММ-ДДTчч:мм[:сс]». Сервер отдаёт дату уже стенными часами без зоны;
+  // строку с зоной (Z или ±чч:мм) переводим в местное время браузера, а не
+  // отрезаем зону — иначе время сдвинулось бы на смещение.
+  function obManagedDateInputValue(value) {
+    if (value == null || value === '') return '';
+    var s = String(value);
+    if (/(Z|[+-]\d{2}:?\d{2})$/.test(s)) {
+      var d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        var p = function(n) { return (n < 10 ? '0' : '') + n; };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+          p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+      }
+    }
+    var parts = obManagedSplitDate(s);
+    if (!parts) return '';
+    return parts.date + 'T' + (parts.time || '00:00') + (parts.seconds ? ':' + parts.seconds : '');
+  }
+  window.obManagedDateInputValue = obManagedDateInputValue;
+
+  // obManagedDateText — дата текстом, как fmtDate на сервере: «19.10.2026»,
+  // со временем «19.10.2026 09:15:30», только когда оно ненулевое.
+  function obManagedDateText(value) {
+    var parts = obManagedSplitDate(obManagedDateInputValue(value));
+    if (!parts) return value == null ? '' : String(value);
+    var time = parts.time ? parts.time + ':' + (parts.seconds || '00') : '';
+    return (time && time !== '00:00:00') ? parts.day + ' ' + time : parts.day;
+  }
+  window.obManagedDateText = obManagedDateText;
 
   // obManagedFormatDate — вид даты в ячейке: «14.03.1985», со временем только
   // когда оно ненулевое. Тот же принцип, что у fmtDate на сервере.
@@ -3800,6 +3871,70 @@ function obGridColumnIds(columns) {
     updateTotals(g);
   };
 
+  // gridFirstEditableCell — первая колонка строки, в которую можно встать.
+  // Служебные колонки (маркер выбора, номер) редактировать нельзя, и вставать
+  // на них оператору незачем.
+  function gridFirstEditableCell(g, row) {
+    var cols = g.grid.getColumns() || [];
+    for (var i = 0; i < cols.length; i++) {
+      if (g.grid.isCellEditable && !g.grid.isCellEditable(row, i)) continue;
+      return i;
+    }
+    return 0;
+  }
+
+  // gridEnterNavigate — коммит текущей ячейки и переход к следующей.
+  function gridEnterNavigate(g) {
+    if (!g || !g.grid) return false;
+    var grid = g.grid;
+    var lock = grid.getEditorLock && grid.getEditorLock();
+    if (lock && lock.isActive() && !lock.commitCurrentEdit()) {
+      // Значение не принято редактором — остаёмся в ячейке, чтобы человек
+      // увидел отказ там же, где ввёл.
+      return true;
+    }
+    var active = grid.getActiveCell();
+    var rows = (g.dataView && g.dataView.getLength) ? g.dataView.getLength() : 0;
+    if (!active) {
+      if (rows > 0) grid.setActiveCell(0, gridFirstEditableCell(g, 0));
+      return true;
+    }
+    var cols = (grid.getColumns() || []).length;
+    if (active.row >= rows - 1 && active.cell >= cols - 1) {
+      // Конец таблицы: ни новой строки, ни записи.
+      return true;
+    }
+    if (grid.navigateNext) grid.navigateNext();
+    return true;
+  }
+
+  // obGridFocusFirstCell — вход в табличную часть из шапки формы: фокус
+  // становится в первую доступную ячейку. Зовёт ui.js, когда следующей
+  // остановкой маршрута Enter оказывается грид.
+  window.obGridFocusFirstCell = function(host) {
+    var tpName = host && host.getAttribute ? (host.getAttribute("data-sg-tp") || "") : "";
+    // Одна ТЧ может иметь readonly и writable представления. Проверяем именно
+    // host маршрута, а не канонический writable grid с тем же именем.
+    var g = host && host._obGridState;
+    if (!g || !g.grid || g.div !== host || g.readOnly ||
+        !document.contains(host) || !managedElementVisible(host)) return false;
+    var rows = (g.dataView && g.dataView.getLength) ? g.dataView.getLength() : 0;
+    if (rows <= 0) return false;
+    var lock = g.grid.getEditorLock && g.grid.getEditorLock();
+    if (lock && lock.isActive() && !lock.commitCurrentEdit()) {
+      // setActiveCell уничтожает редактор без коммита. При отказе валидации
+      // редактор сохраняет ввод и фокус; нажатие обработано, маршрут не продолжаем.
+      return true;
+    }
+    var cell = gridFirstEditableCell(g, 0);
+    g.grid.setActiveCell(0, cell);
+    if (g.grid.focus) g.grid.focus();
+    var active = g.grid.getActiveCell();
+    if (!active || active.row !== 0 || active.cell !== cell || !host.contains(document.activeElement)) return false;
+    rememberActiveGrid(tpName);
+    return true;
+  };
+
   function gridNameFromTarget(el) {
     var host = el && el.closest ? el.closest(".ob-grid[data-sg-tp]") : null;
     return host ? (host.getAttribute("data-sg-tp") || "") : "";
@@ -3908,6 +4043,26 @@ function obGridColumnIds(columns) {
       if (e.key === "Insert" && !e.ctrlKey) {
         take();
         if (window.obGridAddRow) window.obGridAddRow(tp);
+        return;
+      }
+      // Enter в табличной части — переход к следующей колонке, а из последней
+      // колонки к первой колонке следующей строки (#1486). На конце таблицы
+      // фокус остаётся на месте: строку не создаём и форму не записываем.
+      // Штатный Enter грида коммитит ячейку и остаётся в ней, поэтому берём
+      // клавишу себе в фазе перехвата и делаем оба шага явно.
+      if (e.key === "Enter" && !e.ctrlKey && direct) {
+        if (e.isComposing === true || e.keyCode === 229) {
+          // Оставляем браузеру подтверждение IME, но не передаём Enter
+          // SlickGrid: при keyCode=13 он тоже завершил бы редактор.
+          e.stopPropagation();
+          return;
+        }
+        var form = active.div && active.div.closest('form');
+        if (form && form.getAttribute('data-ob-enter-submits') === '1') return;
+        var editor = active.grid.getCellEditor();
+        if (editor && editor.ownsEnter && editor.ownsEnter(e.target)) return;
+        take();
+        gridEnterNavigate(active);
         return;
       }
       // Явный hotkey кнопки формы важнее встроенного значения клавиши.
