@@ -231,3 +231,46 @@ for (const scenario of ['unchecked', 'nested', 'local-required', 'checked']) {
     expect(result.values.Flag).toBe(checked);
   });
 }
+
+for (const scenario of ['before', 'after', 'nested']) {
+  test(`checkbox controls page visibility before native Save, ${scenario}`, async ({ page }) => {
+    const name = `PageCondition${scenario}`;
+    await open(page, name);
+    const flag = page.locator('input[type="checkbox"][name="Flag"]');
+    const text = page.locator('input[name="Text"]');
+    await expect(flag).toBeChecked();
+    await expect(text).toHaveAttribute('required', '');
+    for (let i = 0; i < 2; i++) {
+      const hidden = await event(page, 'HidePage');
+      expect(hidden.values.Flag).toBe(false);
+      expect(Object.values(hidden.elementStates.hidden)).toContain(true);
+      await expect(text).not.toHaveAttribute('required');
+      await event(page, 'ShowPage');
+      await expect(flag).toBeChecked();
+      await expect(text).toHaveAttribute('required', '');
+    }
+    await event(page, 'HidePage');
+    await expect(flag).not.toBeChecked();
+    await expect(tab(page, 'Conditional')).toBeHidden();
+    const entries = await page.locator('#main-form').evaluate((form) => Array.from(new FormData(form).entries()));
+    expect(entries.filter(([key]) => key === '_ob_present_Flag')).toEqual([['_ob_present_Flag', '1']]);
+    expect(entries.filter(([key]) => key === 'Flag')).toEqual([]);
+    expect(entries.filter(([key]) => key === 'Text')).toEqual([['Text', '']]);
+    const saved = page.waitForResponse((r) => r.url() === urls[name] && r.request().method() === 'POST');
+    const reloaded = page.waitForEvent('domcontentloaded');
+    await page.locator('#main-form').evaluate((form) => form.requestSubmit());
+    const response = await saved;
+    expect(response.status()).toBe(303);
+    const submitted = new URLSearchParams(response.request().postData());
+    expect(submitted.get('_ob_present_Flag')).toBe('1');
+    expect(submitted.has('Flag')).toBe(false);
+    await reloaded;
+    const stored = await page.request.post(urls[name].replace(/\/[^/]+$/, '/form-event'), { form: {
+      _id: urls[name].split('/').pop(), _kind: 'object', _element: 'Read', _event: 'Нажатие',
+    } });
+    const result = await stored.json();
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    expect(result.values.Flag).toBe(false);
+    expect(result.values.Text ?? '').toBe('');
+  });
+}

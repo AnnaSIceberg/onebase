@@ -65,6 +65,34 @@ func (s *Server) validateManagedFormRequired(
 		return nil
 	}
 
+	// Materialise every submitted editable checkbox before evaluating any
+	// condition. A page may depend on a checkbox later in the form tree, so
+	// normalising inside the required-field walk makes visibility order-dependent.
+	// Share the partial-write presence rules and preserve explicit true/false.
+	checkboxes := checkboxOmittedFields(form, entity, submittedFormKeys(r))
+	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+		element := visit.element
+		if element == nil || visit.parentTablePart != nil || visit.effectiveReadOnly {
+			return
+		}
+		field, entityField := managedFormElementEntityField(entity, element)
+		if entityField && element.Kind == metadata.FormElementCheckbox && field.Type == metadata.FieldTypeBool && checkboxes[strings.ToLower(field.Name)] {
+			value, given := maskCIKeyValue(values, field.Name)
+			// An editable checkbox omitted by the browser is the meaningful
+			// value false, not an absent value. Materialise it independently of
+			// required validation so every managed-form submit keeps the normal
+			// two-valued checkbox contract.
+			if !given || value == nil {
+				// The browser encodes an unchecked checkbox by omitting its key.
+				if storedKey, exists := maskCIKey(values, field.Name); exists {
+					values[storedKey] = false
+				} else {
+					values[field.Name] = false
+				}
+			}
+		}
+	})
+
 	lang := s.resolveLang(r)
 	// Only conditionally hidden pages suspend the form-local rule. An ordinary
 	// inactive page remains available for input. Recompute from submitted values,
@@ -83,9 +111,6 @@ func (s *Server) validateManagedFormRequired(
 			hiddenPages = append(hiddenPages, visit.path+".")
 		}
 	})
-	// Share partial-write presence rules: a conditional control without its
-	// marker is absent, rather than an unchecked editable checkbox.
-	checkboxes := checkboxOmittedFields(form, entity, submittedFormKeys(r))
 	seen := make(map[string]bool)
 	var missing []string
 	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
@@ -108,21 +133,7 @@ func (s *Server) validateManagedFormRequired(
 		}
 
 		field, entityField := managedFormElementEntityField(entity, element)
-		if entityField && element.Kind == metadata.FormElementCheckbox && field.Type == metadata.FieldTypeBool && checkboxes[strings.ToLower(field.Name)] {
-			value, given := maskCIKeyValue(values, field.Name)
-			// An editable checkbox omitted by the browser is the meaningful
-			// value false, not an absent value. Materialise it independently of
-			// required validation so every managed-form submit keeps the normal
-			// two-valued checkbox contract.
-			if !given || value == nil {
-				// The browser encodes an unchecked checkbox by omitting its key.
-				if storedKey, exists := maskCIKey(values, field.Name); exists {
-					values[storedKey] = false
-				} else {
-					values[field.Name] = false
-				}
-			}
-		}
+
 		for _, prefix := range hiddenPages {
 			if strings.HasPrefix(visit.path, prefix) {
 				return
