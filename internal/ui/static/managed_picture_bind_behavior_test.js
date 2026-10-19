@@ -41,14 +41,18 @@ function setup(initial, withEditor, missingEditor, renderedAttrs) {
   input.tagName = 'INPUT';
   const editor = withEditor ? node({ type: 'text', name: 'ФотоПревью', value: initial }) : null;
   if (editor) { editor.type = 'text'; editor.tagName = 'INPUT'; }
-  const named = missingEditor ? null : (editor || input);
+  // Resolve name at query time: a preview can become the submitting carrier
+  // when the GET omitted its editor inside a hidden container.
+  const named = () => missingEditor
+    ? (input.getAttribute('name') === field ? input : null)
+    : (editor || input);
   const img = node({ src: '' });
   const link = node({ href: '' });
   link.children.push(img);
   const empty = node({});
   const form = {
     querySelector(sel) {
-      if (sel === '[name="' + field + '"]') return named;
+      if (sel === '[name="' + field + '"]') return named();
       if (sel === '[data-ob-picture-link="ПолеФото"]') return link;
       if (sel === '[data-ob-picture-empty="ПолеФото"]') return empty;
       return null;
@@ -56,7 +60,7 @@ function setup(initial, withEditor, missingEditor, renderedAttrs) {
     // applyValues обновляет все копии реквизита (querySelectorAll по name).
     querySelectorAll(sel) {
       if (sel === 'input[data-ob-picture-for]') return [input];
-      return sel === '[name="' + field + '"]' && named ? [named] : [];
+      return sel === '[name="' + field + '"]' && named() ? [named()] : [];
     },
   };
   const ctx = {

@@ -513,15 +513,19 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
     form.querySelectorAll('input[data-ob-picture-for]').forEach(function(inp){
       var name = inp.getAttribute('data-ob-picture-for');
       // Rendered editors keep their applied value (including concurrent typing).
-      // If a hidden container omitted the editor from the DOM, update this
-      // unnamed preview state directly from the event response.
+      // If a hidden container omitted the editor from the DOM, this preview
+      // becomes the submitting control. A second preview finds that control
+      // by name, so only one carrier is created for the field.
       var field = inp.getAttribute('data-ob-picture-field');
       if (field && !inp.getAttribute('name')) {
         var editor = form.querySelector('[name="' + esc(field) + '"]');
         if (editor) {
           inp.value = editor.value;
-        } else if (values && Object.prototype.hasOwnProperty.call(values, field)) {
-          inp.value = values[field] == null ? '' : String(values[field]);
+        } else {
+          inp.setAttribute('name', field);
+          if (values && Object.prototype.hasOwnProperty.call(values, field)) {
+            inp.value = values[field] == null ? '' : String(values[field]);
+          }
         }
       }
       var id = String(inp.value || '').trim().toLowerCase();
