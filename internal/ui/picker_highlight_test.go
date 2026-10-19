@@ -61,3 +61,39 @@ func TestPicker_NoHighlightByDefault(t *testing.T) {
 		}
 	}
 }
+
+// Highlight must survive the same form event that configures the newer window
+// options; both selectable and read-only pickers share this response path.
+func TestPicker_HighlightWithWindowOptions(t *testing.T) {
+	for _, noSelect := range []bool{false, true} {
+		t.Run(map[bool]string{false: "selectable", true: "view-only"}[noSelect], func(t *testing.T) {
+			mode := "Ложь"
+			if noSelect {
+				mode = "Истина"
+			}
+			resp := pickerHighlightResponse(t, `
+Конфиг.Вставить("ПолеВыделения", "Архивная");
+Конфиг.Вставить("Ширина", 960);
+Поля = Новый Массив;
+Поля.Добавить(Новый Структура("Имя,Заголовок,Значение", "Артикул", "Артикул", "C005"));
+Конфиг.Вставить("ПоляШапки", Поля);
+Конфиг.Вставить("БезВыбора", `+mode+`);`)
+			if resp.Error != "" || resp.PickerData == nil || len(resp.PickerData.Rows) != 2 {
+				t.Fatalf("form event response: %+v", resp)
+			}
+			cfg := resp.PickerData.Config
+			if cfg.Width != 960 || cfg.NoSelect != noSelect || len(cfg.HeaderFields) != 1 {
+				t.Fatalf("window options lost: %+v", cfg)
+			}
+			if field := cfg.HeaderFields[0]; field.Name != "Артикул" || field.Value != "C005" {
+				t.Fatalf("header field lost: %+v", field)
+			}
+			if resp.PickerData.Rows[0].Highlight || !resp.PickerData.Rows[1].Highlight {
+				t.Fatalf("highlight lost: %+v", resp.PickerData.Rows)
+			}
+			if _, ok := resp.PickerData.Rows[1].Data["Архивная"]; ok {
+				t.Fatal("non-column highlight flag leaked into row data")
+			}
+		})
+	}
+}
