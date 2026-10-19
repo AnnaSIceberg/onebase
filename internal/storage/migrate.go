@@ -202,6 +202,20 @@ func (db *DB) migrateInfoRegister(ctx context.Context, ir *metadata.InfoRegister
 	if _, err := db.Exec(ctx, CreateInfoRegisterRecorderIndexSQL(ir.Name)); err != nil {
 		return fmt.Errorf("migrate info register %s recorder index: %w", ir.Name, err)
 	}
+	// Индексы из indexes — тоже после fixInfoRegPK, по той же причине.
+	for _, idx := range ir.Indexes {
+		cols := make([]string, 0, len(idx.Fields))
+		for _, name := range idx.Fields {
+			col, ok := metadata.InfoRegisterIndexColumn(ir, name)
+			if !ok {
+				return fmt.Errorf("migrate info register %s: index references unknown field %s", ir.Name, name)
+			}
+			cols = append(cols, col)
+		}
+		if _, err := db.Exec(ctx, CreateEntityIndexSQL(table, cols, false)); err != nil {
+			return fmt.Errorf("migrate info register %s index: %w", ir.Name, err)
+		}
+	}
 	return nil
 }
 

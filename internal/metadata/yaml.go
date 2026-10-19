@@ -141,6 +141,7 @@ type rawEntity struct {
 	Activity      *rawActivity       `yaml:"activity"`
 	ListMode      string             `yaml:"list_mode"`
 	ListRefreshOn []string           `yaml:"list_refresh_on"`
+	ListFilters   []string           `yaml:"list_filters"`
 	NotifyChanges bool               `yaml:"notify_changes"`
 	TileView      *rawTileView       `yaml:"tile_view"`
 	DetailPanel   *rawDetailPanel    `yaml:"detail_panel"`
@@ -257,6 +258,7 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 		}
 	}
 	e.NotifyChanges = raw.NotifyChanges
+	e.ListFilters = trimStringList(raw.ListFilters)
 	if raw.TileView != nil {
 		e.TileView = &TileView{
 			Image:    strings.TrimSpace(raw.TileView.Image),
@@ -530,6 +532,7 @@ type rawInfoRegister struct {
 	Recorder   bool              `yaml:"recorder"`
 	Dimensions []rawField        `yaml:"dimensions"`
 	Resources  []rawField        `yaml:"resources"`
+	Indexes    []rawIndex        `yaml:"indexes"`
 }
 
 func LoadInfoRegisterFile(path string) (*InfoRegister, error) {
@@ -551,6 +554,12 @@ func LoadInfoRegisterFile(path string) (*InfoRegister, error) {
 	}
 	for _, rf := range raw.Resources {
 		ir.Resources = append(ir.Resources, parseField(rf))
+	}
+	for _, ri := range raw.Indexes {
+		ir.Indexes = append(ir.Indexes, IndexSpec{Fields: trimStringList(ri.Fields), Unique: ri.Unique})
+	}
+	if err := ValidateInfoRegisterIndexes(ir); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return ir, nil
 }
