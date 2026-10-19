@@ -93,7 +93,9 @@ func TestManagedPageCheckboxConditionHTTPMatrix(t *testing.T) {
 						t.Fatal(err)
 					}
 					rendered, err := io.ReadAll(resp.Body)
-					resp.Body.Close()
+					if err := resp.Body.Close(); err != nil {
+						t.Errorf("close response body: %v", err)
+					}
 					if err != nil || resp.StatusCode != http.StatusOK {
 						t.Fatalf("GET %d: %v %s", resp.StatusCode, err, rendered)
 					}
@@ -128,7 +130,9 @@ func TestManagedPageCheckboxConditionHTTPMatrix(t *testing.T) {
 							t.Fatal(err)
 						}
 						body, err := io.ReadAll(response.Body)
-						response.Body.Close()
+						if err := response.Body.Close(); err != nil {
+							t.Errorf("close response body: %v", err)
+						}
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -179,7 +183,9 @@ func TestManagedPageCheckboxConditionHTTPMatrix(t *testing.T) {
 						t.Fatal(err)
 					}
 					body, err := io.ReadAll(response.Body)
-					response.Body.Close()
+					if err := response.Body.Close(); err != nil {
+						t.Errorf("close response body: %v", err)
+					}
 					if err != nil {
 						t.Fatal(err)
 					}
