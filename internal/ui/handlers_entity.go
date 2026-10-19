@@ -21,6 +21,7 @@ import (
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/entityservice"
 	"github.com/ivantit66/onebase/internal/exchange"
+	"github.com/ivantit66/onebase/internal/i18n/i18nerr"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/storage"
@@ -158,7 +159,15 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		treeRows = buildCatalogTree(allRows)
 	}
 
-	refFilterOptions, _ := s.loadInitialRefFilterOptions(r.Context(), entity, params)
+	// Варианты выбора — только полям, которые панель «Отбор» показывает: при
+	// list_filters это основной набор, добавленные пользователем и уже
+	// включённые отборы. Раньше варианты грузились всем ссылочным реквизитам
+	// сущности, и у документа с тремя полями в панели список открывался
+	// секунды: справочник адресов в 600 тыс. строк сортировался ради поля,
+	// которого на экране нет.
+	listFilterExtra := s.listFilterExtra(r, entity)
+	panelFields := listFilterPanelFields(map[string]any{"Entity": entity, "ListFilterExtra": listFilterExtra, "Params": params})
+	refFilterOptions, _ := s.loadInitialRefFilterOptions(r.Context(), entity, params, panelFields)
 
 	user := auth.UserFromContext(r.Context())
 	isAdmin := user == nil || user.IsAdmin
@@ -197,6 +206,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"EnumLabels":       s.buildEnumLabels(entity, lang),
 		"BasedOnActions":   s.basedOnActions(r, entity, lang),
 		"RequestURI":       r.URL.RequestURI(),
+		"ListFilterExtra":  listFilterExtra,
 	})
 }
 
@@ -779,7 +789,7 @@ func (s *Server) parseSubmitForm(w http.ResponseWriter, r *http.Request, entity 
 		var parseErr error
 		tpRows, parseErr = parseTablePartRowsForManagedForm(r, entity, form, true)
 		if parseErr != nil {
-			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, parseErr.Error(), tpRows)
+			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, s.errText(r, parseErr), tpRows)
 			return
 		}
 		// ValueTable attributes are form-local and are not persisted by
@@ -788,7 +798,7 @@ func (s *Server) parseSubmitForm(w http.ResponseWriter, r *http.Request, entity 
 		// through the hooks; Save still writes only entity.TableParts.
 		valueTables, parseErr := parseValueTableRowsForManagedForm(r, form, entity, true)
 		if parseErr != nil {
-			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, parseErr.Error(), tpRows)
+			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, s.errText(r, parseErr), tpRows)
 			return
 		}
 		for name, rows := range valueTables {
@@ -798,7 +808,7 @@ func (s *Server) parseSubmitForm(w http.ResponseWriter, r *http.Request, entity 
 		var parseErr error
 		tpRows, parseErr = parseTablePartRows(r, entity)
 		if parseErr != nil {
-			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, parseErr.Error(), tpRows)
+			s.renderObjectFormBadRequest(w, r, entity, existingID == nil, s.errText(r, parseErr), tpRows)
 			return
 		}
 	}
@@ -952,6 +962,14 @@ func (s *Server) renderObjectFormBadRequest(w http.ResponseWriter, r *http.Reque
 	s.renderObjectFormError(w, r, entity, isNew, errMsg, nil, tpRows)
 }
 
+// An ownership refusal concerns the submitted data, so keep the current attempt
+// for retry instead of reloading the persisted object like a version conflict.
+func (s *Server) renderObjectFormConflict(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, isNew bool, message string, messages []string, tpRows map[string][]map[string]any) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusConflict)
+	s.renderObjectFormError(w, r, entity, isNew, message, messages, tpRows)
+}
+
 func (s *Server) renderManagedObjectSaveFailure(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, isNew bool, obj *runtime.Object, messages []string, saveErr error) {
 	var failure *managedCloseSaveError
 	if !errors.As(saveErr, &failure) {
@@ -963,6 +981,8 @@ func (s *Server) renderManagedObjectSaveFailure(w http.ResponseWriter, r *http.R
 		s.renderForbidden(w, r)
 	case managedSaveConflict:
 		s.renderVersionConflict(w, r, entity, obj.ID)
+	case managedSaveOwnershipConflict:
+		s.renderObjectFormConflict(w, r, entity, isNew, failure.message, messages, obj.TablePartRows)
 	case managedSaveValidation:
 		s.renderObjectFormBadRequest(w, r, entity, isNew, failure.message, obj.TablePartRows)
 	default:
@@ -1059,6 +1079,14 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, errSubmitFormHook) {
 			s.renderObjectFormError(w, r, entity, true, formHookErr.Error(), hookMsgs, obj.TablePartRows)
+			return
+		}
+		if errors.Is(err, storage.ErrInfoRegOwnershipConflict) {
+			s.renderObjectFormConflict(w, r, entity, true, s.errText(r, err), hookMsgs, obj.TablePartRows)
+			return
+		}
+		if errors.Is(err, storage.ErrCodeDuplicate) {
+			s.renderObjectFormBadRequest(w, r, entity, true, s.errText(r, err), obj.TablePartRows)
 			return
 		}
 		s.serverError(w, r, err)
@@ -1212,11 +1240,6 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Тексты просмотра, зависящие от КОНТЕКСТА подбора (choice_preview_proc):
-	// вызывающая форма прислала, например, филиал звонка, и памятка по
-	// направлению собирается уже под него. Ошибка процедуры не валит подбор:
-	// выбирать элемент оператору нужно в любом случае, а текст справа —
-	// вспомогательный (что сломалось, видно в логе сервера).
 	// Динамический preview (choice_preview_proc) обслуживается POST /page:
 	// GET остаётся статическим и обратно совместимым (план 168, инвариант 1).
 	previewField := canonicalChoicePreviewField(ent)
@@ -1778,6 +1801,14 @@ func (s *Server) submitEdit(w http.ResponseWriter, r *http.Request) {
 			s.renderVersionConflict(w, r, entity, id)
 			return
 		}
+		if errors.Is(err, storage.ErrInfoRegOwnershipConflict) {
+			s.renderObjectFormConflict(w, r, entity, false, s.errText(r, err), hookMsgs, obj.TablePartRows)
+			return
+		}
+		if errors.Is(err, storage.ErrCodeDuplicate) {
+			s.renderObjectFormBadRequest(w, r, entity, false, s.errText(r, err), obj.TablePartRows)
+			return
+		}
 		s.serverError(w, r, err)
 		return
 	}
@@ -1901,10 +1932,13 @@ func (s *Server) postDocument(w http.ResponseWriter, r *http.Request) {
 	// берёт pg_advisory_xact_lock до чтения остатков — раньше хук работал вне
 	// транзакции и блокировки вырождались в no-op. Коллектор освобождает
 	// внутрипроцессные мьютексы после коммита/отката.
-	lockCollector := runtime.NewLockCollector()
+	lockCollector := runtime.NewLockCollectorIn(r.Context())
 	defer lockCollector.ReleaseAll()
 	var hookErrMsg string
 	if err := s.store.WithTxScope(r.Context(), func(ctx context.Context) error {
+		if err := s.store.LockMovementRecorder(ctx, entity, id); err != nil {
+			return err
+		}
 		ctx = runtime.ContextWithLockCollector(ctx, lockCollector)
 		if errMsg, _ := s.runOnPostCtx(ctx, obj, mc); errMsg != "" {
 			hookErrMsg = errMsg
@@ -1946,6 +1980,10 @@ func (s *Server) postDocument(w http.ResponseWriter, r *http.Request) {
 		// Регистрация изменения в планах обмена (план 86) — в той же транзакции.
 		return exchange.RegisterOnSave(ctx, s.store, s.reg.ExchangePlans(), entity, id, false)
 	}); err != nil {
+		if errors.Is(err, storage.ErrInfoRegOwnershipConflict) {
+			http.Redirect(w, r, docURL+"?posting_error="+url.QueryEscape(s.errText(r, err)), http.StatusSeeOther)
+			return
+		}
 		if hookErrMsg != "" {
 			http.Redirect(w, r, docURL+"?posting_error="+url.QueryEscape(hookErrMsg), http.StatusSeeOther)
 			return
@@ -2001,6 +2039,16 @@ func (s *Server) clearMovements(ctx context.Context, entityName string, id uuid.
 func (s *Server) markForDeletion(ctx context.Context, entity *metadata.Entity, id uuid.UUID, mark bool) error {
 	return s.store.WithTxScope(ctx, func(txCtx context.Context) error {
 		if mark && entity.Posting {
+			// Строка регистратора берётся ДО чтения posted и до clearMovements:
+			// порядок «строка регистратора → локи итогов» здесь тот же, что у
+			// Save, Repost, отмены и удаления. Раньше пометка шла наоборот —
+			// сперва clearMovements с локами итогов, и лишь затем SetPosted,
+			// которому нужна строка; с перепроведением того же документа это
+			// давало цикл и PostgreSQL снимал одну из операций с 40P01. Чтение
+			// posted под той же блокировкой заодно убирает скан до блокировки.
+			if err := s.store.LockMovementRecorder(txCtx, entity, id); err != nil {
+				return err
+			}
 			row, err := s.store.GetByID(txCtx, entity.Name, id, entity)
 			if err != nil {
 				return err
@@ -2394,33 +2442,13 @@ func (s *Server) deleteMarked(w http.ResponseWriter, r *http.Request) {
 		http.StatusSeeOther)
 }
 
+// saveMovements записывает движения DSL-путей записи документа (Записать /
+// Провести из модуля, проведение из списка) той же реализацией, что Save и
+// Repost: своя копия здесь отставала — не снимала прежние движения из регистров,
+// которых модуль в этот раз не коснулся, и брала локи итогов в случайном
+// порядке обхода map (#626).
 func (s *Server) saveMovements(ctx context.Context, docType string, docID uuid.UUID, mc *runtime.MovementsCollector) error {
-	for regName, rows := range mc.All() {
-		// try accumulation register first
-		reg := s.reg.GetRegister(regName)
-		if reg != nil {
-			if err := s.store.WriteMovements(ctx, regName, docType, docID, rows, reg, mc.Period); err != nil {
-				return err
-			}
-			continue
-		}
-		// try account register
-		ar := s.reg.GetAccountRegister(regName)
-		if ar != nil {
-			if err := s.store.WriteAccountMovements(ctx, regName, docType, docID, rows, ar, mc.Period); err != nil {
-				return err
-			}
-			continue
-		}
-		// try info register (замечание #23)
-		ir := s.reg.GetInfoRegister(regName)
-		if ir != nil {
-			if err := s.store.WriteInfoMovements(ctx, regName, docType, docID, rows, ir, mc.Period); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return s.entityService().ReplaceMovements(ctx, docType, docID, mc)
 }
 
 // setPeriodFromFields ставит период движений по дате документа — тем же
@@ -2604,7 +2632,7 @@ func parseManagedTablePartRows(
 func tablePartFieldValue(f metadata.Field, raw string) (any, error) {
 	value, err := typedFormFieldValue(f, raw)
 	if err != nil {
-		return nil, fmt.Errorf("реквизит %q: %v", f.Name, err)
+		return nil, i18nerr.Wrapf(err, "реквизит %q", f.Name)
 	}
 	return value, nil
 }
@@ -2624,7 +2652,15 @@ func typedFormFieldValue(f metadata.Field, raw string) (any, error) {
 		}
 		return number, nil
 	case metadata.FieldTypeBool:
-		return raw == "true", nil
+		switch raw {
+		case "true", "1":
+			return true, nil
+		case "false", "0", "":
+			// Missing unchecked checkboxes are still false.
+			return false, nil
+		default:
+			return nil, i18nerr.Errorf("%q не булево значение", raw)
+		}
 	case metadata.FieldTypeDate:
 		if raw == "" {
 			return nil, nil
@@ -2688,7 +2724,7 @@ func convertManagedTablePartRows(rows []map[string]any, tablePart metadata.Table
 			}
 			value, err := tablePartFieldValue(field, raw)
 			if err != nil {
-				return nil, fmt.Errorf("таблица %q: %w", tablePart.Name, err)
+				return nil, i18nerr.Wrapf(err, "таблица %q", tablePart.Name)
 			}
 			converted[field.Name] = value
 		}
@@ -2792,7 +2828,7 @@ func parseLegacyTablePartRows(r *http.Request, entity *metadata.Entity) (map[str
 					}
 					value, convErr := tablePartFieldValue(f, raw)
 					if convErr != nil {
-						return nil, fmt.Errorf("таблица %q: %w", tp.Name, convErr)
+						return nil, i18nerr.Wrapf(convErr, "таблица %q", tp.Name)
 					}
 					converted[f.Name] = value
 				}

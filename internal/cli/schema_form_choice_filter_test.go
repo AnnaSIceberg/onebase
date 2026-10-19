@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -30,7 +31,7 @@ func TestSchemaFormPublishesChoiceFilterContract(t *testing.T) {
 	properties := schemaAt(t, condition, "properties")
 	op := schemaAt(t, properties, "op")
 	values, ok := op["enum"].([]any)
-	if !ok || len(values) != 3 || values[0] != "eq" || values[1] != "eq_or_empty" || values[2] != "in_hierarchy" {
+	if !ok || len(values) != 4 || values[0] != "eq" || values[1] != "eq_or_empty" || values[2] != "in_hierarchy" || values[3] != "not_in_hierarchy" {
 		t.Fatalf("operator enum = %#v", op["enum"])
 	}
 	if schemaAt(t, properties, "value")["type"] != "boolean" {
@@ -38,6 +39,9 @@ func TestSchemaFormPublishesChoiceFilterContract(t *testing.T) {
 	}
 	if schemaAt(t, properties, "field")["type"] != "string" || schemaAt(t, properties, "from")["type"] != "string" {
 		t.Fatalf("field/from types are not strings: %#v", properties)
+	}
+	if description, _ := schemaAt(t, properties, "field")["description"].(string); !strings.Contains(description, "is_root") {
+		t.Fatalf("schema form does not advertise is_root: %#v", properties["field"])
 	}
 	// ref (#1820) — третий взаимоисключающий источник: строка-UUID, и ровно
 	// одна из трёх веток oneOf требует именно его.

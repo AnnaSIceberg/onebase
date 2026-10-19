@@ -1,6 +1,7 @@
 package access
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -24,6 +25,11 @@ func Decide(u *auth.User, kind, entity, op string, meta *metadata.Entity) (Decis
 }
 
 func DecideWithLookup(u *auth.User, kind, entity, op string, meta *metadata.Entity, lookup EntityLookup) (Decision, error) {
+	return DecideWithContext(context.Background(), u, kind, entity, op, meta, DecisionContext{Lookup: lookup})
+}
+
+func DecideWithContext(ctx context.Context, u *auth.User, kind, entity, op string, meta *metadata.Entity, dc DecisionContext) (Decision, error) {
+	lookup := dc.Lookup
 	if u == nil || u.IsAdmin {
 		return Decision{Allowed: true, Unrestricted: true}, nil
 	}
@@ -50,7 +56,15 @@ func DecideWithLookup(u *auth.User, kind, entity, op string, meta *metadata.Enti
 	}
 	predicates := make([]storage.Predicate, 0, len(policies))
 	for _, policy := range policies {
-		pred, err := compilePolicy(policy, u, meta, lookup)
+		prepared, missing, err := prepareCardPolicy(ctx, policy, u, meta, dc, false)
+		if err != nil {
+			return Decision{}, err
+		}
+		if missing {
+			predicates = append(predicates, storage.Predicate{Deny: true})
+			continue
+		}
+		pred, err := compilePolicy(prepared, u, meta, lookup)
 		if err != nil {
 			return Decision{}, err
 		}
@@ -110,7 +124,11 @@ func ValidatePolicy(p auth.RowPolicy, meta *metadata.Entity) error {
 }
 
 func ValidatePolicyWithLookup(p auth.RowPolicy, meta *metadata.Entity, lookup EntityLookup) error {
-	pred, err := compilePolicy(p, lintUser(), meta, lookup)
+	prepared, _, err := prepareCardPolicy(context.Background(), p, lintUser(), meta, DecisionContext{Lookup: lookup}, true)
+	if err != nil {
+		return err
+	}
+	pred, err := compilePolicy(prepared, lintUser(), meta, lookup)
 	if err != nil {
 		return err
 	}
@@ -258,6 +276,9 @@ func referenceField(entity *metadata.Entity, field string) (metadata.Field, bool
 }
 
 func resolveValue(v auth.RowValue, u *auth.User) (any, []any, error) {
+	if v.UserCard != nil {
+		return nil, nil, fmt.Errorf("user_card requires a runtime resolver")
+	}
 	if strings.TrimSpace(v.User) != "" && strings.TrimSpace(v.UserAttr) != "" {
 		return nil, nil, fmt.Errorf("row policy value cannot use both user and user_attr")
 	}
@@ -273,7 +294,11 @@ func resolveValue(v auth.RowValue, u *auth.User) (any, []any, error) {
 	if strings.TrimSpace(v.UserAttr) != "" {
 		value, ok := resolveUserAttr(u, v.UserAttr)
 		if !ok {
-			return nil, nil, fmt.Errorf("unknown row policy user_attr %q", v.UserAttr)
+			// Текст называет встроенные атрибуты: собственных платформа не
+			// хранит (auth.User.Attrs никто не заполняет), и без подсказки
+			// автор политики ищет, где их задать.
+			return nil, nil, fmt.Errorf("unknown row policy user_attr %q: built-in attributes are %s; "+
+				"custom user attributes are not stored by the platform yet", v.UserAttr, builtinUserAttrs)
 		}
 		return value, nil, nil
 	}
@@ -282,6 +307,10 @@ func resolveValue(v auth.RowValue, u *auth.User) (any, []any, error) {
 	}
 	return v.Literal, nil, nil
 }
+
+// builtinUserAttrs — встроенные атрибуты для user_attr, канонические имена
+// из resolveUserAttr.
+const builtinUserAttrs = "id, login, full_name, lang, is_admin, deny_passwd_change, show_in_list, ai_data_access"
 
 func resolveUserAttr(u *auth.User, attr string) (any, bool) {
 	if u == nil {

@@ -825,6 +825,8 @@ func (w *docWriter) read() error {
 	w.obj.Fields = fields
 	w.obj.TablePartRows = tpRows
 	w.setStandardAttrs(row)
+	w.obj.DeletionMark = asBool(row["deletion_mark"])
+	w.obj.Posted = asBool(row["posted"])
 	// Прочитанный объект целиком приехал из БД: присвоенного модулем в нём
 	// больше нет, а сохранённый признак снимал бы маску с реальных значений.
 	w.assigned = nil
@@ -918,7 +920,7 @@ func (w *docWriter) withLockScope(fn func(ctx context.Context) error) error {
 	if runtime.LockCollectorFromContext(base) != nil {
 		return w.s.store.WithTxScope(base, fn)
 	}
-	lc := runtime.NewLockCollector()
+	lc := runtime.NewLockCollectorIn(base)
 	defer lc.ReleaseAll()
 	return w.s.store.WithTxScope(base, func(ctx context.Context) error {
 		return fn(runtime.ContextWithLockCollector(ctx, lc))
@@ -930,6 +932,11 @@ func (w *docWriter) writeInContext(ctx context.Context) error {
 }
 
 func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) error {
+	if w.loaded || w.saved {
+		if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+			return err
+		}
+	}
 	isNew := !w.loaded && !w.saved
 	// Pre-образ живого списка (план 87): для существующего документа читаем строку
 	// ДО записи, чтобы прежний владелец убрал её из списка при смене прав.
@@ -992,7 +999,14 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 	w.ensureSelfRef()
 	mc := runtime.NewMovementsCollector(w.entity.Name, w.obj.ID).WillPersist()
 	setPeriodFromFields(mc, w.entity, w.obj.Fields)
-	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc)
+	if posting && isNew {
+		// Keep a tx-local FK parent available to both hooks. Its lifecycle is
+		// finalized only after OnPost; the intermediate snapshot is not a create.
+		if err := w.s.store.UpsertProvisional(ctx, w.entity.Name, w.obj.ID, w.obj.Fields, w.entity); err != nil {
+			return err
+		}
+	}
+	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc, w.hookXDTOState())
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
@@ -1014,7 +1028,7 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 	}
 	switch {
 	case posting && isNew:
-		if err := w.s.store.UpsertProvisional(ctx, w.entity.Name, w.obj.ID, w.obj.Fields, w.entity); err != nil {
+		if err := w.s.store.UpdateProvisional(ctx, w.entity.Name, w.obj.ID, w.obj.Fields, w.entity); err != nil {
 			return err
 		}
 	case posting:
@@ -1039,10 +1053,10 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 			return err
 		}
 	}
-	// Регистрация изменения для планов обмена (план 86): запись документа из DSL
-	// идёт мимо entityservice.Save. Провести() зовёт write() → регистрируется и оно.
-	if err := exchange.RegisterOnSave(ctx, w.s.store, w.s.reg.ExchangePlans(), w.entity, w.obj.ID, false); err != nil {
-		return err
+	if !posting {
+		if err := exchange.RegisterOnSave(ctx, w.s.store, w.s.reg.ExchangePlans(), w.entity, w.obj.ID, false); err != nil {
+			return err
+		}
 	}
 	// Для непроводимых документов движения, записанные в ПриЗаписи, фиксируем.
 	// У проводимых документов движения формирует проведение (post).
@@ -1062,12 +1076,12 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 		w.saved = wasSaved
 		w.expectedVersion = previousVersion
 	})
-	entityservice.NotifySaveObserver(ctx, w.entity, entityservice.SaveResult{ID: w.obj.ID, Version: version})
-	// Живой список (план 87): отложенная до commit публикация «данные.<сущность>».
-	w.s.publishDocChange(ctx, w.entity, w.obj.ID, "записан", changeBefore)
-	// Веб-хук document.save (план 29) — Провести() зовёт write(), поэтому событие
-	// записи приходит и перед document.post, как на пути entityservice.Save.
-	w.s.dispatchDocWebhook(ctx, "document.save", w.entity, w.obj.ID, w.obj.Fields)
+	if !posting {
+		entityservice.NotifySaveObserver(ctx, w.entity, entityservice.SaveResult{ID: w.obj.ID, Version: version})
+		w.s.publishDocChange(ctx, w.entity, w.obj.ID, "записан", changeBefore)
+		w.s.dispatchDocWebhook(ctx, "document.save", w.entity, w.obj.ID, w.obj.Fields)
+	}
+
 	return nil
 }
 
@@ -1083,10 +1097,20 @@ func (w *docWriter) accessID() uuid.UUID {
 func (w *docWriter) conduct() error {
 	return w.withLockScope(func(ctx context.Context) error {
 		provisionalCreate := !w.loaded && !w.saved
+		// Capture the pre-image only after a concurrent posting/write finishes.
+		if !provisionalCreate {
+			if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+				return err
+			}
+		}
+		var before map[string]any
+		if w.entity.NotifyChanges && !provisionalCreate {
+			before, _ = w.s.store.GetByID(ctx, w.entity.Name, w.obj.ID, w.entity)
+		}
 		if err := w.writeInContextForAction(ctx, true); err != nil {
 			return err
 		}
-		return w.postInContextAfterAccess(ctx, true, provisionalCreate)
+		return w.postInContextAfterAccess(ctx, true, provisionalCreate, before)
 	})
 }
 
@@ -1100,10 +1124,13 @@ func (w *docWriter) postInContext(ctx context.Context) error {
 	if err := w.s.checkDSLRowAccess(ctx, w.entity, "post", w.obj.ID, w.obj.Fields); err != nil {
 		return err
 	}
-	return w.postInContextAfterAccess(ctx, false, false)
+	return w.postInContextAfterAccess(ctx, false, false, nil)
 }
 
-func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, provisionalCreate bool) error {
+func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, provisionalCreate bool, before map[string]any) error {
+	if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+		return err
+	}
 	// Инвариант: помеченный на удаление документ нельзя провести (как в 1С).
 	if marked, err := w.s.store.IsMarkedForDeletion(ctx, w.entity.Name, w.obj.ID); err != nil {
 		return err
@@ -1114,15 +1141,22 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 	mc := runtime.NewMovementsCollector(w.entity.Name, w.obj.ID).WillPersist()
 	setPeriodFromFields(mc, w.entity, w.obj.Fields)
 	// Дата запрета проведения (свёртка базы, план 151).
-	if mc.Period != nil {
+	if !hasPrelude && mc.Period != nil {
 		if lock, ok := w.s.store.GetPostingLockDate(ctx); ok && storage.PostingFrozen(lock, *mc.Period) {
 			return storage.PostingFrozenError(lock)
 		}
 	}
-	errMsg, hookMessages := w.s.runOnPostCtx(ctx, w.obj, mc)
+	errMsg, hookMessages := w.s.runOnPostCtx(ctx, w.obj, mc, w.hookXDTOState())
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
+	}
+	mc.Period = nil
+	setPeriodFromFields(mc, w.entity, w.obj.Fields)
+	if mc.Period != nil {
+		if lock, ok := w.s.store.GetPostingLockDate(ctx); ok && storage.PostingFrozen(lock, *mc.Period) {
+			return storage.PostingFrozenError(lock)
+		}
 	}
 	// Хук мог присвоить реквизиту-перечислению недопустимое значение (#977):
 	// входная проверка была до него. Транзакция ещё открыта — откат бесплатен.
@@ -1169,7 +1203,6 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 			w.saved = wasSaved
 			w.expectedVersion = previousVersion
 		})
-		entityservice.NotifySaveObserver(ctx, w.entity, entityservice.SaveResult{ID: w.obj.ID, Version: version})
 	}
 	if err := w.s.saveMovements(ctx, w.entity.Name, w.obj.ID, mc); err != nil {
 		return err
@@ -1179,14 +1212,23 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 	}
 	// Признак объекта следует за транзакцией, как saved и версия: откат
 	// проведения возвращает прежнее значение.
-	wasPosted := w.posted
+	wasPosted, wasXDTOPosted := w.posted, w.obj.Posted
 	w.posted = true
-	storage.DeferUntilTxRollback(ctx, func() { w.posted = wasPosted })
+	w.obj.Posted = true
+	storage.DeferUntilTxRollback(ctx, func() {
+		w.posted = wasPosted
+		w.obj.Posted = wasXDTOPosted
+	})
 	if err := exchange.RegisterOnSave(ctx, w.s.store, w.s.reg.ExchangePlans(), w.entity, w.obj.ID, false); err != nil {
 		return err
 	}
+	version, err := w.s.store.EntityVersion(ctx, w.entity.Name, w.obj.ID)
+	if err != nil {
+		return err
+	}
+	entityservice.NotifySaveObserver(ctx, w.entity, entityservice.SaveResult{ID: w.obj.ID, Version: version})
 	// Живой список (план 87): «проведён» после успешного проведения из DSL.
-	w.s.publishDocChange(ctx, w.entity, w.obj.ID, "проведён", nil)
+	w.s.publishDocChange(ctx, w.entity, w.obj.ID, "проведён", before)
 	// Веб-хук document.post (план 29).
 	w.s.dispatchDocWebhook(ctx, "document.post", w.entity, w.obj.ID, w.obj.Fields)
 	return nil
@@ -1334,3 +1376,21 @@ func (c dslFieldSearch) IsFieldSearchDenied(ctx context.Context, entity *metadat
 }
 
 func (s *Server) dslFieldSearchChecker() interpreter.FieldSearchChecker { return dslFieldSearch{s: s} }
+
+// XDTOObject отдаёт внутреннее представление документа сериализатору XDTO:
+// шапку вместе с табличными частями. Без этого СериализаторXDTO.ЗаписатьXML
+// видел бы только Get/Set обёртки и не смог бы прочитать строки ТЧ.
+func (w *docWriter) XDTOObject() *runtime.Object { return w.obj }
+
+func (w *docWriter) hookXDTOState() *entityHookXDTOState {
+	if w.assigned == nil {
+		w.assigned = map[string]bool{}
+	}
+	return &entityHookXDTOState{loaded: w.loaded, assigned: w.assigned}
+}
+
+// XDTOMaskField — полевая политика для СериализаторXDTO.ЗаписатьXML: XDTOObject()
+// отдаёт сырой объект, минуя маскирование в Get().
+func (w *docWriter) XDTOMaskField() func(string, any) any {
+	return w.s.xdtoFieldMask(w.ctx(), w.entity, w.loaded, w.assigned)
+}

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -38,7 +39,9 @@ func (s *Server) newEntityService(hooks *webhook.Dispatcher) *entityservice.Serv
 		EnrichTPRows: s.enrichTPRowsWithRefs,
 		BuildVars:    s.buildDSLVarsWithMessagesTx,
 		MakeThis: func(ctx context.Context, ctxSrc interpreter.CtxSource, obj *runtime.Object, e *metadata.Entity) interpreter.This {
-			return s.newFormObjectThisLive(ctx, ctxSrc, obj, e, nil, false)
+			this := s.newFormObjectThisLive(ctx, ctxSrc, obj, e, nil, false)
+			this.xdtoState = hookXDTOStateFromContext(ctx, obj)
+			return this
 		},
 		// Регистрация записи в планах обмена (план 86): exchange принимает
 		// конкретный *storage.DB, а сервис знает только порт Storage, поэтому
@@ -113,13 +116,15 @@ func (f *catFactory) LoadCatalogObject(entity *metadata.Entity, uuidStr string) 
 	if err := f.s.checkDSLRowAccess(ctx, entity, "read", id, nil); err != nil {
 		return nil, err
 	}
-	obj, err := f.s.loadRuntimeObject(ctx, entity, id)
+	obj, row, err := f.s.loadRuntimeObjectRow(ctx, entity, id)
 	if err != nil {
 		return nil, err
 	}
-	version, err := f.s.store.EntityVersion(ctx, entity.Name, id)
-	if err != nil {
-		return nil, err
+	// Fields and the CAS token must come from the same row. A separate
+	// EntityVersion read can pair stale fields with a newer writer's token.
+	version, ok := row["_version"].(int64)
+	if !ok {
+		return nil, fmt.Errorf("объект %s/%s: не прочитана версия", entity.Name, id)
 	}
 	return &catWriter{
 		s: f.s, ctxSrc: f.ctxSrc, entity: entity, obj: obj, loaded: true,
@@ -282,7 +287,43 @@ func (w *catWriter) CallMethod(method string, args []any) any {
 			interpreter.RaiseUserError("Прочитать(" + w.entity.Name + "): " + err.Error())
 		}
 		return nil
+	case "удалитьеслинеизменен", "удалитьеслинеизменён", "deleteifunchanged":
+		if err := w.deleteIfUnchanged(); err != nil {
+			if errors.Is(err, storage.ErrVersionConflict) {
+				return false
+			}
+			interpreter.RaiseUserError("УдалитьЕслиНеИзменен(" + w.entity.Name + "): " + err.Error())
+		}
+		return true
 	}
+	return nil
+}
+
+// deleteIfUnchanged binds physical deletion to the revision captured by
+// ПолучитьОбъект(). It is intended for background cleanup code that first
+// checks fields and must not delete a state written after that check.
+func (w *catWriter) deleteIfUnchanged() error {
+	if (!w.loaded && !w.saved) || w.expectedVersion == nil {
+		return fmt.Errorf("объект ещё не прочитан или не записан")
+	}
+	ctx := w.ctx()
+	id := w.accessID()
+	if err := w.s.checkDSLRowAccess(ctx, w.entity, "delete", id, w.obj.Fields); err != nil {
+		return err
+	}
+	if err := (dslCatalogDeleter{s: w.s}).DeleteCatalogRefVersioned(ctx, w.entity, id, *w.expectedVersion); err != nil {
+		return err
+	}
+
+	wasLoaded, wasSaved, previousVersion := w.loaded, w.saved, w.expectedVersion
+	w.loaded = false
+	w.saved = false
+	w.expectedVersion = nil
+	storage.DeferUntilTxRollback(ctx, func() {
+		w.loaded = wasLoaded
+		w.saved = wasSaved
+		w.expectedVersion = previousVersion
+	})
 	return nil
 }
 
@@ -309,7 +350,14 @@ func (w *catWriter) write() error {
 		// реальное значение, которого не видел до неё.
 		w.forgetAssigned(restored)
 	}
-	result, err := w.s.entitySvc.Save(ctx, entityservice.SaveRequest{
+	if w.assigned == nil {
+		w.assigned = map[string]bool{}
+	}
+	hookCtx := context.WithValue(ctx, hookXDTOOriginKey{}, hookXDTOOrigin{
+		entity: w.entity.Name, id: w.obj.ID,
+		state: &entityHookXDTOState{loaded: w.loaded, assigned: w.assigned},
+	})
+	result, err := w.s.entitySvc.Save(hookCtx, entityservice.SaveRequest{
 		Entity:          w.entity,
 		ID:              w.obj.ID,
 		IsNew:           isNew,
@@ -358,23 +406,17 @@ func (w *catWriter) read() error {
 	if !w.loaded && !w.saved {
 		return fmt.Errorf("объект ещё не записан")
 	}
-	if err := w.s.checkDSLRowAccess(w.ctx(), w.entity, "read", w.obj.ID, nil); err != nil {
-		return err
-	}
-	obj, err := w.s.loadRuntimeObject(w.ctx(), w.entity, w.obj.ID)
+	loaded, err := (&catFactory{s: w.s, ctxSrc: w.ctxSrc}).LoadCatalogObject(w.entity, w.obj.ID.String())
 	if err != nil {
 		return err
 	}
-	w.obj = obj
+	fresh := loaded.(*catWriter)
+	w.obj = fresh.obj
 	// Прочитанный объект целиком приехал из БД: присвоенного модулем в нём
 	// больше нет, а сохранённый признак снимал бы маску с реальных значений
 	// («Об.Телефон = ""; Об.Прочитать(); Сообщить(Об.Телефон)» отдавал реальный).
 	w.assigned = nil
-	version, err := w.s.store.EntityVersion(w.ctx(), w.entity.Name, w.obj.ID)
-	if err != nil {
-		return err
-	}
-	w.expectedVersion = &version
+	w.expectedVersion = fresh.expectedVersion
 	w.loaded = true
 	return nil
 }
@@ -445,4 +487,14 @@ func shortObjectID(id string) string {
 		return id[:8]
 	}
 	return id
+}
+
+// XDTOObject — см. одноимённый метод документа: сериализатору нужен объект
+// целиком, вместе с табличными частями.
+func (w *catWriter) XDTOObject() *runtime.Object { return w.obj }
+
+// XDTOMaskField — полевая политика для СериализаторXDTO.ЗаписатьXML: XDTOObject()
+// отдаёт сырой объект, минуя маскирование в Get().
+func (w *catWriter) XDTOMaskField() func(string, any) any {
+	return w.s.xdtoFieldMask(w.ctx(), w.entity, w.loaded, w.assigned)
 }

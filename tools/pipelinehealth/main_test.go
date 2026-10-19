@@ -147,6 +147,38 @@ func TestOverrideStartsAnotherReviewEpoch(t *testing.T) {
 	}
 }
 
+func TestShippedNeedsDecisionOverrideReturnsBaseSyncToReview(t *testing.T) {
+	item := withMergeHead(testPR(1778, headC, "ship", "reviewed", "needs-decision"))
+	item = addComment(item, 20, completion(headA, 10, 15))
+	item = addComment(item, 30, syncIntent(headA, 10, 15, 20))
+	item = addComment(item, 31, syncDone(30, headA, headC))
+	item = addComment(item, 40, completion(headC, 35, 36))
+
+	blocked := analyze([]apiPull{item}, "ivanarama")
+	if len(blocked.HumanWaiting) != 1 || len(blocked.ReviewCandidates) != 0 {
+		t.Fatalf("ship + needs-decision moved without human override: %+v", blocked)
+	}
+
+	item = addComment(item, 41, "Owner: repeat integration review after green CI.\n\npp:review-again")
+	got := analyze([]apiPull{item}, "ivanarama")
+	if len(got.HumanWaiting) != 0 || len(got.MergeCandidates) != 0 ||
+		len(got.ReviewCandidates) != 1 || got.ReviewCandidates[0].Number != 1778 ||
+		got.ReviewCandidates[0].Stage != "integration-review" {
+		t.Fatalf("human override did not return shipped integration HEAD to REVIEW: %+v", got)
+	}
+}
+
+func TestShippedOrdinaryHeadOverrideRequiresContentReview(t *testing.T) {
+	item := addComment(testPR(10, headA, "ship", "reviewed"), 30, completion(headA, 20, 25))
+	item = addComment(item, 31, "pp:review-again")
+
+	got := analyze([]apiPull{item}, "ivanarama")
+	if len(got.ContentReviewCandidates) != 1 ||
+		got.ContentReviewCandidates[0].Number != 10 || len(got.MergeCandidates) != 0 {
+		t.Fatalf("ship bypassed a later review override: %+v", got)
+	}
+}
+
 func TestUnfinishedClaimIsVisibleImmediately(t *testing.T) {
 	marker := fmt.Sprintf("<!-- pp:review-claim %s review-comment=20 epoch-sha256=%s -->", headA, epoch)
 	item := addComment(testPR(10, headA), 25, marker)
@@ -181,6 +213,25 @@ func TestBaseSyncIntentWithoutDoneIsMergeRecoveryNotReview(t *testing.T) {
 		!hasFinding(got, "base_sync_recovery") ||
 		!hasFinding(got, "single_flight_barrier") {
 		t.Fatalf("MERGE recovery incorrectly blocked content review: %+v", got)
+	}
+}
+
+func TestOneParentSuccessorWithoutShipReleasesBrokenBaseSyncOwner(t *testing.T) {
+	// Live recovery for a malformed historical handoff: an old open intent may
+	// describe from or its two-parent merge, but it must not capture an ordinary
+	// one-parent successor after route labels are removed. The old comment stays
+	// as audit history while the new exact HEAD returns to full content REVIEW.
+	item := testPR(1443, headC)
+	item.HeadParents = []string{headB}
+	item = addComment(item, 30, syncIntent(headA, 10, 20, 25))
+
+	got := analyze([]apiPull{item}, "ivanarama")
+	if got.IntegrationOwner != nil || hasFinding(got, "base_sync_recovery") {
+		t.Fatalf("historical broken intent kept single-flight ownership: %+v", got)
+	}
+	if len(got.ContentReviewCandidates) != 1 || got.ContentReviewCandidates[0].Number != 1443 ||
+		got.ContentReviewCandidates[0].Head != headC || got.ContentReviewCandidates[0].Stage != "review" {
+		t.Fatalf("one-parent recovery head did not return to content review: %+v", got)
 	}
 }
 
@@ -653,6 +704,14 @@ func TestSingleFlightExposesOnlyFirstIntegrationReview(t *testing.T) {
 	if len(got.ContentReviewCandidates) != 1 || got.ContentReviewCandidates[0].Number != 1 {
 		t.Fatalf("content backlog disappeared behind the integration owner: %+v", got)
 	}
+	if len(got.ParallelReviewCandidates) != 1 || got.ParallelReviewCandidates[0].Number != 1 {
+		t.Fatalf("ordinary content was not exposed to an independent REVIEW replica: %+v", got.ParallelReviewCandidates)
+	}
+	if len(got.ReviewDispatchCandidates) != 2 ||
+		got.ReviewDispatchCandidates[0].Number != 20 ||
+		got.ReviewDispatchCandidates[1].Number != 1 {
+		t.Fatalf("wake-up hint lost owner or parallel content: %+v", got.ReviewDispatchCandidates)
+	}
 	if len(got.ReviewBacklog) != 2 {
 		t.Fatalf("total review backlog hid deferred content: %+v", got)
 	}
@@ -661,10 +720,41 @@ func TestSingleFlightExposesOnlyFirstIntegrationReview(t *testing.T) {
 	}
 }
 
+func TestParallelReviewCandidatesExcludeFallbackAndMergeOwner(t *testing.T) {
+	owner := candidate{Number: 20, Head: headA, Stage: "integration-review"}
+	result := report{
+		ReviewCandidates: []candidate{owner},
+		ContentReviewCandidates: []candidate{
+			{Number: 1, Head: headA, Stage: "review", Depth: 0},
+			{Number: 2, Head: headA, Stage: "review", Depth: 1},
+			{Number: 3, Head: headA, Stage: "review", Depth: 2},
+			{Number: 4, Head: headA, Stage: "pre-review-validation", Depth: 0},
+		},
+	}
+	applySingleFlight(&result)
+	if len(result.ParallelReviewCandidates) != 2 ||
+		result.ParallelReviewCandidates[0].Number != 1 ||
+		result.ParallelReviewCandidates[1].Number != 2 ||
+		len(result.ReviewCandidates) != 1 || result.ReviewCandidates[0] != owner {
+		t.Fatalf("parallel lane widened integration or fallback authority: %+v", result)
+	}
+
+	result = report{
+		ReviewCandidates:        []candidate{{Number: 20, Head: headA, Stage: "integration-merge-ready"}},
+		ContentReviewCandidates: []candidate{{Number: 1, Head: headA, Stage: "review"}},
+	}
+	applySingleFlight(&result)
+	if len(result.ParallelReviewCandidates) != 0 || len(result.ReviewCandidates) != 1 ||
+		result.ReviewCandidates[0].Number != 1 {
+		t.Fatalf("merge-ready owner should use the ordinary REVIEW lane: %+v", result)
+	}
+}
+
 func TestWithoutIntegrationOwnerContentCandidatesAreExecutable(t *testing.T) {
 	got := analyze([]apiPull{testPR(20, headA), testPR(10, headB)}, "ivanarama")
 	if got.IntegrationOwner != nil || len(got.ReviewCandidates) != 2 ||
-		got.ReviewCandidates[0].Number != 10 || len(got.ContentReviewCandidates) != 2 {
+		got.ReviewCandidates[0].Number != 10 || len(got.ContentReviewCandidates) != 2 ||
+		len(got.ReviewDispatchCandidates) != 2 || len(got.ParallelReviewCandidates) != 0 {
 		t.Fatalf("content lane was not exposed as executable: %+v", got)
 	}
 }
@@ -1175,12 +1265,18 @@ func TestCLIReportsWhyOpenPullReferenceExcludesFixIssue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve repository root: %v", err)
 	}
+	// A missing test-owned contract gives a deterministic independent finding,
+	// without coupling the exclusion check to the live maintenance procedures.
+	contractPath := filepath.Join(directory, "missing-contract.md")
 	// #nosec G204 -- executable and flags are fixed; variable arguments are test-owned paths from t.TempDir.
-	command := exec.Command("go", "run", "./tools/pipelinehealth", "-prs", pullPath, "-issues", issuePath, "-json")
+	command := exec.Command("go", "run", "./tools/pipelinehealth", "-prs", pullPath, "-issues", issuePath,
+		"-contract", contractPath, "-json")
 	command.Dir = repositoryRoot
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("pipelinehealth CLI failed: %v\n%s", err, output)
+	// go run writes its exit-status message to stderr; keep stdout as JSON.
+	output, err := command.Output()
+	exitError, ok := err.(*exec.ExitError)
+	if !ok || exitError.ExitCode() != 1 {
+		t.Fatalf("pipelinehealth CLI did not report the contract failure: %v\n%s", err, output)
 	}
 	var result report
 	if err := json.Unmarshal(output, &result); err != nil {
@@ -1189,9 +1285,23 @@ func TestCLIReportsWhyOpenPullReferenceExcludesFixIssue(t *testing.T) {
 	if len(result.FixCandidates) != 0 {
 		t.Fatalf("referenced issue remained executable: %+v", result.FixCandidates)
 	}
-	if len(result.Findings) != 1 || result.Findings[0].Severity != "yellow" ||
-		result.Findings[0].Code != "fix_issue_referenced_by_open_pull" || result.Findings[0].Issue != 21 ||
-		!strings.Contains(result.Findings[0].Message, "#100, #101") {
+	var diagnostic *finding
+	contractFailure := false
+	for index := range result.Findings {
+		item := &result.Findings[index]
+		if item.Code == "fix_issue_referenced_by_open_pull" && item.Issue == 21 {
+			diagnostic = item
+		}
+		if item.Code == "contract_unreadable" && item.Severity == "red" &&
+			strings.Contains(item.Message, contractPath) {
+			contractFailure = true
+		}
+	}
+	if !contractFailure || result.State != "red" {
+		t.Fatalf("CLI did not report the independent contract failure: %+v", result)
+	}
+	if diagnostic == nil || diagnostic.Severity != "yellow" ||
+		!strings.Contains(diagnostic.Message, "#100, #101") {
 		t.Fatalf("CLI did not explain the exclusion: %+v", result.Findings)
 	}
 }
@@ -1347,4 +1457,108 @@ func hasIssueFinding(result report, code string, issue int) bool {
 		}
 	}
 	return false
+}
+
+// #1605: после штатного v1-abort метка ship уже снята, а диагностика
+// base_sync_v1_abort_waiting_review требует родителей HEAD. Гейт загрузки
+// родителей проверяется таблицей, публичный путь загрузки — прогоном команды
+// с офлайн-заглушкой gh.
+func TestAbortMarkerWantsHeadParentsGate(t *testing.T) {
+	comment := func(body string, edited bool) apiComment {
+		stamp := "2026-09-01T00:00:00Z"
+		later := stamp
+		if edited {
+			later = "2026-09-02T00:00:00Z"
+		}
+		return apiComment{ID: 35, CreatedAt: stamp, UpdatedAt: later, User: apiUser{Login: "ivanarama"}, Body: body}
+	}
+	marker := syncV1Abort(30, headC)
+
+	pr := func(comments ...apiComment) apiPull {
+		item := testPR(1464, headC, "reviewed")
+		item.Comments = comments
+		return item
+	}
+	cases := []struct {
+		name string
+		pr   apiPull
+		want bool
+	}{
+		{"trusted marker for current head", pr(comment(marker, false)), true},
+		{"foreign author is not trusted", pr(func() apiComment { c := comment(marker, false); c.User.Login = "someone"; return c }()), false},
+		{"edited marker is not trusted", pr(comment(marker, true)), false},
+		{"marker for another head", pr(comment(syncV1Abort(30, headA), false)), false},
+		{"no marker", pr(comment(completion(headA, 10, 15), false)), false},
+	}
+	for _, c := range cases {
+		if got := abortMarkerWantsHeadParents(c.pr, "ivanarama"); got != c.want {
+			t.Errorf("%s: wants parents = %v, want %v", c.name, got, c.want)
+		}
+	}
+
+	draft := pr(comment(marker, false))
+	draft.Draft = true
+	if abortMarkerWantsHeadParents(draft, "ivanarama") {
+		t.Error("draft pull requested head parents")
+	}
+	offBase := pr(comment(marker, false))
+	offBase.Base.Ref = "release"
+	if abortMarkerWantsHeadParents(offBase, "ivanarama") {
+		t.Error("non-main base requested head parents")
+	}
+}
+
+// buildGhStub собирает офлайн-заглушку gh и возвращает путь к бинарю.
+func buildGhStub(t *testing.T) string {
+	t.Helper()
+	stubPath := filepath.Join(t.TempDir(), "ghstub.exe")
+	//nolint:gosec // G204: fixed package path, test-owned output directory.
+	build := exec.Command("go", "build", "-o", stubPath, "./tools/pipelinehealth/internal/ghstub")
+	build.Dir = repoRoot(t)
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build ghstub: %v\n%s", err, out)
+	}
+	return stubPath
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// writeGhStubFixture пишет построчные JSON-объекты в каталог данных заглушки.
+func writeGhStubFixture(t *testing.T, dir, name string, objects ...any) {
+	t.Helper()
+	var b strings.Builder
+	for _, object := range objects {
+		data, err := json.Marshal(object)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.Write(data)
+		b.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBaseSyncV1AbortWithoutMergeShapeIsNotDiagnosed(t *testing.T) {
+	item := testPR(1464, headC, "reviewed")
+	item.HeadParents = []string{headA} // обычный одно-родительский push, не base-sync
+	item = addComment(item, 20, completion(headA, 10, 15))
+	item = addComment(item, 30, syncIntent(headA, 10, 15, 20))
+	item = addComment(item, 35, syncV1Abort(30, headC))
+
+	got := analyze([]apiPull{item}, "ivanarama")
+	if hasFinding(got, "base_sync_v1_abort_waiting_review") {
+		t.Fatalf("abort recognised without the two-parent merge shape: %+v", got.Findings)
+	}
+	if len(got.ReviewCandidates) != 1 || got.ReviewCandidates[0].Number != 1464 {
+		t.Fatalf("ordinary review candidate lost: %+v", got.ReviewCandidates)
+	}
 }

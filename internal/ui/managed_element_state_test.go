@@ -109,9 +109,79 @@ func TestУсловноеСкрытие_ЭлементНеОтрисован(t *
 		t.Errorf("черновик: кнопка должна быть видна\n%s", черновик)
 	}
 
+	// Скрытая кнопка остаётся в разметке с display:none: иначе событие формы,
+	// снявшее условие, не смогло бы её показать (managed_hidden_button_test.go).
 	принята := отрисоватьСУсловиями(t, ent, form, map[string]string{"СтадияОформления": "Принята"})
-	if strings.Contains(принята, "Принять заявку") {
-		t.Errorf("принятая заявка: кнопка не должна отрисовываться\n%s", принята)
+	якорь := managedAnchorNode(t, принята, "КнопкаПринять")
+	if якорь == nil || !managedStyleHidden(якорь) {
+		t.Errorf("принятая заявка: кнопка должна быть скрыта (display:none)\n%s", принята)
+	}
+}
+
+func TestУсловноеСкрытие_ПолеВводаОстаётсяВDOM(t *testing.T) {
+	// ПолеВвода с hidden_when должно рендериться с display:none, а не
+	// пропускаться: иначе applyElementStates не может показать его при смене
+	// условия (например, при переключении радиокнопки).
+	ent := заявкаСоСтадией()
+	form := формаСУсловиями(ent,
+		&metadata.FormElement{
+			Kind: metadata.FormElementField, Name: "ПолеУлица",
+			DataPath: "Объект.Улица", TitleMap: map[string]string{"ru": "Улица"},
+			Required:   true,
+			HiddenWhen: `СтадияОформления = "Принята"`,
+		},
+		&metadata.FormElement{
+			Kind: metadata.FormElementField, Name: "ПолеУлицаВидимо",
+			DataPath: "Объект.Улица", TitleMap: map[string]string{"ru": "Улица (видимая)"},
+		})
+
+	// Извлекаем обёртку элемента по data-ob-el.
+	извлечьЭлемент := func(html, name string) string {
+		marker := `data-ob-el="` + name + `"`
+		i := strings.Index(html, marker)
+		if i < 0 {
+			return ""
+		}
+		j := max(strings.LastIndex(html[:i], "<fieldset"), strings.LastIndex(html[:i], "<div"))
+		end := strings.IndexByte(html[i:], '>')
+		if j < 0 || end < 0 {
+			return ""
+		}
+		return html[j : i+end+1]
+	}
+
+	// Когда условие ложно — поле видно, без display:none на элементе.
+	черновик := отрисоватьСУсловиями(t, ent, form, map[string]string{
+		"Улица": "Ленина", "СтадияОформления": "НаОформлении"})
+	блокЧерновик := извлечьЭлемент(черновик, "ПолеУлица")
+	if блокЧерновик == "" {
+		t.Fatalf("поле не отрисовано при ложном условии")
+	}
+	if strings.Contains(блокЧерновик, "display:none") {
+		t.Errorf("поле не должно быть скрыто при ложном условии: %s", блокЧерновик)
+	}
+	if strings.Contains(блокЧерновик, " disabled") {
+		t.Errorf("видимое поле должно отправляться: %s", блокЧерновик)
+	}
+
+	// Когда условие истинно — поле В DOM, но с display:none.
+	принята := отрисоватьСУсловиями(t, ent, form, map[string]string{
+		"Улица": "Ленина", "СтадияОформления": "Принята"})
+	блокПринята := извлечьЭлемент(принята, "ПолеУлица")
+	if блокПринята == "" {
+		t.Fatalf("поле должно быть в DOM даже при истинном hidden_when")
+	}
+	if !strings.Contains(блокПринята, "display:none") {
+		t.Errorf("поле должно быть скрыто (display:none) при истинном hidden_when: %s", блокПринята)
+	}
+	if !strings.Contains(блокПринята, " disabled") {
+		t.Errorf("скрытое поле не должно отправляться и проходить native required: %s", блокПринята)
+	}
+	if !strings.Contains(принята, `name="Улица"`) || strings.Count(принята, `name="Улица"`) != 2 {
+		t.Fatalf("ожидались два контрола одного реквизита")
+	}
+	if блокВидимый := извлечьЭлемент(принята, "ПолеУлицаВидимо"); блокВидимый == "" || strings.Contains(блокВидимый, " disabled") {
+		t.Errorf("второе представление должно оставаться успешным: %s", блокВидимый)
 	}
 }
 
@@ -130,12 +200,13 @@ func TestСостоянияЭлементов_СодержатЛожныеУсл
 	if st == nil {
 		t.Fatal("состояния не рассчитаны, ожидалась карта с ложным условием")
 	}
-	if v, есть := st.ReadOnly["ПолеУлица"]; !есть || v {
-		t.Errorf("ReadOnly[ПолеУлица] = (%v, есть=%v), ожидалось (false, есть=true)", v, есть)
+	ключ := путьСостояния(t, form, "ПолеУлица")
+	if v, есть := st.ReadOnly[ключ]; !есть || v {
+		t.Errorf("ReadOnly[%s] = (%v, есть=%v), ожидалось (false, есть=true)", ключ, v, есть)
 	}
 
 	st = s.formElementStates(form, ent, map[string]any{"СтадияОформления": "Принята"}, true)
-	if !st.ReadOnly["ПолеУлица"] {
+	if !st.ReadOnly[ключ] {
 		t.Errorf("на принятой заявке ожидалось ReadOnly[ПолеУлица]=true")
 	}
 }
@@ -682,7 +753,7 @@ func TestФлажокДинамическиЗапертСобытием_НеСб
 	if !resp.OK {
 		t.Fatalf("событие формы завершилось ошибкой: %q", resp.Error)
 	}
-	if resp.ElementStates == nil || !resp.ElementStates.ReadOnly["ФлагСогласовано"] {
+	if resp.ElementStates == nil || !resp.ElementStates.ReadOnly[путьСостояния(t, form, "ФлагСогласовано")] {
 		t.Fatalf("событие не заперло флажок: %#v", resp.ElementStates)
 	}
 	stage, ok := resp.Values["СтадияОформления"].(string)
@@ -820,8 +891,9 @@ func заявкаПодЗапретомПослеСобытия(t *testing.T) ([
 }
 
 func TestПостоянныйЗапрет_НеСнимаетсяСобытиемФормы(t *testing.T) {
+	ent := заявкаСГруппойПодЗапретом(t)
 	_, resp := заявкаПодЗапретомПослеСобытия(t)
-	if resp.ElementStates == nil || !resp.ElementStates.ReadOnly["ПолеУлица"] {
+	if resp.ElementStates == nil || !resp.ElementStates.ReadOnly[путьСостояния(t, ent.Forms[0], "ПолеУлица")] {
 		t.Fatalf("карта состояний обязана нести итоговый запрет, а не ложное условие: %#v", resp.ElementStates)
 	}
 }
@@ -849,8 +921,9 @@ func TestУсловныйЗапретБезПостоянного_ВсёЕщёС
 	if st == nil {
 		t.Fatal("состояния не рассчитаны, ожидалась карта с ложным условием")
 	}
-	if v, есть := st.ReadOnly["ПолеУлица"]; !есть || v {
-		t.Errorf("ReadOnly[ПолеУлица] = (%v, есть=%v), ожидалось (false, есть=true)", v, есть)
+	ключ := путьСостояния(t, ent.Forms[0], "ПолеУлица")
+	if v, есть := st.ReadOnly[ключ]; !есть || v {
+		t.Errorf("ReadOnly[%s] = (%v, есть=%v), ожидалось (false, есть=true)", ключ, v, есть)
 	}
 }
 
