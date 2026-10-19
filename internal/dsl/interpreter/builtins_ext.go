@@ -83,9 +83,14 @@ func fmtBuiltinBounded(args []any, maxDecimalPlaces int32) (string, error) {
 		return fmt.Sprintf("%v", args[0]), nil
 	}
 	val := args[0]
-	if maxDecimalPlaces > 0 && isNumeric(val) {
-		d, _ := toDecimal(val)
-		if !decimalWithinExpansionBounds(d, maxDecimalPlaces) {
+	if maxDecimalPlaces > 0 {
+		// Numeric strings reach Decimal.String/StringFixed too. Bound their
+		// lexical size before parsing, then the coefficient and exponent before
+		// either formatting path can expand them (including float underflow).
+		if text, ok := val.(string); ok && len(text) > maxSandboxDecimalTextBytes {
+			return "", fmt.Errorf("формат: numeric text exceeds the sandbox decimal limit")
+		}
+		if d, ok := toDecimal(val); ok && !decimalWithinExpansionBounds(d, maxDecimalPlaces) {
 			return "", fmt.Errorf("формат: число вне безопасного диапазона")
 		}
 	}
