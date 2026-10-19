@@ -45,14 +45,17 @@ func serveH2CTestServer(t *testing.T) string {
 	return ln.Addr().String()
 }
 
-// h2cClient сразу шлёт HTTP/2-преамбулу поверх обычного TCP без отката на HTTP/1.
+// h2cClient — HTTP/2-клиент по cleartext (prior knowledge). Единственный
+// разрешённый протокол — HTTP/2 без TLS, без отката к HTTP/1.1.
 func h2cClient(t *testing.T) *http.Client {
 	t.Helper()
 	protocols := new(http.Protocols)
 	protocols.SetUnencryptedHTTP2(true)
 	client := &http.Client{
-		Timeout:   5 * time.Second,
-		Transport: &http.Transport{Protocols: protocols},
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			Protocols: protocols,
+		},
 	}
 	t.Cleanup(client.CloseIdleConnections)
 	return client
@@ -69,6 +72,9 @@ func TestH2CUpstreamEnabled(t *testing.T) {
 		t.Fatalf("h2c GET /health: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.TLS != nil {
+		t.Fatal("h2c-соединение неожиданно использует TLS")
+	}
 	if resp.ProtoMajor != 2 {
 		t.Fatalf("proto = %q, ожидали HTTP/2", resp.Proto)
 	}
@@ -78,7 +84,7 @@ func TestH2CUpstreamEnabled(t *testing.T) {
 }
 
 // Без ONEBASE_H2C сервер остаётся HTTP/1.1-only: тот же h2c-клиент не должен
-// получить HTTP/2, т.е. дефолт не меняется.
+// согласовать протокол. Обычный HTTP/1.1-клиент по-прежнему получает ответ.
 func TestH2CUpstreamDisabledByDefault(t *testing.T) {
 	t.Setenv("ONEBASE_H2C", "") // детерминизм при унаследованном окружении CI
 	addr := serveH2CTestServer(t)
@@ -86,9 +92,24 @@ func TestH2CUpstreamDisabledByDefault(t *testing.T) {
 	resp, err := h2cClient(t).Get("http://" + addr + "/health")
 	if err == nil {
 		defer func() { _ = resp.Body.Close() }()
-		if resp.ProtoMajor == 2 {
-			t.Fatal("сервер отдал HTTP/2, хотя h2c выключен")
-		}
+		t.Fatalf("h2c-only клиент получил ответ %q, хотя h2c выключен", resp.Proto)
+	}
+
+	http1Client := &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: &http.Transport{},
+	}
+	t.Cleanup(http1Client.CloseIdleConnections)
+	resp, err = http1Client.Get("http://" + addr + "/health")
+	if err != nil {
+		t.Fatalf("HTTP/1.1 GET /health: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.ProtoMajor != 1 || resp.ProtoMinor != 1 {
+		t.Fatalf("proto = %q, ожидали HTTP/1.1", resp.Proto)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, ожидали 200", resp.StatusCode)
 	}
 }
 
