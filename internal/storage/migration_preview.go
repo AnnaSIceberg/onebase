@@ -15,7 +15,11 @@ import (
 // WithPostgresMigrationPreview never calls normal connection setup (which
 // creates a uuid cast). Configuration, revision and plans share one read-only
 // repeatable snapshot. Even a caller bug cannot execute DDL in this callback.
+// An existing transaction is rejected before opening the preview connection.
 func WithPostgresMigrationPreview(ctx context.Context, dsn string, fn func(context.Context, *DB) error) error {
+	if HasTx(ctx) {
+		return errors.New("migration preview cannot use an existing transaction")
+	}
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return err
@@ -67,7 +71,11 @@ func previewSQLiteFile(path string) (os.FileInfo, [32]byte, error) {
 // WithSQLiteMigrationPreview requires a lifetime lease already acquired by the
 // caller. WAL/journal refusal happens before SQLite can recover anything. Only
 // a stable sidecar-free file is opened immutable; missing targets use memory.
+// An existing transaction is rejected before inspecting or opening the target.
 func WithSQLiteMigrationPreview(ctx context.Context, path string, existed bool, fn func(context.Context, *DB) error) (resultErr error) {
+	if HasTx(ctx) {
+		return errors.New("migration preview cannot use an existing transaction")
+	}
 	var before os.FileInfo
 	var hash [32]byte
 	var err error
