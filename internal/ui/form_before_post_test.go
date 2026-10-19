@@ -1,13 +1,23 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
+	"github.com/ivantit66/onebase/internal/dsl/interpreter"
+	"github.com/ivantit66/onebase/internal/dsl/loader"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/runtime"
+	"github.com/ivantit66/onebase/internal/storage"
 )
 
 // ПередПроведением — событие уровня формы, которое браузер шлёт перед
@@ -165,6 +175,102 @@ func TestBeforePost_ПризнакВКонфигурацииФормы(t *testin
 			}
 			if got, _ := config["beforePost"].(bool); got != tc.want {
 				t.Fatalf("beforePost=%v, want %v", config["beforePost"], tc.want)
+			}
+		})
+	}
+}
+
+// Use the real loader and mounted HTTP routes: an unavailable declared handler
+// must never turn the browser's posting preflight into successful permission.
+func TestBeforePost_UnavailableDeclaredHandlerHTTP(t *testing.T) {
+	for _, module := range []struct{ name, source string }{
+		{"missing-module", ""},
+		{"missing-procedure", "Процедура Другая()\nКонецПроцедуры"},
+	} {
+		t.Run(module.name, func(t *testing.T) {
+			dir := t.TempDir()
+			yamlPath := filepath.Join(dir, "object.form.yaml")
+			yaml := `schema: onebase.form/v1
+form:
+  name: ФормаОбъекта
+  kind: object
+  entity: Проверка
+  layout: managed
+elements:
+  - kind: ПолеВвода
+    name: Наименование
+    data_path: Объект.Наименование
+events:
+  ПередПроведением: ПроверитьПроведение
+  ПриОткрытии: ПроверитьОткрытие
+`
+			if err := os.WriteFile(yamlPath, []byte(yaml), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if module.source != "" {
+				if err := os.WriteFile(filepath.Join(dir, "object.form.os"), []byte(module.source), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			form, err := loader.NewManagedFormLoader().LoadFormFile(yamlPath, "Проверка")
+			if err != nil {
+				t.Fatal(err)
+			}
+			entity := &metadata.Entity{Name: "Проверка", Kind: metadata.KindDocument, Posting: true,
+				Fields: []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}}, Forms: []*metadata.FormModule{form}}
+			db, err := storage.ConnectSQLite(context.Background(), filepath.Join(dir, "test.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { db.Close() })
+			if err := db.Migrate(context.Background(), []*metadata.Entity{entity}); err != nil {
+				t.Fatal(err)
+			}
+			reg := runtime.NewRegistry()
+			reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{entity}})
+			srv := &Server{store: db, reg: reg, interp: interpreter.New(), lockMgr: runtime.NewLockManager(), messages: NewMessageStore()}
+			srv.entitySvc = srv.newEntityService(nil)
+			router := chi.NewRouter()
+			srv.Mount(router)
+			page := httptest.NewRecorder()
+			router.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/ui/document/Проверка/new", nil))
+			if page.Code != http.StatusOK {
+				t.Fatalf("GET form: %d: %s", page.Code, page.Body.String())
+			}
+			_, config, ok := strings.Cut(page.Body.String(), `<script type="application/json" id="ob-managed-config">`)
+			if !ok {
+				t.Fatal("managed config missing")
+			}
+			config, _, _ = strings.Cut(config, "</script>")
+			var cfg struct {
+				BeforePost bool `json:"beforePost"`
+			}
+			if err := json.Unmarshal([]byte(config), &cfg); err != nil {
+				t.Fatal(err)
+			}
+			if !cfg.BeforePost {
+				t.Fatal("declared posting preflight was disabled")
+			}
+
+			for _, event := range []metadata.FormEventType{metadata.FormEventBeforePost, metadata.FormEventOnOpen} {
+				body := beforePostBody("тест", "")
+				body.Set("_kind", "object")
+				body.Set("_event", string(event))
+				req := httptest.NewRequest(http.MethodPost, "/ui/document/Проверка/form-event", strings.NewReader(body.Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, req)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("event HTTP %d: %s", rec.Code, rec.Body.String())
+				}
+				resp := decodeFormEventResponse(t, rec.Body.Bytes())
+				if event == metadata.FormEventBeforePost {
+					if resp.OK || !strings.Contains(resp.Error, "ПроверитьПроведение") || !strings.Contains(resp.Error, ".form.os") {
+						t.Fatalf("unavailable declared handler must deny posting: %s", rec.Body.String())
+					}
+				} else if !resp.OK || resp.Error != "" {
+					t.Fatalf("ordinary event no-op changed: %s", rec.Body.String())
+				}
 			}
 		})
 	}

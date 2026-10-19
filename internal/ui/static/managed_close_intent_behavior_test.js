@@ -1878,3 +1878,30 @@ test('before-post: file field — a later click is checked again', async () => {
   for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
   assert.equal(file.posts.length, 1, 'refused second post was sent');
 });
+
+for (const mode of ['post', 'post_and_close']) {
+  test(`before-post: unavailable declared handler blocks ${mode}`, async () => {
+    // The form-event endpoint reports both unavailable-handler cases as an
+    // error. Neither standard posting adapter may turn that into a write.
+    const error = 'процедура «ПроверитьПроведение» не найдена в .form.os';
+    const {app, calls} = beforePostRuntime([{ok: false, error}]);
+    const posts = [];
+    if (mode === 'post_and_close') {
+      const decision = await app.context.obRequestFormClose({reason: mode, mode: 'post'});
+      assert.equal(decision.allowed, false);
+    } else {
+      const submitter = {name: '_action', value: 'post', click() { posts.push('post'); }};
+      app.form.requestSubmit = () => posts.push('post');
+      const event = {target: app.form, submitter, defaultPrevented: false,
+        preventDefault() { this.defaultPrevented = true; },
+        stopPropagation() {}, stopImmediatePropagation() {}};
+      app.document.dispatch('submit', event);
+      assert.equal(event.defaultPrevented, true);
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.deepEqual(posts, []);
+    assert.equal(calls.length, 1, 'posting escaped the failed preflight');
+    assert.equal(formEventName(calls[0]), 'ПередПроведением');
+    assert.ok(app.applied.some(entry => entry[0] === 'flash' && entry[1] === error));
+  });
+}

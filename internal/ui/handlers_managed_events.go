@@ -657,8 +657,20 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		elementName = ""
 		eventName = string(metadata.FormEventBeforeClose)
 	}
+	beforePost := closeInv == nil && beforePostEvent(elementName, eventName)
 	progAny := form.ProgramAST
 	if progAny == nil {
+		// Posting requires the declared check to run. The historical no-op for
+		// ordinary events must not authorize posting when the module is absent.
+		if beforePost {
+			procName, _, _, eligibilityErr := resolveBrowserFormEvent(form, elementName, eventName, false)
+			if eligibilityErr != nil {
+				respondJSON(enc, formEventResponse{Error: eligibilityErr.Error()})
+			} else {
+				respondJSON(enc, formEventResponse{Error: "процедура «" + procName + "» не найдена в .form.os"})
+			}
+			return
+		}
 		if closeInv != nil {
 			if procName := resolveFormCloseHandler(form); procName != "" {
 				respondJSON(enc, formEventResponse{Error: "процедура «" + procName + "» не найдена в .form.os"})
@@ -745,7 +757,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if procName != "" && decl == nil {
-		if closeInv != nil {
+		if closeInv != nil || beforePost {
 			respondJSON(enc, formEventResponse{Error: "процедура «" + procName + "» не найдена в .form.os"})
 			return
 		}
@@ -765,7 +777,6 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	}
 	// ПередПроведением: тот же контракт Отказ, что у ПередЗакрытием, — но
 	// событие обычное браузерное, без протокола закрытия.
-	beforePost := closeInv == nil && beforePostEvent(elementName, eventName)
 	var beforePostArgs []any
 	if beforePost {
 		if !entity.Posting {
