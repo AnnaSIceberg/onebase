@@ -74,7 +74,64 @@ func choicePredicateSQL(d Dialect, entity *metadata.Entity, predicates []ChoiceP
 			continue
 		}
 
+		// «<ТЧ>.<Колонка>» — отбор по табличной части выбираемого справочника
+		// (#1822): запись подходит, если в её ТЧ есть хотя бы одна строка с
+		// нужной ссылкой. Так выражается связь многие-ко-многим, которой в
+		// реквизитах записи нет (бренд обслуживает несколько направлений).
+		// EXISTS, а не JOIN: запись с двумя подходящими строками не задваивается
+		// ни в выдаче, ни в total. Только eq и только ссылочная колонка —
+		// грамматика закрыта до появления сценария.
+		if tpName, tpField, isTablePart := strings.Cut(fieldName, "."); isTablePart {
+			tp, column := ChoiceTablePartColumn(entity, tpName, tpField)
+			if tp == nil || column == nil {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: table part column %q does not exist", i, fieldName)
+			}
+			if strings.TrimSpace(column.RefEntity) == "" {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: table part column %q is not a reference", i, fieldName)
+			}
+			if predicate.Op != metadata.FormChoiceOpEqual {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: table part column %q supports only eq", i, fieldName)
+			}
+			id, err := choiceUUID(predicate.Value)
+			if err != nil {
+				return "", nil, startArg, fmt.Errorf("choice filter %d field %q: %w", i, fieldName, err)
+			}
+			// Без алиаса: строки ТЧ квалифицируются именем её таблицы
+			// «<цель>_<тч>», которое не совпадает с именем таблицы цели. Любой
+			// фиксированный алиас мог совпасть с именем каталога и затенить
+			// внешнюю таблицу — корреляция parent_id = id тогда сравнивала бы
+			// поля одной строки ТЧ.
+			tpTable := metadata.TablePartTableName(entity.Name, tp.Name)
+			parts = append(parts, fmt.Sprintf("EXISTS (SELECT 1 FROM %s WHERE %s.parent_id = %s.id AND %s.%s = %s)",
+				tpTable, tpTable, metadata.TableName(entity.Name), tpTable,
+				metadata.ColumnName(*column), d.Placeholder(next)))
+			args = append(args, idArg(d, id))
+			next++
+			continue
+		}
+
+		// Existing configuration attributes take precedence over the new
+		// pseudo-field, including in flat catalogs and case-insensitive lookup.
 		field, column := choiceField(entity, fieldName)
+		if field == nil && strings.EqualFold(fieldName, metadata.FormChoiceRootField) {
+			if !entity.Hierarchical {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: is_root requires a hierarchical catalog", i)
+			}
+			if predicate.Op != metadata.FormChoiceOpEqual {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: is_root supports only eq", i)
+			}
+			value, ok := predicate.Value.(bool)
+			if !ok {
+				return "", nil, startArg, fmt.Errorf("choice filter %d: is_root value must be boolean", i)
+			}
+			rootSQL := choiceEmptyRefSQL(d, "parent_id")
+			if !value {
+				rootSQL = "NOT (" + rootSQL + ")"
+			}
+			parts = append(parts, rootSQL)
+			continue
+		}
+
 		if field == nil {
 			return "", nil, startArg, fmt.Errorf("choice filter %d: field %q does not exist", i, fieldName)
 		}
@@ -170,7 +227,7 @@ func choiceSubtreeSQL(refEntity, placeholder string) string {
 			)`, table, placeholder, table)
 }
 
-// choiceEmptyRefSQL — «ссылка пуста» для eq_or_empty и not_in_hierarchy.
+// choiceEmptyRefSQL — «ссылка пуста» для eq_or_empty, is_root и not_in_hierarchy.
 func choiceEmptyRefSQL(d Dialect, column string) string {
 	if d.Name() == "sqlite" {
 		return "(" + column + " IS NULL OR " + column + " = '')"
@@ -194,6 +251,29 @@ func choiceField(entity *metadata.Entity, name string) (*metadata.Field, string)
 		}
 	}
 	return nil, ""
+}
+
+// ChoiceTablePartColumn находит табличную часть и её колонку условия
+// «<ТЧ>.<Колонка>» без учёта регистра — так же, как реквизиты шапки. Общий
+// разбор для SQL, сервера форм и onebase check.
+func ChoiceTablePartColumn(entity *metadata.Entity, tpName, columnName string) (*metadata.TablePart, *metadata.Field) {
+	if entity == nil {
+		return nil, nil
+	}
+	tpName, columnName = strings.TrimSpace(tpName), strings.TrimSpace(columnName)
+	for i := range entity.TableParts {
+		tp := &entity.TableParts[i]
+		if !strings.EqualFold(tp.Name, tpName) {
+			continue
+		}
+		for j := range tp.Fields {
+			if strings.EqualFold(tp.Fields[j].Name, columnName) {
+				return tp, &tp.Fields[j]
+			}
+		}
+		return tp, nil
+	}
+	return nil, nil
 }
 
 func choiceUUID(value any) (uuid.UUID, error) {

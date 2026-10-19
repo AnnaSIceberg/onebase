@@ -3,14 +3,16 @@ package entityservice
 // Порты хранилища (шаг 2 ARCH-01, issue #787).
 //
 // Интерфейсы объявлены на стороне потребителя: здесь перечислена ровно та
-// поверхность *storage.DB, которой пользуется сам сервис, — 25 методов из 314.
-// internal/storage о них не знает и не меняется, *storage.DB удовлетворяет им
+// поверхность *storage.DB, которой пользуется сам сервис, включая tx-only lifecycle записи и проведения.
+// internal/storage о них не знает; *storage.DB удовлетворяет им
 // как есть (см. compile-time проверку в конце файла).
 //
 // Зачем: раньше поле Service.Store имело тип *storage.DB, и сигнатура ничего не
 // сообщала о контракте — чтобы узнать, что сервису нужно от базы, приходилось
-// читать сервис целиком. Теперь набор виден объявлением, а изменение любого из
-// остальных 289 методов storage.DB сервиса не задевает.
+// читать сервис целиком. Теперь набор виден объявлением, а изменение методов
+// storage.DB за его пределами сервиса не задевает. Счётчиков методов здесь
+// сознательно нет: число устаревало при каждой правке портов и storage, и
+// описание начинало врать — назначение портов важнее их количества.
 //
 // Роли объявлены раздельно, чтобы будущие потребители могли зависеть от узкой
 // части; поле Store пока держит совокупный Storage — это оставляет все точки
@@ -42,6 +44,13 @@ type EntityStore interface {
 	// UpsertVersioned пишет с проверкой ожидаемой версии; при расхождении —
 	// storage.ErrVersionConflict, и ничего не записано.
 	UpsertVersioned(ctx context.Context, entityName string, id uuid.UUID, fields map[string]any, entity *metadata.Entity, expectedVersion *int64) error
+	// Posting preludes share one version bump and delay durable effects until
+	// finalization. A new parent keeps its provisional-create lifecycle open.
+	UpdateProvisional(ctx context.Context, entityName string, id uuid.UUID, fields map[string]any, entity *metadata.Entity) error
+	UpsertPostingPreludeVersioned(ctx context.Context, entityName string, id uuid.UUID, fields map[string]any, entity *metadata.Entity, expectedVersion *int64) error
+	UpsertAfterVersionBump(ctx context.Context, entityName string, id uuid.UUID, fields map[string]any, entity *metadata.Entity) error
+	UpsertPostingPreludeTablePartRows(ctx context.Context, entityName, tpName string, parentID uuid.UUID, rows []map[string]any, tp metadata.TablePart) error
+	FinalizePostingPreludeTablePartRows(ctx context.Context, entityName, tpName string, parentID uuid.UUID, rows []map[string]any, provided bool, tp metadata.TablePart) error
 	// EntityVersion читает точную текущую optimistic-lock версию. Service
 	// использует её внутри той же транзакции после записи: при unversioned update
 	// арифметика от входного token невозможна, а наружу всё равно нужен точный
@@ -68,6 +77,9 @@ type EntityStore interface {
 // MovementStore — запись движений документа во все три вида регистров.
 // Пустой rows означает отмену проведения: движения регистратора снимаются.
 type MovementStore interface {
+	// LockMovementRecorder блокирует строку регистратора до поиска/записи
+	// движений, не меняя поля и optimistic-lock версию.
+	LockMovementRecorder(ctx context.Context, entity *metadata.Entity, id uuid.UUID) error
 	// WriteMovements перезаписывает движения документа в регистре накопления.
 	WriteMovements(ctx context.Context, regName, recorderType string, recorderID uuid.UUID, rows []map[string]any, reg *metadata.Register, period *time.Time) error
 	// WriteInfoMovements перезаписывает движения документа в регистре сведений.
@@ -75,6 +87,10 @@ type MovementStore interface {
 	// WriteAccountMovements перезаписывает проводки документа в бухрегистре
 	// (вместе с итогами в той же транзакции).
 	WriteAccountMovements(ctx context.Context, regName, docType string, docID uuid.UUID, rows []map[string]any, ar *metadata.AccountRegister, period *time.Time) error
+	// RecorderMovementRegisters сообщает, в каких из переданных
+	// регистров у регистратора есть движения — чтобы снимать и запирать только их.
+	RecorderMovementRegisters(ctx context.Context, recorderType string, recorderID uuid.UUID,
+		regs []*metadata.Register, infos []*metadata.InfoRegister, accs []*metadata.AccountRegister) (storage.RecorderRegisters, error)
 }
 
 // TxManager — управление транзакцией вокруг записи и проведения.
@@ -140,7 +156,7 @@ type Storage interface {
 	DefaultsStore
 }
 
-// *storage.DB обязан удовлетворять порту без единой правки в internal/storage.
+// *storage.DB обязан удовлетворять всему порту, включая tx-only lifecycle.
 // Если сигнатура там разойдётся с портом, сломается эта строка с внятным
 // сообщением, а не полсотни мест вызова.
 var _ Storage = (*storage.DB)(nil)

@@ -172,6 +172,53 @@ func fmtDateValue(v any) string {
 	return fmt.Sprintf("%v", v)
 }
 
+// tpDateInputValue — значение даты строки табличной части для
+// <input type="datetime-local">: «2006-01-02T15:04:05» в местной зоне.
+// Строка приходит по-разному: из сериализации формы — уже стенными часами без
+// зоны, из базы — RFC3339 или time.Time. Строку без зоны нельзя разбирать как
+// UTC (formatDateValueForInput делает именно так — для значений из базы это
+// верно): время сдвинулось бы на смещение хоста. Что датой не разобралось,
+// отдаётся пустым: браузер всё равно очистил бы невалидное значение поля.
+func tpDateInputValue(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case time.Time:
+		return t.In(time.Local).Format(dateInputLayout)
+	case *time.Time:
+		if t == nil {
+			return ""
+		}
+		return t.In(time.Local).Format(dateInputLayout)
+	}
+	s := strings.TrimSpace(fmt.Sprintf("%v", v))
+	if i := strings.Index(s, " m=+"); i >= 0 {
+		s = s[:i]
+	}
+	if s == "" {
+		return ""
+	}
+	for _, layout := range []string{
+		time.RFC3339, time.RFC3339Nano,
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.In(time.Local).Format(dateInputLayout)
+		}
+	}
+	for _, layout := range []string{
+		"2006-01-02T15:04:05", "2006-01-02 15:04:05",
+		"2006-01-02T15:04", "2006-01-02",
+	} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t.Format(dateInputLayout)
+		}
+	}
+	return ""
+}
+
 func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 	translate := func(lang, key string) string {
 		if bundle != nil {
@@ -180,9 +227,20 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		return key
 	}
 	return template.FuncMap{
-		"refWriteAllowed": refWriteAllowed,
-		"lower":           strings.ToLower,
-		"infoRegKeyValue": infoRegKeyValue,
+		"refWriteAllowed":       refWriteAllowed,
+		"listFilterPanelFields": listFilterPanelFields,
+		"listFilterChoices":     listFilterChoices,
+		"lower":                 strings.ToLower,
+		"infoRegKeyValue":       infoRegKeyValue,
+		"gridLayoutAttr":        gridLayoutAttr,
+		"gridOrderAttr":         gridOrderAttr,
+		// enterSubmitsForm — форма явно вернула себе прежний Enter-submit.
+		// Данные шаблона — карта, и ключа Form у автогенерённой формы может не
+		// быть вовсе: nil читается как «умолчание платформы», то есть навигация.
+		"enterSubmitsForm": func(v any) bool {
+			form, _ := v.(*metadata.FormModule)
+			return form != nil && form.EnterSubmitsForm
+		},
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
 			if proc == nil {
 				return processorParamPresencePrefix + name
@@ -351,6 +409,16 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// новая строка должна получить флажок, а не поле ввода (#1010). Имена
 		// перечислений JS достаёт из ob-tp-enum-labels, а тип bool в разметке
 		// автоформы больше ниоткуда не виден.
+		"tpDateInput": tpDateInputValue,
+		"dateFieldNamesCSV": func(fields []metadata.Field) string {
+			names := make([]string, 0, len(fields))
+			for _, f := range fields {
+				if f.Type == metadata.FieldTypeDate {
+					names = append(names, f.Name)
+				}
+			}
+			return strings.Join(names, ",")
+		},
 		"boolFieldNamesCSV": func(fields []metadata.Field) string {
 			names := make([]string, 0, len(fields))
 			for _, f := range fields {
@@ -508,6 +576,12 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// attrRefEntity — имя сущности из ссылочного типа реквизита формы
 		// ("CatalogRef.X" → "X"), пусто если тип не ссылочный.
 		"attrRefEntity": func(typeRef string) string { return attrRefEntityName(typeRef) },
+		// refHasCard — есть ли у цели ссылки карточка, которую откроет 🔍.
+		// У системной таблицы учётных записей (reference:_users, #1646) её
+		// нет: адрес давал 404, а вкладка с ним не закрывалась (#1684).
+		"refHasCard": func(refEntity string) bool {
+			return strings.TrimSpace(refEntity) != "" && !metadata.IsSystemRefTarget(refEntity)
+		},
 		// formAttrNames — имена скалярных реквизитов формы (save:false), которых
 		// нет среди полей сущности. Клиент по ним восстанавливает введённое после
 		// полной перезагрузки страницы: «Записать» уходит POST'ом с редиректом, и
@@ -563,6 +637,18 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"elLayout": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementLayoutCSS(el)) //nolint:gosec // G203: стиль собран из словаря выравнивания и целых размеров 1…4000 px
 		},
+		// elLayoutEx — elLayout + display:none для элементов с hidden_when,
+		// скрытых при первичном рендере. Без этого такие элементы не попадали
+		// в DOM и applyElementStates не мог показать их при смене условия.
+		"elLayoutEx": func(ctx map[string]any, el *metadata.FormElement) template.CSS {
+			css := metadata.FormElementLayoutCSS(el)
+			if el != nil && el.HiddenWhen != "" {
+				if set, _ := ctx["ElHidden"].(map[string]bool); set[elementStatePath(ctx, el)] {
+					css = "display:none;" + css
+				}
+			}
+			return template.CSS(css) //nolint:gosec // G203: стиль собран из словаря выравнивания и целых размеров 1…4000 px
+		},
 		"elAlign": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementAlignCSS(el)) //nolint:gosec // G203: стиль собран только из нормализованных значений словаря выравнивания
 		},
@@ -585,7 +671,10 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// elReadOnly / elHidden — итоговое состояние элемента управляемой формы
 		// с учётом условий readonly_when/hidden_when по полям записи. Условия
 		// вычисляются на сервере при отрисовке (и заново после каждого события
-		// формы), а шаблон только читает результат по имени элемента.
+		// формы), а шаблон только читает результат. Ключ карты — путь размещения
+		// элемента, а не имя: пустые и повторяющиеся имена не идентифицируют
+		// конкретное размещение (#1543). Соответствие «указатель → путь» кладёт
+		// в контекст prepareManagedFormData рядом с картами состояний.
 		"elReadOnly": func(ctx map[string]any, el *metadata.FormElement) bool {
 			if el == nil {
 				return false
@@ -594,14 +683,53 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				return true
 			}
 			set, _ := ctx["ElReadOnly"].(map[string]bool)
-			return set[el.Name]
+			return set[elementStatePath(ctx, el)]
 		},
 		"elHidden": func(ctx map[string]any, el *metadata.FormElement) bool {
 			if el == nil {
 				return false
 			}
 			set, _ := ctx["ElHidden"].(map[string]bool)
-			return set[el.Name]
+			if !set[elementStatePath(ctx, el)] {
+				return false
+			}
+			if el.HiddenWhen == "" {
+				return true // статически скрыт — не рисуем
+			}
+			// Элемент с hidden_when скрыт ДИНАМИЧЕСКИ: пропускать его нельзя,
+			// иначе он не попадёт в DOM и applyElementStates не сможет
+			// показать его при смене условия. Контейнеры (ТабличнаяЧасть,
+			// ГруппаФормы, СтраницыФормы) по-прежнему пропускаются — у них
+			// рендеринг с display:none ломает отправку tp_json и флажков.
+			// Только простые поля ввода и переключатели рендерятся с
+			// display:none. Остальное (контейнеры, ТЧ, флажки, картинки,
+			// надписи, кнопки) пропускается как раньше.
+			switch el.Kind {
+			case metadata.FormElementField,
+				metadata.FormElementSwitch,
+				metadata.FormElementDatePicker:
+				return false // рисуем с display:none
+			}
+			return true // остальные типы — пропускаем как раньше
+		},
+		// elHiddenStyle возвращает "display:none;" для элемента, который
+		// скрыт условием hidden_when при первичном рендере. Элемент
+		// остаётся в DOM, и applyElementStates переключает видимость.
+		"elHiddenStyle": func(ctx map[string]any, el *metadata.FormElement) template.CSS {
+			if el == nil || el.HiddenWhen == "" {
+				return ""
+			}
+			set, _ := ctx["ElHidden"].(map[string]bool)
+			if set[elementStatePath(ctx, el)] {
+				return "display:none;"
+			}
+			return ""
+		},
+		// elPath — путь размещения элемента для якоря data-ob-el-path: по нему
+		// клиент находит свой элемент после события формы, когда имя элемента
+		// пустое или встречается на форме дважды (#1543).
+		"elPath": func(ctx map[string]any, el *metadata.FormElement) string {
+			return elementStatePath(ctx, el)
 		},
 		// visibleFormPages — страницы набора СтраницыФормы, которые надо
 		// отрисовать. Отбор вынесен сюда, а не сделан внутри range, потому что
@@ -621,7 +749,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			hidden, _ := ctx["ElHidden"].(map[string]bool)
 			var out []*metadata.FormElement
 			for _, page := range el.Children {
-				if page == nil || string(page.Kind) != "Страница" || hidden[page.Name] {
+				if page == nil || string(page.Kind) != "Страница" || hidden[elementStatePath(ctx, page)] {
 					continue
 				}
 				out = append(out, page)
@@ -1031,7 +1159,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return template.JS(b) //nolint:gosec // G203: значение получено json.Marshal — он экранирует < > & в \u-последовательности, поэтому «</script>» из данных не разорвёт тег
 		},
 		// managedTPRowsJSON отдаёт гриду строки табличной части, приводя значения
-		// ДАТ к одному виду.
+		// дат и булевых колонок к одному виду.
 		//
 		// Раньше здесь стоял jsJSON, то есть голый json.Marshal, а он печатает
 		// time.Time в той зоне, в которой его отдал драйвер. Зоны у диалектов
@@ -1045,18 +1173,21 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// про зоны, ни разбирать две разные метки: он получает готовые стенные
 		// часы и работает с ними как с текстом.
 		"managedTPRowsJSON": func(fields []metadata.Field, rows []map[string]any) template.JS {
-			dateFields := make(map[string]bool, len(fields))
+			fieldTypes := make(map[string]metadata.FieldType, len(fields))
 			for _, f := range fields {
-				if f.Type == metadata.FieldTypeDate {
-					dateFields[strings.ToLower(f.Name)] = true
-				}
+				fieldTypes[strings.ToLower(f.Name)] = f.Type
 			}
 			out := make([]map[string]any, 0, len(rows))
 			for _, row := range rows {
 				copied := make(map[string]any, len(row))
 				for k, v := range row {
-					if dateFields[strings.ToLower(k)] {
+					switch fieldTypes[strings.ToLower(k)] {
+					case metadata.FieldTypeDate:
 						copied[k] = formatDateValueForInput(v)
+						continue
+					case metadata.FieldTypeBool:
+						// SQLite's INTEGER must not leak back into the grid.
+						copied[k] = tpCellNorm(metadata.Field{Type: metadata.FieldTypeBool}, v) == "true"
 						continue
 					}
 					copied[k] = v
@@ -1405,6 +1536,8 @@ h2{font-size:22px;font-weight:600;margin-bottom:20px;color:#1e293b}
 h3{font-size:16px;font-weight:600;margin:24px 0 10px;color:#1e293b}
 .card{background:#fff;border-radius:10px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,.1);max-width:1400px}
 .main-list .card,.main-list .row-top,.main-list details,.main-list .breadcrumb{max-width:1600px}
+.main-list .ob-list-content{width:100%}
+.main-list .ob-list-content>.card{max-width:none}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{text-align:left;padding:10px 12px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600}
 th a{color:#64748b;text-decoration:none}
@@ -1731,6 +1864,9 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 .w-list td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#334155}
 .w-list td.right{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .w-list tr:last-child td{border-bottom:none}
+.w-list .ob-row-link{cursor:pointer}
+.w-list .ob-row-link:hover td,.w-list .ob-row-link:focus-visible td{background:#eff6ff}
+.w-list .ob-row-link:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}
 .w-chart{min-height:240px}
 .w-chart-canvas{width:100%;height:240px}
 .w-actions-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
@@ -1959,7 +2095,7 @@ const tplList = `
   <summary>{{t $.Lang "Отбор"}}</summary>
   <form method="GET" action="">
   <div class="filter-body">
-  {{range $entity.Fields}}{{$f := .}}
+  {{range listFilterPanelFields $}}{{$f := .}}
     {{if isActivityField $entity .}}
     {{else}}
     {{if eq (str .Type) "date"}}
@@ -2000,6 +2136,21 @@ const tplList = `
   {{/* Форма владеет отбором f.* — поиск, вид, папку и сортировку переносим. */}}
   {{if .TreeView}}{{listHidden $.Query "f.*" "view"}}{{else}}{{listHidden $.Query "f.*"}}{{end}}
   </form>
+  {{/* list_filters: в панели основной набор; остальные реквизиты пользователь
+       добавляет себе здесь, выбор запоминается за ним (POST /ui/_list-filters). */}}
+  {{with listFilterChoices $}}
+  <details class="ob-filter-more" style="margin-top:8px">
+    <summary>+ {{t $.Lang "Отбор"}}</summary>
+    <form method="POST" action="/ui/_list-filters" style="padding:0 20px 12px">
+      <input type="hidden" name="entity" value="{{$entity.Name}}">
+      <input type="hidden" name="back" value="{{$.RequestURI}}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:4px 16px;max-height:320px;overflow:auto;margin:8px 0">
+      {{range .}}<label style="font-weight:400;display:flex;gap:6px;align-items:center"><input type="checkbox" name="field" value="{{.Field.Name}}"{{if .Checked}} checked{{end}}> {{.Field.DisplayName $.Lang}}</label>
+      {{end}}</div>
+      <button class="btn btn-primary btn-sm" type="submit">{{t $.Lang "Показать отмеченные"}}</button>
+    </form>
+  </details>
+  {{end}}
 </details>
 
 {{$obRefresh := liveListRefreshOn .Entity}}
@@ -2339,7 +2490,7 @@ const tplForm = `
         <tr>
           {{if $columns.ShowLineNumber}}<td>{{index $row "line_number"}}</td>{{end}}
           {{if $columns.ShowKind}}<td>{{$kind := index $row "вид_движения"}}{{if eq $kind "Приход"}}<span style="color:#16a34a">▲</span>{{else if eq $kind "Расход"}}<span style="color:#dc2626">▼</span>{{else}}{{$kind}}{{end}}</td>{{end}}
-          {{range $k, $v := $row}}{{if and (ne $k "line_number") (ne $k "вид_движения")}}<td>{{$v}}</td>{{end}}{{end}}
+          {{range $k, $v := $row}}{{if and (ne $k "line_number") (ne $k "вид_движения")}}<td>{{if eq $k "period"}}{{fmtDate $v}}{{else}}{{$v}}{{end}}</td>{{end}}{{end}}
         </tr>
         {{end}}
       </table>
@@ -2351,7 +2502,7 @@ const tplForm = `
 {{end}}{{/* end if not .IsPopup */}}
 
 <div class="card">
-<form id="main-form" method="POST" data-ob-dirty-watch="1">
+<form id="main-form" method="POST" data-ob-dirty-watch="1"{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}>
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{if .IsPopup}}<input type="hidden" name="_popup" value="1">{{end}}
 {{if .Entity.Hierarchical}}
@@ -2481,6 +2632,11 @@ const tplForm = `
             <option value="{{.Value}}"{{if .Selected}} selected{{end}}{{if .Unknown}} style="color:#dc2626"{{end}}>{{if .Unknown}}⚠ {{end}}{{.Label}}</option>
             {{end}}
           </select>
+        {{else if eq (str .Type) "date"}}
+          {{/* Поле даты, а не текст: в текстовом поле стояла сырая метка
+               «2026-10-19T09:15:30». */}}
+          {{if $tpReadOnly}}<input type="text" name="tp.{{$tpName}}.{{$i}}.{{$fn}}" value="{{fmtDate (index $row $fn)}}" disabled data-ob-date-text>{{else}}<input type="datetime-local" step="1" name="tp.{{$tpName}}.{{$i}}.{{$fn}}" value="{{tpDateInput (index $row $fn)}}"
+            data-ob-tp-recalc>{{end}}
         {{else if eq (str .Type) "bool"}}
           {{/* Флажок, а не текст (#1010): в текстовом поле стояло сырое
                значение из БД («1» на SQLite), а разбор сохранения признаёт
@@ -2501,7 +2657,7 @@ const tplForm = `
   </tr></tfoot>
 </table>
 <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569;margin-bottom:8px"
-  data-ob-add-tp-row data-tp-name="{{$tpName}}" data-tp-fields="{{fieldNamesCSV .Fields}}" data-tp-num-fields="{{numberFieldNamesCSV .Fields}}" data-tp-bool-fields="{{boolFieldNamesCSV .Fields}}"
+  data-ob-add-tp-row data-tp-name="{{$tpName}}" data-tp-fields="{{fieldNamesCSV .Fields}}" data-tp-num-fields="{{numberFieldNamesCSV .Fields}}" data-tp-bool-fields="{{boolFieldNamesCSV .Fields}}" data-tp-date-fields="{{dateFieldNamesCSV .Fields}}"
   {{if $tpReadOnly}}disabled{{else}}title="Insert" aria-keyshortcuts="Insert"{{end}}>
   + {{t $.Lang "Добавить строку"}}
 </button>
@@ -2581,7 +2737,6 @@ const tplReport = `
 {{$excel := printf "/ui/report/%s/export/excel%s" (lower .Report.Name) $q}}
 {{$pdf := printf "/ui/report/%s/export/pdf%s" (lower .Report.Name) $q}}
 <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px">
-  <a class="btn btn-sm" href="/ui/export-jobs">{{t $.Lang "Мои выгрузки"}}</a>
   {{if eq (lower .Report.OutputFormat) "pdf"}}
   <a class="btn btn-sm" href="{{$pdf}}" style="background:#dc2626;color:#fff" title="{{t $.Lang "Запустить выгрузку PDF"}}">{{t $.Lang "PDF"}}</a>
   <a class="btn btn-sm" href="{{$excel}}" style="background:#16a34a;color:#fff" title="{{t $.Lang "Запустить выгрузку Excel"}}">{{t $.Lang "Excel"}}</a>
@@ -2659,6 +2814,9 @@ const tplReport = `
 {{template "head" .}}{{template "nav" .}}
 <main>
 <h2>{{.Report.DisplayName $.Lang}}</h2>
+<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+  <a class="btn btn-sm" href="/ui/export-jobs">{{t $.Lang "Мои выгрузки"}}</a>
+</div>
 {{if or .ReportParams .Report.Variants .ReportPresets}}
 <details class="card report-block" data-block="params" open style="margin-bottom:16px">
 <summary>{{t $.Lang "Параметры"}}</summary>
@@ -2920,6 +3078,7 @@ const tplRegister = `
 {{template "reg-filter-form" (dict "Fields" .FilterFields "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" .ShowPeriodFilter "ShowToOnly" false "HasFilters" .HasFilters "ResetURL" (printf "/ui/register/%s" (lower .Register.Name)) "Lang" $.Lang)}}
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   {{if .ShowMovementKind}}<th>{{t $.Lang "Вид движения"}}</th>{{end}}
   {{if .ShowRecorder}}<th>{{t $.Lang "Регистратор"}}</th>{{end}}
@@ -2935,6 +3094,7 @@ const tplRegister = `
   {{range $.VisibleAttributes}}<td>{{index $row .Name}}</td>{{end}}
 </tr>{{end}}
 </tbody></table>
+</div>
 {{else}}<p class="empty">{{t $.Lang "Движений нет"}}</p>{{end}}
 </div></main></div></body></html>
 {{end}}
@@ -2949,6 +3109,7 @@ const tplRegister = `
 {{template "reg-filter-form" (dict "Fields" .FilterFields "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" false "ShowToOnly" .ShowPeriodFilter "HasFilters" .HasFilters "ResetURL" (printf "/ui/register/%s/balances" (lower .Register.Name)) "Lang" $.Lang)}}
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   {{range .VisibleDimensions}}<th>{{.DisplayName $.Lang}}</th>{{end}}
   {{range .VisibleResources}}<th>{{.DisplayName $.Lang}}</th>{{end}}
@@ -2958,6 +3119,7 @@ const tplRegister = `
   {{range $.VisibleResources}}<td style="font-weight:600">{{index $row .Name}}</td>{{end}}
 </tr>{{end}}
 </tbody></table>
+</div>
 {{else}}<p class="empty">{{t $.Lang "Остатков нет"}}</p>{{end}}
 </div></main></div></body></html>
 {{end}}
@@ -3026,6 +3188,14 @@ const tplProcessor = `
            не недоделка. Поэтому после запуска поле пустое, и повторное
            «Выполнить» без файла обязано останавливаться здесь, а не улетать на
            сервер за ошибкой прикладного модуля. */}}
+      <input type="file" name="{{$pname}}" {{if .Required}}required{{end}}>
+    </div>
+    {{else if eq .Type "binary"}}
+    <div class="form-group" style="margin-bottom:0;grid-column:1/-1">
+      <label>{{.DisplayLabel $.Lang}}{{if .Required}} <span style="color:#dc2626">*</span>{{end}}</label>
+      {{/* Двоичный файл уходит как есть: обработка получит путь к временной
+           копии. Поле такое же, как у text-файла, — разница только в том, что
+           попадает в значение параметра. */}}
       <input type="file" name="{{$pname}}" {{if .Required}}required{{end}}>
     </div>
     {{else if eq .Type "text"}}
@@ -3386,11 +3556,12 @@ const tplInfoReg = `
     {{if .CanWrite}}<a class="btn" href="/ui/inforeg/{{lower .InfoReg.Name}}/new">+ {{t $.Lang "Добавить запись"}}</a>{{end}}
   </div>
 </div>
-{{template "reg-filter-form" (dict "Fields" .InfoReg.Dimensions "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" .InfoReg.Periodic "ShowToOnly" false "HasFilters" .HasFilters "ResetURL" .ResetURL "Context" .FilterContext "Lang" $.Lang)}}
+{{template "reg-filter-form" (dict "Fields" .FilterFields "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" .InfoReg.Periodic "ShowToOnly" false "HasFilters" .HasFilters "ResetURL" .ResetURL "Context" .FilterContext "Lang" $.Lang)}}
 <div style="margin-bottom:8px">{{template "detail-panel-toggle" .}}</div>
 <div class="ob-list-wrap">
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   {{if .InfoReg.Periodic}}<th>{{t $.Lang "Период"}}</th>{{end}}
   {{range .InfoReg.Dimensions}}<th>{{.DisplayName $.Lang}}</th>{{end}}
@@ -3412,6 +3583,7 @@ const tplInfoReg = `
   </td>{{end}}
 </tr>{{end}}
 </tbody></table>
+</div>
 {{else}}<p class="empty">{{t $.Lang "Записей нет"}}</p>{{end}}
 </div>
 {{template "detail-panel" .}}
@@ -3441,7 +3613,8 @@ const tplInfoReg = `
   {{if .InfoReg.Periodic}}
   <div class="form-row">
     <label>{{t $.Lang "Период"}}</label>
-    <input type="date" name="period" value="{{index .Values "period"}}" required>
+    {{/* Период — момент с точностью до секунды, как у даты документа и в 1С. */}}
+    <input type="datetime-local" step="1" name="period" value="{{index .Values "period"}}" required>
   </div>
   {{end}}
   {{range .InfoReg.Dimensions}}
@@ -3636,6 +3809,7 @@ const tplJournal = `
 <div class="ob-list-wrap">
 <div class="card">
 {{if .Rows}}
+<div style="overflow-x:auto">
 <table><thead><tr>
   <th>{{t $.Lang "Документ"}}</th>
   {{range .JournalColumns}}<th>{{.DisplayLabel $.Lang}}</th>{{end}}
@@ -3656,6 +3830,7 @@ const tplJournal = `
 </tr>
 {{end}}
 </tbody></table>
+</div>
 {{else}}
 <p class="empty">{{t $.Lang "Документов нет"}}</p>
 {{end}}
