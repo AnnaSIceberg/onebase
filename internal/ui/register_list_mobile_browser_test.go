@@ -56,7 +56,7 @@ func TestListTablesMobileBrowserGeometry(t *testing.T) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			// Chrome's CLI clamps a top-level window to 500px on some systems.
 			// An iframe gives the production document its exact CSS viewport.
-			fmt.Fprintf(w, `<html><body><iframe style="border:0" width="%s" height="900" src="%s"></iframe></body></html>`, html.EscapeString(r.URL.Query().Get("width")), html.EscapeString(r.URL.Query().Get("page")))
+			_, _ = fmt.Fprintf(w, `<html><body><iframe style="border:0" width="%s" height="900" src="%s"></iframe></body></html>`, html.EscapeString(r.URL.Query().Get("width")), html.EscapeString(r.URL.Query().Get("page")))
 			return
 		}
 		if r.URL.Path != "/ui/inforeg/rates" && r.URL.Path != "/ui/journal/orderjournal" {
