@@ -86,7 +86,7 @@ func CheckFormTablePartColumns(proj *project.Project) []Issue {
 	for _, p := range proj.Processors {
 		for _, form := range p.Forms {
 			label := procFormFileLabel(p.Name, form)
-			report(label, p.Name, nil, form)
+			report(label, p.Name, p.VirtualEntity(), form)
 		}
 	}
 	return issues
@@ -102,8 +102,8 @@ func checkTablePartColumns(add func(msg, fix string), ent *metadata.Entity, el *
 	if len(columns) == 0 {
 		return
 	}
-	// Табличная часть формы обработки или ValueTable: состав её колонок живёт в
-	// метаданных формы, сопоставлять не с чем — проверяем только события.
+	// У таблицы, описанной только в метаданных формы (например, ValueTable),
+	// нет реквизитов сущности для сопоставления — проверяем только события.
 	tp := virtualColumnTablePart(ent, el)
 
 	seen := make(map[string]*metadata.FormElement, len(columns))

@@ -187,7 +187,7 @@ function obEscapeColumnTitle(text) {
 }
 
 // obManagedApplyColumnTitles — заголовки колонок с title_from после события
-// формы: {табличная часть: {реквизит: заголовок}}. Меняется и описание колонки
+// формы: {путь размещения ТЧ: {реквизит: заголовок}}. Меняется и описание колонки
 // (его заново рисует setColumns при перестановке), и уже нарисованная шапка.
 function obManagedApplyColumnTitles(titles) {
   if (!titles) return;
@@ -200,7 +200,7 @@ function obManagedApplyColumnTitles(titles) {
   });
   views.forEach(function(state) {
     if (!state || !state.grid || !state.div) return;
-    var byField = titles[state.div.getAttribute("data-sg-tp")];
+    var byField = titles[state.div.getAttribute("data-sg-path")];
     if (!byField) return;
     (state.columns || []).forEach(function(col) {
       if (!Object.prototype.hasOwnProperty.call(byField, col.id)) return;

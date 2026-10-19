@@ -246,44 +246,40 @@ func managedTPColumnsTitled(plan []managedTPColumn, values any) []managedTPColum
 }
 
 // managedTPColumnTitles — заголовки колонок с title_from для ответа события:
-// «табличная часть → реквизит → заголовок». Пустой реквизит возвращает
-// колонке её статичный заголовок, поэтому в карте каждая такая колонка.
+// «путь размещения ТЧ → реквизит → заголовок». Путь совпадает с data-sg-path
+// при отрисовке и различает повторяющиеся и пустые имена элементов.
+// Пустой источник возвращает колонке её статичный заголовок.
 func managedTPColumnTitles(form *metadata.FormModule, entity *metadata.Entity, values map[string]any, lang string) map[string]map[string]string {
 	if form == nil || entity == nil {
 		return nil
 	}
 	var out map[string]map[string]string
-	var walk func(elements []*metadata.FormElement)
-	walk = func(elements []*metadata.FormElement) {
-		for _, el := range elements {
-			if el == nil {
+	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+		el := visit.element
+		if el.Kind != metadata.FormElementTablePart {
+			return
+		}
+		tp := entityTablePartByName(entity, dpFieldName(el.DataPath))
+		if tp == nil {
+			return
+		}
+		for _, column := range managedTPColumnPlan(el, tp.Fields) {
+			if column.Element == nil || strings.TrimSpace(column.Element.TitleFrom) == "" {
 				continue
 			}
-			if el.Kind == metadata.FormElementTablePart {
-				tp := entityTablePartByName(entity, dpFieldName(el.DataPath))
-				if tp != nil {
-					for _, column := range managedTPColumnPlan(el, tp.Fields) {
-						if column.Element == nil || strings.TrimSpace(column.Element.TitleFrom) == "" {
-							continue
-						}
-						title, ok := managedTPColumnTitleFrom(column.Element, values)
-						if !ok {
-							title = column.Field.DisplayName(lang)
-						}
-						if out == nil {
-							out = map[string]map[string]string{}
-						}
-						if out[tp.Name] == nil {
-							out[tp.Name] = map[string]string{}
-						}
-						out[tp.Name][column.Field.Name] = title
-					}
-				}
+			title, ok := managedTPColumnTitleFrom(column.Element, values)
+			if !ok {
+				title = column.Field.DisplayName(lang)
 			}
-			walk(el.Children)
+			if out == nil {
+				out = map[string]map[string]string{}
+			}
+			if out[visit.path] == nil {
+				out[visit.path] = map[string]string{}
+			}
+			out[visit.path][column.Field.Name] = title
 		}
-	}
-	walk(form.Elements)
+	})
 	return out
 }
 

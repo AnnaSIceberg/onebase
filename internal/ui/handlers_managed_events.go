@@ -57,7 +57,7 @@ type formEventResponse struct {
 	// продолжала показывать их редактируемыми.
 	ElementStates *elementStates `json:"elementStates,omitempty"`
 	// ColumnTitles — заголовки колонок с title_from после обработчика:
-	// «табличная часть → реквизит → заголовок». Шапка SlickGrid иначе
+	// «путь размещения ТЧ → реквизит → заголовок». Шапка SlickGrid иначе
 	// оставалась бы прежней до перезагрузки страницы.
 	ColumnTitles map[string]map[string]string `json:"columnTitles,omitempty"`
 	Messages     []string                     `json:"messages,omitempty"`

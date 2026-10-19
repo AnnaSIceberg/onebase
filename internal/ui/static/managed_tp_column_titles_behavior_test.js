@@ -17,11 +17,11 @@ globalThis.window = {};
 vm.runInThisContext(source.slice(start, end) + 'window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;',
   {filename: 'managed-column-titles.js'});
 
-function gridState(tp, ids) {
+function gridState(tp, ids, placement = "1") {
   const calls = [];
   return {
     calls,
-    div: {getAttribute(name) { return name === 'data-sg-tp' ? tp : null; }},
+    div: {getAttribute(name) { return name === 'data-sg-tp' ? tp : name === 'data-sg-path' ? placement : null; }},
     columns: ids.map((id) => ({id, name: id})),
     grid: {updateColumnHeader(id, title) { calls.push([id, title]); }},
   };
@@ -31,7 +31,7 @@ test('заголовок колонки меняется и в описании,
   const days = gridState('Дни', ['День1', 'День2', 'Мастер']);
   window._obGrids = {Дни: days};
   window._obGridViews = [days];
-  window.obManagedApplyColumnTitles({Дни: {День1: '1 пн', День2: '2 вт'}});
+  window.obManagedApplyColumnTitles({"1": {День1: '1 пн', День2: '2 вт'}});
   assert.deepEqual(days.calls, [['День1', '1 пн'], ['День2', '2 вт']]);
   assert.equal(days.columns[0].name, '1 пн');
   assert.equal(days.columns[2].name, 'Мастер', 'колонку без title_from не трогаем');
@@ -41,19 +41,23 @@ test('текст реквизита экранируется: шапка SlickGr
   const days = gridState('Дни', ['День1']);
   window._obGrids = {Дни: days};
   window._obGridViews = [days];
-  window.obManagedApplyColumnTitles({Дни: {День1: '<img src=x onerror=1>&'}});
+  window.obManagedApplyColumnTitles({"1": {День1: '<img src=x onerror=1>&'}});
   assert.deepEqual(days.calls, [['День1', '&lt;img src=x onerror=1&gt;&amp;']]);
 });
 
-test('все экземпляры сетки табличной части, а чужая табличная часть — нет', () => {
-  const writable = gridState('Дни', ['День1']);
-  const summary = gridState('Дни', ['День1']);
-  const other = gridState('Отклонения', ['День1']);
+test('размещения одной ТЧ обновляются независимо, статичная сводка сохраняется', () => {
+  const writable = gridState('Дни', ['День1'], '1');
+  const summary = gridState('Дни', ['День1'], '2.0');
+  const dynamic = gridState('Дни', ['День1'], '2.1');
+  const other = gridState('Отклонения', ['День1'], '3');
+  summary.columns[0].name = 'Статичная сводка';
   window._obGrids = {Дни: writable, Отклонения: other};
-  window._obGridViews = [summary];
-  window.obManagedApplyColumnTitles({Дни: {День1: '1 пн'}});
+  window._obGridViews = [summary, dynamic];
+  window.obManagedApplyColumnTitles({'1': {День1: '1 пн'}, '2.1': {День1: 'Другой день'}});
   assert.deepEqual(writable.calls, [['День1', '1 пн']]);
-  assert.deepEqual(summary.calls, [['День1', '1 пн']]);
+  assert.deepEqual(summary.calls, []);
+  assert.equal(summary.columns[0].name, 'Статичная сводка');
+  assert.deepEqual(dynamic.calls, [['День1', 'Другой день']]);
   assert.deepEqual(other.calls, []);
 });
 
@@ -62,7 +66,7 @@ test('тот же заголовок шапку не перерисовывае�
   days.columns[0].name = '1 пн';
   window._obGrids = {Дни: days};
   window._obGridViews = [days];
-  window.obManagedApplyColumnTitles({Дни: {День1: '1 пн'}});
+  window.obManagedApplyColumnTitles({"1": {День1: '1 пн'}});
   window.obManagedApplyColumnTitles(undefined);
   window.obManagedApplyColumnTitles({Нет: {День1: 'x'}});
   assert.deepEqual(days.calls, []);
