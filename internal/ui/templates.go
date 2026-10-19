@@ -2634,8 +2634,8 @@ const tplForm = `
         {{else if eq (str .Type) "date"}}
           {{/* Поле даты, а не текст: в текстовом поле стояла сырая метка
                «2026-10-19T09:15:30». */}}
-          <input type="datetime-local" step="1" name="tp.{{$tpName}}.{{$i}}.{{$fn}}" value="{{tpDateInput (index $row $fn)}}"
-            data-ob-tp-recalc{{if $tpReadOnly}} disabled{{end}}>
+          {{if $tpReadOnly}}<input type="text" name="tp.{{$tpName}}.{{$i}}.{{$fn}}" value="{{fmtDate (index $row $fn)}}" disabled data-ob-date-text>{{else}}<input type="datetime-local" step="1" name="tp.{{$tpName}}.{{$i}}.{{$fn}}" value="{{tpDateInput (index $row $fn)}}"
+            data-ob-tp-recalc>{{end}}
         {{else if eq (str .Type) "bool"}}
           {{/* Флажок, а не текст (#1010): в текстовом поле стояло сырое
                значение из БД («1» на SQLite), а разбор сохранения признаёт

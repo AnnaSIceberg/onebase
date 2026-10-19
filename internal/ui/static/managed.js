@@ -808,11 +808,18 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
               inp.step = 'any';
               inp.value = (v == null ? '' : v);
             } else if (f.type === 'date') {
-              // Поле даты, как при первичной отрисовке: иначе после первого же
-              // события формы дата снова становилась сырым текстом.
-              inp.type = 'datetime-local';
-              inp.step = '1';
-              inp.value = window.obManagedDateInputValue(v);
+              // Как при первичной отрисовке: иначе после первого же события
+              // формы дата снова становилась сырым текстом. Только для
+              // чтения — текст «19.10.2026 09:15:30», иначе поле даты.
+              if (readOnly) {
+                inp.type = 'text';
+                inp.value = window.obManagedDateText(v);
+                inp.setAttribute('data-ob-date-text', '');
+              } else {
+                inp.type = 'datetime-local';
+                inp.step = '1';
+                inp.value = window.obManagedDateInputValue(v);
+              }
             } else {
               inp.type = 'text';
               inp.value = (v == null ? '' : v);
@@ -3278,6 +3285,16 @@ function obGridColumnIds(columns) {
     return parts.date + 'T' + (parts.time || '00:00') + (parts.seconds ? ':' + parts.seconds : '');
   }
   window.obManagedDateInputValue = obManagedDateInputValue;
+
+  // obManagedDateText — дата текстом, как fmtDate на сервере: «19.10.2026»,
+  // со временем «19.10.2026 09:15:30», только когда оно ненулевое.
+  function obManagedDateText(value) {
+    var parts = obManagedSplitDate(obManagedDateInputValue(value));
+    if (!parts) return value == null ? '' : String(value);
+    var time = parts.time ? parts.time + ':' + (parts.seconds || '00') : '';
+    return (time && time !== '00:00:00') ? parts.day + ' ' + time : parts.day;
+  }
+  window.obManagedDateText = obManagedDateText;
 
   // obManagedFormatDate — вид даты в ячейке: «14.03.1985», со временем только
   // когда оно ненулевое. Тот же принцип, что у fmtDate на сервере.
