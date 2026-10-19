@@ -4171,6 +4171,11 @@ func (tr *translator) entityDateFieldAt(idx int) bool {
 // Путь через ссылку («Р.Мастер.Поле») ведёт к объекту и регистром не считается.
 func (tr *translator) registerFieldAt(idx int) bool {
 	if idx >= 2 && tr.tokens[idx-1].kind == tDot && tr.tokens[idx-2].kind == tIdent {
+		if idx >= 3 && tr.tokens[idx-3].kind == tDot {
+			// В Р.Мастер.Поле имя Мастер — ссылочный реквизит, даже если
+			// другой источник SELECT использует его как свой алиас.
+			return false
+		}
 		qualifier := lowerFast(tr.tokens[idx-2].val)
 		scope, ok := tr.sourceCtx.qualifierScopeAt(idx, qualifier)
 		if !ok {

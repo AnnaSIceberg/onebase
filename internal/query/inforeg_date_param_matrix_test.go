@@ -114,3 +114,52 @@ func TestInfoRegisterDateDimensionComparedToTimeParamMatrix(t *testing.T) {
 		}
 	})
 }
+
+// Имя ссылочного измерения может совпадать с алиасом другого регистра.
+// В Р.Мастер.Дата средний сегмент остаётся переходом к справочнику:
+// дата объекта должна сравниваться в своём формате при любом JOIN-алиасе.
+func TestInfoRegisterReferenceDateAliasCollisionMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		master := &metadata.Entity{Name: "МастераПробы", Kind: metadata.KindCatalog,
+			Fields: []metadata.Field{{Name: "Дата", Type: metadata.FieldTypeDate}}}
+		entities := []*metadata.Entity{master}
+		require.NoError(t, db.Migrate(ctx, entities))
+		ir := &metadata.InfoRegister{Name: "СменыПробы",
+			Dimensions: []metadata.Field{
+				{Name: "Мастер", Type: "reference:МастераПробы", RefEntity: master.Name},
+				{Name: "Дата", Type: metadata.FieldTypeDate},
+			},
+			Resources: []metadata.Field{{Name: "Часов", Type: metadata.FieldTypeNumber}},
+		}
+		require.NoError(t, db.MigrateInfoRegisters(ctx, []*metadata.InfoRegister{ir}))
+		date := time.Date(2027, 3, 1, 0, 0, 0, 0, time.FixedZone("Europe/Moscow", 3*60*60))
+		id := uuid.New()
+		require.NoError(t, db.Upsert(ctx, master.Name, id, map[string]any{"Дата": date}, master))
+		require.NoError(t, db.InfoRegSet(ctx, ir,
+			map[string]any{"Мастер": id, "Дата": date}, map[string]any{"Часов": 8}, nil))
+
+		for _, alias := range []string{"Мастер", "Другой"} {
+			for _, predicate := range []string{
+				"Р.Мастер.Дата = &Д",
+				"Р.Мастер.Дата >= &Д",
+				"Р.Мастер.Дата МЕЖДУ &Д И &Конец",
+			} {
+				t.Run(alias+"/"+predicate, func(t *testing.T) {
+					text := fmt.Sprintf(`ВЫБРАТЬ Р.Часов ИЗ РегистрСведений.СменыПробы КАК Р
+						ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.СменыПробы КАК %s ПО %s.Мастер = Р.Мастер
+						ГДЕ %s И Р.Дата = &Д`, alias, alias, predicate)
+					compiled, err := query.Compile(text, query.CompileOpts{
+						Entities: entities, InfoRegs: []*metadata.InfoRegister{ir}, Dialect: db.Dialect(),
+						Params: map[string]any{"Д": date, "Конец": date.Add(24 * time.Hour)},
+					})
+					require.NoError(t, err)
+					rows, _, err := query.Run(ctx, db, &compiled)
+					require.NoError(t, err, compiled.SQL)
+					require.Len(t, rows, 1, compiled.SQL)
+					require.Equal(t, "8", fmt.Sprint(rows[0]["часов"]))
+				})
+			}
+		}
+	})
+}
