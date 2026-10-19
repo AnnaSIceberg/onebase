@@ -163,3 +163,116 @@ func TestInfoRegisterReferenceDateAliasCollisionMatrix(t *testing.T) {
 		}
 	})
 }
+
+// Публичная запись принимает и time.Time, и строку RFC3339. Старые строки
+// обоих форматов могут одновременно находиться в одном регистре.
+func TestRegisterDateMixedFormatsComparedToTimeParamMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		// Одноимённая строка главного источника не определяет тип даты JOIN.
+		entity := &metadata.Entity{Name: "КонтекстДатПробы", Kind: metadata.KindCatalog,
+			Fields: []metadata.Field{{Name: "Момент", Type: metadata.FieldTypeString}}}
+		entities := []*metadata.Entity{entity}
+		require.NoError(t, db.Migrate(ctx, entities))
+		require.NoError(t, db.Upsert(ctx, entity.Name, uuid.New(), map[string]any{"Момент": "строка"}, entity))
+		ir := &metadata.InfoRegister{Name: "МоментыПробы",
+			Dimensions: []metadata.Field{
+				{Name: "Метка", Type: metadata.FieldTypeString},
+				{Name: "Момент", Type: metadata.FieldTypeDate},
+			},
+			Resources: []metadata.Field{{Name: "Число", Type: metadata.FieldTypeNumber}},
+		}
+		reg := &metadata.Register{Name: "ДатыДвиженийПробы",
+			Dimensions: ir.Dimensions, Resources: ir.Resources}
+		require.NoError(t, db.MigrateInfoRegisters(ctx, []*metadata.InfoRegister{ir}))
+		require.NoError(t, db.MigrateRegisters(ctx, []*metadata.Register{reg}))
+		date := time.Date(2027, 3, 1, 0, 0, 0, 0, time.FixedZone("MSK", 3*60*60))
+		type record struct {
+			label string
+			date  time.Time
+		}
+		var records []record
+		for _, format := range []string{"time", "utc", "offset"} {
+			for _, seconds := range []int{-1, 0, 1} {
+				moment := date.Add(time.Duration(seconds) * time.Second)
+				var value any = moment
+				switch format {
+				case "utc":
+					value = moment.UTC().Format(time.RFC3339)
+				case "offset":
+					value = moment.Format(time.RFC3339)
+				}
+				label := fmt.Sprintf("%s/%d", format, seconds)
+				records = append(records, record{label, moment})
+				require.NoError(t, db.InfoRegSet(ctx, ir,
+					map[string]any{"Метка": label, "Момент": value}, map[string]any{"Число": 1}, nil))
+				require.NoError(t, db.WriteMovements(ctx, reg.Name, "Тест", uuid.New(), []map[string]any{{
+					"ВидДвижения": "Приход", "Метка": label, "Момент": value, "Число": 1,
+				}}, reg, &date))
+			}
+		}
+		// Не округлять старые строковые значения до секунд/миллисекунд:
+		// PostgreSQL сохраняет микросекунды, а SQLite должен различать их тоже.
+		fraction := date.Add(123456 * time.Microsecond)
+		records = append(records, record{"fraction", fraction})
+		require.NoError(t, db.InfoRegSet(ctx, ir,
+			map[string]any{"Метка": "fraction", "Момент": fraction.Format(time.RFC3339Nano)},
+			map[string]any{"Число": 1}, nil))
+		require.NoError(t, db.WriteMovements(ctx, reg.Name, "Тест", uuid.New(), []map[string]any{{
+			"ВидДвижения": "Приход", "Метка": "fraction", "Момент": fraction.Format(time.RFC3339Nano), "Число": 1,
+		}}, reg, &date))
+
+		for _, source := range []string{"РегистрСведений.МоментыПробы", "РегистрНакопления.ДатыДвиженийПробы"} {
+			for _, mode := range []string{"bare", "alias", "join"} {
+				field := "Момент"
+				from := source
+				if mode != "bare" {
+					field = "Р.Момент"
+					from += " КАК Р"
+				}
+				if mode == "join" {
+					from = "Справочник.КонтекстДатПробы КАК Т ЛЕВОЕ СОЕДИНЕНИЕ " + from + " ПО 1 = 1"
+				}
+				for _, param := range []time.Time{date, fraction} {
+					for _, op := range []string{"=", "<>", "!=", "<", "<=", ">", ">=", "МЕЖДУ", "reverse"} {
+						t.Run(fmt.Sprintf("%s/%s/%s/%s", source, mode, param.Format(time.RFC3339Nano), op), func(t *testing.T) {
+							predicate := field + " " + op + " &Д"
+							if op == "reverse" {
+								predicate = "&Д = " + field
+							}
+							if op == "МЕЖДУ" {
+								predicate += " И &Конец"
+							}
+							var want []string
+							for _, r := range records {
+								cmp := r.date.Compare(param)
+								match := (op == "=" || op == "reverse") && cmp == 0 ||
+									(op == "<>" || op == "!=") && cmp != 0 ||
+									op == "<" && cmp < 0 || op == "<=" && cmp <= 0 ||
+									op == ">" && cmp > 0 || op == ">=" && cmp >= 0 ||
+									op == "МЕЖДУ" && cmp >= 0 && !r.date.After(param.Add(time.Second))
+								if match {
+									want = append(want, r.label)
+								}
+							}
+							// *time.Time проходит тот же публичный путь параметров.
+							compiled, err := query.Compile("ВЫБРАТЬ Метка ИЗ "+from+" ГДЕ "+predicate,
+								query.CompileOpts{Entities: entities, InfoRegs: []*metadata.InfoRegister{ir}, Registers: []*metadata.Register{reg},
+									Dialect: db.Dialect(), Params: map[string]any{"Д": &param, "Конец": param.Add(time.Second)}})
+							require.NoError(t, err)
+							rows, _, err := query.Run(ctx, db, &compiled)
+							require.NoError(t, err, compiled.SQL)
+							var got []string
+							for _, row := range rows {
+								got = append(got, fmt.Sprint(row["метка"]))
+							}
+							sort.Strings(want)
+							sort.Strings(got)
+							require.Equal(t, want, got, compiled.SQL)
+						})
+					}
+				}
+			}
+		}
+	})
+}
