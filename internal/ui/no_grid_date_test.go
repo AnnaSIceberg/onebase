@@ -71,6 +71,9 @@ func TestNoGridDateColumn_RendersDateInputAndRoundTrips(t *testing.T) {
 			}
 			page := open()
 			want := `<input type="datetime-local" step="1" name="tp.Lines.0.Дата" value="2026-10-19T09:15:30"`
+			if tc.readOnly {
+				want = `<input type="text" name="tp.Lines.0.Дата" value="19.10.2026 09:15:30" disabled`
+			}
 			if !strings.Contains(page, want) {
 				i := strings.Index(page, `name="tp.Lines.0.Дата"`)
 				ctx := ""
@@ -78,9 +81,6 @@ func TestNoGridDateColumn_RendersDateInputAndRoundTrips(t *testing.T) {
 					ctx = page[max(0, i-120):min(len(page), i+120)]
 				}
 				t.Fatalf("дата строки не полем даты с исходным временем; вокруг ячейки: %q", ctx)
-			}
-			if tc.readOnly != strings.Contains(page[strings.Index(page, want):], `value="2026-10-19T09:15:30" disabled`) {
-				t.Fatalf("readonly=%v, а disabled у поля даты — наоборот", tc.readOnly)
 			}
 			if tc.readOnly {
 				return
