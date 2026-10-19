@@ -402,6 +402,12 @@ const tplManagedForm = `
               <option value="{{.Value}}"{{if .Selected}} selected{{end}}{{if .Unknown}} style="color:#dc2626"{{end}}>{{if .Unknown}}⚠ {{end}}{{.Label}}</option>
               {{end}}
             </select>
+          {{else if eq (str $f.Type) "date"}}
+            {{/* Дата — поле даты, как в шапке и в редакторе ячейки сетки: в
+                 текстовом поле простая таблица показывала сырое
+                 «2026-10-19T09:15:30». Шаг в секунду — чтобы правка строки
+                 не отрезала секунды. */}}
+            <input type="datetime-local" step="1" name="tp.{{$tpName}}.{{$i}}.{{$f.Name}}" value="{{tpDateInput $v}}"{{if $tpReadOnly}} disabled{{else}} data-ob-recalc-tp-row{{end}}>
           {{else if eq (str $f.Type) "bool"}}
             <input type="checkbox" name="tp.{{$tpName}}.{{$i}}.{{$f.Name}}" value="true"{{if checked $v}} checked{{end}}{{if $tpReadOnly}} disabled{{end}}>
           {{else}}

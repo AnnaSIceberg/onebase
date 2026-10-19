@@ -172,6 +172,53 @@ func fmtDateValue(v any) string {
 	return fmt.Sprintf("%v", v)
 }
 
+// tpDateInputValue — значение даты строки табличной части для
+// <input type="datetime-local">: «2006-01-02T15:04:05» в местной зоне.
+// Строка приходит по-разному: из сериализации формы — уже стенными часами без
+// зоны, из базы — RFC3339 или time.Time. Строку без зоны нельзя разбирать как
+// UTC (formatDateValueForInput делает именно так — для значений из базы это
+// верно): время сдвинулось бы на смещение хоста. Что датой не разобралось,
+// отдаётся пустым: браузер всё равно очистил бы невалидное значение поля.
+func tpDateInputValue(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case time.Time:
+		return t.In(time.Local).Format(dateInputLayout)
+	case *time.Time:
+		if t == nil {
+			return ""
+		}
+		return t.In(time.Local).Format(dateInputLayout)
+	}
+	s := strings.TrimSpace(fmt.Sprintf("%v", v))
+	if i := strings.Index(s, " m=+"); i >= 0 {
+		s = s[:i]
+	}
+	if s == "" {
+		return ""
+	}
+	for _, layout := range []string{
+		time.RFC3339, time.RFC3339Nano,
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.In(time.Local).Format(dateInputLayout)
+		}
+	}
+	for _, layout := range []string{
+		"2006-01-02T15:04:05", "2006-01-02 15:04:05",
+		"2006-01-02T15:04", "2006-01-02",
+	} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t.Format(dateInputLayout)
+		}
+	}
+	return ""
+}
+
 func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 	translate := func(lang, key string) string {
 		if bundle != nil {
@@ -362,6 +409,16 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// новая строка должна получить флажок, а не поле ввода (#1010). Имена
 		// перечислений JS достаёт из ob-tp-enum-labels, а тип bool в разметке
 		// автоформы больше ниоткуда не виден.
+		"tpDateInput": tpDateInputValue,
+		"dateFieldNamesCSV": func(fields []metadata.Field) string {
+			names := make([]string, 0, len(fields))
+			for _, f := range fields {
+				if f.Type == metadata.FieldTypeDate {
+					names = append(names, f.Name)
+				}
+			}
+			return strings.Join(names, ",")
+		},
 		"boolFieldNamesCSV": func(fields []metadata.Field) string {
 			names := make([]string, 0, len(fields))
 			for _, f := range fields {
@@ -2574,6 +2631,11 @@ const tplForm = `
             <option value="{{.Value}}"{{if .Selected}} selected{{end}}{{if .Unknown}} style="color:#dc2626"{{end}}>{{if .Unknown}}⚠ {{end}}{{.Label}}</option>
             {{end}}
           </select>
+        {{else if eq (str .Type) "date"}}
+          {{/* Поле даты, а не текст: в текстовом поле стояла сырая метка
+               «2026-10-19T09:15:30». */}}
+          <input type="datetime-local" step="1" name="tp.{{$tpName}}.{{$i}}.{{$fn}}" value="{{tpDateInput (index $row $fn)}}"
+            data-ob-tp-recalc{{if $tpReadOnly}} disabled{{end}}>
         {{else if eq (str .Type) "bool"}}
           {{/* Флажок, а не текст (#1010): в текстовом поле стояло сырое
                значение из БД («1» на SQLite), а разбор сохранения признаёт
@@ -2594,7 +2656,7 @@ const tplForm = `
   </tr></tfoot>
 </table>
 <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569;margin-bottom:8px"
-  data-ob-add-tp-row data-tp-name="{{$tpName}}" data-tp-fields="{{fieldNamesCSV .Fields}}" data-tp-num-fields="{{numberFieldNamesCSV .Fields}}" data-tp-bool-fields="{{boolFieldNamesCSV .Fields}}"
+  data-ob-add-tp-row data-tp-name="{{$tpName}}" data-tp-fields="{{fieldNamesCSV .Fields}}" data-tp-num-fields="{{numberFieldNamesCSV .Fields}}" data-tp-bool-fields="{{boolFieldNamesCSV .Fields}}" data-tp-date-fields="{{dateFieldNamesCSV .Fields}}"
   {{if $tpReadOnly}}disabled{{else}}title="Insert" aria-keyshortcuts="Insert"{{end}}>
   + {{t $.Lang "Добавить строку"}}
 </button>
