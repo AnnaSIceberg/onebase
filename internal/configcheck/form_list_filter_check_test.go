@@ -1,6 +1,8 @@
 package configcheck
 
 import (
+	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -46,5 +48,45 @@ func TestCheckFormListFilters(t *testing.T) {
 		if len(issues) != 1 || !strings.Contains(issues[0].Message, tc.want) || issues[0].Code != "form.list-filter" {
 			t.Fatalf("%+v: %+v, want %q", tc.cond, issues, tc.want)
 		}
+	}
+}
+
+// The public check pipeline must reject unsupported system navigation instead
+// of accepting a condition that the list would silently discard.
+func TestRunFullListFilterSystemReferences(t *testing.T) {
+	for _, tc := range []struct {
+		field, target string
+		valid         bool
+	}{
+		{"Author", "_users", true},
+		{"Author.id", "_users", true},
+		{"author.ID", "_users", true},
+		{"Author.Missing", "_users", false},
+		{"Author.login", "_users", false},
+		{"Author.password_hash", "_users", false},
+		{"Author.id.More", "_users", false},
+		{"Author.id", "_unknown_system", false},
+	} {
+		t.Run(tc.field+"/"+tc.target, func(t *testing.T) {
+			dir := t.TempDir()
+			mkFile(t, filepath.Join(dir, "catalogs", "tasks.yaml"), fmt.Sprintf("name: Tasks\nfields:\n  - name: Наименование\n    type: string\n  - name: Author\n    type: reference:%s\n", tc.target))
+			mkFile(t, filepath.Join(dir, "forms", "tasks", "list.form.yaml"), fmt.Sprintf("schema: onebase.form/v1\nform:\n  name: TaskList\n  kind: list\n  entity: Tasks\n  filter:\n    - field: %s\n      value: '@ТекущийПользователь'\n", tc.field))
+			result := RunFull(dir)
+			if tc.valid {
+				if !result.OK {
+					t.Fatalf("valid condition rejected: %+v", result.Issues)
+				}
+			} else {
+				found := false
+				for _, issue := range result.Issues {
+					if issue.Code == "form.list-filter" || (tc.target == "_unknown_system" && issue.Code == "project.load-failed") {
+						found = true
+					}
+				}
+				if result.OK || !found {
+					t.Fatalf("unsupported condition accepted or missing form.list-filter: %+v", result)
+				}
+			}
+		})
 	}
 }

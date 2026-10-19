@@ -70,7 +70,11 @@ func CheckFormListFilters(proj *project.Project) []Issue {
 					continue
 				}
 				if strings.HasPrefix(ref.RefEntity, "_") {
-					continue // системная сущность (_users…): её реквизиты знает платформа
+					if !strings.EqualFold(ref.RefEntity, metadata.SystemUsersEntity) || !strings.EqualFold(attr, "id") {
+						add(fmt.Sprintf("поле %q: системное разыменование %q не поддерживается", field, ref.RefEntity),
+							"для reference:_users допустимо только Ссылка.id; остальные системные атрибуты недоступны")
+					}
+					continue
 				}
 				target := byName[strings.ToLower(ref.RefEntity)]
 				if target == nil {

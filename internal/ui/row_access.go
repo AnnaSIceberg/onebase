@@ -140,10 +140,23 @@ func (s *Server) listFilterPredicate(entity *metadata.Entity, cond metadata.Form
 	}
 
 	head, attr, nested := strings.Cut(field, ".")
+	refField, ok := entityFieldByName(entity, head)
+	// _users.id is the reference itself, including its NULL semantics. Do not
+	// resolve it through the configuration registry or expose private user fields.
+	if ok && strings.EqualFold(refField.RefEntity, metadata.SystemUsersEntity) && (!nested || strings.EqualFold(attr, "id")) {
+		// Stored references are UUID or NULL, never an empty string. The generic
+		// empty predicate also compares with '', which PostgreSQL rejects for UUID.
+		switch strings.ToLower(op) {
+		case "empty":
+			return storage.Predicate{Field: head, Op: "eq", Value: nil}, true
+		case "not_empty":
+			return storage.Predicate{Field: head, Op: "ne", Value: nil}, true
+		}
+		return storage.Predicate{Field: head, Op: op, Value: value}, true
+	}
 	if !nested {
 		return storage.Predicate{Field: head, Op: op, Value: value}, true
 	}
-	refField, ok := entityFieldByName(entity, head)
 	if !ok || refField.RefEntity == "" {
 		return storage.Predicate{}, false
 	}
