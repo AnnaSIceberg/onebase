@@ -46,10 +46,10 @@ func TestNoGridDateColumn_RendersDateInputAndRoundTrips(t *testing.T) {
 			// поэтому её строку кладём записью с редактируемой формой.
 			form.Elements[1].ReadOnly = false
 			body := url.Values{
-				"Name":             {"rec"},
-				"tp_present.Lines": {"1"},
-				"tp.Lines.0.Дата":  {"2026-10-19T09:15:30"},
-				"tp.Lines.0.Действие":  {"Подтверждён отказ"},
+				"Name":                {"rec"},
+				"tp_present.Lines":    {"1"},
+				"tp.Lines.0.Дата":     {"2026-10-19T09:15:30"},
+				"tp.Lines.0.Действие": {"Подтверждён отказ"},
 			}
 			rec := httptest.NewRecorder()
 			srv.submit(rec, reqWithChi(http.MethodPost, "/ui/catalog/"+ent.Name+"/new", body,
