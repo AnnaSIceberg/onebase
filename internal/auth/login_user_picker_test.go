@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ivantit66/onebase/internal/auth"
+	"golang.org/x/net/html"
 )
 
 // Страница входа со списком пользователей: свой список вместо <datalist> (тот
@@ -93,5 +95,70 @@ console.log('ok');
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("node: %v\n%s", err, out)
+	}
+}
+
+// Получаем и контролы, и встроенный скрипт из публичной страницы входа:
+// тест должен проверять привязку событий, а не готовый флаг byUser.
+func TestLoginPage_UserPickerDOMEvents(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	repo, ctx := newTestRepo(t)
+	for _, login := range []string{"admin", "ivan", "olga"} {
+		u, err := repo.Create(ctx, login, "password", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.SetShowInList(ctx, u.ID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := httptest.NewRecorder()
+	(&auth.Handlers{Repo: repo}).LoginPage(rec, httptest.NewRequest("GET", "/login", nil))
+	if rec.Code != 200 {
+		t.Fatalf("LoginPage: %d", rec.Code)
+	}
+	doc, err := html.Parse(strings.NewReader(rec.Body.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type element struct {
+		Tag   string            `json:"tag"`
+		Attrs map[string]string `json:"attrs"`
+	}
+	var elements []element
+	var script string
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			attrs := map[string]string{}
+			for _, a := range n.Attr {
+				attrs[a.Key] = a.Val
+			}
+			if strings.HasPrefix(attrs["id"], "ob-") || (n.Data == "li" && attrs["data-login"] != "") {
+				elements = append(elements, element{n.Data, attrs})
+			}
+			if n.Data == "script" && n.FirstChild != nil && strings.Contains(n.FirstChild.Data, "function filterUsers") {
+				script = n.FirstChild.Data
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	if script == "" {
+		t.Fatal("LoginPage did not include the picker script")
+	}
+	fixture, err := json.Marshal(map[string]any{"elements": elements, "script": script})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(t.Context(), node, "login_user_picker_dom_test.js") //nolint:gosec // test-only executable resolved by exec.LookPath
+	cmd.Stdin = strings.NewReader(string(fixture))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("LoginPage DOM: %v\n%s", err, out)
 	}
 }

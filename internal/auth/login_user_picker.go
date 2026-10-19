@@ -30,7 +30,7 @@ const loginUserPickerJS = `(function(){
     return (index + delta + count) % count;
   }
   // Пароль очищается, только когда имя сменил человек: набором или выбором из
-  // списка. Подстановка браузером (без нажатий клавиш) пароль не трогает.
+  // списка. Подстановка браузером без события ручного редактирования пароль не трогает.
   function shouldClearPassword(before, after, byUser){
     return !!byUser && String(before) !== String(after);
   }
@@ -46,7 +46,27 @@ const loginUserPickerJS = `(function(){
   var users = Array.prototype.map.call(list.querySelectorAll('li[data-login]'), function(li){
     return {login: li.getAttribute('data-login'), name: li.getAttribute('data-name') || '', el: li};
   });
-  var shown = [], active = -1, typed = false, last = input.value;
+  var shown = [], active = -1, editing = false, composing = false, last = input.value;
+
+  // Автозаполнение может отправить input с пустыми data/inputType либо
+  // insertReplacementText. Ручной ввод определяем по самому редактированию,
+  // включая меню буфера обмена, drag-and-drop, undo и IME без keydown.
+  function manualEdit(e){
+    var type = e.inputType || '';
+    return e.isComposing || composing || /^(delete|history|insertFrom|insertComposition)/.test(type) ||
+      (type === 'insertText' && e.data != null);
+  }
+  function markEditing(){
+    // Менеджер паролей мог изменить value без input: снимок нужен до правки.
+    last = input.value;
+    editing = true;
+    // Отменённая вставка/вырезание не должны влиять на позднее автозаполнение.
+    setTimeout(function(){ editing = false; }, 0);
+  }
+  input.addEventListener('beforeinput', function(e){ if (manualEdit(e)) markEditing(); });
+  ['cut', 'paste', 'drop'].forEach(function(type){ input.addEventListener(type, markEditing); });
+  input.addEventListener('compositionstart', function(){ last = input.value; composing = true; });
+  input.addEventListener('compositionend', function(){ composing = false; });
 
   function render(){
     users.forEach(function(u){ u.el.hidden = shown.indexOf(u) < 0; u.el.classList.remove('active'); u.el.setAttribute('aria-selected', 'false'); });
@@ -88,15 +108,15 @@ const loginUserPickerJS = `(function(){
     if (e.key === 'Enter' && !list.hidden && active >= 0 && shown[active]) { e.preventDefault(); choose(shown[active]); return; }
     if (e.key === 'Escape' && !list.hidden) { e.preventDefault(); close(); return; }
     if (e.key === 'Tab') { close(); return; }
-    if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') typed = true;
   });
-  input.addEventListener('input', function(){
-    if (shouldClearPassword(last, input.value, typed) && password) password.value = '';
-    typed = false;
+  input.addEventListener('input', function(e){
+    var byUser = editing || manualEdit(e);
+    if (shouldClearPassword(last, input.value, byUser) && password) password.value = '';
+    editing = false;
     last = input.value;
-    open(false);
+    if (byUser) open(false); else close();
   });
-  input.addEventListener('blur', function(){ setTimeout(close, 150); });
+  input.addEventListener('blur', function(){ editing = false; composing = false; setTimeout(close, 150); });
   if (toggle) {
     // mousedown, а не click: поле не теряет фокус и список не закрывается.
     toggle.addEventListener('mousedown', function(e){
