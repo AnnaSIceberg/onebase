@@ -70,6 +70,9 @@ func (s *Server) processorForm(w http.ResponseWriter, r *http.Request) {
 		// choice_filter полей формы обработки — тем же серверным путём, что у
 		// форм сущностей: отфильтрованный первый список и контекст подбора (#1840).
 		s.applyProcessorChoiceFilters(r.Context(), proc, data)
+		// Списки значений ПолеСписка (choices) — как у формы сущности: без них
+		// шаблон падал на первом ПолеСписка и форма обрывалась на нём.
+		data["ChoiceOptions"] = loadChoiceOptions(mf, s.resolveLang(r))
 		s.prepareManagedFormData(r.Context(), data, mf)
 		s.render(w, r, "page-managed-form", data)
 		return
@@ -362,6 +365,7 @@ func (s *Server) renderProcessorManagedResult(w http.ResponseWriter, r *http.Req
 	}
 	s.setProcessorManagedContext(r, data, proc)
 	s.applyProcessorChoiceFilters(r.Context(), proc, data)
+	data["ChoiceOptions"] = loadChoiceOptions(proc.ManagedForm(), s.resolveLang(r))
 	s.prepareManagedFormData(r.Context(), data, proc.ManagedForm())
 	s.render(w, r, "page-managed-form", data)
 }

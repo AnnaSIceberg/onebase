@@ -125,6 +125,7 @@ function installTableBody(id, attributes) {
 }
 
 global.window = global;
+global.obFrameCloseDocumentToken = 'managed-test-document';
 global.location = {pathname: '/ui/processor/Test'};
 global.history = {replaceState() {}};
 global.navigator = {clipboard: null};
@@ -314,7 +315,7 @@ test('saving a new managed form notifies the tab shell after history replacement
     await window.obFire('Save', 'Нажатие');
     assert.deepEqual(replacements, ['/ui/document/purchase/42']);
     assert.deepEqual(messages, [{
-      data: {source: 'obFrameURLChanged', url: '/ui/document/purchase/42'},
+      data: {source: 'obFrameURLChanged', url: '/ui/document/purchase/42', documentToken: 'managed-test-document'},
       targetOrigin: 'http://127.0.0.1:8080'
     }]);
   } finally {
