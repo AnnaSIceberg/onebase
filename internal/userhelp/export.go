@@ -41,6 +41,16 @@ func (b *Book) Export(dir string) error {
 	if !b.Available() {
 		return fmt.Errorf("user documentation is disabled or empty")
 	}
+	// Check all chapter names before touching the output, including on hosts
+	// with case-sensitive filesystems: the exported site must be portable.
+	ids := make(map[string]string, len(b.Chapters))
+	for _, c := range b.Chapters {
+		key := strings.ToLower(c.ID)
+		if previous, exists := ids[key]; exists {
+			return fmt.Errorf("chapter IDs %q and %q collide in a case-insensitive HTML export; rename one of them", previous, c.ID)
+		}
+		ids[key] = c.ID
+	}
 	if err := os.MkdirAll(dir, fsmode.Dir); err != nil {
 		return err
 	}
