@@ -53,11 +53,11 @@ func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 				counts[key] += count
 			}
 		}
-		if col.Output == "" {
+		output := projectionOutputSQLKey(tokens, ctx, col, from, to)
+		if output == "" {
 			return
 		}
 		fieldEnd := from + 2*len(col.Path) - 1
-		output := projectionSQLKey(tokens, ctx, col, fieldEnd)
 		counts[output]++
 		// Prove the expression independently: two logical names can emit
 		// distinct SQL keys and must not erase each other's source types.

@@ -87,11 +87,10 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		if column.Star {
 			stars.add(keys.starKeys(scopeID, item))
 		}
-		if column.Output == "" || column.Star {
+		key := projectionOutputSQLKey(tokens, ctx, column, from, to)
+		if key == "" || column.Star {
 			return
 		}
-		fieldEnd := from + 2*len(column.Path) - 1
-		key := projectionSQLKey(tokens, ctx, column, fieldEnd)
 		typ := metadata.FieldType("")
 		if !union {
 			expr := item
@@ -130,6 +129,24 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		}
 	}
 	return output
+}
+
+// projectionOutputSQLKey also reserves unaliased fields wrapped in parentheses:
+// both databases keep the field's SQL name, so these outputs can collide with
+// explicit aliases. Keep this separate from the masking projection parser,
+// where a parenthesized expression still requires fail-closed field access.
+func projectionOutputSQLKey(tokens []tok, ctx sourceContext, column ProjectionColumn, from, to int) string {
+	if column.Output == "" {
+		start, end := trimProjectionParentheses(tokens, from, to)
+		column, _ = parseProjectionItem(tokens[start:end])
+		// Only a direct field proves the name of an unaliased expression.
+		// Functions, arithmetic and subqueries retain unknown output names.
+		if len(column.Path) == 0 || column.Alias != "" {
+			return ""
+		}
+		from = start
+	}
+	return projectionSQLKey(tokens, ctx, column, from+2*len(column.Path)-1)
 }
 
 // projectionSQLKey uses the names emitted by the SQL translator. Reference
