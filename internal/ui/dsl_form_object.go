@@ -318,13 +318,17 @@ func (f *formObjectThis) save(action string) error {
 			if err := f.srv.autoFillRowAccessFields(txCtx, f.entity, "write", obj.Fields); err != nil {
 				return err
 			}
-			if err := f.srv.checkDSLRowAccess(txCtx, f.entity, "write", uuid.Nil, obj.Fields); err != nil {
-				return err
-			}
 			if posting {
 				if err := f.srv.autoFillRowAccessFields(txCtx, f.entity, "post", obj.Fields); err != nil {
 					return err
 				}
+			}
+			// Both policies must see the final fields: post autofill can change
+			// whether the row is writable, just as in saveManagedObject.
+			if err := f.srv.checkDSLRowAccess(txCtx, f.entity, "write", uuid.Nil, obj.Fields); err != nil {
+				return err
+			}
+			if posting {
 				return f.srv.checkDSLRowAccess(txCtx, f.entity, "post", uuid.Nil, obj.Fields)
 			}
 			return nil

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,7 +11,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/storage"
 )
 
 // Объект.Провести() в обработчике кнопки формы проводит документ так же, как
@@ -85,4 +89,85 @@ func postFormEvent(t *testing.T, s *Server, doc *metadata.Entity, element string
 	rec := httptest.NewRecorder()
 	s.handleManagedFormEvent(rec, req)
 	return rec
+}
+
+// Both policies must see the final fields after write/post autofill. In
+// particular, post autofill must not turn an allowed write into a forbidden row.
+func TestFormObject_PostChecksFinalRowAccess(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		write, post auth.RowPolicy
+		allowed     bool
+	}{
+		{
+			name:  "post_autofill_invalidates_write",
+			write: auth.RowPolicy{Field: "Scope", Op: "empty"},
+			post:  auth.RowPolicy{Field: "Scope", Op: "eq", Value: auth.RowValue{Literal: "blocked"}},
+		},
+		{
+			name:    "post_autofill_satisfies_both_policies",
+			write:   auth.RowPolicy{Not: &auth.RowPolicy{Field: "Scope", Op: "empty"}},
+			post:    auth.RowPolicy{Field: "Scope", Op: "eq", Value: auth.RowValue{Literal: "allowed"}},
+			allowed: true,
+		},
+		{
+			name:  "write_autofill_invalidates_post",
+			write: auth.RowPolicy{Field: "Scope", Op: "eq", Value: auth.RowValue{Literal: "allowed"}},
+			post:  auth.RowPolicy{Field: "Scope", Op: "empty"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := &metadata.Entity{
+				Name: "AccessDoc", Kind: metadata.KindDocument, Posting: true,
+				Fields: []metadata.Field{
+					{Name: "Номер", Type: metadata.FieldTypeString},
+					{Name: "Scope", Type: metadata.FieldTypeString},
+				},
+			}
+			form := managedObjectForm(fieldEl("Scope", "Объект.Scope"), writeButton("Post", "PostClick"))
+			form.EntityName = doc.Name
+			form.ProgramAST = mustParse(t, `Процедура PostClick()
+	Объект.Провести();
+КонецПроцедуры`)
+			doc.Forms = []*metadata.FormModule{form}
+			s, ctx := newSubmitTestServer(t, []*metadata.Entity{doc})
+			user := &auth.User{Login: "writer", Roles: []*auth.Role{{
+				Permissions: auth.Permission{
+					Documents: map[string][]string{doc.Name: {"read", "write", "post"}},
+					RowAccess: auth.RowAccess{Documents: map[string]auth.RowPolicies{
+						doc.Name: {"write": tc.write, "post": tc.post},
+					}},
+				},
+			}}}
+			req := reqWithChi(http.MethodPost, "/ui/document/AccessDoc/form-event", url.Values{
+				"_element": {"Post"}, "_event": {"Нажатие"}, "Номер": {"0001"}, "Scope": {""},
+			}, map[string]string{"kind": "document", "entity": doc.Name})
+			req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+			rec := httptest.NewRecorder()
+			s.handleManagedFormEvent(rec, req)
+			var response formEventResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+				t.Fatalf("decode form response: %v: %s", err, rec.Body.String())
+			}
+			if response.OK != tc.allowed {
+				t.Fatalf("ok=%v, want %v: %d %s", response.OK, tc.allowed, rec.Code, rec.Body.String())
+			}
+			rows, err := s.store.List(ctx, doc.Name, doc, storage.ListParams{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !tc.allowed {
+				if !strings.Contains(response.Error, interpreter.ErrRowAccessDenied.Error()) {
+					t.Fatalf("want row access denial, got %q", response.Error)
+				}
+				if len(rows) != 0 {
+					t.Fatalf("denied operation persisted rows: %#v", rows)
+				}
+				return
+			}
+			if len(rows) != 1 || rows[0]["Scope"] != "allowed" || rows[0]["posted"] != true {
+				t.Fatalf("want one posted document with autofilled Scope, got %#v", rows)
+			}
+		})
+	}
 }
