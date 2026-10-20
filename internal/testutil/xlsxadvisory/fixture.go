@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -33,11 +34,19 @@ func Run(t *testing.T, body func()) {
 	dir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.v")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("locate current test executable: %v", err)
+	}
+	// #nosec G204 -- os.Executable above supplies the current test binary; arguments are separate, with no shell or PATH lookup.
+	cmd := exec.CommandContext(ctx, executable, "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.v")
 	cmd.Env = append(os.Environ(), "ONEBASE_XLSX_ADVISORY_CHILD=1", "GOMEMLIMIT=256MiB", "TMPDIR="+dir, "TMP="+dir, "TEMP="+dir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("isolated XLSX path failed (deadline=%v): %v\n%s", ctx.Err(), err, out)
+	}
+	if !bytes.Contains(out, []byte("--- PASS: "+t.Name()+" (")) {
+		t.Fatalf("isolated XLSX test did not run: %s", out)
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil || len(entries) != 0 {
@@ -90,41 +99,64 @@ func Book(t *testing.T, scenario string) []byte {
 			sheet += `<row r="1"><c r="A1"><f t="array" ref="B1">B1</f><v>7</v></c><c r="B1"><f t="array" ref="A1">A1</f><v>12</v></c></row>`
 		}
 		sheet += `</sheetData></worksheet>`
-		zr, err := zip.NewReader(bytes.NewReader(source), int64(len(source)))
+		data, err := rewriteWorksheet(source, sheet)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var out bytes.Buffer
-		zw := zip.NewWriter(&out)
-		for _, entry := range zr.File {
-			w, err := zw.Create(entry.Name)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if entry.Name == "xl/worksheets/sheet1.xml" {
-				_, err = io.WriteString(w, sheet)
-			} else {
-				r, e := entry.Open()
-				if e != nil {
-					t.Fatal(e)
-				}
-				_, err = io.Copy(w, r)
-				if e = r.Close(); e != nil {
-					t.Fatal(e)
-				}
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := zw.Close(); err != nil {
-			t.Fatal(err)
-		}
-		return out.Bytes()
+		return data
 	default:
 		t.Fatalf("unknown scenario %s", scenario)
 		return nil
 	}
+}
+
+// A generated single-cell workbook needs only a few KiB per entry. These
+// generous limits bound actual decompression, independently of ZIP headers.
+const (
+	maxFixtureEntryBytes   = 1 << 20
+	maxFixtureArchiveBytes = 4 << 20
+)
+
+func rewriteWorksheet(source []byte, sheet string) ([]byte, error) {
+	zr, err := zip.NewReader(bytes.NewReader(source), int64(len(source)))
+	if err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	zw := zip.NewWriter(&out)
+	var total int64
+	for _, entry := range zr.File {
+		w, err := zw.Create(entry.Name)
+		if err != nil {
+			return nil, err
+		}
+		var r io.ReadCloser
+		if entry.Name == "xl/worksheets/sheet1.xml" {
+			r = io.NopCloser(strings.NewReader(sheet))
+		} else {
+			r, err = entry.Open()
+			if err != nil {
+				return nil, err
+			}
+		}
+		remaining := min(int64(maxFixtureEntryBytes), int64(maxFixtureArchiveBytes)-total)
+		n, copyErr := io.Copy(w, io.LimitReader(r, remaining+1))
+		closeErr := r.Close()
+		if copyErr != nil {
+			return nil, fmt.Errorf("fixture entry %q: %w", entry.Name, copyErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close fixture entry %q: %w", entry.Name, closeErr)
+		}
+		if n > remaining {
+			return nil, fmt.Errorf("fixture entry %q exceeds entry or archive byte limit", entry.Name)
+		}
+		total += n
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
 
 func NoRecoveredPanic(t *testing.T, err error) {

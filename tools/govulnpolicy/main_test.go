@@ -14,6 +14,10 @@ func TestPolicyCommand(t *testing.T) {
 		main()
 		return
 	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("locate current test executable: %v", err)
+	}
 	config := `{"config":{"scanner_name":"govulncheck"}}` + "\n"
 	finding := func(id, function string) string {
 		return `{"finding":{"osv":"` + id + `","trace":[{"module":"github.com/xuri/excelize/v2","version":"v2.11.1-0.20260930021559-01a9ff32fb3c","function":"` + function + `"}]}}` + "\n"
@@ -39,10 +43,21 @@ func TestPolicyCommand(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.Command(os.Args[0], "-test.run=^TestPolicyCommand$")
+			cmd := exec.Command(executable, "-test.run=^TestPolicyCommand$")
 			cmd.Env = append(os.Environ(), "ONEBASE_VULNPOLICY_CHILD=1")
 			cmd.Stdin = strings.NewReader(tc.input)
 			out, err := cmd.CombinedOutput()
+			if len(out) == 0 {
+				t.Fatalf("policy command produced no output: %v", err)
+			}
+			if err != nil {
+				if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
+					t.Fatalf("policy command did not return its failure exit code: %v", err)
+				}
+			}
+			if !strings.Contains(string(out), "govulnpolicy:") || (tc.success && !strings.Contains(string(out), "govulnpolicy: OK")) {
+				t.Fatalf("missing policy result: %s", out)
+			}
 			if (err == nil) != tc.success {
 				t.Fatalf("success=%v, want %v: %s (%v)", err == nil, tc.success, out, err)
 			}
