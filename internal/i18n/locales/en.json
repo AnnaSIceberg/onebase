@@ -1,4 +1,5 @@
 {
+  "у локального источника %s нет ссылочного реквизита %s; внешняя ссылка затенена": "Local source %s has no reference field %s; the outer reference is shadowed",
   "временный каталог загрузок": "temporary upload directory",
   "временный файл параметра %s": "temporary file for parameter %s",
   "Excel: превышен предел импорта (32 МиБ, 10000 строк, 256 колонок, 1000000 ячеек)": "Excel: import limit exceeded (32 MiB, 10000 rows, 256 columns, 1000000 cells)",
@@ -931,6 +932,7 @@
   "Тот же узел (восстановить очередь обмена)": "Same node (restore the exchange queue)",
   "Точки ост.": "Breakpoints",
   "У вас нет прав для просмотра этого раздела.": "You do not have permission to view this section.",
+  "«%s» создаётся только из других объектов — отдельно создать нельзя.": "%s can only be created from other objects and cannot be created on its own.",
   "Показать отмеченные": "Show selected",
   "Стандартный порядок колонок": "Default column order",
   "Колонки можно переставлять, перетаскивая заголовок": "Drag a column header to reorder columns",
@@ -1043,6 +1045,7 @@
   "виджет не найден:": "widget not found:",
   "картинка": "image",
   "копия в другой базе выдавала бы коды оригинала": "a copy in another database would issue the original's codes",
+  "навигация по ссылке присоединённого источника внутри ПО не поддерживается; соедини %s явно через СОЕДИНЕНИЕ": "reference navigation inside the joined source's own ON clause is not supported; join %s explicitly",
   "навигация по ссылке разворачивается на один уровень: «%s.%s» — да, «%s.%s.%s» — нет; выбери ссылку целиком (%s) либо соедини %s явно через СОЕДИНЕНИЕ": "reference navigation expands one level only: «%s.%s» yes, «%s.%s.%s» no; select the reference itself (%s) or join %s explicitly",
   "у ссылки на учётную запись в запросе доступны только Ссылка, Наименование, Логин и ПолноеИмя: «%s.%s» недоступно": "a user account reference exposes only Ссылка, Наименование, Логин and ПолноеИмя in a query: «%s.%s» is not available",
   "«%s» — служебное имя соединения с учётными записями, в запросе оно недоступно: реквизиты учётной записи читаются через точку от ссылки — Ссылка, Наименование, Логин и ПолноеИмя": "«%s» is an internal name of the user account join and is not available in a query: read user account attributes through the reference with a dot — Ссылка, Наименование, Логин and ПолноеИмя",
