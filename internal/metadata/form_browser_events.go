@@ -75,7 +75,12 @@ var browserFormCommandEvents = []FormEventType{FormEventOnClick, FormEventOnSear
 // чтении и записи, из браузера они не вызываются. ПередПроведением браузер
 // шлёт сам перед стандартным проведением: обработчику нужен диалог с
 // пользователем, а серверный хук записи спросить его не может.
-var browserFormLevelEvents = []FormEventType{FormEventOnOpen, FormEventBeforePost}
+//
+// Ответ — вторая фаза вопроса, заданного из ПриОткрытии («Принять задачу?»
+// при открытии, как в 1С): у вопроса формы нет элемента-источника, и клиент
+// отправляет ответ без имени элемента. Вызывается только объявленный в events
+// формы обработчик — иначе fail-closed отказ, как у любого события.
+var browserFormLevelEvents = []FormEventType{FormEventOnOpen, FormEventBeforePost, FormEventOnAnswer}
 
 // BrowserFormEventsFor возвращает копию перечня событий, которые браузер вправе
 // отправить элементу формы данного вида. Вид, ничего не отправляющий (надпись,
