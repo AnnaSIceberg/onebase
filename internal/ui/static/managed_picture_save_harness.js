@@ -21,52 +21,82 @@ class Element {
     this.value = this.attrs.get('value') || '';
     this.type = this.attrs.get('type') || 'text';
     this.disabled = this.attrs.has('disabled');
+    this.style = {display: /display:\s*([^;]+)/.exec(this.attrs.get('style') || '')?.[1] || ''};
     this.checked = this.attrs.has('checked');
     this.children = (spec.children || []).map(child => new Element(child, this));
   }
   getAttribute(name) { return this.attrs.has(name) ? this.attrs.get(name) : null; }
   setAttribute(name, value) { this.attrs.set(name, String(value)); }
+  removeAttribute(name) { this.attrs.delete(name); }
+  get dataset() {
+    const values = {};
+    for (const [key, value] of this.attrs) {
+      if (key.startsWith('data-')) values[key.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
+    }
+    return values;
+  }
+  closest(selector) {
+    for (let el = this; el; el = el.parentElement) if (el.matches(selector)) return el;
+    return null;
+  }
   matches(selector) {
+    const excluded = /:not\((\[[^)]*\])\)$/.exec(selector);
+    if (excluded) return this.matches(selector.slice(0, excluded.index)) && !this.matches(excluded[1]);
     const m = /^([a-z]+)?(?:\[([\w-]+)(?:="([^"]*)")?\])?$/.exec(selector);
     assert.ok(m, 'unsupported selector: ' + selector);
     return (!m[1] || this.tagName === m[1].toUpperCase()) &&
-      (!m[2] || (this.attrs.has(m[2]) && (m[3] === undefined || this.attrs.get(m[2]) === m[3])));
+      (!m[2] || (m[2] === 'disabled' ? this.disabled :
+        (this.attrs.has(m[2]) && (m[3] === undefined || this.attrs.get(m[2]) === m[3]))));
   }
   descendants() { return this.children.flatMap(child => [child, ...child.descendants()]); }
-  querySelectorAll(selector) { return this.descendants().filter(el => el.matches(selector)); }
+  querySelectorAll(selector) { return this.descendants().filter(el => selector.split(',').some(part => el.matches(part.trim()))); }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
 }
 const page = new Element(fixture.page);
 const form = page.querySelector('[id="main-form"]');
 assert.ok(form);
 const context = {
-  window: {}, document: {getElementById: id => id === 'main-form' ? form : null},
+  window: {}, document: {getElementById: id => id === 'main-form' ? form : null, querySelector: selector => page.querySelector(selector)},
   managedRefParts: () => null, ensureRefOption: () => {},
 };
 vm.createContext(context);
 vm.runInContext(slice('// BEGIN onebase-ro-apply-values', '// END onebase-ro-apply-values') + '\n' +
-  slice('// BEGIN onebase-picture-bind', '// END onebase-picture-bind') + '\nthis.applyValues = applyValues;', context);
-context.applyValues(fixture.response.values);
+  slice('// BEGIN onebase-picture-bind', '// END onebase-picture-bind') + '\n' +
+  slice('// BEGIN onebase-ro-apply-states', '// END onebase-ro-apply-states') + '\nthis.applyValues = applyValues;', context);
 const field = 'Наименование';
-const updated = fixture.response.values[field];
-for (const input of form.querySelectorAll('input[data-ob-picture-for]')) {
-  assert.equal(input.value, updated);
-  const link = form.querySelector('[data-ob-picture-link="' + input.getAttribute('data-ob-picture-for') + '"]');
-  assert.equal(link.getAttribute('href'), '/ui/attachments/' + updated + '/download');
+const editor = form.querySelector('input[name="' + field + '"]');
+if (fixture.checkEditor) {
+  assert.ok(editor && editor.type !== 'hidden', 'GET must retain the editor in the DOM');
+  assert.equal(!!editor.closest('fieldset[disabled]'), fixture.initiallyDisabled);
 }
-// A partial later response must preserve both the UUID and its submitting name.
-context.applyValues({Unrelated: 'unchanged'});
-const values = {};
-for (const control of form.querySelectorAll('[name]')) {
-  if (!['INPUT', 'SELECT', 'TEXTAREA'].includes(control.tagName) || control.disabled) continue;
-  if (['button', 'submit', 'reset', 'file'].includes(control.type)) continue;
-  if (['checkbox', 'radio'].includes(control.type) && !control.checked) continue;
-  let disabled = false;
-  for (let p = control.parentElement; p; p = p.parentElement) {
-    if (p.tagName === 'FIELDSET' && p.disabled) disabled = true;
+function serialize() {
+  const values = {};
+  for (const control of form.querySelectorAll('[name]')) {
+    if (!['INPUT', 'SELECT', 'TEXTAREA'].includes(control.tagName) || control.disabled) continue;
+    if (['button', 'submit', 'reset', 'file'].includes(control.type)) continue;
+    if (['checkbox', 'radio'].includes(control.type) && !control.checked) continue;
+    if (control.closest('fieldset[disabled]')) continue;
+    const name = control.getAttribute('name');
+    (values[name] = values[name] || []).push(String(control.value));
   }
-  if (disabled) continue;
-  const name = control.getAttribute('name');
-  (values[name] = values[name] || []).push(String(control.value));
+  return values;
 }
-process.stdout.write(JSON.stringify(values));
+for (const [step, response] of fixture.responses.entries()) {
+  // Same order as the production HTTP event response path.
+  context.window.applyElementStates(response.elementStates);
+  context.applyValues(response.values);
+  const updated = response.values[field];
+  for (const input of form.querySelectorAll('input[data-ob-picture-for]')) {
+    assert.equal(input.value, updated);
+    const link = form.querySelector('[data-ob-picture-link="' + input.getAttribute('data-ob-picture-for') + '"]');
+    assert.equal(link.getAttribute('href'), '/ui/attachments/' + updated + '/download');
+  }
+  if (fixture.checkEditor) {
+    assert.equal(!!editor.closest('fieldset[disabled]'), step !== 1, 'HTTP hidden_when state must toggle');
+  }
+  assert.deepEqual(serialize()[field], [updated], 'exactly one successful control must carry the UUID');
+  // A partial later response must preserve both the UUID and its submitting name.
+  context.applyValues({Unrelated: 'unchanged'});
+  assert.deepEqual(serialize()[field], [updated]);
+}
+process.stdout.write(JSON.stringify(serialize()));

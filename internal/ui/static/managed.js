@@ -510,22 +510,35 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
   function refreshPictureBindings(form, values){
     if (!form) return;
     var esc = function(s){ return (window.CSS && CSS.escape) ? CSS.escape(s) : s; };
+    var bindings = new Map();
     form.querySelectorAll('input[data-ob-picture-for]').forEach(function(inp){
       var name = inp.getAttribute('data-ob-picture-for');
-      // Rendered editors keep their applied value (including concurrent typing).
-      // If a hidden container omitted the editor from the DOM, this preview
-      // becomes the submitting control. A second preview finds that control
-      // by name, so only one carrier is created for the field.
       var field = inp.getAttribute('data-ob-picture-field');
-      if (field && !inp.getAttribute('name')) {
-        var editor = form.querySelector('[name="' + esc(field) + '"]');
-        if (editor) {
-          inp.value = editor.value;
-        } else {
-          inp.setAttribute('name', field);
-          if (values && Object.prototype.hasOwnProperty.call(values, field)) {
-            inp.value = values[field] == null ? '' : String(values[field]);
+      if (field) {
+        var binding = bindings.get(field);
+        if (!binding) {
+          var controls = Array.prototype.slice.call(form.querySelectorAll('[name="' + esc(field) + '"]'));
+          var editors = controls.filter(function(c){ return c.getAttribute('data-ob-picture-for') === null; });
+          var editor = editors.find(controlSubmittable);
+          // Disabled editors still receive applyValues, but cannot carry the
+          // value on submit. Prefer the successful editor (and its newer typing),
+          // then an existing carrier when this is only a partial response.
+          var source = editor || editors[0] || controls.find(controlSubmittable) || inp;
+          var value = source.value;
+          if (!editors.length && values && Object.prototype.hasOwnProperty.call(values, field)) {
+            value = values[field] == null ? '' : String(values[field]);
           }
+          binding = {value: value, carrier: !!editor};
+          bindings.set(field, binding);
+        }
+        inp.value = binding.value;
+        // Re-elect on every response: showing the editor retires the fallback,
+        // hiding it promotes exactly one successful preview. Never enable a
+        // disabled business control or a preview inside a disabled fieldset.
+        inp.removeAttribute('name');
+        if (!binding.carrier && controlSubmittable(inp)) {
+          inp.setAttribute('name', field);
+          binding.carrier = true;
         }
       }
       var id = String(inp.value || '').trim().toLowerCase();

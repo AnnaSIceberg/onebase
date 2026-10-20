@@ -25,6 +25,7 @@ function node(attrs) {
   const el = { attrs: new Map(Object.entries(attrs || {})), value: attrs && attrs.value || '', hidden: false, children: [] };
   el.getAttribute = (n) => (el.attrs.has(n) ? el.attrs.get(n) : null);
   el.setAttribute = (n, v) => el.attrs.set(n, String(v));
+  el.removeAttribute = (n) => el.attrs.delete(n);
   el.querySelector = (sel) => (sel === 'img' ? el.children[0] || null : null);
   return el;
 }
