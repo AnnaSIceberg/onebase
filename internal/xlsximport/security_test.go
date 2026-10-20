@@ -3,10 +3,9 @@ package xlsximport
 // Регрессионный тест GO-2026-6452 (CVE-2026-59162, GHSA-fx5j-qcqg-grpf):
 // недоверенный .xlsx с отрицательным индексом shared-строк (t="s", <v>-1</v>)
 // раньше паниковал внутри excelize при разборе (sharedStrings[-1]). Проверяем,
-// что публичный API возвращает ошибку, а не роняет процесс. В go.mod запинен
-// upstream-коммит с исправлением (см. tools/govulnpolicy/main.go) — при откате
-// пина этот тест продолжает проходить благодаря recover в ImportBytes, но CI
-// в job vuln снова станет красным: policy-фильтр требует версию с фиксом.
+// что публичный API не паникует. Обновлённая Excelize возвращает пустое
+// значение повреждённой ячейки. Требование успешного импорта ниже отличает
+// исправление зависимости от recover, который вернул бы ErrParse.
 
 import (
 	"archive/zip"
@@ -69,7 +68,7 @@ func buildMaliciousXLSX(t *testing.T) []byte {
 // пустую строку — импорт проходит. На уязвимой версии (релизы до фикса,
 // GO-2026-6452) разбор паниковал: recover в ImportBytes превратил бы панику
 // в ErrParse, и этот тест упал — он реально ловит откат пина.
-// См. tools/govulnpolicy/main.go.
+// Исправленная версия зафиксирована в go.mod.
 func TestImportBytes_NegativeSharedStringNoPanic(t *testing.T) {
 	data := buildMaliciousXLSX(t)
 

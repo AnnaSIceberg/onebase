@@ -1,24 +1,16 @@
 // Command govulnpolicy — фильтр потока `govulncheck -format json`: проверка
-// падает только на ДОСТИЖИМЫХ (called) уязвимостях, кроме явно занесённых в
-// allowlist — и те гасятся лишь при условии, что версия модуля в go.mod
-// действительно содержит исправление.
+// падает на любой ДОСТИЖИМОЙ (called) уязвимости.
 //
-// Зачем это не просто «govulncheck ./...»: GO-2026-6452 (excelize,
-// CVE-2026-59162, GHSA-fx5j-qcqg-grpf) в vulndb записан без fixed-версии, поэтому
-// govulncheck считает уязвимой ЛЮБУЮ версию библиотеки — в том числе запиненный
-// в go.mod upstream-коммит f98df08 с исправлением (в релизы excelize фикс ещё
-// не вышел). Пока vulndb не обновится, гасим конкретно этот advisory, но
-// жёстко требуем пин: если кто-то откатит excelize на релиз без фикса,
-// проверка снова станет красной. Условие снятия записи — релиз excelize с
-// фиксом и обновление vulndb: после этого finding исчезает сам, и запись можно
-// удалить (она перестаёт использоваться).
+// Исключений сейчас нет: любая достижимая уязвимость запрещена.
+// GO-2026-6452 исправлена начиная с Excelize 2.11.0 по Go vulnerability database;
+// прежнее исключение для точного upstream-коммита больше не требуется.
 //
 // Использование (см. job vuln в .github/workflows/ci.yml):
 //
 //	govulncheck -json ./... | go run ./tools/govulnpolicy
 //
-// Коды выхода: 0 — чисто или только разрешённые advisory; 1 — достижимая
-// уязвимость вне allowlist, снятый/чужой пин или битый поток govulncheck.
+// Коды выхода: 0 — достижимых advisory нет; 1 — достижимая
+// уязвимость или битый поток govulncheck.
 package main
 
 import (
@@ -27,33 +19,6 @@ import (
 	"io"
 	"os"
 )
-
-// pinExcelize — минимальная версия github.com/xuri/excelize/v2, содержащая
-// исправление GO-2026-6452 (коммит f98df08a8f6aed8bc3b193115d1abb5b1ea2e433).
-const pinExcelize = "v2.11.1-0.20260728235842-f98df08a8f6a"
-
-// allowlist — advisory, разрешённые к подавлению. Ключ — OSV id.
-//
-// ВАЖНО: запись гасит advisory только при точном совпадении версии модуля с
-// minVersion. После апгрейда excelize проверка снова потребует внимания:
-// если новая версия содержит фикс и vulndb это уже знает — finding исчезнет
-// сам, и запись надо удалить; если нет — исправлять надо зависимость, а не фильтр.
-var allowlist = map[string]allowEntry{
-	"GO-2026-6452": {
-		module:     "github.com/xuri/excelize/v2",
-		minVersion: pinExcelize,
-		reason: "CVE-2026-59162: паника excelize на отрицательном индексе shared-строк " +
-			"(недоверенный .xlsx → отказ обслуживания). В релизах фикса нет, поэтому в go.mod " +
-			"запинен upstream-коммит f98df08 с исправлением; запись снять после релиза excelize " +
-			"с фиксом и обновления vulndb.",
-	},
-}
-
-type allowEntry struct {
-	module     string
-	minVersion string
-	reason     string
-}
 
 // finding/trace — подмножество схемы govulncheck -format json.
 type message struct {
@@ -90,8 +55,7 @@ func run(r io.Reader, out io.Writer) error {
 	var (
 		sawConfig    bool
 		calledOSVs   = map[string]string{} // osv → версия модуля из trace[0]
-		allowlisted  int
-		skippedLevel int // module-level находки (не called) — govulncheck их не считает «affected»
+		skippedLevel int                   // module-level находки (не called) — govulncheck их не считает «affected»
 		violations   []violation
 	)
 	for {
@@ -135,18 +99,8 @@ func run(r io.Reader, out io.Writer) error {
 	}
 
 	for osv, version := range calledOSVs {
-		entry, ok := allowlist[osv]
-		if !ok {
-			violations = append(violations, violation{osv: osv, version: version,
-				detail: "достижимая уязвимость вне allowlist"})
-			continue
-		}
-		if version != entry.minVersion {
-			violations = append(violations, violation{osv: osv, version: version,
-				detail: fmt.Sprintf("ожидалась версия с фиксом %s (см. allowlist в tools/govulnpolicy/main.go)", entry.minVersion)})
-			continue
-		}
-		allowlisted++
+		violations = append(violations, violation{osv: osv, version: version,
+			detail: "достижимая уязвимость"})
 	}
 
 	for _, v := range violations {
@@ -157,12 +111,6 @@ func run(r io.Reader, out io.Writer) error {
 		return fmt.Errorf("%d достижимых уязвимостей нарушают политику", len(violations))
 	}
 
-	_, _ = fmt.Fprintf(out, "govulnpolicy: OK — достижимых уязвимостей вне allowlist нет; "+
-		"подавлено %d (пин подтверждён), module-level пропущено %d.\n", allowlisted, skippedLevel)
-	for osv := range calledOSVs {
-		if entry, ok := allowlist[osv]; ok {
-			_, _ = fmt.Fprintf(out, "  %s подавлен: %s\n", osv, entry.reason)
-		}
-	}
+	_, _ = fmt.Fprintf(out, "govulnpolicy: OK — достижимых уязвимостей нет; module-level пропущено %d.\n", skippedLevel)
 	return nil
 }
