@@ -20,8 +20,10 @@ permissions:
 # снимает предыдущий незавершённый прогон, чтобы зависшие/лишние runs не
 # потребляли раннеры бесконечно. По ref, а не глобально, — параллельные ветки
 # не мешают друг другу.
+# Ручной запуск имеет отдельную группу: он не отменяет push@main, которым release.yml
+# доказывает готовность точного релизного SHA.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -605,13 +607,13 @@ jobs:
           CI: '1'
         run: npx playwright test
 
-      - name: Run choice_filter public browser acceptance
+      - name: Run public browser acceptance
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
         env:
           CI: '1'
           ONEBASE_BROWSER_ACCEPTANCE: '1'
           TEST_DATABASE_URL: postgres://onebase:onebase@127.0.0.1:5432/onebase_browser_test?sslmode=disable
-        run: go test -count=1 -v ./internal/ui ./internal/launcher -run 'Test(ChoiceFilter(Configurator)?|HiddenCopies)BrowserAcceptance$'
+        run: go test -count=1 -v ./internal/ui ./internal/launcher -run 'Test(ChoiceFilter(Configurator)?|HiddenCopies|TabsClose)BrowserAcceptance$'
 
       # Без артефактов упавший браузерный тест разбирать нечем: трассировка
       # показывает шаги, снимок — что было на экране в момент падения.
@@ -848,12 +850,9 @@ jobs:
           cache: true
       - name: govulncheck
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
-        # Пайп через tools/govulnpolicy: GO-2026-6452 (excelize, CVE-2026-59162)
-        # в vulndb записан без fixed-версии, поэтому голый govulncheck считает
-        # уязвимой ЛЮБУЮ версию — даже запиненный коммит с исправлением. Фильтр
-        # гасит ТОЛЬКО этот advisory и только при точном совпадении версии с
-        # пином из go.mod; любой другой достижимый OSV, откат пина или оборванный
-        # запуск роняют проверку. Условие снятия записи — в комментарии там же.
+        # tools/govulnpolicy проверяет JSON-поток, config и достижимые находки.
+        # Allowlist пуст: прежнее исключение GO-2026-6452 удалено после
+        # обновления vulndb. Любой достижимый advisory блокирует проверку.
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
           govulncheck -json ./... | go run ./tools/govulnpolicy
