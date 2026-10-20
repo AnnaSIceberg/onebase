@@ -4120,9 +4120,16 @@ func (tr *translator) sqliteDateParamComparedToField(idx int) bool {
 }
 
 // sqliteDateParamField возвращает последний токен поля в прямом сравнении.
-// Выражения над датами и строковые параметры сохраняют прежнюю трансляцию.
+// Выражения над датами сохраняют прежнюю трансляцию. Строковая граница
+// регистра нормализуется только в паре с time.Time в прямом BETWEEN.
 func (tr *translator) sqliteDateParamField(idx int) int {
-	if dialectOrDefault(tr.opts.Dialect).Name() != "sqlite" || !tr.timeParamAt(idx) {
+	if dialectOrDefault(tr.opts.Dialect).Name() != "sqlite" {
+		return -1
+	}
+	if field := tr.sqliteRegisterDateBetweenField(idx); field >= 0 {
+		return field
+	}
+	if !tr.timeParamAt(idx) {
 		return -1
 	}
 	if tr.dateFieldAt(idx-2) && tr.comparisonOpAt(idx-1) {
@@ -4152,6 +4159,54 @@ func (tr *translator) sqliteDateParamField(idx int) int {
 	return -1
 }
 
+// Обе границы должны быть отдельными параметрами, хотя бы один — time.Time.
+// Только валидная RFC3339-строка второй границы может разделить UTC-ключ с ним.
+// Решение общее для колонки и обеих границ, чтобы не смешать три формата.
+func (tr *translator) sqliteRegisterDateBetweenField(idx int) int {
+	for _, first := range []int{idx, idx - 2} {
+		field, last := first-2, first+2
+		if !tr.dateFieldAt(field) || !tr.registerFieldAt(field) ||
+			!tr.keywordAt(first-1, "МЕЖДУ", "BETWEEN") || !tr.keywordAt(first+1, "И", "AND") ||
+			!tr.dateBoundaryParamAt(first) || !tr.dateBoundaryParamAt(last) ||
+			(!tr.timeParamAt(first) && !tr.timeParamAt(last)) {
+			continue
+		}
+		// Арифметика, вызов функции и иные выражения после верхней границы
+		// не являются прямым BETWEEN двух параметров.
+		if last+1 >= len(tr.tokens) {
+			continue
+		}
+		next := tr.tokens[last+1]
+		switch next.kind {
+		case tEOF, tRParen, tComma:
+			return field
+		case tIdent:
+			if kw, ok := sqlKW(next.val); ok {
+				switch kw {
+				case "AND", "OR", "GROUP", "HAVING", "ORDER", "UNION", "LIMIT", "THEN", "ELSE", "END", "AS", "FROM":
+					return field
+				}
+			}
+		}
+	}
+	return -1
+}
+
+func (tr *translator) dateBoundaryParamAt(idx int) bool {
+	if tr.timeParamAt(idx) {
+		return true
+	}
+	if idx < 0 || idx >= len(tr.tokens) || tr.tokens[idx].kind != tParam {
+		return false
+	}
+	value, ok := tr.paramValues[tr.tokens[idx].val].(string)
+	if !ok {
+		return false
+	}
+	_, err := time.Parse(time.RFC3339Nano, value)
+	return err == nil
+}
+
 func (tr *translator) addSQLiteDateParam(name string, register bool) string {
 	layout := time.RFC3339
 	if register {
@@ -4159,6 +4214,8 @@ func (tr *translator) addSQLiteDateParam(name string, register bool) string {
 	}
 	var value any
 	switch v := tr.paramValues[name].(type) {
+	case string:
+		value = v // RFC3339 проверен общим решением для BETWEEN.
 	case time.Time:
 		value = v.UTC().Format(layout)
 	case *time.Time:
