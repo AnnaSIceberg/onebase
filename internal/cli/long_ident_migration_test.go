@@ -320,6 +320,11 @@ func TestMigrateDryRunCurrentLegacyBeforeDDL_Matrix(t *testing.T) {
 							}
 						}
 					}
+					// Finish only the fixture's service revision; the conflicting
+					// application metadata must remain unapplied for the preflight.
+					if _, err := db.RaiseSchemaRevision(ctx); err != nil {
+						t.Fatal(err)
+					}
 					before := longIdentSchemaSnapshot(t, db)
 					args := append([]string{"migrate", "--project", dir}, longIdentDatabaseArgs(t, db)...)
 					var previous string

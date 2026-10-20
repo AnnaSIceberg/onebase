@@ -146,6 +146,12 @@ func TestMigrateDryRunListsLongAccountTable(t *testing.T) {
 		db.Close()
 		t.Fatal(err)
 	}
+	// Complete the fixture's service-schema revision before the read-only CLI
+	// open. An incomplete marker is intentionally rejected by current main.
+	if _, err := db.RaiseSchemaRevision(ctx); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
 	db.Close()
 	out, err := captureStdout(t, func() error {
 		return runMigrate(migrateCmdFor(t, dir, dbPath, map[string]string{"dry-run": "true"}), nil)

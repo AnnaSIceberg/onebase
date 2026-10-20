@@ -41,10 +41,20 @@ func TestLongReferenceOutputLabels_Matrix(t *testing.T) {
 					{"qualified", "К." + name, strings.ToLower(name) + "_id"},
 					{"parenthesized", "((К." + name + "))", strings.ToLower(name) + "_id"},
 					{"alias", "К." + name + " КАК Проверка", "проверка"},
+					{"union-first-reference", "К." + name + " ИЗ Справочник.Владелец КАК К ОБЪЕДИНИТЬ ВЫБРАТЬ Д." + name + " КАК Иное", strings.ToLower(name) + "_id"},
+					{"derived-reference", "П." + name + " ИЗ (ВЫБРАТЬ К." + name + " ИЗ Справочник.Владелец КАК К) КАК П", strings.ToLower(name)},
 					{"long-alias", "К." + name + " КАК НейтральныйДлинныйПсевдонимВыбраннойСсылки", strings.ToLower("НейтральныйДлинныйПсевдонимВыбраннойСсылки")},
 				} {
 					t.Run(tc.name, func(t *testing.T) {
-						res, err := query.Compile("ВЫБРАТЬ "+tc.selection+" ИЗ Справочник.Владелец КАК К", query.CompileOpts{Entities: entities, Dialect: db.Dialect()})
+						text := "ВЫБРАТЬ " + tc.selection
+						if tc.name != "derived-reference" {
+							alias := "К"
+							if tc.name == "union-first-reference" {
+								alias = "Д"
+							}
+							text += " ИЗ Справочник.Владелец КАК " + alias
+						}
+						res, err := query.Compile(text, query.CompileOpts{Entities: entities, Dialect: db.Dialect()})
 						require.NoError(t, err)
 						for range 2 {
 							for _, limit := range []bool{false, true} {

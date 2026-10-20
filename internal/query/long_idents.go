@@ -161,7 +161,7 @@ func longOutputLabels(tokens []tok, sql string, ctx sourceContext) (map[string]s
 		} else if len(out.Path) > 0 {
 			physical := lowerFast(out.Path[len(out.Path)-1])
 			logical := physical
-			if len(col.Output) > metadata.MaxSQLIdentBytes {
+			if len(col.Output)+len("_id") > metadata.MaxSQLIdentBytes {
 				logical = col.Output
 				// SQL may still contain the full reference column here; the
 				// final shortening pass runs after output labels are collected.
