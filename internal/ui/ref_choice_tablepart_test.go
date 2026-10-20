@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -769,4 +770,170 @@ func TestRefOptionsChoiceTablePartClosedSourceIsClosed(t *testing.T) {
 			})
 		}
 	})
+}
+
+// Each placement of the same TP must publish its own column context and seeds.
+// Consume the actual GET payload with the browser snapshot code, then use the
+// public picker endpoint to validate the selected reference under each filter.
+func TestTPChoiceRepeatedPlacementPublicHTTP(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for browser choice snapshots")
+	}
+	for _, grid := range []bool{false, true} {
+		for _, reverse := range []bool{false, true} {
+			t.Run(fmt.Sprintf("grid=%t/reverse=%t", grid, reverse), func(t *testing.T) {
+				dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+					f := newChoiceHTTPFixtureWithStore(t, db, false)
+					addTPChoiceFixture(t, f, grid)
+					form := f.owner.Forms[0]
+					first := form.Elements[2]
+					second := *first
+					second.ID, second.Name = "rows-second", "СтрокиПовтор"
+					second.Columns = nil
+					for _, column := range first.Columns {
+						copy := *column
+						copy.ID += "_second"
+						copy.ChoiceFilter = append([]metadata.FormChoiceCondition(nil), column.ChoiceFilter...)
+						second.Columns = append(second.Columns, &copy)
+					}
+					second.Columns[1].ChoiceFilter[0].From = "Строки.Направление"
+					if reverse {
+						form.Elements[2] = &second
+						form.Elements = append(form.Elements, first)
+					} else {
+						form.Elements = append(form.Elements, &second)
+					}
+					// The object points to A, but the single row points to B. The
+					// same stored selection is valid only in the first placement.
+					rows := []map[string]any{{"Направление": f.rootB.String(), "Глобальная": f.pageTwo.String()}}
+					if err := db.UpsertTablePartRows(context.Background(), f.owner.Name, "Строки", f.ownerID, rows, f.owner.TableParts[0]); err != nil {
+						t.Fatal(err)
+					}
+					router := chi.NewRouter()
+					f.server.Mount(router)
+					req := httptest.NewRequest(http.MethodGet, "/ui/document/"+url.PathEscape(f.owner.Name)+"/"+f.ownerID.String(), nil)
+					req = req.WithContext(auth.ContextWithUser(req.Context(), f.user))
+					r := httptest.NewRecorder()
+					router.ServeHTTP(r, req)
+					if r.Code != http.StatusOK {
+						t.Fatalf("GET form: %d %s", r.Code, r.Body.String())
+					}
+					doc, err := html.Parse(strings.NewReader(r.Body.String()))
+					if err != nil {
+						t.Fatal(err)
+					}
+					hosts := map[string]*html.Node{}
+					var walk func(*html.Node)
+					walk = func(n *html.Node) {
+						attr := "data-ob-element"
+						if grid {
+							attr = "data-sg-el"
+						}
+						if name, ok := htmlAttribute(n, attr); ok && (grid || n.Data == "table") {
+							hosts[name] = n
+						}
+						for c := n.FirstChild; c != nil; c = c.NextSibling {
+							walk(c)
+						}
+					}
+					walk(doc)
+					for _, placement := range []struct{ name, element, source string }{
+						{first.Name, "Строки.global", "Объект.Направление"},
+						{second.Name, "Строки.global_second", "Строки.Направление"},
+					} {
+						t.Run(placement.name, func(t *testing.T) {
+							host := hosts[placement.name]
+							if host == nil {
+								t.Fatal("placement missing")
+							}
+							var raw string
+							var options []map[string]any
+							if grid {
+								contexts, _ := htmlAttribute(host, "data-sg-choice")
+								var choices map[string]string
+								if err := json.Unmarshal([]byte(contexts), &choices); err != nil {
+									t.Fatal(err)
+								}
+								raw = choices["Глобальная"]
+								seeds, _ := htmlAttribute(host, "data-sg-choice-rows")
+								var choiceRows map[string][][]map[string]any
+								if err := json.Unmarshal([]byte(seeds), &choiceRows); err != nil {
+									t.Fatal(err)
+								}
+								if len(choiceRows["Глобальная"]) != 1 {
+									t.Fatalf("expected one row of seeds, got %d", len(choiceRows["Глобальная"]))
+								}
+								options = choiceRows["Глобальная"][0]
+							} else {
+								sel := findSelectByName(host, "tp.Строки.0.Глобальная")
+								if sel == nil {
+									t.Fatal("column select missing")
+								}
+								raw, _ = htmlAttribute(sel, "data-ref-choice-context")
+								for o := sel.FirstChild; o != nil; o = o.NextSibling {
+									if id, _ := htmlAttribute(o, "value"); id != "" {
+										outside, _ := htmlAttribute(o, "data-ob-choice-outside-filter")
+										options = append(options, map[string]any{"id": id, "_choice_outside_filter": outside == "1"})
+									}
+								}
+							}
+							var context managedChoiceContext
+							if err := json.Unmarshal([]byte(raw), &context); err != nil {
+								t.Fatal(err)
+							}
+							if context.Element != placement.element || context.Sources[placement.source] != "Направление" || len(context.Sources) != 1 {
+								t.Fatalf("wrong placement context: %#v", context)
+							}
+							global := placement.source == "Объект.Направление"
+							selectedFound, otherFound := false, false
+							for _, option := range options {
+								id := refValueString(option["id"])
+								if id == f.hidden.String() {
+									t.Fatal("initial options leaked an RLS-hidden reference")
+								}
+								if id == f.pageTwo.String() {
+									selectedFound = true
+									outside, _ := option["_choice_outside_filter"].(bool)
+									if outside == global {
+										t.Fatal("selected seed validity came from the other placement")
+									}
+								}
+								if id == f.foreignOther.String() {
+									otherFound = true
+								}
+							}
+							if !selectedFound || otherFound == global {
+								t.Fatalf("wrong initial options: %#v", options)
+							}
+							payload, err := json.Marshal(map[string]any{"context": raw, "grid": grid, "selected": f.pageTwo.String(), "row": rows[0],
+								"controls": []map[string]string{{"name": "Направление", "value": f.rootA.String()}, {"name": "tp.Строки.0.Направление", "value": f.rootB.String()}}})
+							if err != nil {
+								t.Fatal(err)
+							}
+							cmd := exec.Command(node, "static/tp_choice_global_source_probe.js") //nolint:gosec // executable resolved by LookPath
+							cmd.Stdin = bytes.NewReader(payload)
+							out, err := cmd.CombinedOutput()
+							if err != nil {
+								t.Fatalf("browser snapshot: %v\n%s", err, out)
+							}
+							q, err := url.ParseQuery(strings.TrimPrefix(string(out), "&"))
+							if err != nil {
+								t.Fatal(err)
+							}
+							q.Set("q", "needle")
+							response := f.serveRefOptions(t, f.target, q)
+							if response.Code != http.StatusOK {
+								t.Fatalf("picker: %d %s", response.Code, response.Body.String())
+							}
+							got := decodeChoiceHTTP(t, response)
+							if got.Total != 2 || len(got.Items) != 2 || got.SelectedAllowed == nil || *got.SelectedAllowed != global {
+								t.Fatalf("placement picker: %#v; query=%v", got, q)
+							}
+						})
+					}
+				})
+			})
+		}
+	}
 }

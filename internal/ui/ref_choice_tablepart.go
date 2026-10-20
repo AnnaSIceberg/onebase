@@ -40,7 +40,7 @@ type tpChoiceRender struct {
 }
 
 func (s *Server) applyTPChoiceFilters(ctx context.Context, owner *metadata.Entity, form *metadata.FormModule, kind string, data map[string]any) {
-	all := make(map[string]*tpChoiceRender)
+	all := make(map[*metadata.FormElement]*tpChoiceRender)
 	tableRows, _ := data["TablePartRows"].(map[string][]map[string]any)
 	refs, _ := data["TPRefOptions"].(map[string]map[string][]map[string]any)
 	form.Walk(func(el *metadata.FormElement) bool {
@@ -52,10 +52,13 @@ func (s *Server) applyTPChoiceFilters(ctx context.Context, owner *metadata.Entit
 		if target == nil {
 			return true
 		}
-		render := all[tp]
+		// A table part may appear more than once with different column filters.
+		// Keep each placement's contexts and row options independent.
+		table, _ := metadata.FormChoiceTablePart(form, el)
+		render := all[table]
 		if render == nil {
 			render = &tpChoiceRender{Contexts: map[string]string{}, Options: map[string][][]map[string]any{}}
-			all[tp] = render
+			all[table] = render
 		}
 		controls := choiceSourceControls(el)
 		// Preserve the declared path as the predicate key while publishing the

@@ -339,8 +339,8 @@ const tplManagedForm = `
        {{if $tpColEvents}}data-sg-colevents="{{$tpColEvents}}"{{end}}
        data-sg-cols='{{managedTPColumnsJSON $tpPlan $tpVirtualCols (str $ctx.Lang) $ctx.RefWriteAccess $tpName $ctx.RefFilter}}'
        data-sg-ref='{{jsJSON $tpRef}}'
-       data-sg-choice='{{jsJSON (tpChoiceContexts $ctx $tpName)}}'
-       data-sg-choice-rows='{{jsJSON (tpChoiceRows $ctx $tpName)}}'
+       data-sg-choice='{{jsJSON (tpChoiceContexts $ctx $el)}}'
+       data-sg-choice-rows='{{jsJSON (tpChoiceRows $ctx $el)}}'
        data-sg-enum='{{jsJSON $tpEnum}}'
        data-sg-rows='{{managedTPRowsJSON $tpMeta.Fields $tpRows}}'
        {{if $tpCmds}}data-sg-cmd="1"{{end}}
@@ -372,7 +372,7 @@ const tplManagedForm = `
         <th style="width:40px"></th>
       </tr>
     </thead>
-    <tbody id="tp-body-{{$tpName}}" {{if $tpCmds}}data-tp-cmd="1" {{end}}{{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}data-tp-choice="{{jsJSON (tpChoiceContexts $ctx $tpName)}}" data-tp-fields="{{managedTPFieldsAttr $tpPlan}}" data-tp-hidden-cols="{{managedTPHiddenColsJSON $tpPlan}}" data-tp-virtual-cols="{{managedTPVirtualNamesJSON $tpVirtualCols}}">
+    <tbody id="tp-body-{{$tpName}}" {{if $tpCmds}}data-tp-cmd="1" {{end}}{{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}data-tp-choice="{{jsJSON (tpChoiceContexts $ctx $el)}}" data-tp-fields="{{managedTPFieldsAttr $tpPlan}}" data-tp-hidden-cols="{{managedTPHiddenColsJSON $tpPlan}}" data-tp-virtual-cols="{{managedTPVirtualNamesJSON $tpVirtualCols}}">
     {{range $i, $row := $tpRows}}
       <tr{{with formRowClass $row}} class="{{.}}"{{end}} tabindex="-1" aria-selected="false">
         {{if $tpCmds}}<td style="text-align:center"><input type="checkbox" class="_tp-sel"{{if $tpReadOnly}} disabled{{end}}></td>{{end}}
@@ -382,9 +382,9 @@ const tplManagedForm = `
           {{$v := index $row $f.Name}}
           {{if isRef (str $f.Type)}}
             <div style="display:flex;gap:4px;align-items:center">
-              <select name="tp.{{$tpName}}.{{$i}}.{{$f.Name}}" style="flex:1" data-ref-entity="{{$f.RefEntity}}"{{with index (tpChoiceContexts $ctx $tpName) $f.Name}} data-ref-choice-context="{{.}}" data-ref-row-id="{{$i}}"{{end}}{{if $ctx.RefFilter}}{{with index $ctx.RefFilter (printf "%s.%s" $tpName $f.Name)}} data-ref-filter="{{.}}"{{end}}{{end}}{{if and ($f.InlineCreateEnabled true) (refWriteAllowed $ctx.RefWriteAccess $f.RefEntity)}} data-ref-allow-create="1"{{end}}{{if $tpReadOnly}} disabled{{end}}>
+              <select name="tp.{{$tpName}}.{{$i}}.{{$f.Name}}" style="flex:1" data-ref-entity="{{$f.RefEntity}}"{{with index (tpChoiceContexts $ctx $el) $f.Name}} data-ref-choice-context="{{.}}" data-ref-row-id="{{$i}}"{{end}}{{if $ctx.RefFilter}}{{with index $ctx.RefFilter (printf "%s.%s" $tpName $f.Name)}} data-ref-filter="{{.}}"{{end}}{{end}}{{if and ($f.InlineCreateEnabled true) (refWriteAllowed $ctx.RefWriteAccess $f.RefEntity)}} data-ref-allow-create="1"{{end}}{{if $tpReadOnly}} disabled{{end}}>
                 <option value="">{{if $tpReadOnly}}—{{else}}— выбрать —{{end}}</option>
-                {{range tpChoiceOptions $ctx $tpName $f.Name $i $tpRef}}
+                {{range tpChoiceOptions $ctx $el $f.Name $i $tpRef}}
                 <option value="{{index . "id"}}" {{if eq (str (index . "id")) (refID $v)}}selected{{end}}{{if index . "_choice_outside_filter"}} data-ob-choice-outside-filter="1"{{end}}>{{index . "_label"}}</option>
                 {{end}}
               </select>

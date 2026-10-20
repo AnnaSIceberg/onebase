@@ -1245,24 +1245,24 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return template.JS(b) //nolint:gosec // G203: JSON сформирован encoding/json
 		},
 		"managedTPColumnPlan": managedTPColumnPlan,
-		"tpChoiceContexts": func(ctx map[string]any, tp string) map[string]string {
-			all, _ := ctx["TPChoices"].(map[string]*tpChoiceRender)
-			if all[tp] != nil {
-				return all[tp].Contexts
+		"tpChoiceContexts": func(ctx map[string]any, table *metadata.FormElement) map[string]string {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].Contexts
 			}
 			return nil
 		},
-		"tpChoiceRows": func(ctx map[string]any, tp string) map[string][][]map[string]any {
-			all, _ := ctx["TPChoices"].(map[string]*tpChoiceRender)
-			if all[tp] != nil {
-				return all[tp].Options
+		"tpChoiceRows": func(ctx map[string]any, table *metadata.FormElement) map[string][][]map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].Options
 			}
 			return nil
 		},
-		"tpChoiceOptions": func(ctx map[string]any, tp, field string, row int, fallback map[string][]map[string]any) []map[string]any {
-			all, _ := ctx["TPChoices"].(map[string]*tpChoiceRender)
-			if all[tp] != nil && all[tp].Contexts[field] != "" {
-				rows := all[tp].Options[field]
+		"tpChoiceOptions": func(ctx map[string]any, table *metadata.FormElement, field string, row int, fallback map[string][]map[string]any) []map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil && all[table].Contexts[field] != "" {
+				rows := all[table].Options[field]
 				if row < len(rows) {
 					return rows[row]
 				}
