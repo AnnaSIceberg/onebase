@@ -79,9 +79,10 @@ type yamlLintSpec struct {
 }
 
 type yamlLintSchema struct {
-	keys map[string]*yamlLintSchema
-	elem *yamlLintSchema
-	free bool
+	keys   map[string]*yamlLintSchema
+	elem   *yamlLintSchema
+	values *yamlLintSchema
+	free   bool
 }
 
 func yamlLintSpecs() []yamlLintSpec {
@@ -137,6 +138,16 @@ func lintYAMLNode(label, kind, path string, node *yaml.Node, schema *yamlLintSch
 		nextPath := path + "[]"
 		for _, item := range node.Content {
 			lintYAMLNode(label, kind, nextPath, item, schema.elem, issues)
+		}
+		return
+	}
+	if node.Kind == yaml.MappingNode && schema.values != nil {
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			nextPath := node.Content[i].Value
+			if path != "" {
+				nextPath = path + "." + nextPath
+			}
+			lintYAMLNode(label, kind, nextPath, node.Content[i+1], schema.values, issues)
 		}
 		return
 	}
@@ -414,11 +425,13 @@ func entityYAMLSchema() *yamlLintSchema {
 		// {name, readonly} — «показывать, но не давать править» (#1011).
 		// Скалярные элементы схема пропускает, а опечатку в ключе записи
 		// (read_only) ловит.
-		"item_form":    seq(obj("name", "readonly")),
-		"fields":       seq(fieldYAMLSchema(true)),
-		"tableparts":   seq(tablePartYAMLSchema(true)),
-		"indexes":      seq(indexYAMLSchema()),
-		"numerator":    obj("prefix", "length", "period", "scope", "base_prefix", "unique"),
+		"item_form":  seq(obj("name", "readonly")),
+		"fields":     seq(fieldYAMLSchema(true)),
+		"tableparts": seq(tablePartYAMLSchema(true)),
+		"indexes":    seq(indexYAMLSchema()),
+		"numerator": with(obj("prefix", "length", "period", "scope", "base_prefix", "unique"), map[string]*yamlLintSchema{
+			"field": with(obj("title", "label", "required", "default", "pii"), map[string]*yamlLintSchema{"titles": freeMap()}),
+		}),
 		"predefined":   seq(with(obj("name"), map[string]*yamlLintSchema{"fields": freeMap()})),
 		"tile_view":    obj("image", "title", "subtitle", "fields"),
 		"activity":     obj("field", "default_scope", "hide_from_choice"),
@@ -441,6 +454,7 @@ func infoRegisterYAMLSchema() *yamlLintSchema {
 		"titles":     freeMap(),
 		"dimensions": seq(fieldYAMLSchema(false)),
 		"resources":  seq(fieldYAMLSchema(false)),
+		"indexes":    seq(indexYAMLSchema()),
 	})
 }
 
@@ -496,7 +510,7 @@ func reportYAMLSchema() *yamlLintSchema {
 		// параметра пока только у обработок (processor.Param). А вот «default»
 		// модель знает — параметр без значения получает умолчание, — поэтому
 		// ключ разрешён: иначе линт ругался бы на работающую возможность.
-		"params":      seq(with(obj("name", "type", "label", "options", "default"), map[string]*yamlLintSchema{"labels": freeMap()})),
+		"params":      seq(with(obj("name", "type", "label", "options", "default", "period_end"), map[string]*yamlLintSchema{"labels": freeMap()})),
 		"composition": composition,
 		"variants":    seq(with(obj("name"), map[string]*yamlLintSchema{"composition": composition})),
 	})
@@ -606,11 +620,12 @@ func accountRegisterYAMLSchema() *yamlLintSchema {
 func homePageYAMLSchema() *yamlLintSchema {
 	nav := obj("documents", "catalogs", "reports", "inforegs", "registers", "processors", "journals", "pages")
 	return with(obj("title", "layout", "hidden"), map[string]*yamlLintSchema{
-		"titles":  freeMap(),
-		"rows":    seq(obj("widgets")),
-		"widgets": seq(obj("name", "span")),
-		"nav":     nav,
-		"menu":    menuYAMLSchema(),
+		"titles":      freeMap(),
+		"rows":        seq(obj("widgets")),
+		"widgets":     seq(obj("name", "span")),
+		"nav":         nav,
+		"nav_by_role": {values: nav},
+		"menu":        menuYAMLSchema(),
 	})
 }
 

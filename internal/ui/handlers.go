@@ -345,9 +345,12 @@ func (s *Server) loadInitialRefOptions(ctx context.Context, entity *metadata.Ent
 	return opts, nil
 }
 
-func (s *Server) loadInitialRefFilterOptions(ctx context.Context, entity *metadata.Entity, params storage.ListParams) (map[string][]map[string]any, error) {
+// loadInitialRefFilterOptions — варианты ссылочных полей панели «Отбор». fields —
+// поля, которые панель покажет (listFilterPanelFields); остальным варианты не
+// нужны.
+func (s *Server) loadInitialRefFilterOptions(ctx context.Context, entity *metadata.Entity, params storage.ListParams, fields []metadata.Field) (map[string][]map[string]any, error) {
 	opts := make(map[string][]map[string]any)
-	for _, f := range entity.Fields {
+	for _, f := range fields {
 		if f.RefEntity == "" {
 			continue
 		}
@@ -399,11 +402,24 @@ func (s *Server) loadInitialTPRefOptions(ctx context.Context, entity *metadata.E
 			if err != nil {
 				continue
 			}
-			tpOpts[f.Name] = rows
+			tpOpts[f.Name] = compactRefOptionRows(rows)
 		}
 		result[tp.Name] = tpOpts
 	}
 	return result, nil
+}
+
+// compactRefOptionRows оставляет у варианта ссылки табличной части только то,
+// что читают шаблон и браузер: идентификатор и подпись. Вариант раньше уезжал
+// записью справочника целиком — у номенклатуры с ценами и описанием это
+// десятки полей на каждую из 50 строк каждой ссылочной колонки; страница
+// заявки с 17 табличными частями весила 2,8 МБ, ответ каждого события — 1,3 МБ.
+func compactRefOptionRows(rows []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, map[string]any{"id": row["id"], "_label": row["_label"]})
+	}
+	return out
 }
 
 func selectedTPRefIDs(rows []map[string]any, field string) []string {
@@ -569,11 +585,11 @@ func asString(v any) string {
 
 func regFmtDate(v any) string {
 	if t, ok := v.(time.Time); ok {
-		return t.Format("02.01.2006")
+		return storage.FormatDisplayDate(t)
 	}
 	if s, ok := v.(string); ok {
 		if t, err := time.Parse(time.RFC3339, s); err == nil {
-			return t.Format("02.01.2006")
+			return storage.FormatDisplayDate(t)
 		}
 	}
 	return fmt.Sprintf("%v", v)
@@ -620,6 +636,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	if _, ok := data["Cfg"]; !ok {
 		data["Cfg"] = s.cfg
 	}
+	s.addHelpContext(r, data)
 	// Параметры текущего запроса — из них шаблоны строят ссылки «то же самое,
 	// но с другим X» (listURL/listHidden), не собирая строку запроса по кускам
 	// и не теряя при этом чужие параметры вроде q.
@@ -679,6 +696,12 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		kind := string(ent.Kind)
 		if _, ok := data["CanWrite"]; !ok {
 			data["CanWrite"] = s.can(r, kind, ent.Name, "write")
+		}
+		// CanCreate — создание из интерфейса (кнопки «Создать», «Скопировать»):
+		// право записи, а при `interactive_create: false` — ещё и `create`.
+		if _, ok := data["CanCreate"]; !ok {
+			canWrite, _ := data["CanWrite"].(bool)
+			data["CanCreate"] = canWrite && (!ent.NoInteractiveCreate || s.can(r, kind, ent.Name, "create"))
 		}
 		if _, ok := data["CanDelete"]; !ok {
 			data["CanDelete"] = s.can(r, kind, ent.Name, "delete")
@@ -773,7 +796,7 @@ func (s *Server) refWriteAccess(r *http.Request, entity *metadata.Entity) map[st
 			return
 		}
 		refEntity := s.reg.GetEntity(name)
-		out[name] = refEntity != nil && s.can(r, string(refEntity.Kind), refEntity.Name, "write")
+		out[name] = s.canInteractiveCreate(r, refEntity)
 	}
 	for _, field := range entity.Fields {
 		add(field.RefEntity)
