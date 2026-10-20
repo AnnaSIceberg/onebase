@@ -2,7 +2,9 @@ package userhelp_test
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,7 +16,11 @@ import (
 func TestConfluencePublishRoundTrip(t *testing.T) {
 	for _, cloud := range []bool{false, true} {
 		t.Run(fmt.Sprintf("cloud=%t", cloud), func(t *testing.T) {
-			b := userhelp.Load(fixture(t))
+			dir := fixture(t)
+			// Exercise ordinary Markdown and escaping in the body sent by the
+			// concrete HTTP publisher, including Confluence image namespaces.
+			write(t, dir, "docs/help/operator.md", "# Оператор\n\n[Оформить звонок](operator/calls.md#call)\n\nFirst line  \nSecond line\n\n---\n\n&copy; &nbsp; & <text> \"quoted\" справка\n")
+			b := userhelp.Load(dir)
 			versions, bodies := map[string]int{}, map[string]string{}
 			creates, updates, uploads := 0, 0, 0
 			attachments := map[string]bool{}
@@ -96,6 +102,40 @@ func TestConfluencePublishRoundTrip(t *testing.T) {
 					if payload.Version.Number != versions[id]+1 {
 						w.WriteHeader(http.StatusConflict)
 						return
+					}
+					var body struct {
+						Representation string
+						Value          string
+						Storage        struct{ Representation, Value string }
+					}
+					if err := json.Unmarshal(payload.Body, &body); err != nil {
+						t.Error(err)
+					}
+					storage, representation := body.Value, body.Representation
+					if !cloud {
+						storage, representation = body.Storage.Value, body.Storage.Representation
+					}
+					if representation != "storage" {
+						t.Errorf("unexpected representation: %q", representation)
+					}
+					decoder := xml.NewDecoder(strings.NewReader(`<root xmlns:ac="urn:ac" xmlns:ri="urn:ri">` + storage + `</root>`))
+					tags := map[string]int{}
+					for {
+						token, err := decoder.Token()
+						if err == io.EOF {
+							break
+						}
+						if err != nil {
+							t.Errorf("invalid storage XML for page %s: %v", id, err)
+							http.Error(w, "invalid storage XML", http.StatusBadRequest)
+							return
+						}
+						if start, ok := token.(xml.StartElement); ok {
+							tags[start.Name.Local]++
+						}
+					}
+					if id == "101" && (tags["br"] != 1 || tags["hr"] != 1) {
+						t.Errorf("Markdown line break or rule lost: %s", storage)
 					}
 					updates++
 					versions[id]++

@@ -11,9 +11,52 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/processor"
 	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/userhelp"
 )
+
+func TestHelpManagedProcessorContextPublicRoute(t *testing.T) {
+	for _, tc := range []struct {
+		name, binding string
+		want          bool
+	}{
+		{"object", "objects: [processor/Import]", true},
+		{"form", "forms: [processor/Import/main]", true},
+		{"virtual-catalog", "objects: [catalog/Import]", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newServerForFormMode(t)
+			s = New(s.reg, s.store, interpreter.New(), nil, Config{}, nil)
+			defer s.BeginShutdown()
+			proc := &processor.Processor{Name: "Import", Forms: []*metadata.FormModule{{Name: "main", LayoutKind: "managed"}}}
+			s.reg.LoadProcessors([]*processor.Processor{proc})
+			dir := t.TempDir()
+			if err := userhelp.Scaffold(dir); err != nil {
+				t.Fatal(err)
+			}
+			index := "title: Import help\nchapters:\n  - id: import\n    title: Import\n    file: introduction.md\n    " + tc.binding + "\n"
+			if err := os.WriteFile(filepath.Join(dir, "docs/help/index.yaml"), []byte(index), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			s.reg.LoadHelp(userhelp.Load(dir))
+			r := chi.NewRouter()
+			s.Mount(r)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/processor/Import", nil))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("processor form: %d %s", rec.Code, rec.Body.String())
+			}
+			body := rec.Body.String()
+			if got := strings.Contains(body, "data-ob-context-help"); got != tc.want {
+				t.Fatalf("context help present=%t, want %t", got, tc.want)
+			}
+			if tc.want && !strings.Contains(body, `href="/ui/help/chapter/import"`) {
+				t.Fatal("context help does not link to the bound chapter")
+			}
+		})
+	}
+}
 
 func TestHelpPublicRoutesAndContext(t *testing.T) {
 	s := newServerForFormMode(t)

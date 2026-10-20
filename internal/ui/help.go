@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/processor"
 )
 
 func helpChapterURL(id string) string { return "/ui/help/chapter/" + url.PathEscape(id) }
@@ -27,7 +28,11 @@ func (s *Server) addHelpContext(r *http.Request, data map[string]any) {
 		return
 	}
 	kind, name := parts[1], parts[2]
-	if ent, ok := data["Entity"].(*metadata.Entity); ok {
+	if proc, ok := data["Processor"].(*processor.Processor); ok && proc != nil {
+		// Managed processors also expose a virtual catalog Entity for their
+		// parameters; help bindings must keep the actual processor identity.
+		kind, name = "processor", proc.Name
+	} else if ent, ok := data["Entity"].(*metadata.Entity); ok {
 		kind, name = string(ent.Kind), ent.Name
 	}
 	form := ""

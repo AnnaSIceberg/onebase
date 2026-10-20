@@ -20,6 +20,7 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
 	"gopkg.in/yaml.v3"
 )
@@ -294,7 +295,13 @@ func (b *Book) Search(query string) []Chapter {
 }
 
 func markdown() goldmark.Markdown {
-	return goldmark.New(goldmark.WithExtensions(extension.Table, extension.Strikethrough), goldmark.WithParserOptions(parser.WithAutoHeadingID()))
+	// XHTML is also valid browser HTML, and keeps the whole rendered fragment
+	// well-formed when Publish embeds it in Confluence storage XML.
+	return goldmark.New(
+		goldmark.WithExtensions(extension.Table, extension.Strikethrough),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+		goldmark.WithRendererOptions(html.WithXHTML()),
+	)
 }
 
 // Render rewrites relative links for the selected delivery channel. Raw HTML
