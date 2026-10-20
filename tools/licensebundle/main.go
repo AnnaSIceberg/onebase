@@ -110,19 +110,15 @@ func sourceFile(root, path string) ([]byte, error) {
 	if !filepath.IsLocal(filepath.FromSlash(path)) || strings.Contains(path, "\\") {
 		return nil, fmt.Errorf("non-local catalog path %q", path)
 	}
-	base, err := filepath.EvalSymlinks(root)
+	// A root handle follows a junction at the declared root (setup-go uses
+	// cross-volume junctions on Windows), while confining all subsequent reads.
+	// Resolving paths lexically first is both unnecessary and fragile there.
+	base, err := os.OpenRoot(root)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open licensing source root %q: %w", root, err)
 	}
-	name, err := filepath.EvalSymlinks(filepath.Join(base, filepath.FromSlash(path)))
-	if err != nil {
-		return nil, err
-	}
-	rel, err := filepath.Rel(base, name)
-	if err != nil || !filepath.IsLocal(rel) {
-		return nil, fmt.Errorf("catalog path escapes its source: %s", path)
-	}
-	return os.ReadFile(name)
+	defer func() { _ = base.Close() }()
+	return base.ReadFile(filepath.FromSlash(path))
 }
 
 func checked(root string, p pin) ([]byte, error) {

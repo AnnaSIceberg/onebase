@@ -189,3 +189,27 @@ func TestBundleCommand(t *testing.T) {
 		}
 	})
 }
+
+func TestSourceFileSymlinkConfinement(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "LICENSE"), []byte("fixture terms"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "source")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Skipf("symbolic link privilege unavailable (Windows junctions have a separate test): %v", err)
+	}
+	if data, err := sourceFile(alias, "LICENSE"); err != nil || string(data) != "fixture terms" {
+		t.Fatalf("declared symlink root: %q, %v", data, err)
+	}
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "PRIVATE"), []byte("outside source"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sourceFile(root, "escape/PRIVATE"); err == nil {
+		t.Fatal("source root allowed symlink traversal")
+	}
+}
