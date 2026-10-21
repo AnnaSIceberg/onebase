@@ -579,6 +579,8 @@ func managedFormSchema() map[string]any {
 			"equal_height":        boolSchema("СтраницыФормы: область страниц высотой с самую высокую страницу; переключение закладок не сдвигает форму"),
 			"placement":           map[string]any{"type": "string", "enum": []string{"header"}, "description": "Кнопка: header — в строке команд документа после «История», а не в теле формы"},
 			"deadline_warn":       map[string]any{"type": "integer", "minimum": 1, "description": "Поле-срок: за столько минут до срока — жёлтая подсветка, срок прошёл — красная (по часам браузера)"},
+			"conceal":             boolSchema("Значение поля объекта не уходит в браузер: поле пустое и не отправляется; раскрывает reveal_when в ответе события"),
+			"reveal_when":         stringSchema("Условие раскрытия скрытого (conceal) поля — выражение по реквизитам формы, вычисляется после обработчика события"),
 			"scroll_x":            boolSchema("Прокручивать горизонтальную ГруппаФормы вместо переноса содержимого на следующую строку; по умолчанию false"),
 			"children": map[string]any{
 				"type":  "array",

@@ -653,6 +653,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		"equal_height", "fit_window",
 		"placement",
 		"deadline_warn",
+		"conceal", "reveal_when",
 	} {
 		element.keys[k] = nil
 	}

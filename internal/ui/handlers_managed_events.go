@@ -2042,6 +2042,8 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 		fields[key] = value
 	}
 	values := normalizeFormAttrKeys(fields, form, entity)
+	// conceal: true — значение уходит в браузер только при истинном reveal_when.
+	s.concealEventValues(form, entity, values)
 	// Псевдо-реквизит «Ссылка» — контекст обработчика, а не значение формы:
 	// в ответ он не едет, чтобы applyValues не искал под него элемент.
 	for _, k := range []string{"ссылка", "reference", "_version"} {

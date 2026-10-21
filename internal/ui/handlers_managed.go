@@ -163,6 +163,8 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 		data["FormCloseSchema"] = entityFormCloseSchema(entity, form)
 	}
 	s.prepareGridOrders(ctx, data, form)
+	// conceal: true — при открытии значение скрытого поля в разметку не попадает.
+	blankConcealedValues(form, data["Values"])
 	if css := formConditionalCSS(form); css != "" {
 		data["FormConditionalCSS"] = template.CSS(css) //nolint:gosec // G203: стиль собран cssStyle → csssafe.Color, произвольная строка в CSS не попадает
 	}
