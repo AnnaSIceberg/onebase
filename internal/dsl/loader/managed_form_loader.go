@@ -180,7 +180,7 @@ type formYAMLDoc struct {
 		// true его отличать не нужно, а от явного false — нужно.
 		RefCardButton *bool `yaml:"ref_card_button"`
 		// EnterSubmitsForm — форма возвращает себе прежний Enter-submit (#1486).
-		EnterSubmitsForm bool `yaml:"enter_submits_form"`
+		EnterSubmitsForm bool   `yaml:"enter_submits_form"`
 		TabSkipReadonly  bool   `yaml:"tab_skip_readonly"`
 		Autofocus        string `yaml:"autofocus"`
 	} `yaml:"form"`
