@@ -125,3 +125,47 @@ test('обработчики вызывающего получают ответ 
   assert.equal(dismissed, 1);
   assert.deepEqual(answers, ['Нет']);
 });
+
+function walk(n, out) { out.push(n); (n.children || []).forEach((c) => walk(c, out)); return out; }
+
+test('поля диалога: строка только для показа, поле ввода и многострочное', () => {
+  fired.length = 0;
+  const app = setup();
+  app.window.obOpenQuestion({
+    text: 'Уведомить тех. отдел?', variants: ['Отправить', 'Отмена'],
+    fields: [
+      { name: 'Номер', label: 'Заявка', value: 'ЗК-17', strong: true },
+      { name: 'Кому', label: 'Кому', value: 'техотдел', editable: true },
+      { name: 'Ошибка', label: 'Текст ошибки', value: '', editable: true, multiline: true },
+    ],
+  }, 'Команда');
+  const nodes = walk(app.__modalNode(), []);
+  assert.ok(nodes.some((n) => n._text === 'ЗК-17'), 'строка для показа выводится текстом');
+  const inputs = nodes.filter((n) => n.tag === 'input');
+  const areas = nodes.filter((n) => n.tag === 'textarea');
+  assert.equal(inputs.length, 1, 'однострочное поле ввода');
+  assert.equal(areas.length, 1, 'многострочное поле — textarea');
+  inputs[0].value = 'дежурный';
+  areas[0].value = 'строка 1\nстрока 2';
+  nodes.filter((n) => n.tag === 'button')[0].click();
+  assert.equal(fired.length, 1);
+  assert.equal(fired[0][2]._question_answer, 'Отправить');
+  assert.deepEqual(JSON.parse(fired[0][2]._question_fields), { Кому: 'дежурный', Ошибка: 'строка 1\nстрока 2' },
+    'введённое уезжает в _question_fields, строка «только показать» — нет');
+});
+
+test('без редактируемых полей _question_fields не отправляется', () => {
+  fired.length = 0;
+  const app = setup();
+  app.window.obOpenQuestion({ text: 'Готово', variants: ['ОК'], fields: [{ value: 'ЗК-17' }] }, 'Команда');
+  walk(app.__modalNode(), []).filter((n) => n.tag === 'button')[0].click();
+  assert.equal(fired[0][2]._question_fields, undefined);
+});
+
+test('четыре и больше вариантов — столбиком с прокруткой', () => {
+  const app = setup();
+  app.window.obOpenQuestion({ text: 'Причина?', variants: ['А', 'Б', 'В', 'Г'] }, 'Команда');
+  const row = walk(app.__modalNode(), []).find((n) => (n.children || []).some((c) => c.tag === 'button'));
+  assert.match(row.style.cssText, /flex-direction:column/);
+  assert.match(row.style.cssText, /overflow-y:auto/);
+});
