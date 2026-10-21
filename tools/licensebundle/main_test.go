@@ -188,6 +188,118 @@ func TestBundleCommand(t *testing.T) {
 			t.Fatalf("extra catalog data accepted: %v", err)
 		}
 	})
+
+	t.Run("bundled browser dependency licenses", func(t *testing.T) {
+		repo, err := filepath.Abs(filepath.Join("..", ".."))
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(filepath.Join(repo, "third_party/licenses/catalog.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var reviewed catalog
+		if err := json.Unmarshal(data, &reviewed); err != nil {
+			t.Fatal(err)
+		}
+		original := c.Resources
+		defer func() { c.Resources = original; writeCatalog() }()
+		for _, resource := range reviewed.Resources {
+			if resource.ID != "assets/quill" && resource.ID != "assets/rapidoc" {
+				continue
+			}
+			c.Resources = append(c.Resources, resource)
+			for _, file := range append(append([]pin{}, resource.Assets...), resource.Terms.Files...) {
+				body, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(file.Path)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				put(file.Path, string(body))
+			}
+		}
+		writeCatalog()
+		dest := filepath.Join(t.TempDir(), "browser-bundle")
+		if err := invoke(dest); err != nil {
+			t.Fatal(err)
+		}
+		data, err = os.ReadFile(filepath.Join(dest, "components.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var result manifest
+		if err := json.Unmarshal(data, &result); err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []string{"assets/quill", "assets/rapidoc"} {
+			t.Run(id, func(t *testing.T) {
+				prefix := "third_party/licenses/" + strings.TrimPrefix(id, "assets/") + "/"
+				body, err := os.ReadFile(filepath.Join(dest, "licenses", filepath.FromSlash(id+"/"+prefix+"UPSTREAM_DEPENDENCIES.json")))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var upstream struct {
+					Packages []struct {
+						Name, Version string
+						Files         []string
+					}
+				}
+				if err := json.Unmarshal(body, &upstream); err != nil {
+					t.Fatal(err)
+				}
+				listed := map[string]bool{}
+				for _, component := range result.Components {
+					if component.ID == id {
+						for _, file := range component.Files {
+							listed[file.Path] = true
+						}
+					}
+				}
+				quill := map[string]string{"parchment": "3.0.0", "quill-delta": "5.1.0", "eventemitter3": "5.0.1", "fast-diff": "1.3.0", "lodash.clonedeep": "4.5.0", "lodash.isequal": "4.5.0", "lodash-es": "4.17.21"}
+				count := 0
+				for _, pkg := range upstream.Packages {
+					var required []string
+					base := prefix + "dependencies/" + pkg.Name + "/" + pkg.Version + "/"
+					if id == "assets/quill" {
+						if quill[pkg.Name] != pkg.Version {
+							t.Fatalf("unreviewed Quill dependency: %s@%s", pkg.Name, pkg.Version)
+						}
+						delete(quill, pkg.Name)
+						required = []string{base + "LICENSE"}
+						if pkg.Name == "fast-diff" {
+							required = append(required, base+"diff.js.HEADER.txt")
+						}
+					} else if strings.HasPrefix(pkg.Name, "@swagger-api/apidom-") {
+						count++
+						required = []string{base + "NOTICE", base + "LICENSES/Apache-2.0.txt", base + "LICENSES/MIT.txt"}
+					}
+					for _, path := range required {
+						found := false
+						for _, file := range pkg.Files {
+							found = found || file == path
+						}
+						output := "licenses/" + id + "/" + path
+						if !found || !listed[output] {
+							t.Fatalf("missing upstream licensing document: %s", path)
+						}
+						expected, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(path)))
+						if err != nil {
+							t.Fatal(err)
+						}
+						actual, err := os.ReadFile(filepath.Join(dest, filepath.FromSlash(output)))
+						if err != nil || !bytes.Equal(expected, actual) {
+							t.Fatalf("original document not preserved: %s: %v", path, err)
+						}
+					}
+				}
+				if id == "assets/quill" && len(quill) != 0 {
+					t.Fatalf("missing Quill dependencies: %v", quill)
+				}
+				if id == "assets/rapidoc" && count != 28 {
+					t.Fatalf("want 28 reviewed ApiDOM packages, got %d", count)
+				}
+			})
+		}
+	})
 }
 
 func TestSourceFileSymlinkConfinement(t *testing.T) {

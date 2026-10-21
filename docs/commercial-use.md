@@ -141,6 +141,20 @@ certify the legal suitability of a particular distribution.
 
 ## Обновление каталога / Catalog maintenance
 
+Для Quill сохранены лицензии всех семи зависимостей, присутствующих в source map
+поставляемого полного JS-бандла: BSD-3-Clause, MIT и Apache-2.0. Их архивы и
+совпавшие исходники закреплены в `quill/UPSTREAM_DEPENDENCIES.json`. У пакетов
+ApiDOM сохранены также вложенные `LICENSES/Apache-2.0.txt` и `LICENSES/MIT.txt`,
+на которые ссылается исходный NOTICE. При проверке архива учитывайте все файлы
+в юридических каталогах, даже если их имена не начинаются с LICENSE или NOTICE.
+
+Quill retains the original licenses of all seven dependencies represented in
+the shipped full bundle's source map: BSD-3-Clause, MIT and Apache-2.0. Archive
+integrity and matching sources are recorded in `quill/UPSTREAM_DEPENDENCIES.json`.
+ApiDOM packages also retain the nested `LICENSES/Apache-2.0.txt` and
+`LICENSES/MIT.txt` referenced by their original NOTICE. Review every file in
+legal directories, including filenames without a LICENSE or NOTICE prefix.
+
 Для браузерных пакетов сохраняются `PROVENANCE.json` с integrity опубликованного
 архива и границами проверки. Для RapiDoc дополнительно сохранены исходные
 лицензии производственных зависимостей из upstream lockfile. Это консервативный
