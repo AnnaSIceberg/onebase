@@ -195,6 +195,9 @@ const (
 )
 
 // FormElement represents a single form element (field, button, etc.)
+// FormPlacementHeader — кнопка в строке команд документа (FormElement.Placement).
+const FormPlacementHeader = "header"
+
 type FormElement struct {
 	ID   string          `yaml:"id,omitempty"`
 	Name string          `yaml:"name,omitempty"`
@@ -365,6 +368,10 @@ type FormElement struct {
 	// рамка формы помещается без прокрутки, длинная страница прокручивается
 	// внутри.
 	FitWindow bool `yaml:"fit_window,omitempty"`
+
+	// Placement — где рисуется кнопка: "" — в теле формы, "header" — в строке
+	// команд документа сразу после «История» (FormPlacementHeader).
+	Placement string `yaml:"placement,omitempty"`
 }
 
 // FormChoiceOperator — закрытый набор операторов choice_filter v1.
