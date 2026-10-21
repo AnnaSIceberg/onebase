@@ -118,6 +118,14 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 						"Задайте rows от 1 до 50."))
 				}
 			}
+			// Кнопку «Открыть карточку» рисует только ссылочное поле ввода (#1876).
+			if el.RefCardButton != nil {
+				if el.Kind != metadata.FormElementField || !formRefCardFieldPath(owner, form, el.DataPath) {
+					warns = append(warns, formKeyIssue(owner, form, el, "form.ref-card-button",
+						fmt.Sprintf("ключ ref_card_button игнорируется — data_path %q не выбирает ссылку, кнопки «Открыть карточку» у поля нет", el.DataPath),
+						"Оставьте ключ только у ссылочного поля ввода."))
+				}
+			}
 			if !el.ChoiceFolders && el.ChoiceDropdown == nil {
 				return
 			}
@@ -152,6 +160,37 @@ func formValueTableElement(form *metadata.FormModule, el *metadata.FormElement) 
 	for _, attr := range form.Attributes {
 		if attr != nil && strings.EqualFold(attr.Name, name) && strings.EqualFold(attr.TypeRef, "ValueTable") {
 			return true
+		}
+	}
+	return false
+}
+
+// formRefCardFieldPath — рисует ли managed-шаблон у поля с этим data_path
+// кнопку «Открыть карточку». Разбор повторяет шаблон (templates_managed.go):
+// имя — последний сегмент data_path (dpField), затем поле сущности с точно
+// таким именем — оно решает само, ссылочное оно или нет; реквизит формы
+// смотрится, только если такого поля нет. Иначе check советовал бы убрать
+// действующий ключ (голый data_path ссылочного поля сущности, ревью #1915).
+func formRefCardFieldPath(owner *metadata.Entity, form *metadata.FormModule, path string) bool {
+	name := strings.TrimSpace(path)
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	if name == "" {
+		return false
+	}
+	if owner != nil {
+		for _, field := range owner.Fields {
+			if field.Name == name {
+				return metadata.IsReference(field.Type)
+			}
+		}
+	}
+	if form != nil {
+		for _, attr := range form.Attributes {
+			if attr != nil && attr.Name == name {
+				return formChoiceTypeRefEntity(attr.TypeRef) != ""
+			}
 		}
 	}
 	return false
