@@ -5355,6 +5355,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	colTypes := buildColTypes(tokens, opts)
 	scalarSourceCtx := preScanSourceContext(tokens)
 	scopedColTypes, qualifiedColTypes := buildScalarColumnTypes(tokens, opts, scalarSourceCtx)
+	dateOutputs := simpleProjectionDateOutputs(tokens, projectionPlan, scalarSourceCtx, scopedColTypes, qualifiedColTypes)
 	tokens = rewriteGroupingReferenceAliases(tokens)
 	// расширяем НачалоДня/Год/Месяц/ОКР/АБС/ЦЕЛ/... в SQL-эквиваленты
 	// до основной трансляции, чтобы остальные шаги ничего не знали о них.
@@ -6016,7 +6017,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		ProjectionFields:  expandReferenceProjection(projectionFields, tr.refDims),
 		Projection:        expandProjectionRefDims(projectionPlan, tr.refDims),
 		BoolColumns:       boolOutputColumns(projectionPlan, tr.colTypes),
-		DateColumns:       typedOutputColumns(projectionPlan, tr.colTypes, metadata.FieldTypeDate),
+		DateColumns:       mergeDateOutputColumns(projectionPlan, typedOutputColumns(projectionPlan, tr.colTypes, metadata.FieldTypeDate), dateOutputs),
 		RefColumns:        refOutputColumns(projectionPlan, tr.refCols),
 		TypedColumns:      typedColumns,
 		DSLColumnAliases:  dslColumnAliases,
@@ -6225,6 +6226,69 @@ func boolOutputColumns(p ProjectionPlan, colTypes map[string]metadata.FieldType)
 // типа. Кроме булевых так же приводятся даты: на SQLite они хранятся TEXT, и
 // без приведения путь запроса отдавал строку там, где объектный путь отдаёт
 // значение даты (#1013).
+// simpleProjectionDateOutputs — колонки простой проекции, доказанно несущие
+// дату: поле-дата любого источника по его псевдониму (`Зв.Дата` при
+// присоединённом `Документ.Звонок КАК Зв`) и МИНИМУМ/МАКСИМУМ такого поля.
+// Типы — те же, что выводятся для колонок подзапроса (scalarProjectionTypes),
+// до раскрытия скалярных функций. Без этого дата из присоединённого источника
+// и из агрегата приходила в DSL строкой «2026-10-18T14:30:13Z», и разность
+// дат молча давала Неопределено.
+func simpleProjectionDateOutputs(tokens []tok, p ProjectionPlan, ctx sourceContext,
+	scoped map[int]map[string]metadata.FieldType, qualified map[int]map[string]map[string]metadata.FieldType,
+) map[string]bool {
+	if !p.Simple {
+		return nil
+	}
+	start, ok := singleSelectStart(tokens)
+	if !ok {
+		return nil
+	}
+	scopeID, ok := ctx.scopeIDAt(start)
+	if !ok {
+		return nil
+	}
+	out := map[string]bool{}
+	for name, typ := range scalarProjectionTypes(tokens, ctx, scopeID, scoped[scopeID], qualified[scopeID]) {
+		if typ == metadata.FieldTypeDate {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+// mergeDateOutputColumns дополняет прежний список колонок-дат доказанными
+// simpleProjectionDateOutputs, сохраняя порядок колонок выборки.
+func mergeDateOutputColumns(p ProjectionPlan, legacy []string, proven map[string]bool) []string {
+	if len(proven) == 0 {
+		return legacy
+	}
+	have := map[string]bool{}
+	for _, c := range legacy {
+		have[c] = true
+	}
+	var out []string
+	for _, c := range p.Columns {
+		if c.Output == "" || c.Star {
+			continue
+		}
+		if have[c.Output] || proven[c.Output] {
+			if !containsString(out, c.Output) {
+				out = append(out, c.Output)
+			}
+		}
+	}
+	return out
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
 func typedOutputColumns(p ProjectionPlan, colTypes map[string]metadata.FieldType, want metadata.FieldType) []string {
 	if !p.Simple {
 		return nil

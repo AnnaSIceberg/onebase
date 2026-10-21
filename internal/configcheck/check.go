@@ -28,6 +28,7 @@ import (
 	"github.com/ivantit66/onebase/internal/query"
 	"github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/storage"
+	"github.com/ivantit66/onebase/internal/userhelp"
 	"gopkg.in/yaml.v3"
 )
 
@@ -138,6 +139,9 @@ func annotateIssue(is Issue) Issue {
 // Returns (issues, warnings): issues cause check to fail; warnings are
 // informational and do not affect the exit code.
 func CheckDir(dir string) (issues, warnings []Issue) {
+	for _, warning := range userhelp.Load(dir).Warnings {
+		warnings = append(warnings, Issue{File: "docs/help/index.yaml", Kind: "documentation", Code: "help.warning", Message: warning})
+	}
 
 	type yamlGroup struct {
 		subdir string
