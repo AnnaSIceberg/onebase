@@ -42,7 +42,6 @@ type tpChoiceRender struct {
 func (s *Server) applyTPChoiceFilters(ctx context.Context, owner *metadata.Entity, form *metadata.FormModule, kind string, data map[string]any) {
 	all := make(map[*metadata.FormElement]*tpChoiceRender)
 	tableRows, _ := data["TablePartRows"].(map[string][]map[string]any)
-	refs, _ := data["TPRefOptions"].(map[string]map[string][]map[string]any)
 	form.Walk(func(el *metadata.FormElement) bool {
 		field, tp := metadata.FormChoiceTPField(owner, form, el)
 		if field == nil || tp == "" || el.ID == "" || len(el.ChoiceFilter) == 0 {
@@ -95,11 +94,9 @@ func (s *Server) applyTPChoiceFilters(ctx context.Context, owner *metadata.Entit
 		if err == nil {
 			render.Contexts[field.Name] = string(encoded)
 		}
-		// Shared reference arrays supply labels only. They must not carry an
-		// unfiltered first page into a filtered column's dropdown.
-		if refs != nil && refs[tp] != nil {
-			refs[tp][field.Name] = nil
-		}
+		// TPRefOptions also supplies unfiltered placements of this table part.
+		// Leave it intact: filtered columns use only their placement's row
+		// options, and browser redraws borrow at most the selected label.
 		for _, row := range tableRows[tp] {
 			sources := map[string]string{}
 			for path := range controls {
@@ -123,9 +120,6 @@ func (s *Server) applyTPChoiceFilters(ctx context.Context, owner *metadata.Entit
 				options = nil
 			}
 			render.Options[field.Name] = append(render.Options[field.Name], options)
-			if refs != nil && refs[tp] != nil {
-				refs[tp][field.Name] = s.appendSelectedRefOptions(ctx, refs[tp][field.Name], target, []string{selected})
-			}
 		}
 		return true
 	})
