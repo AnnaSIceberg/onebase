@@ -15,6 +15,7 @@ import (
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/storage"
 	"github.com/xuri/excelize/v2"
+	"golang.org/x/net/html"
 )
 
 // Один и тот же отбор и его переключатель действуют в списке, Excel и дереве.
@@ -68,6 +69,75 @@ func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 					if !strings.Contains(body, "first-child") || strings.Contains(body, "second-child") != tc.wantOther {
 						t.Fatal("list entries differ from the selected form filter")
 					}
+				}
+				// Follow the rendered root-folder button and the URL base used by
+				// Enter/context-menu navigation, rather than supplying lf_off ourselves.
+				rootQuery := url.Values{"view": {"tree"}}
+				if tc.off != "" {
+					rootQuery.Set(listFormFilterOffParam, tc.off)
+				}
+				listPage := func(t *testing.T, target string) string {
+					t.Helper()
+					r := reqWithChi(http.MethodGet, target, nil, map[string]string{"kind": "catalog", "entity": entity.Name})
+					r = r.WithContext(auth.ContextWithUser(r.Context(), u))
+					w := httptest.NewRecorder()
+					s.list(w, r)
+					if w.Code != http.StatusOK {
+						t.Fatalf("list: HTTP %d", w.Code)
+					}
+					return w.Body.String()
+				}
+				doc, err := html.Parse(strings.NewReader(listPage(t, "/ui/catalog/"+entity.Name+"?"+rootQuery.Encode())))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var buttonURL, rowBaseURL string
+				var walk func(*html.Node)
+				walk = func(n *html.Node) {
+					if n.Type == html.ElementNode {
+						if value, ok := keyboardHTMLAttr(n, "data-ob-row-list-url"); ok {
+							rowBaseURL = value
+						}
+						if n.Data == "a" {
+							value, _ := keyboardHTMLAttr(n, "href")
+							if link, err := url.Parse(value); err == nil && link.Query().Get("parent") == parent.String() {
+								buttonURL = value
+							}
+						}
+					}
+					for child := n.FirstChild; child != nil; child = child.NextSibling {
+						walk(child)
+					}
+				}
+				walk(doc)
+				for name, target := range map[string]string{"root_button": buttonURL, "root_row_navigation": rowBaseURL} {
+					t.Run(name, func(t *testing.T) {
+						if target == "" {
+							t.Fatal("root folder navigation URL missing")
+						}
+						link, err := url.Parse(target)
+						if err != nil {
+							t.Fatal(err)
+						}
+						q := link.Query()
+						if q.Get(listFormFilterOffParam) != tc.off {
+							t.Fatalf("root folder link lost the filter toggle: %s", target)
+						}
+						if q.Get("view") != "" {
+							t.Fatal("entering a folder must leave the root tree view")
+						}
+						if name == "root_row_navigation" {
+							// obRowUrl adds the selected row's parent parameter to this base.
+							q.Set("parent", parent.String())
+							link.RawQuery = q.Encode()
+						} else if q.Get("parent") != parent.String() {
+							t.Fatal("root button points to a different folder")
+						}
+						body := listPage(t, link.String())
+						if !strings.Contains(body, "first-child") || strings.Contains(body, "second-child") != tc.wantOther {
+							t.Fatal("root folder navigation changed the selected form filter")
+						}
+					})
 				}
 				for _, export := range []bool{false, true} {
 					path := "/ui/catalog/" + entity.Name
