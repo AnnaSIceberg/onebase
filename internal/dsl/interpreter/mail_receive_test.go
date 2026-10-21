@@ -97,7 +97,7 @@ func startFakeMail(t *testing.T, proto string, tlsCfg *tls.Config, messages []st
 				return
 			}
 			go func() {
-				defer conn.Close()
+				defer conn.Close() //nolint:errcheck
 				if proto == "pop3" {
 					f.servePOP3(conn, messages)
 				} else {
@@ -247,7 +247,7 @@ func (f *fakeMailServer) serveIMAP(conn net.Conn, messages []string) {
 			if strings.Contains(args, "RFC822.SIZE") {
 				w(fmt.Sprintf("* %d FETCH (UID %d RFC822.SIZE %d)", uid-99, uid, len(m)))
 			} else {
-				_, _ = conn.Write([]byte(fmt.Sprintf("* %d FETCH (UID %d BODY[] {%d}\r\n%s)\r\n", uid-99, uid, len(m), m)))
+				_, _ = fmt.Fprintf(conn, "* %d FETCH (UID %d BODY[] {%d}\r\n%s)\r\n", uid-99, uid, len(m), m)
 			}
 			w(tag + " OK fetch done")
 		case cmd == "UID" && strings.HasPrefix(strings.ToUpper(args), "STORE"):
