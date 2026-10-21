@@ -133,3 +133,43 @@ func managedVTEditable(plan []managedVTColumn) bool {
 	}
 	return false
 }
+
+// managedVTMaxRows — верхний предел ключа rows: таблица выше пятидесяти строк
+// перестаёт быть «выдачей в несколько строк», а форма — помещаться на экран.
+const managedVTMaxRows = 50
+
+// managedVTVisibleRows — сколько строк показывать таблице значений (ключ
+// rows), 0 — высота по содержимому, как раньше.
+func managedVTVisibleRows(el *metadata.FormElement) int {
+	if el == nil || el.Rows <= 0 {
+		return 0
+	}
+	if el.Rows > managedVTMaxRows {
+		return managedVTMaxRows
+	}
+	return el.Rows
+}
+
+// managedVTRowsHeight — оценка высоты блока в rows строк до того, как клиент
+// измерит настоящие строки: шапка и строки с полем ввода — по 34px.
+func managedVTRowsHeight(rows int) int {
+	return 34 + rows*34
+}
+
+// managedVTVisibleCount — сколько видимых колонок у таблицы: столько ячеек
+// занимает надпись пустой таблицы.
+func managedVTVisibleCount(plan []managedVTColumn, editable bool) int {
+	n := 0
+	for _, column := range plan {
+		if !column.Hidden {
+			n++
+		}
+	}
+	if editable {
+		n++
+	}
+	if n == 0 {
+		n = 1
+	}
+	return n
+}

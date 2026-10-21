@@ -149,6 +149,7 @@ global.document = {
     if (selector === 'tbody[data-tp-fields]') {
       return current.tableBodies.filter(body => body.hasAttribute('data-tp-fields'));
     }
+    if (selector === '[data-ob-vt-count]') return current.countSpans || [];
     if (selector === 'tbody[data-vt-fields]') {
       return current.tableBodies.filter(body => body.hasAttribute('data-vt-fields'));
     }
@@ -842,4 +843,26 @@ test('ValueTable repaint preserves server column order, types and hidden values'
   assert.equal(cells[1].children[0].readOnly, true);
   assert.equal(cells[2].style.display, 'none');
   assert.equal(cells[2].children[0].name, 'vt.Results.0.ID');
+});
+
+test('ValueTable as output: empty text, tooltip for read-only cells, row count in title', () => {
+  resetDOM();
+  const tbody = installTableBody('vt-body-History', {
+    'data-vt-fields': 'A|string,B|string', 'data-vt-flags': 'A:r,B:r',
+    'data-vt-editable': '0', 'data-vt-empty': 'Заявок нет'
+  });
+  tbody.parentNode = {tHead: {rows: [{cells: [{}, {}]}], offsetHeight: 0}};
+  const count = domNode('span');
+  count.setAttribute('data-ob-vt-count', 'History');
+  current.countSpans = [count];
+  window.applyFormTables({History: [{A: 'очень длинный текст заявки', B: 'x'}]});
+  assert.equal(tbody.children.length, 1);
+  assert.equal(tbody.children[0].children[0].children[0].title, 'очень длинный текст заявки', 'полный текст — в подсказке');
+  assert.equal(count.textContent, '(1)');
+  window.applyFormTables({History: []});
+  assert.equal(tbody.children.length, 1, 'пустая таблица — одна строка с надписью');
+  assert.equal(tbody.children[0].className, 'ob-vt-empty');
+  assert.equal(tbody.children[0].children[0].textContent, 'Заявок нет');
+  assert.equal(tbody.children[0].children[0].colSpan, 2, 'надпись на все видимые колонки');
+  assert.equal(count.textContent, '(0)');
 });
