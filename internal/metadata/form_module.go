@@ -357,6 +357,14 @@ type FormElement struct {
 	// HintInline — hint печатается текстом под полем, как раньше; по умолчанию
 	// подсказка всплывающая: значок ⓘ у подписи и title.
 	HintInline bool `yaml:"hint_inline,omitempty"`
+
+	// EqualHeight — у СтраницыФормы: область страниц высотой с самую высокую
+	// страницу, переключение закладок не сдвигает то, что ниже набора.
+	EqualHeight bool `yaml:"equal_height,omitempty"`
+	// FitWindow — у СтраницыФормы: набор страниц занимает остаток высоты окна,
+	// рамка формы помещается без прокрутки, длинная страница прокручивается
+	// внутри.
+	FitWindow bool `yaml:"fit_window,omitempty"`
 }
 
 // FormChoiceOperator — закрытый набор операторов choice_filter v1.
