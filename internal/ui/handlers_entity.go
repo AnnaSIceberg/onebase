@@ -1339,6 +1339,7 @@ func (s *Server) treeChildrenJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	params = s.applyListFormFilter(r, ent, params)
 	rows, err := s.store.List(r.Context(), ent.Name, ent, params)
 	if err != nil {
 		s.serverError(w, r, err)
@@ -1383,6 +1384,9 @@ func (s *Server) treeChildRows(r *http.Request, entity *metadata.Entity, rows []
 		if subQS != "" {
 			folderURL += "&" + subQS
 			openURL += "?" + subQS
+		}
+		if off := r.URL.Query().Get(listFormFilterOffParam); off != "" {
+			folderURL += "&" + listFormFilterOffParam + "=" + url.QueryEscape(off)
 		}
 		copyURL := ""
 		if canCopy {

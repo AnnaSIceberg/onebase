@@ -2269,6 +2269,7 @@ const tplList = `
   "canUnpost" .CanUnpost
   "basedOn" .BasedOnActions
   "treeEntity" .Entity.Name
+  "listFormOff" .ListFormOff
   "subsystem" (str $.CurrentSubsystem)
   "labels" (dict
     "enterGroup" (t $.Lang "▶ Войти в группу")
