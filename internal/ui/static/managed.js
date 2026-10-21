@@ -4104,22 +4104,35 @@ function obGridColumnIds(columns) {
 
   // BEGIN onebase-tp-choice-refresh
   var tpChoiceStates = new WeakMap();
+  function updateTPChoiceErrors(g, rowStates) {
+    var failed=g.dataView.getItems().some(function(row){
+      var states=rowStates.get(row);
+      return states && g.columns.some(function(col){
+        return col.choiceContext && states[col.field] && states[col.field].error;
+      });
+    });
+    if(failed)g.div.setAttribute('data-ob-choice-error','1');
+    else g.div.removeAttribute('data-ob-choice-error');
+  }
   window.obRefreshTPChoiceFilters = function() {
     if(window._obTPChoiceEditorRefresh)window._obTPChoiceEditorRefresh();
     var jobs=[];
     (window._obGridViews || []).forEach(function(g){
       if(g.readOnly || !window.fetch || !window.obTPChoiceCarrier)return;
+      var rowStates=tpChoiceStates.get(g);
+      if(!rowStates){rowStates=new WeakMap();tpChoiceStates.set(g,rowStates);}
       var items=g.dataView.getItems();
+      updateTPChoiceErrors(g,rowStates);
       items.forEach(function(row,index){
-        var states=tpChoiceStates.get(row);
-        if(!states){states={};tpChoiceStates.set(row,states);}
+        var states=rowStates.get(row);
+        if(!states){states={};rowStates.set(row,states);}
         g.columns.forEach(function(col){
           if(!col.choiceContext)return;
           var carrier=window.obTPChoiceCarrier(col.choiceContext,row,index,g.div.closest('form'),col.field,col.refEntity,col.refFilter);
           var snapshot=window.obRefChoiceSnapshot(carrier);
           var state=states[col.field] || (states[col.field]={seq:0});
           var key=snapshot.fingerprint+'|'+snapshot.selected;
-          if(state.pending===key || state.applied===key)return;
+          if(state.pending===key || (state.applied===key && !state.error))return;
           var seq=++state.seq;state.pending=key;
           var picker=document.getElementById('_ref-picker-modal');
           if(picker && window._rpTarget && window._rpTarget._obChoiceRow===row && typeof picker._obChoiceReload==='function')picker._obChoiceReload();
@@ -4130,13 +4143,21 @@ function obGridColumnIds(columns) {
               var current=window.obRefChoiceSnapshot(carrier);
               if(current.fingerprint!==snapshot.fingerprint || current.selected!==snapshot.selected){state.pending='';return window.obRefreshTPChoiceFilters();}
               if(snapshot.selected && typeof data.selected_allowed!=='boolean')throw new Error('missing selected_allowed');
-              state.pending='';state.applied=key;g.div.removeAttribute('data-ob-choice-error');
+              state.pending='';state.applied=key;state.error=false;
+              updateTPChoiceErrors(g,rowStates);
               if(snapshot.selected && data.selected_allowed===false){
                 row[col.field]='';g.grid.invalidate();g.grid.render();
                 if(window.obSetManagedFormDirty)window.obSetManagedFormDirty(true);
                 return window.obRefreshTPChoiceFilters();
               }
-            }).catch(function(){if(state.seq===seq){state.pending='';g.div.setAttribute('data-ob-choice-error','1');}});
+            }).catch(function(){
+              if(state.seq!==seq)return;
+              state.pending='';
+              if(g.dataView.getItems().indexOf(row)<0){updateTPChoiceErrors(g,rowStates);return;}
+              var current=window.obRefChoiceSnapshot(carrier);
+              if(current.fingerprint!==snapshot.fingerprint || current.selected!==snapshot.selected)return window.obRefreshTPChoiceFilters();
+              state.error=true;updateTPChoiceErrors(g,rowStates);
+            });
           jobs.push(job);
         });
       });
