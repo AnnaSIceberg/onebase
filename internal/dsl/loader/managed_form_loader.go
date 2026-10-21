@@ -179,6 +179,8 @@ type formYAMLDoc struct {
 		// Указатель: отсутствие ключа (nil) значит «показывать», и от явного
 		// true его отличать не нужно, а от явного false — нужно.
 		RefCardButton *bool `yaml:"ref_card_button"`
+		// «🔍 только администратору» (#1876).
+		RefCardButtonAdminOnly bool `yaml:"ref_card_button_admin_only"`
 		// EnterSubmitsForm — форма возвращает себе прежний Enter-submit (#1486).
 		EnterSubmitsForm bool   `yaml:"enter_submits_form"`
 		TabSkipReadonly  bool   `yaml:"tab_skip_readonly"`
@@ -233,6 +235,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		AutoSaveDataInSettings: doc.Form.AutoSaveDataInSettings,
 		VerticalScroll:         doc.Form.VerticalScroll,
 		RefCardButton:          doc.Form.RefCardButton,
+		RefCardButtonAdminOnly: doc.Form.RefCardButtonAdminOnly,
 		EnterSubmitsForm:       doc.Form.EnterSubmitsForm,
 		TabSkipReadonly:        doc.Form.TabSkipReadonly,
 		Autofocus:              doc.Form.Autofocus,
