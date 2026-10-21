@@ -67,6 +67,7 @@ func RunPage(ctx context.Context, db queryRunner, res *Result, limit, offset int
 	if err != nil {
 		return rows, cols, err
 	}
+	RestoreLongLabels(res, rows, cols)
 	NormalizeColumns(res, rows)
 	return rows, cols, nil
 }

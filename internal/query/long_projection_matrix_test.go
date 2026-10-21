@@ -55,13 +55,26 @@ func TestLongOutputLabels_Matrix(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				for range 2 {
-					rows, cols, err := query.Run(ctx, db, &res)
-					if err != nil {
-						t.Fatalf("%v\nSQL: %s", err, res.SQL)
-					}
-					if !reflect.DeepEqual(cols, []string{tc.key}) || len(rows) != 1 || len(rows[0]) != 1 || rows[0][tc.key] != "пример" {
-						t.Errorf("cols=%v rows=%v; want %s=пример", cols, rows, tc.key)
+				for _, run := range []func(context.Context, *storage.DB, *query.Result) ([]map[string]any, []string, error){
+					func(ctx context.Context, db *storage.DB, res *query.Result) ([]map[string]any, []string, error) {
+						return query.Run(ctx, db, res)
+					},
+					func(ctx context.Context, db *storage.DB, res *query.Result) ([]map[string]any, []string, error) {
+						rows, cols, _, err := query.RunLimit(ctx, db, res, 2)
+						return rows, cols, err
+					},
+					func(ctx context.Context, db *storage.DB, res *query.Result) ([]map[string]any, []string, error) {
+						return query.RunPage(ctx, db, res, 2, 0)
+					},
+				} {
+					for range 2 {
+						rows, cols, err := run(ctx, db, &res)
+						if err != nil {
+							t.Fatalf("%v\nSQL: %s", err, res.SQL)
+						}
+						if !reflect.DeepEqual(cols, []string{tc.key}) || len(rows) != 1 || len(rows[0]) != 1 || rows[0][tc.key] != "пример" {
+							t.Errorf("cols=%v rows=%v; want %s=пример", cols, rows, tc.key)
+						}
 					}
 				}
 			})
