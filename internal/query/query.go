@@ -936,13 +936,14 @@ type translator struct {
 	textEqIndex  map[int]bool      // положительные сравнения ГДЕ с непустым литералом
 	unionDepths  map[int]bool      // глубины SELECT с UNION для compound ORDER BY
 	unionOrders  map[int]bool      // ORDER BY относится ко всему UNION, алиасы таблиц там недоступны
+	refCols      map[string]string // колонка вывода (lower) → сущность, на которую она ссылается (#1150)
+	derivedAs    map[int]string    // позиция закрывающей скобки → отложенный AS простой ссылки
+	mainRef      mainRefSource     // главный источник запроса: чья ссылка стоит за голым «Ссылка»
+
 	// groupedDepths — глубины SELECT, у которых уже был GROUP BY. Сортировка по
 	// ссылке там идёт по представлению из авто-JOIN, а его колонки в GROUP BY нет:
 	// PostgreSQL такой ORDER BY отвергает (42803), SQLite молча принимает.
 	groupedDepths map[int]bool
-	refCols      map[string]string // колонка вывода (lower) → сущность, на которую она ссылается (#1150)
-	derivedAs    map[int]string    // позиция закрывающей скобки → отложенный AS простой ссылки
-	mainRef      mainRefSource     // главный источник запроса: чья ссылка стоит за голым «Ссылка»
 
 	joinedRefs      []joinedRefSource // ссылочные поля присоединённых источников (#1385)
 	pendingRefJoins []pendingRefJoin  // авто-JOIN присоединённых источников ждут конца ПО
