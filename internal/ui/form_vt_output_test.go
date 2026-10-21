@@ -57,3 +57,17 @@ func TestValueTableOutputFilledRowsHaveTooltipAndNoEmptyRow(t *testing.T) {
 		t.Fatalf("нередактируемая ячейка без подсказки с полным текстом:\n%s", out)
 	}
 }
+
+// rows у многострочного ПолеВвода — число видимых строк textarea (по умолчанию 5).
+func TestManagedFormMultilineFieldRows(t *testing.T) {
+	el := fieldEl("ПолеКомм", "Объект.Комментарий")
+	el.Multiline, el.Rows = true, 2
+	ent := layoutTestEntity(el)
+	srv, _ := newSubmitTestServer(t, []*metadata.Entity{ent})
+	req := reqWithChi(http.MethodGet, "/ui/catalog/"+ent.Name+"/new", nil, map[string]string{"entity": ent.Name})
+	rec := httptest.NewRecorder()
+	srv.form(rec, req)
+	if !strings.Contains(rec.Body.String(), `<textarea name="Комментарий" autocomplete="off" rows="2"`) {
+		t.Fatalf("rows многострочного поля не применён:\n%s", rec.Body.String())
+	}
+}

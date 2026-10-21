@@ -105,10 +105,12 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 					fmt.Sprintf("ключ primary игнорируется — акцентный стиль есть только у kind: %s", metadata.FormElementButton),
 					"Уберите ключ или перенесите его на кнопку."))
 			}
-			if el.Rows != 0 || el.ShowCount || el.EmptyText != "" {
+			// rows у многострочного поля ввода — видимых строк textarea.
+			multilineRows := el.Kind == metadata.FormElementField && el.Multiline && !el.ShowCount && el.EmptyText == ""
+			if (el.Rows != 0 || el.ShowCount || el.EmptyText != "") && !multilineRows {
 				if el.Kind != metadata.FormElementTablePart || !formValueTableElement(form, el) {
 					warns = append(warns, formKeyIssue(owner, form, el, "form.vt-output",
-						"ключи rows/show_count/empty_text игнорируются — они действуют только у ТабличнаяЧасть над реквизитом формы типа ValueTable",
+						"ключи rows/show_count/empty_text игнорируются — они действуют у ТабличнаяЧасть над реквизитом формы типа ValueTable (rows — ещё у многострочного ПолеВвода)",
 						"Уберите ключи или покажите таблицу через реквизит формы ValueTable."))
 				} else if el.Rows < 0 || el.Rows > 50 {
 					warns = append(warns, formKeyIssue(owner, form, el, "form.vt-output",
