@@ -176,7 +176,7 @@ PostgreSQL можно выбрать в поле **«Тип базы данны�
 
 ### Сборка из исходников
 
-Требуется Go 1.26.6 (версия зафиксирована в `.go-version`).
+Требуется Go 1.26.10 (версия зафиксирована в `.go-version`).
 
 ```bash
 git clone https://github.com/ivanarama/onebase
