@@ -134,6 +134,29 @@ test('поля диалога: строка только для показа, п
     'введённое уезжает в _question_fields, строка «только показать» — нет');
 });
 
+test('строк: высота многострочного поля и окно шире', () => {
+  const app = setup();
+  app.window.obOpenQuestion({
+    text: 'Уведомить тех. отдел?', variants: ['Отправить', 'Отмена'],
+    fields: [
+      { name: 'Ошибка', editable: true, multiline: true, rows: 7 },
+      { name: 'Примечание', editable: true, multiline: true },
+    ],
+  }, 'Команда');
+  const modal = app.__modalNode();
+  const areas = walk(modal, []).filter((n) => n.tag === 'textarea');
+  assert.equal(areas[0].rows, 7, 'строк задаёт видимых строк');
+  assert.equal(areas[1].rows, 4, 'без строк — 4');
+  assert.match(areas[0].style.cssText, /width:100%/, 'поле во всю ширину окна');
+  assert.match(modal.children[0].style.cssText, /width:640px/, 'с многострочным полем окно шире');
+});
+
+test('без многострочного поля окно прежней ширины', () => {
+  const app = setup();
+  app.window.obOpenQuestion({ text: 'Готово', variants: ['ОК'], fields: [{ name: 'Кому', editable: true }] }, 'Команда');
+  assert.match(app.__modalNode().children[0].style.cssText, /width:460px/);
+});
+
 test('без редактируемых полей _question_fields не отправляется', () => {
   fired.length = 0;
   const app = setup();

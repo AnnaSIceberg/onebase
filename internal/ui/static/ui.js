@@ -4545,7 +4545,10 @@ function obOpenQuestion(payload, elementName) {
   modal.id = '_question-modal';
   modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
   var box = document.createElement('div');
-  box.style.cssText = 'background:#fff;border-radius:10px;padding:20px;width:460px;max-width:94vw;box-shadow:0 8px 32px rgba(0,0,0,.18)';
+  // Многострочному полю (текст ошибки, примечание) узко в 460px: окно шире, а
+  // поле занимает всю его ширину. На узком экране — не шире 94% окна.
+  var hasMultiline = (payload.fields || []).some(function (f) { return f && f.editable && f.multiline; });
+  box.style.cssText = 'background:#fff;border-radius:10px;padding:20px;width:' + (hasMultiline ? '640px' : '460px') + ';max-width:94vw;box-shadow:0 8px 32px rgba(0,0,0,.18)';
   if (payload.title) {
     var title = document.createElement('div');
     title.style.cssText = 'font-weight:600;font-size:15px;color:#1e293b;margin-bottom:8px';
@@ -4572,7 +4575,8 @@ function obOpenQuestion(payload, elementName) {
     }
     if (field.editable) {
       var input = document.createElement(field.multiline ? 'textarea' : 'input');
-      if (field.multiline) input.rows = 4; else input.type = 'text';
+      // rows — «строк» из DSL (видимых строк), по умолчанию 4.
+      if (field.multiline) input.rows = field.rows > 0 ? field.rows : 4; else input.type = 'text';
       input.value = field.value == null ? '' : String(field.value);
       input.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:14px;outline:none'
         + (field.multiline ? ';resize:vertical;font-family:inherit' : '');
