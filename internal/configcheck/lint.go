@@ -650,6 +650,9 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		"conceal", "reveal_when",
 		"title_from",
 		"hint_inline",
+		"orientation", "background", "input_mask", "language", "virtual_columns",
+		// Таблица значений как выдача (история, результат поиска).
+		"rows", "show_count", "empty_text",
 	} {
 		element.keys[k] = nil
 	}

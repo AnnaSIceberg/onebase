@@ -468,7 +468,9 @@ const tplManagedForm = `
   {{/* Заданная высота ограничивает весь блок ValueTable, включая строки и команды. */}}
   {{if $vtLayout}}<div class="managed-vt-layout{{if elFill $el}} managed-vt-scroll{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{$vtLayout}}">{{end}}
   {{/* Заголовок ValueTable находится в том же контейнере высоты, что и таблица. */}}
-  <h3 style="font-size:14px;font-weight:600;margin:0 0 8px">{{fieldTitleRU $el.TitleMap $tpName}}</h3>
+  {{/* show_count — число записей в заголовке: «Заявки клиента (5)»; после событий
+       формы его обновляет перерисовка таблицы (applyFormTables). */}}
+  <h3 style="font-size:14px;font-weight:600;margin:0 0 8px">{{fieldTitleRU $el.TitleMap $tpName}}{{if $el.ShowCount}} <span data-ob-vt-count="{{$tpName}}">({{len $vtRows}})</span>{{end}}</h3>
   {{$vtPlan := managedVTColumnPlan $el $vtCols}}
   {{$vtEditable := managedVTEditable $vtPlan}}
   {{$vtActivate := hasHandler $el "ПриАктивизацииСтроки"}}
@@ -485,6 +487,12 @@ const tplManagedForm = `
     {{end}}
   </div>
   {{end}}
+  {{/* rows — ровно столько видимых строк: шапка закреплена, остальное
+       прокручивается внутри, высота блока не зависит от числа записей (пустая
+       таблица той же высоты). Высоту по реальным строкам досчитывает клиент
+       (obFitVtRows), здесь — оценка, чтобы форма не прыгала при загрузке. */}}
+  {{$vtRowsN := managedVTVisibleRows $el}}
+  {{if $vtRowsN}}<div class="managed-vt-rows" data-ob-vt-rows="{{$vtRowsN}}" style="height:{{managedVTRowsHeight $vtRowsN}}px">{{end}}
   <table class="tp-table" data-vt="{{$tpName}}">
     <thead>
       <tr>
@@ -492,7 +500,7 @@ const tplManagedForm = `
         {{if $vtEditable}}<th style="width:40px"></th>{{end}}
       </tr>
     </thead>
-    <tbody id="vt-body-{{$tpName}}" {{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}{{if $vtActivate}}data-ob-vt-activate="{{$el.Name}}" data-ob-vt-name="{{$tpName}}" {{end}}data-vt-editable="{{if $vtEditable}}1{{else}}0{{end}}" data-vt-flags="{{range $i, $col := $vtPlan}}{{if $i}},{{end}}{{$col.Column.Name}}:{{if $col.ReadOnly}}r{{end}}{{if $col.Hidden}}h{{end}}{{end}}" data-vt-fields="{{range $i, $col := $vtPlan}}{{if $i}},{{end}}{{$col.Column.Name}}|{{$col.Column.TypeRef}}{{end}}">
+    <tbody id="vt-body-{{$tpName}}" {{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}{{if $vtActivate}}data-ob-vt-activate="{{$el.Name}}" data-ob-vt-name="{{$tpName}}" {{end}}data-vt-editable="{{if $vtEditable}}1{{else}}0{{end}}"{{with $el.EmptyText}} data-vt-empty="{{.}}"{{end}} data-vt-flags="{{range $i, $col := $vtPlan}}{{if $i}},{{end}}{{$col.Column.Name}}:{{if $col.ReadOnly}}r{{end}}{{if $col.Hidden}}h{{end}}{{end}}" data-vt-fields="{{range $i, $col := $vtPlan}}{{if $i}},{{end}}{{$col.Column.Name}}|{{$col.Column.TypeRef}}{{end}}">
     {{range $i, $row := $vtRows}}
       <tr{{with formRowClass $row}} class="{{.}}"{{end}}{{if $vtActivate}} data-ob-vt-row="{{$i}}" style="cursor:pointer"{{end}}>
         {{range $col := $vtPlan}}{{$c := $col.Column}}
@@ -505,15 +513,17 @@ const tplManagedForm = `
             <input type="checkbox" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="true" {{if eq (str $v) "true"}}checked{{end}}{{if $cellRO}} disabled{{end}}>
             {{if and $col.ReadOnly (not $tpReadOnly)}}<input type="hidden" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{if eq (str $v) "true"}}true{{else}}false{{end}}">{{end}}
           {{else}}
-            <input type="text" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}"{{if $tpReadOnly}} disabled{{else if $col.ReadOnly}} readonly{{end}}>
+            <input type="text" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}"{{if $tpReadOnly}} disabled{{else if $col.ReadOnly}} readonly title="{{$v}}"{{end}}>
           {{end}}
         </td>
         {{end}}
         {{if $vtEditable}}<td><button type="button" class="del-btn"{{if $tpReadOnly}} disabled{{else}} data-ob-remove-row{{end}}>×</button></td>{{end}}
       </tr>
     {{end}}
+    {{if and (not $vtRows) $el.EmptyText}}<tr class="ob-vt-empty"><td colspan="{{managedVTVisibleCount $vtPlan $vtEditable}}">{{$el.EmptyText}}</td></tr>{{end}}
     </tbody>
   </table>
+  {{if $vtRowsN}}</div>{{end}}
   {{if $vtEditable}}
   <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569;margin:0 0 12px"{{if $tpReadOnly}} disabled{{else}}
     data-ob-add-vt="{{$tpName}}"{{end}}>
@@ -609,6 +619,11 @@ input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#
 .managed-vt-scroll{overflow-y:auto}
 .managed-vt-scroll>.tp-table{overflow:visible;margin-bottom:0}
 .managed-vt-scroll>.tp-table thead th{position:sticky;top:0;z-index:1}
+.managed-vt-rows{overflow-y:auto;margin-bottom:12px;border:1px solid #e2e8f0;border-radius:6px}
+.managed-vt-rows>.tp-table{margin-bottom:0}
+.managed-vt-rows>.tp-table thead th{position:sticky;top:0;z-index:1}
+.tp-table .ob-vt-empty td{color:#94a3b8;font-style:italic;text-align:center;padding:10px}
+.tp-table input[readonly]{text-overflow:ellipsis}
 /* Поле в горизонтальной группе не растягивается на всю строку: иначе одинокое
    поле уезжало во всю ширину, а кнопка рядом с ним — к правому краю экрана. */
 .managed-group-horizontal>.managed-group-body>.form-group{flex:0 1 260px;min-width:180px;margin-bottom:0}

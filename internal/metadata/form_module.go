@@ -363,6 +363,15 @@ type FormElement struct {
 	// Disclosure is session/form/object-bound server state, never browser input.
 	Conceal    bool   `yaml:"conceal,omitempty"`
 	RevealWhen string `yaml:"reveal_when,omitempty"`
+
+	// Rows / ShowCount / EmptyText — таблица значений формы как «выдача»
+	// (история клиента, результат поиска): ровно Rows видимых строк с
+	// закреплённой шапкой и прокруткой внутри, число записей в заголовке,
+	// надпись пустой таблицы. Действуют у ТабличнаяЧасть над реквизитом формы
+	// типа ValueTable.
+	Rows      int    `yaml:"rows,omitempty"`
+	ShowCount bool   `yaml:"show_count,omitempty"`
+	EmptyText string `yaml:"empty_text,omitempty"`
 }
 
 // FormChoiceOperator — закрытый набор операторов choice_filter v1.

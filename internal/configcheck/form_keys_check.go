@@ -113,6 +113,17 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 						"Оставьте ключ только у ссылочного поля ввода."))
 				}
 			}
+			if el.Rows != 0 || el.ShowCount || el.EmptyText != "" {
+				if el.Kind != metadata.FormElementTablePart || !formValueTableElement(form, el) {
+					warns = append(warns, formKeyIssue(owner, form, el, "form.vt-output",
+						"ключи rows/show_count/empty_text игнорируются — они действуют только у ТабличнаяЧасть над реквизитом формы типа ValueTable",
+						"Уберите ключи или покажите таблицу через реквизит формы ValueTable."))
+				} else if el.Rows < 0 || el.Rows > 50 {
+					warns = append(warns, formKeyIssue(owner, form, el, "form.vt-output",
+						fmt.Sprintf("rows: %d вне диапазона 1–50: отрицательное значение не действует, больше 50 — показано 50 строк", el.Rows),
+						"Задайте rows от 1 до 50."))
+				}
+			}
 			if !el.ChoiceFolders && el.ChoiceDropdown == nil {
 				return
 			}
@@ -159,6 +170,25 @@ func formRefCardFieldPath(owner *metadata.Entity, form *metadata.FormModule, pat
 			if attr != nil && attr.Name == name {
 				return formChoiceTypeRefEntity(attr.TypeRef) != ""
 			}
+		}
+	}
+	return false
+}
+
+// formValueTableElement — таблица формы показывает реквизит формы типа
+// ValueTable (по table_part или последнему сегменту data_path).
+func formValueTableElement(form *metadata.FormModule, el *metadata.FormElement) bool {
+	if form == nil || el == nil {
+		return false
+	}
+	name := strings.TrimSpace(el.TablePart)
+	if name == "" {
+		path := strings.TrimSpace(el.DataPath)
+		name = path[strings.LastIndex(path, ".")+1:]
+	}
+	for _, attr := range form.Attributes {
+		if attr != nil && strings.EqualFold(attr.Name, name) && strings.EqualFold(attr.TypeRef, "ValueTable") {
+			return true
 		}
 	}
 	return false

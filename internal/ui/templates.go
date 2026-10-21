@@ -1366,6 +1366,11 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return fallback[field]
 		},
+
+		// Таблица значений как выдача: rows, empty_text.
+		"managedVTVisibleRows":  managedVTVisibleRows,
+		"managedVTRowsHeight":   managedVTRowsHeight,
+		"managedVTVisibleCount": managedVTVisibleCount,
 		// managedTPFieldsAttr — значение data-tp-fields в порядке отрисовки
 		// ячеек: applyTableParts перестраивает строку по этому списку, и любое
 		// расхождение порядка развалило бы соответствие ячеек колонкам.
