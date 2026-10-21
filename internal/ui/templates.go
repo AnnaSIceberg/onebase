@@ -1330,6 +1330,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"managedTPColumnsTitled": func(plan []managedTPColumn, values any) []managedTPColumn {
 			return managedTPColumnsTitled(plan, values)
 		},
+		"managedVTColumnPlan": managedVTColumnPlan,
+		"managedVTEditable":   managedVTEditable,
 		// managedTPFieldsAttr — значение data-tp-fields в порядке отрисовки
 		// ячеек: applyTableParts перестраивает строку по этому списку, и любое
 		// расхождение порядка развалило бы соответствие ячеек колонкам.
