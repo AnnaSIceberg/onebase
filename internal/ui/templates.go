@@ -925,6 +925,21 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return b.String()
 		},
 		"fmtDate": fmtDateValue,
+		// boolFilterValue — значение булева отбора из адреса: "true"/"false",
+		// "" — пусто или не распознано (storage.ParseBoolValue).
+		"boolFilterValue": func(raw string) string {
+			if strings.TrimSpace(raw) == "" {
+				return ""
+			}
+			b, ok := storage.ParseBoolValue(raw)
+			if !ok {
+				return ""
+			}
+			if b {
+				return "true"
+			}
+			return "false"
+		},
 		"filterVal": func(params storage.ListParams, fieldName string) storage.FilterValue {
 			return filterValue(params, fieldName)
 		},
@@ -1245,6 +1260,31 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return template.JS(b) //nolint:gosec // G203: JSON сформирован encoding/json
 		},
 		"managedTPColumnPlan": managedTPColumnPlan,
+		"tpChoiceContexts": func(ctx map[string]any, table *metadata.FormElement) map[string]string {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].Contexts
+			}
+			return nil
+		},
+		"tpChoiceRows": func(ctx map[string]any, table *metadata.FormElement) map[string][][]map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].Options
+			}
+			return nil
+		},
+		"tpChoiceOptions": func(ctx map[string]any, table *metadata.FormElement, field string, row int, fallback map[string][]map[string]any) []map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil && all[table].Contexts[field] != "" {
+				rows := all[table].Options[field]
+				if row < len(rows) {
+					return rows[row]
+				}
+				return nil
+			}
+			return fallback[field]
+		},
 		// managedTPFieldsAttr — значение data-tp-fields в порядке отрисовки
 		// ячеек: applyTableParts перестраивает строку по этому списку, и любое
 		// расхождение порядка развалило бы соответствие ячеек колонкам.
@@ -1437,7 +1477,7 @@ func normalizedFormHotkey(value string) string {
 }
 
 func templateSource() string {
-	return tplHead + tplNav + tplIndex + tplList + tplForm + tplManagedForm + tplRegister + tplReport + tplProcessor + tplAgentSettings + tplPOS + tplAbout + tplDeleteMarked + tplInfoReg + tplConstants + tplHistory + tplStages + tplJournal + tplScheduled + tplAccountReg + tplQueryBuilder + tplAllFunctions + tplSearch + tplQueryConsole + tplCodeConsole + tplGengen + tplForbidden + tplReportProblem + tplPageCustom + tplAppShell + tplNavigationSettings
+	return tplHead + tplNav + tplHelp + tplIndex + tplList + tplForm + tplManagedForm + tplRegister + tplReport + tplProcessor + tplAgentSettings + tplPOS + tplAbout + tplDeleteMarked + tplInfoReg + tplConstants + tplHistory + tplStages + tplJournal + tplScheduled + tplAccountReg + tplQueryBuilder + tplAllFunctions + tplSearch + tplQueryConsole + tplCodeConsole + tplGengen + tplForbidden + tplReportProblem + tplPageCustom + tplAppShell + tplNavigationSettings
 }
 
 const tplHead = `
@@ -1579,6 +1619,8 @@ details[open] summary::before{content:"▼ "}
 .tp-table td{padding:5px 6px;border-bottom:1px solid #e2e8f0;border-right:1px solid #eef2f7;vertical-align:middle}
 .tp-table tbody tr:nth-child(even) td{background:#f1f5f9}
 .tp-table tbody tr:hover td{background:#eef4ff}
+/* Подбор: фон ячеек сохраняет выделение поверх зебры и наведения. */
+#_item-picker-modal .tp-table tbody tr._ip-row-highlight td{background:#e5e7eb}
 /* Инпуты прозрачны, чтобы зебра/выделение строки просвечивали; на фокусе — белый фон. */
 .tp-table input,.tp-table select{padding:5px 8px;font-size:13px;border:1px solid transparent;border-radius:5px;width:100%;background:transparent;transition:border-color .15s,box-shadow .15s,background .15s}
 .tp-table input:hover,.tp-table select:hover{border-color:#e2e8f0}
@@ -1701,6 +1743,7 @@ const tplNav = `
     <button class="sys-btn" type="button" data-ob-toggle-target="sysd">&#9881; {{t $.Lang "Система"}} &#9660;</button>
     <div class="sys-drop" id="sysd">
       <a href="/ui/about">{{t $.Lang "О программе"}}</a>
+      {{if .HasHelp}}<a href="/ui/help" target="_blank" rel="noopener">{{t $.Lang "Руководство пользователя"}}</a>{{end}}
       <a href="/ui/report-problem">{{t $.Lang "Сообщить об ошибке"}}</a>
       <details class="sys-group">
         <summary>{{t $.Lang "Профиль и интерфейс"}}</summary>
@@ -2061,12 +2104,12 @@ const tplList = `
     {{end}}
     {{if .Entity.Hierarchical}}
       {{if .UpURL}}<a class="btn btn-secondary btn-sm" href="{{.UpURL}}">{{t $.Lang "↑ Наверх"}}</a>{{end}}
-      {{if .CanWrite}}
+      {{if .CanCreate}}
       <a class="btn btn-primary" data-ob-list-create title="Insert" aria-keyshortcuts="Insert" href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new?{{if .ParentStr}}parent={{.ParentStr}}&{{end}}subsystem={{$.CurrentSubsystem}}">{{t $.Lang "+ Элемент"}}</a>
       <a class="btn btn-secondary" href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new?is_folder=true{{if .ParentStr}}&parent={{.ParentStr}}{{end}}">{{t $.Lang "📁 Группа"}}</a>
       {{end}}
     {{else}}
-      {{if .CanWrite}}<a class="btn btn-primary" data-ob-list-create title="Insert" aria-keyshortcuts="Insert" href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}">{{t $.Lang "+ Создать"}}</a>{{end}}
+      {{if .CanCreate}}<a class="btn btn-primary" data-ob-list-create title="Insert" aria-keyshortcuts="Insert" href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}">{{t $.Lang "+ Создать"}}</a>{{end}}
     {{end}}
     {{/* На свежем списке строка не выбрана — кнопка приходит с сервера уже
          приглушённой, дальше её состояние ведёт ui.js по выделению. */}}
@@ -2119,6 +2162,20 @@ const tplList = `
           <button type="button" data-ob-ref-picker="flt-{{$f.Name}}" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;flex-shrink:0" title="{{t $.Lang "Выбрать из списка"}}">...</button>
         </div>
       </div>
+    {{else if eq (str .Type) "bool"}}{{$raw := (filterVal $params .Name).Value}}{{$bv := boolFilterValue $raw}}
+      <div>
+        <label>{{.DisplayName $.Lang}}</label>
+        {{/* Значение из адреса распознаётся тем же правилом, что у хранилища
+             («нет», «1», «истина»…), и отправляется нормализованным. Нераспознанное
+             остаётся выбранным как есть: повторное «Применить» не превращает
+             пустой список во весь (#2184). */}}
+        <select name="f.{{.Name}}">
+          <option value="">{{t $.Lang "— все —"}}</option>
+          <option value="true" {{if eq $bv "true"}}selected{{end}}>{{t $.Lang "Да"}}</option>
+          <option value="false" {{if eq $bv "false"}}selected{{end}}>{{t $.Lang "Нет"}}</option>
+          {{if and $raw (eq $bv "")}}<option value="{{$raw}}" selected>{{$raw}}</option>{{end}}
+        </select>
+      </div>
     {{else}}
       <div>
         <label>{{.DisplayName $.Lang}}</label>
@@ -2166,7 +2223,7 @@ const tplList = `
   data-ob-row-subsystem="{{$.CurrentSubsystem}}"
   data-ob-row-list-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}"
   data-ob-row-copy-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/new{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}"
-  data-ob-row-can-copy="{{if $.CanWrite}}1{{end}}"
+  data-ob-row-can-copy="{{if $.CanCreate}}1{{end}}"
   data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
 ><thead><tr>
   {{range $treeCols}}<th>{{.DisplayName $.Lang}}</th>{{end}}
@@ -2213,7 +2270,7 @@ const tplList = `
 </tbody></table>
 </div>
 {{else}}
-<p class="empty">{{t $.Lang "Записей нет"}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a></p>
+<p class="empty">{{t $.Lang "Записей нет"}}{{if $.CanCreate}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}</p>
 {{end}}
 {{else if .TilesView}}
 {{/* ===== TILES VIEW (плитка) ===== */}}
@@ -2224,7 +2281,7 @@ const tplList = `
   data-ob-row-subsystem="{{$.CurrentSubsystem}}"
   data-ob-row-list-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" ""}}"
   data-ob-row-copy-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/new{{listURL $.Query "copy" ""}}"
-  data-ob-row-can-copy="{{if $.CanWrite}}1{{end}}"
+  data-ob-row-can-copy="{{if $.CanCreate}}1{{end}}"
   data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
 >
 {{range .Rows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}
@@ -2259,7 +2316,7 @@ const tplList = `
 </div>{{end}}
 </div>
 {{else}}
-<p class="empty">{{if .Params.Search}}{{t $.Lang "Ничего не найдено по запросу"}} «{{.Params.Search}}» — <a href="{{listURL $.Query "q" ""}}">{{t $.Lang "сбросить поиск"}}</a>{{else}}{{t $.Lang "Записей нет"}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}</p>
+<p class="empty">{{if .Params.Search}}{{t $.Lang "Ничего не найдено по запросу"}} «{{.Params.Search}}» — <a href="{{listURL $.Query "q" ""}}">{{t $.Lang "сбросить поиск"}}</a>{{else}}{{t $.Lang "Записей нет"}}{{if $.CanCreate}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}{{end}}</p>
 {{end}}
 {{else}}
 {{/* ===== LIST VIEW (default) ===== */}}
@@ -2280,7 +2337,7 @@ const tplList = `
   data-ob-row-subsystem="{{$.CurrentSubsystem}}"
   data-ob-row-list-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" ""}}"
   data-ob-row-copy-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/new{{listURL $.Query "copy" ""}}"
-  data-ob-row-can-copy="{{if $.CanWrite}}1{{end}}"
+  data-ob-row-can-copy="{{if $.CanCreate}}1{{end}}"
   data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
 >
 {{range .Rows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}
@@ -2317,7 +2374,7 @@ const tplList = `
 </tbody></table>
 </div>
 {{else}}
-<p class="empty">{{if .Params.Search}}{{t $.Lang "Ничего не найдено по запросу"}} «{{.Params.Search}}» — <a href="{{listURL $.Query "q" ""}}">{{t $.Lang "сбросить поиск"}}</a>{{else}}{{t $.Lang "Записей нет"}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}</p>
+<p class="empty">{{if .Params.Search}}{{t $.Lang "Ничего не найдено по запросу"}} «{{.Params.Search}}» — <a href="{{listURL $.Query "q" ""}}">{{t $.Lang "сбросить поиск"}}</a>{{else}}{{t $.Lang "Записей нет"}}{{if $.CanCreate}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}{{end}}</p>
 {{end}}
 {{end}}
 </div>
@@ -2387,6 +2444,7 @@ const tplForm = `
 <main>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;max-width:1400px">
   <h2 style="margin-bottom:0">{{if .IsNew}}{{t $.Lang "Создать"}} — {{.Entity.DisplayName $.Lang}}{{else}}{{if .RecordTitle}}{{.RecordTitle}}{{else}}{{t $.Lang "Редактировать"}} — {{.Entity.DisplayName $.Lang}}{{end}}{{end}}</h2>
+  {{template "context-help" .}}
   {{if .IsPopup}}
   <a href="#" data-ob-popup-cancel title="{{t $.Lang "Закрыть"}}" style="font-size:22px;line-height:1;color:#94a3b8;text-decoration:none;padding:2px 8px;border-radius:5px;background:#f1f5f9;font-weight:300">×</a>
   {{else}}
@@ -2428,7 +2486,7 @@ const tplForm = `
     {{/* Копия открывается формой создания: пока её не записали, в базе ничего
          нет. Горячей клавиши здесь нет намеренно — F9 на карточке принадлежит
          копированию строки табличной части. */}}
-    {{if .CanWrite}}<a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new?copy={{.ID}}" class="btn btn-sm btn-secondary">{{t $.Lang "Скопировать"}}</a>{{end}}
+    {{if .CanCreate}}<a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new?copy={{.ID}}" class="btn btn-sm btn-secondary">{{t $.Lang "Скопировать"}}</a>{{end}}
     <a href="/ui/{{lower (str .Entity.Kind)}}/{{.Entity.Name}}/{{.ID}}/history" class="btn btn-sm btn-secondary">{{t $.Lang "История"}}</a>
     {{if or .AllPrintForms .HasPrintProc}}
     <div style="position:relative">
@@ -2717,7 +2775,10 @@ const tplForm = `
 <link rel="stylesheet" href="/vendor/quill/quill.snow.css">
 <script src="/vendor/quill/quill.js"></script>
 {{end}}
-<script type="application/json" id="ob-tp-ref-opts">{{jsJSON .TPRefOptions}}</script>
+{{/* Управляемая форма выводит те же варианты своим блоком
+     (ob-managed-tp-ref-opts) — второй экземпляр удваивал страницу: у заявки
+     колл-центра это 1,3 МБ дважды. */}}
+{{if not .Form}}<script type="application/json" id="ob-tp-ref-opts">{{jsJSON .TPRefOptions}}</script>{{end}}
 <script type="application/json" id="ob-tp-ref-meta">{{jsJSON .TPRefMeta}}</script>
 {{/* Перечисления колонок ТЧ — для строк, которые добавляет JS (#1010): сервер
      их не рендерит, а без вариантов и порядка addTpRow снова поставил бы
