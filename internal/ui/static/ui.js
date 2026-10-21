@@ -3933,6 +3933,11 @@ function openItemPicker(payload, elementName, eventContext, request) {
     var tr = document.createElement('tr');
     tr.setAttribute('data-id', r.id || '');
     tr.setAttribute('data-search', rowText(r));
+    // Конфиг.ПолеВыделения: строка видна и выбирается, но выделена
+    // светло-серым — как архивная номенклатура в подборе 1С.
+    if (r.highlight) {
+      tr.className = '_ip-row-highlight';
+    }
     tr._obRow = r;
     var tdCb = document.createElement('td');
     tdCb.style.textAlign = 'center';
