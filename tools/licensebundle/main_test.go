@@ -15,13 +15,22 @@ import (
 // in go.mod must not be represented as a linked dependency in the inventory.
 func TestBundleCommand(t *testing.T) {
 	root := t.TempDir()
+	fixture, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := fixture.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	put := func(path, body string) {
 		t.Helper()
-		name := filepath.Join(root, filepath.FromSlash(path))
-		if err := os.MkdirAll(filepath.Dir(name), 0755); err != nil {
+		name := filepath.FromSlash(path)
+		if err := fixture.MkdirAll(filepath.Dir(name), 0755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(name, []byte(body), 0644); err != nil {
+		if err := fixture.WriteFile(name, []byte(body), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
