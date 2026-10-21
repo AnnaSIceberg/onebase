@@ -188,6 +188,8 @@ type formYAMLDoc struct {
 		EnterSubmitsForm bool `yaml:"enter_submits_form"`
 		// Density — плотность раскладки формы ("" | "compact").
 		Density string `yaml:"density"`
+		TabSkipReadonly  bool   `yaml:"tab_skip_readonly"`
+		Autofocus        string `yaml:"autofocus"`
 	} `yaml:"form"`
 	Attributes            []*metadata.FormAttribute       `yaml:"attributes"`
 	Commands              []*metadata.FormCommand         `yaml:"commands"`
@@ -243,6 +245,8 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		RefCardButtonAdminOnly: doc.Form.RefCardButtonAdminOnly,
 		EnterSubmitsForm:       doc.Form.EnterSubmitsForm,
 		Density:                doc.Form.Density,
+		TabSkipReadonly:        doc.Form.TabSkipReadonly,
+		Autofocus:              doc.Form.Autofocus,
 		Attributes:             doc.Attributes,
 		Commands:               doc.Commands,
 		AutoCommandBar:         doc.CommandBar,

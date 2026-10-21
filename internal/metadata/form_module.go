@@ -776,6 +776,12 @@ type FormModule struct {
 	// рабочим формам, которые обязаны поместиться в экран без прокрутки,
 	// не меняя остальные страницы системы.
 	Density string `yaml:"density,omitempty"`
+	// TabSkipReadonly — нередактируемые поля и ячейки таблиц не входят в порядок
+	// Tab: оператор переходит только по тому, что можно ввести.
+	TabSkipReadonly bool `yaml:"tab_skip_readonly,omitempty"`
+	// Autofocus — курсор при открытии формы: "first_empty" — в первое пустое
+	// доступное поле формы, имя группы — в первое пустое поле этой группы.
+	Autofocus string `yaml:"autofocus,omitempty"`
 	// OneCMeta — служебный блок, используемый только конвертером 1С,
 	// рантайм его игнорирует. Может содержать version, unknown_xml и т.п.
 	OneCMeta map[string]any `yaml:"oneC_meta,omitempty"`
