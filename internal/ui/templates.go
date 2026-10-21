@@ -925,6 +925,21 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return b.String()
 		},
 		"fmtDate": fmtDateValue,
+		// boolFilterValue — значение булева отбора из адреса: "true"/"false",
+		// "" — пусто или не распознано (storage.ParseBoolValue).
+		"boolFilterValue": func(raw string) string {
+			if strings.TrimSpace(raw) == "" {
+				return ""
+			}
+			b, ok := storage.ParseBoolValue(raw)
+			if !ok {
+				return ""
+			}
+			if b {
+				return "true"
+			}
+			return "false"
+		},
 		"filterVal": func(params storage.ListParams, fieldName string) storage.FilterValue {
 			return filterValue(params, fieldName)
 		},
@@ -1245,6 +1260,31 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return template.JS(b) //nolint:gosec // G203: JSON сформирован encoding/json
 		},
 		"managedTPColumnPlan": managedTPColumnPlan,
+		"tpChoiceContexts": func(ctx map[string]any, table *metadata.FormElement) map[string]string {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].Contexts
+			}
+			return nil
+		},
+		"tpChoiceRows": func(ctx map[string]any, table *metadata.FormElement) map[string][][]map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].Options
+			}
+			return nil
+		},
+		"tpChoiceOptions": func(ctx map[string]any, table *metadata.FormElement, field string, row int, fallback map[string][]map[string]any) []map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil && all[table].Contexts[field] != "" {
+				rows := all[table].Options[field]
+				if row < len(rows) {
+					return rows[row]
+				}
+				return nil
+			}
+			return fallback[field]
+		},
 		// managedTPFieldsAttr — значение data-tp-fields в порядке отрисовки
 		// ячеек: applyTableParts перестраивает строку по этому списку, и любое
 		// расхождение порядка развалило бы соответствие ячеек колонкам.
@@ -1437,7 +1477,7 @@ func normalizedFormHotkey(value string) string {
 }
 
 func templateSource() string {
-	return tplHead + tplNav + tplIndex + tplList + tplForm + tplManagedForm + tplRegister + tplReport + tplProcessor + tplAgentSettings + tplPOS + tplAbout + tplDeleteMarked + tplInfoReg + tplConstants + tplHistory + tplStages + tplJournal + tplScheduled + tplAccountReg + tplQueryBuilder + tplAllFunctions + tplSearch + tplQueryConsole + tplCodeConsole + tplGengen + tplForbidden + tplReportProblem + tplPageCustom + tplAppShell + tplNavigationSettings
+	return tplHead + tplNav + tplHelp + tplIndex + tplList + tplForm + tplManagedForm + tplRegister + tplReport + tplProcessor + tplAgentSettings + tplPOS + tplAbout + tplDeleteMarked + tplInfoReg + tplConstants + tplHistory + tplStages + tplJournal + tplScheduled + tplAccountReg + tplQueryBuilder + tplAllFunctions + tplSearch + tplQueryConsole + tplCodeConsole + tplGengen + tplForbidden + tplReportProblem + tplPageCustom + tplAppShell + tplNavigationSettings
 }
 
 const tplHead = `
@@ -1703,6 +1743,7 @@ const tplNav = `
     <button class="sys-btn" type="button" data-ob-toggle-target="sysd">&#9881; {{t $.Lang "Система"}} &#9660;</button>
     <div class="sys-drop" id="sysd">
       <a href="/ui/about">{{t $.Lang "О программе"}}</a>
+      {{if .HasHelp}}<a href="/ui/help" target="_blank" rel="noopener">{{t $.Lang "Руководство пользователя"}}</a>{{end}}
       <a href="/ui/report-problem">{{t $.Lang "Сообщить об ошибке"}}</a>
       <details class="sys-group">
         <summary>{{t $.Lang "Профиль и интерфейс"}}</summary>
@@ -2121,6 +2162,20 @@ const tplList = `
           <button type="button" data-ob-ref-picker="flt-{{$f.Name}}" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;flex-shrink:0" title="{{t $.Lang "Выбрать из списка"}}">...</button>
         </div>
       </div>
+    {{else if eq (str .Type) "bool"}}{{$raw := (filterVal $params .Name).Value}}{{$bv := boolFilterValue $raw}}
+      <div>
+        <label>{{.DisplayName $.Lang}}</label>
+        {{/* Значение из адреса распознаётся тем же правилом, что у хранилища
+             («нет», «1», «истина»…), и отправляется нормализованным. Нераспознанное
+             остаётся выбранным как есть: повторное «Применить» не превращает
+             пустой список во весь (#2184). */}}
+        <select name="f.{{.Name}}">
+          <option value="">{{t $.Lang "— все —"}}</option>
+          <option value="true" {{if eq $bv "true"}}selected{{end}}>{{t $.Lang "Да"}}</option>
+          <option value="false" {{if eq $bv "false"}}selected{{end}}>{{t $.Lang "Нет"}}</option>
+          {{if and $raw (eq $bv "")}}<option value="{{$raw}}" selected>{{$raw}}</option>{{end}}
+        </select>
+      </div>
     {{else}}
       <div>
         <label>{{.DisplayName $.Lang}}</label>
@@ -2389,6 +2444,7 @@ const tplForm = `
 <main>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;max-width:1400px">
   <h2 style="margin-bottom:0">{{if .IsNew}}{{t $.Lang "Создать"}} — {{.Entity.DisplayName $.Lang}}{{else}}{{if .RecordTitle}}{{.RecordTitle}}{{else}}{{t $.Lang "Редактировать"}} — {{.Entity.DisplayName $.Lang}}{{end}}{{end}}</h2>
+  {{template "context-help" .}}
   {{if .IsPopup}}
   <a href="#" data-ob-popup-cancel title="{{t $.Lang "Закрыть"}}" style="font-size:22px;line-height:1;color:#94a3b8;text-decoration:none;padding:2px 8px;border-radius:5px;background:#f1f5f9;font-weight:300">×</a>
   {{else}}
@@ -2719,7 +2775,10 @@ const tplForm = `
 <link rel="stylesheet" href="/vendor/quill/quill.snow.css">
 <script src="/vendor/quill/quill.js"></script>
 {{end}}
-<script type="application/json" id="ob-tp-ref-opts">{{jsJSON .TPRefOptions}}</script>
+{{/* Управляемая форма выводит те же варианты своим блоком
+     (ob-managed-tp-ref-opts) — второй экземпляр удваивал страницу: у заявки
+     колл-центра это 1,3 МБ дважды. */}}
+{{if not .Form}}<script type="application/json" id="ob-tp-ref-opts">{{jsJSON .TPRefOptions}}</script>{{end}}
 <script type="application/json" id="ob-tp-ref-meta">{{jsJSON .TPRefMeta}}</script>
 {{/* Перечисления колонок ТЧ — для строк, которые добавляет JS (#1010): сервер
      их не рендерит, а без вариантов и порядка addTpRow снова поставил бы
