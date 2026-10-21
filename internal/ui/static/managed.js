@@ -4587,9 +4587,37 @@ function obFitTabsToWindow(tabs) {
   var h = Math.max(120, Math.floor(scroller.clientHeight - other));
   contents.forEach(function (c) { c.style.height = h + 'px'; c.style.overflowY = 'auto'; });
 }
+// obFitGroupToWindow — fit_window у ГруппаФормы (правая панель рядом с
+// закладками): высота как у fit_window-набора страниц той же строки, без
+// соседа — остаток окна; содержимое прокручивается внутри. Перед подгонкой
+// страниц группа схлопывается, иначе высоту строки задавала бы она.
+function obFitGroupToWindow(group) {
+  var row = group.parentElement;
+  var tabs = null;
+  if (row) for (var i = 0; i < row.children.length; i++) {
+    var sib = row.children[i];
+    if (sib !== group && sib.getAttribute && sib.getAttribute('data-ob-fit-window') === '1') { tabs = sib; break; }
+  }
+  group.style.overflowY = 'auto';
+  if (tabs) { group.style.height = tabs.offsetHeight + 'px'; return; }
+  group.style.height = '';
+  var scroller = group.closest ? group.closest('main') : null;
+  if (!scroller || !scroller.getBoundingClientRect) return;
+  var top = scroller.getBoundingClientRect().top, bottom = 0;
+  for (var j = 0; j < scroller.children.length; j++) {
+    var b = scroller.children[j].getBoundingClientRect().bottom;
+    if (b > bottom) bottom = b;
+  }
+  var cs = window.getComputedStyle ? window.getComputedStyle(scroller) : null;
+  var natural = bottom - top + scroller.scrollTop + (cs ? parseFloat(cs.paddingBottom) || 0 : 0);
+  group.style.height = Math.max(120, Math.floor(group.offsetHeight + scroller.clientHeight - natural)) + 'px';
+}
 function obEqualizeAllTabs() {
+  var groups = document.querySelectorAll('[data-ob-fit-group="1"]');
+  groups.forEach(function (g) { g.style.height = '0px'; g.style.overflowY = 'hidden'; });
   document.querySelectorAll('[data-ob-equal-height="1"]').forEach(obEqualizeTabs);
   document.querySelectorAll('[data-ob-fit-window="1"]').forEach(obFitTabsToWindow);
+  groups.forEach(obFitGroupToWindow);
 }
 window.obEqualizeAllTabs = obEqualizeAllTabs;
 
