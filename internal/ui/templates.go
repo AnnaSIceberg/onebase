@@ -1262,6 +1262,31 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"managedTPColumnPlan": managedTPColumnPlan,
 		"managedVTColumnPlan": managedVTColumnPlan,
 		"managedVTEditable":   managedVTEditable,
+		"tpChoiceContexts": func(ctx map[string]any, table *metadata.FormElement) map[string]string {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].Contexts
+			}
+			return nil
+		},
+		"tpChoiceRows": func(ctx map[string]any, table *metadata.FormElement) map[string][][]map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].Options
+			}
+			return nil
+		},
+		"tpChoiceOptions": func(ctx map[string]any, table *metadata.FormElement, field string, row int, fallback map[string][]map[string]any) []map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil && all[table].Contexts[field] != "" {
+				rows := all[table].Options[field]
+				if row < len(rows) {
+					return rows[row]
+				}
+				return nil
+			}
+			return fallback[field]
+		},
 		// managedTPFieldsAttr — значение data-tp-fields в порядке отрисовки
 		// ячеек: applyTableParts перестраивает строку по этому списку, и любое
 		// расхождение порядка развалило бы соответствие ячеек колонкам.
