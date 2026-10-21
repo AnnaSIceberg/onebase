@@ -663,6 +663,9 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         if (n.tagName === 'SELECT' && roMirror) roMirror.value = n.value || '';
       });
     });
+    // Показанный или скрытый элемент меняет высоту страниц: equal_height
+    // пересчитывается по новому содержимому.
+    if (window.obEqualizeAllTabs) window.obEqualizeAllTabs();
   }
   window.applyElementStates = applyElementStates;
   // END onebase-ro-apply-states
@@ -4529,7 +4532,66 @@ function obManagedSwitchTab(btn) {
   if (content) content.style.display = 'block';
   try { sessionStorage.setItem(obManagedTabKey(tabs), idx); } catch (_) {}
   if (window._obResizeGrids) setTimeout(window._obResizeGrids, 0);
+  // Вложенный набор на только что открытой странице до этого был скрыт и не
+  // мог измериться.
+  obEqualizeAllTabs();
 }
+
+// obEqualizeTabs — equal_height у СтраницыФормы: область страниц высотой с
+// самую высокую страницу, чтобы при переключении закладок форма не прыгала и
+// то, что ниже набора (панель кнопок), стояло на месте. Скрытые страницы
+// измеряются, на мгновение получив display:block в том же кадре — браузер их
+// не рисует. Набор с заданной height не трогаем: там высота уже постоянная,
+// а длинная страница прокручивается внутри.
+function obEqualizeTabs(tabs) {
+  if (!tabs || !tabs.hasAttribute || !tabs.hasAttribute('data-ob-equal-height')) return;
+  var contents = obManagedOwnTabParts(tabs, '.managed-tab-content');
+  var max = 0;
+  contents.forEach(function (c) { c.style.minHeight = ''; });
+  contents.forEach(function (c) {
+    var shown = c.style.display;
+    if (shown === 'none') c.style.display = 'block';
+    var h = c.offsetHeight;
+    c.style.display = shown;
+    if (h > max) max = h;
+  });
+  if (max > 0) contents.forEach(function (c) { c.style.minHeight = max + 'px'; });
+}
+// obFitTabsToWindow — fit_window у СтраницыФормы: рамка формы (шапка, панели,
+// кнопки) помещается в окно без прокрутки, а набор страниц получает остаток
+// высоты — одинаковый для всех страниц; длинная страница прокручивается внутри.
+// Остаток = видимая высота области прокрутки формы (main) минус всё, что на
+// форме кроме страниц. Не меньше 120px: на совсем низком окне лучше прокрутка
+// формы, чем страница в одну строку.
+function obFitTabsToWindow(tabs) {
+  if (!tabs || !tabs.getAttribute || tabs.getAttribute('data-ob-fit-window') !== '1') return;
+  var scroller = tabs.closest ? tabs.closest('main') : null;
+  if (!scroller || !scroller.getBoundingClientRect) return;
+  var contents = obManagedOwnTabParts(tabs, '.managed-tab-content');
+  var active = null;
+  contents.forEach(function (c) {
+    c.style.height = ''; c.style.overflowY = '';
+    if (c.style.display !== 'none') active = c;
+  });
+  if (!active) return;
+  var top = scroller.getBoundingClientRect().top;
+  var bottom = 0;
+  for (var i = 0; i < scroller.children.length; i++) {
+    var b = scroller.children[i].getBoundingClientRect().bottom;
+    if (b > bottom) bottom = b;
+  }
+  var cs = window.getComputedStyle ? window.getComputedStyle(scroller) : null;
+  var padBottom = cs ? parseFloat(cs.paddingBottom) || 0 : 0;
+  var natural = bottom - top + scroller.scrollTop + padBottom;
+  var other = natural - active.offsetHeight;
+  var h = Math.max(120, Math.floor(scroller.clientHeight - other));
+  contents.forEach(function (c) { c.style.height = h + 'px'; c.style.overflowY = 'auto'; });
+}
+function obEqualizeAllTabs() {
+  document.querySelectorAll('[data-ob-equal-height="1"]').forEach(obEqualizeTabs);
+  document.querySelectorAll('[data-ob-fit-window="1"]').forEach(obFitTabsToWindow);
+}
+window.obEqualizeAllTabs = obEqualizeAllTabs;
 
 obManagedReady(function () {
   // Native constraint validation fires `invalid` before it tries to focus the
@@ -4578,6 +4640,12 @@ obManagedReady(function () {
     if (!wasActive && owner && window.obFire) {
       obFire(owner, 'ПриСменеСтраницы', { _page: btn.getAttribute('data-tab-page') || '' });
     }
+  });
+  obEqualizeAllTabs();
+  var resizeTimer = null;
+  if (window.addEventListener) window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(obEqualizeAllTabs, 150);
   });
   var groups = document.querySelectorAll('.managed-tabs');
   for (var i = 0; i < groups.length; i++) {
