@@ -1474,7 +1474,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
           return;
         }
         applyCloseResponse(data, snapshot.body, mergeBody);
-        obApplyConcealed(data.revealed);
+        if (window.obApplyConcealed) window.obApplyConcealed(data.revealed);
         setManagedFormDirty(true);
       } else {
         if (Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
@@ -1485,7 +1485,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
         applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
         applyChoiceList(elementName, data.choiceList);
         applyFormTables(data.formTables);
-        obApplyConcealed(data.revealed);
+        if (window.obApplyConcealed) window.obApplyConcealed(data.revealed);
       }
 	  // Server events repaint controls programmatically and therefore do not
 	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
