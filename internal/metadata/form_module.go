@@ -326,6 +326,15 @@ type FormElement struct {
 	// (FormAttributeColumn). Дочерний элемент kind: ПолеВвода тоже не подошёл —
 	// такая колонка выглядела бы редактируемой, а редактировать нечего.
 	VirtualColumns []FormVirtualColumn `yaml:"virtual_columns,omitempty"`
+
+	// Conceal / RevealWhen — значение поля объекта не уходит в браузер: при
+	// отрисовке поле пустое и отключено (не отправляется, запись формы значение
+	// в базе не трогает), в ответе события формы значение отдаётся, только когда
+	// RevealWhen (выражение по реквизитам формы) истинно. Обработчики формы видят
+	// настоящее значение. Аналог ПоказатьЛичныеДанные 1С: условие ставит DSL
+	// формы, а не роль.
+	Conceal    bool   `yaml:"conceal,omitempty"`
+	RevealWhen string `yaml:"reveal_when,omitempty"`
 }
 
 // FormChoiceOperator — закрытый набор операторов choice_filter v1.
