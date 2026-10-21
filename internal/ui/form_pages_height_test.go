@@ -54,7 +54,6 @@ func TestManagedFormGroupFitWindow(t *testing.T) {
 	rec := httptest.NewRecorder()
 	srv.form(rec, req)
 	if !strings.Contains(rec.Body.String(), `data-ob-fit-group="1" data-ob-el="ПраваяПанель"`) {
-		t.Fatalf("у группы нет признака fit_window:
-%s", rec.Body.String())
+		t.Fatalf("у группы нет признака fit_window:\n%s", rec.Body.String())
 	}
 }
