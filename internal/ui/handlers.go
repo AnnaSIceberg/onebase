@@ -402,11 +402,24 @@ func (s *Server) loadInitialTPRefOptions(ctx context.Context, entity *metadata.E
 			if err != nil {
 				continue
 			}
-			tpOpts[f.Name] = rows
+			tpOpts[f.Name] = compactRefOptionRows(rows)
 		}
 		result[tp.Name] = tpOpts
 	}
 	return result, nil
+}
+
+// compactRefOptionRows оставляет у варианта ссылки табличной части только то,
+// что читают шаблон и браузер: идентификатор и подпись. Вариант раньше уезжал
+// записью справочника целиком — у номенклатуры с ценами и описанием это
+// десятки полей на каждую из 50 строк каждой ссылочной колонки; страница
+// заявки с 17 табличными частями весила 2,8 МБ, ответ каждого события — 1,3 МБ.
+func compactRefOptionRows(rows []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, map[string]any{"id": row["id"], "_label": row["_label"]})
+	}
+	return out
 }
 
 func selectedTPRefIDs(rows []map[string]any, field string) []string {
@@ -623,6 +636,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	if _, ok := data["Cfg"]; !ok {
 		data["Cfg"] = s.cfg
 	}
+	s.addHelpContext(r, data)
 	// Параметры текущего запроса — из них шаблоны строят ссылки «то же самое,
 	// но с другим X» (listURL/listHidden), не собирая строку запроса по кускам
 	// и не теряя при этом чужие параметры вроде q.
