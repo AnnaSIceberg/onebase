@@ -178,7 +178,7 @@ const tplManagedForm = `
       {{else if $el.Multiline}}
         <textarea name="{{$fn}}" autocomplete="off" rows="{{if gt $el.Rows 0}}{{$el.Rows}}{{else}}5{{end}}" style="width:100%"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>{{index $ctx.Values $fn}}</textarea>
       {{else}}
-        <input type="text" autocomplete="{{inputAutocomplete $el}}" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if $el.Mask}} pattern="{{$el.Mask}}" data-ob-form-mask{{end}}{{if $el.InputMask}} data-ob-input-mask="{{$el.InputMask}}" placeholder="{{inputMaskHint $el.InputMask}}"{{if inputMaskDigitsOnly $el.InputMask}} inputmode="numeric"{{end}}{{end}}{{if $el.Hint}} title="{{$el.Hint}}"{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+        <input type="text" autocomplete="{{inputAutocomplete $el}}" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if $el.Mask}} pattern="{{$el.Mask}}" data-ob-form-mask{{end}}{{if gt $el.DeadlineWarn 0}} data-ob-deadline="{{$el.DeadlineWarn}}"{{end}}{{if $el.InputMask}} data-ob-input-mask="{{$el.InputMask}}" placeholder="{{inputMaskHint $el.InputMask}}"{{if inputMaskDigitsOnly $el.InputMask}} inputmode="numeric"{{end}}{{end}}{{if $el.Hint}} title="{{$el.Hint}}"{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{end}}
     {{else if eq (str $el.Type) "file"}}
       {{/* Поле не найдено в Entity, но элемент объявлен как file */}}
@@ -218,7 +218,7 @@ const tplManagedForm = `
              подсветка ниже адресована ОПЕЧАТКЕ в data_path; штатный реквизит
              формы работает полноценно (обработчик читает его голым именем и как
              Объект.<Реквизит>), и предупреждать о нём не о чем. */}}
-        <input type="text" autocomplete="{{inputAutocomplete $el}}" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if $el.Mask}} pattern="{{$el.Mask}}" data-ob-form-mask{{end}}{{if $el.InputMask}} data-ob-input-mask="{{$el.InputMask}}" placeholder="{{inputMaskHint $el.InputMask}}"{{if inputMaskDigitsOnly $el.InputMask}} inputmode="numeric"{{end}}{{end}}{{if $el.Hint}} title="{{$el.Hint}}"{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+        <input type="text" autocomplete="{{inputAutocomplete $el}}" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if $el.Mask}} pattern="{{$el.Mask}}" data-ob-form-mask{{end}}{{if gt $el.DeadlineWarn 0}} data-ob-deadline="{{$el.DeadlineWarn}}"{{end}}{{if $el.InputMask}} data-ob-input-mask="{{$el.InputMask}}" placeholder="{{inputMaskHint $el.InputMask}}"{{if inputMaskDigitsOnly $el.InputMask}} inputmode="numeric"{{end}}{{end}}{{if $el.Hint}} title="{{$el.Hint}}"{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{else}}
         {{/* Ни поля сущности, ни реквизита формы с таким именем — почти всегда
              опечатка в data_path: подсвечиваем, чтобы это не осталось незамеченным. */}}
@@ -637,6 +637,9 @@ const tplManagedForm = `
 .ob-header-commands{display:contents}
 .ob-header-commands .managed-btn,.ob-header-commands .managed-btn-layout{margin:0}
 .ob-header-commands .managed-btn{padding:5px 12px;font-size:13px}
+/* deadline_warn: поле-срок подсвечивается по часам браузера (obDeadlineTick). */
+input.ob-deadline-soon,.form-group input.ob-deadline-soon[readonly]{background:#fef3c7 !important;border-color:#f59e0b !important;color:#92400e !important}
+input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#fee2e2 !important;border-color:#ef4444 !important;color:#991b1b !important;font-weight:600}
 .ob-managed-control{border:0;padding:0;min-width:0}
 .managed-group-horizontal>.managed-group-body{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
 /* scroll_x: ряд действий не рвётся на вторую строку, а прокручивается. */

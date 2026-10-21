@@ -374,6 +374,11 @@ type FormElement struct {
 	// Placement — где рисуется кнопка: "" — в теле формы, "header" — в строке
 	// команд документа сразу после «История» (FormPlacementHeader).
 	Placement string `yaml:"placement,omitempty"`
+
+	// DeadlineWarn — поле-срок: значение («ЧЧ:ММ» сегодня или дата со временем)
+	// подсвечивается по часам браузера — меньше DeadlineWarn минут до срока
+	// жёлтым, срок прошёл — красным.
+	DeadlineWarn int `yaml:"deadline_warn,omitempty"`
 }
 
 // FormChoiceOperator — закрытый набор операторов choice_filter v1.
