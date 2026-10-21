@@ -1,16 +1,19 @@
 // Command govulnpolicy — фильтр потока `govulncheck -format json`: проверка
-// падает на любой ДОСТИЖИМОЙ (called) уязвимости.
+// падает только на ДОСТИЖИМЫХ (called) уязвимостях, кроме явно занесённых в
+// allowlist — и те гасятся лишь при условии, что версия модуля в go.mod
+// действительно содержит исправление.
 //
-// Исключений сейчас нет: любая достижимая уязвимость запрещена.
-// GO-2026-6452 исправлена начиная с Excelize 2.11.0 по Go vulnerability database;
-// прежнее исключение для точного upstream-коммита больше не требуется.
+// Исключение GO-2026-6452 удалено: vulndb теперь указывает fixed-версию
+// 2.11.0, а запиненная excelize содержит исходное исправление f98df08.
+// Allowlist пуст; все достижимые находки блокируют CI. Новое исключение
+// потребовало бы отдельного обоснования и точного пина исправленной версии.
 //
 // Использование (см. job vuln в .github/workflows/ci.yml):
 //
 //	govulncheck -json ./... | go run ./tools/govulnpolicy
 //
-// Коды выхода: 0 — достижимых advisory нет; 1 — достижимая
-// уязвимость или битый поток govulncheck.
+// Коды выхода: 0 — чисто или только разрешённые advisory; 1 — достижимая
+// уязвимость вне allowlist, снятый/чужой пин или битый поток govulncheck.
 package main
 
 import (
@@ -19,6 +22,18 @@ import (
 	"io"
 	"os"
 )
+
+// allowlist — advisory, разрешённые к подавлению. Ключ — OSV id.
+//
+// ВАЖНО: запись гасит advisory только при точном совпадении версии модуля с
+// minVersion. Если vulndb уже знает исправленную версию, finding исчезает сам,
+// и соответствующее исключение надо удалить.
+var allowlist = map[string]allowEntry{}
+
+type allowEntry struct {
+	minVersion string
+	reason     string
+}
 
 // finding/trace — подмножество схемы govulncheck -format json.
 type message struct {
@@ -55,7 +70,8 @@ func run(r io.Reader, out io.Writer) error {
 	var (
 		sawConfig    bool
 		calledOSVs   = map[string]string{} // osv → версия модуля из trace[0]
-		skippedLevel int                   // module-level находки (не called) — govulncheck их не считает «affected»
+		allowlisted  int
+		skippedLevel int // module-level находки (не called) — govulncheck их не считает «affected»
 		violations   []violation
 	)
 	for {
@@ -99,8 +115,18 @@ func run(r io.Reader, out io.Writer) error {
 	}
 
 	for osv, version := range calledOSVs {
-		violations = append(violations, violation{osv: osv, version: version,
-			detail: "достижимая уязвимость"})
+		entry, ok := allowlist[osv]
+		if !ok {
+			violations = append(violations, violation{osv: osv, version: version,
+				detail: "достижимая уязвимость вне allowlist"})
+			continue
+		}
+		if version != entry.minVersion {
+			violations = append(violations, violation{osv: osv, version: version,
+				detail: fmt.Sprintf("ожидалась версия с фиксом %s (см. allowlist в tools/govulnpolicy/main.go)", entry.minVersion)})
+			continue
+		}
+		allowlisted++
 	}
 
 	for _, v := range violations {
@@ -111,6 +137,12 @@ func run(r io.Reader, out io.Writer) error {
 		return fmt.Errorf("%d достижимых уязвимостей нарушают политику", len(violations))
 	}
 
-	_, _ = fmt.Fprintf(out, "govulnpolicy: OK — достижимых уязвимостей нет; module-level пропущено %d.\n", skippedLevel)
+	_, _ = fmt.Fprintf(out, "govulnpolicy: OK — достижимых уязвимостей вне allowlist нет; "+
+		"подавлено %d (пин подтверждён), module-level пропущено %d.\n", allowlisted, skippedLevel)
+	for osv := range calledOSVs {
+		if entry, ok := allowlist[osv]; ok {
+			_, _ = fmt.Fprintf(out, "  %s подавлен: %s\n", osv, entry.reason)
+		}
+	}
 	return nil
 }

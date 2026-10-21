@@ -5,17 +5,24 @@ package xlsximport
 // раньше паниковал внутри excelize при разборе (sharedStrings[-1]). Проверяем,
 // что публичный API не паникует. Обновлённая Excelize возвращает пустое
 // значение повреждённой ячейки. Требование успешного импорта ниже отличает
-// исправление зависимости от recover, который вернул бы ErrParse.
+// исправление зависимости от recover, который вернул бы ErrParse. В go.mod
+// запинен upstream-коммит с исправлением; vulndb знает fixed-версию, поэтому
+// откат на уязвимую зависимость блокируется job vuln без исключения в policy.
 
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"testing"
 )
 
 // buildMaliciousXLSX собирает минимальную книгу, где ячейка A1 ссылается на
 // shared-строку с индексом -1.
 func buildMaliciousXLSX(t *testing.T) []byte {
+	return buildSecurityXLSX(t, `<sheetData><row r="1"><c r="A1" t="s"><v>-1</v></c><c r="B1" t="s"><v>0</v></c></row></sheetData>`)
+}
+
+func buildSecurityXLSX(t *testing.T, sheetData string) []byte {
 	t.Helper()
 	files := map[string]string{
 		"[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -43,7 +50,7 @@ func buildMaliciousXLSX(t *testing.T) []byte {
 <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="1" uniqueCount="1"><si><t>обычная строка</t></si></sst>`,
 		"xl/worksheets/sheet1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<sheetData><row r="1"><c r="A1" t="s"><v>-1</v></c><c r="B1" t="s"><v>0</v></c></row></sheetData>
+` + sheetData + `
 </worksheet>`,
 	}
 	var buf bytes.Buffer
@@ -68,7 +75,7 @@ func buildMaliciousXLSX(t *testing.T) []byte {
 // пустую строку — импорт проходит. На уязвимой версии (релизы до фикса,
 // GO-2026-6452) разбор паниковал: recover в ImportBytes превратил бы панику
 // в ErrParse, и этот тест упал — он реально ловит откат пина.
-// Исправленная версия зафиксирована в go.mod.
+// См. tools/govulnpolicy/main.go.
 func TestImportBytes_NegativeSharedStringNoPanic(t *testing.T) {
 	data := buildMaliciousXLSX(t)
 
@@ -78,5 +85,18 @@ func TestImportBytes_NegativeSharedStringNoPanic(t *testing.T) {
 	}
 	if res == nil || res.Layout == nil {
 		t.Fatal("импорт не вернул черновик макета")
+	}
+}
+
+// GO-2026-6685: a valid first row must not make the iterator accept a later
+// row outside Excel's limit. The public importer bounds its own row count,
+// so even the vulnerable dependency cannot perform an unbounded loop here.
+func TestImportBytes_RejectsRowPastExcelLimit(t *testing.T) {
+	data := buildSecurityXLSX(t, `<sheetData>
+<row r="1"><c r="A1" t="inlineStr"><is><t>valid</t></is></c></row>
+<row r="1048577"><c r="A1048577" t="inlineStr"><is><t>invalid</t></is></c></row>
+</sheetData>`)
+	if _, err := ImportBytes(data, Options{}); !errors.Is(err, ErrParse) {
+		t.Fatalf("expected a parse error for an out-of-range row, got %v", err)
 	}
 }

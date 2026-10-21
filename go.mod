@@ -2,7 +2,7 @@ module github.com/ivantit66/onebase
 
 go 1.26.0
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/coder/websocket v1.8.15
@@ -19,6 +19,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 	github.com/xuri/excelize/v2 v2.11.1-0.20260930021559-01a9ff32fb3c
+	github.com/yuin/goldmark v1.7.17
 	go.bug.st/serial v1.7.1
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.60.0

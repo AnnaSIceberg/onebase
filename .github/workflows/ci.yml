@@ -850,9 +850,9 @@ jobs:
           cache: true
       - name: govulncheck
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
-        # Политика запрещает любой достижимый OSV и отклоняет битый поток
-        # или отсутствие config. Исключений для Excelize больше нет: Go DB
-        # знает исправленные версии, зависимость обновлена на upstream fixes.
+        # tools/govulnpolicy проверяет JSON-поток, config и достижимые находки.
+        # Allowlist пуст: прежнее исключение GO-2026-6452 удалено после
+        # обновления vulndb. Любой достижимый advisory блокирует проверку.
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
           govulncheck -json ./... | go run ./tools/govulnpolicy
