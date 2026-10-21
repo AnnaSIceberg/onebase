@@ -64,6 +64,45 @@ func TestShowQuestion_FieldsRoundTrip(t *testing.T) {
 	}
 }
 
+// «строк» доезжает до клиента числом видимых строк; больше одной — поле
+// многострочное и без «многострочное»; мусор и ноль — по умолчанию.
+func TestShowQuestion_FieldRows(t *testing.T) {
+	srv, ent := setupManagedEventsServer(t, `
+Процедура КомандаНажатие()
+	Поля = Новый Массив;
+	Поля.Добавить(Новый Структура("имя, правка, многострочное, строк", "А", Истина, Истина, 7));
+	Поля.Добавить(Новый Структура("имя, правка, строк", "Б", Истина, 3));
+	Поля.Добавить(Новый Структура("имя, правка, многострочное, строк", "В", Истина, Истина, "много"));
+	Поля.Добавить(Новый Структура("имя, правка, многострочное, строк", "Г", Истина, Истина, 500));
+	ПоказатьВопрос("Вопрос", "ОК", "", Поля);
+КонецПроцедуры
+`, nil, []*metadata.FormElement{{
+		Kind:     metadata.FormElementButton,
+		Name:     "Команда",
+		Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "КомандаНажатие"},
+	}})
+	click := url.Values{}
+	click.Set("_element", "Команда")
+	click.Set("_event", string(metadata.FormEventOnClick))
+	resp := decodeFormEventResponse(t, executeFormEvent(t, srv, ent, click).Body.Bytes())
+	if !resp.OK || resp.Question == nil || len(resp.Question.Fields) != 4 {
+		t.Fatalf("ok=%v error=%q question=%+v", resp.OK, resp.Error, resp.Question)
+	}
+	f := resp.Question.Fields
+	if f[0].Rows != 7 || !f[0].Multiline {
+		t.Errorf("строк 7: %+v", f[0])
+	}
+	if f[1].Rows != 3 || !f[1].Multiline {
+		t.Errorf("строк 3 без «многострочное» — поле многострочное: %+v", f[1])
+	}
+	if f[2].Rows != 0 || !f[2].Multiline {
+		t.Errorf("строк не число — по умолчанию: %+v", f[2])
+	}
+	if f[3].Rows != questionFieldMaxRows {
+		t.Errorf("строк 500 — не больше %d: %+v", questionFieldMaxRows, f[3])
+	}
+}
+
 func TestParseQuestionFields_DropsNonStrings(t *testing.T) {
 	if parseQuestionFields(`{"a": 1, "": "x"}`) != nil {
 		t.Fatal("нестроковые значения и пустые имена отбрасываются")

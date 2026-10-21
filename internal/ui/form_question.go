@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
@@ -34,13 +35,15 @@ type questionField struct {
 	Editable  bool   `json:"editable,omitempty"`
 	Strong    bool   `json:"strong,omitempty"`
 	Multiline bool   `json:"multiline,omitempty"`
+	// Rows — видимых строк многострочного поля; 0 — по умолчанию (4).
+	Rows int `json:"rows,omitempty"`
 }
 
 // newQuestionBuiltin строит билтин
 // ПоказатьВопрос(Текст, Варианты[, Заголовок[, Поля]]).
 // Варианты — известный набор (ДаНет / ДаНетОтмена / ОК, регистр не важен) или
 // массив строк с произвольными подписями кнопок. Поля — массив структур
-// {имя, заголовок, значение, правка, выделить, многострочное}: диалог
+// {имя, заголовок, значение, правка, выделить, многострочное, строк}: диалог
 // показывает их строками под текстом, а значения редактируемых возвращает в
 // ДиалогПоля.
 func newQuestionBuiltin(sink *questionPayload) interpreter.BuiltinFunc {
@@ -116,7 +119,7 @@ func expandQuestionVariants(v any) ([]string, error) {
 func expandQuestionFields(v any) ([]questionField, error) {
 	items := iterateAny(v)
 	if items == nil {
-		return nil, fmt.Errorf("ПоказатьВопрос: Поля — массив структур {имя, заголовок, значение, правка, выделить, многострочное}")
+		return nil, fmt.Errorf("ПоказатьВопрос: Поля — массив структур {имя, заголовок, значение, правка, выделить, многострочное, строк}")
 	}
 	out := make([]questionField, 0, len(items))
 	for i, item := range items {
@@ -127,13 +130,17 @@ func expandQuestionFields(v any) ([]questionField, error) {
 			// позиционное, чтобы конфигурация не писала лишнего.
 			name = fmt.Sprintf("поле%d", i+1)
 		}
+		// «строк» больше одной само делает поле многострочным: просить пять
+		// видимых строк у однострочного поля бессмысленно.
+		rows := questionFieldRows(dslField(item, "строк", "rows"))
 		out = append(out, questionField{
 			Name:      name,
 			Label:     pickStr(dslField(item, "заголовок", "label", "title")),
 			Value:     pickStr(dslField(item, "значение", "value")),
 			Editable:  asBool(dslField(item, "правка", "editable")),
 			Strong:    asBool(dslField(item, "выделить", "strong")),
-			Multiline: asBool(dslField(item, "многострочное", "multiline")),
+			Multiline: asBool(dslField(item, "многострочное", "multiline")) || rows > 1,
+			Rows:      rows,
 		})
 	}
 	if len(out) == 0 {
@@ -165,3 +172,35 @@ func parseQuestionFields(raw string) *interpreter.Struct {
 	}
 	return interpreter.NewStructFromMap(clean)
 }
+
+// questionFieldRows — число видимых строк многострочного поля из «строк»:
+// целое от 1 до questionFieldMaxRows; пусто, ноль или не число — 0 (по
+// умолчанию). Верхний предел держит окно вопроса в пределах экрана.
+func questionFieldRows(v any) int {
+	var n float64
+	switch x := v.(type) {
+	case nil:
+		return 0
+	case int:
+		n = float64(x)
+	case int64:
+		n = float64(x)
+	case float64:
+		n = x
+	default:
+		f, err := strconv.ParseFloat(strings.TrimSpace(fmt.Sprintf("%v", x)), 64)
+		if err != nil {
+			return 0
+		}
+		n = f
+	}
+	if n < 1 {
+		return 0
+	}
+	if n > questionFieldMaxRows {
+		return questionFieldMaxRows
+	}
+	return int(n)
+}
+
+const questionFieldMaxRows = 20
