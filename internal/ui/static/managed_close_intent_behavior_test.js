@@ -36,7 +36,7 @@ const fileSubmitHandler = managed.slice(fileSubmitStart, fileSubmitEnd);
 
 class FakeFormData {
   constructor(form) {
-    this.values = new Map(form.values);
+    this.values = new Map(form ? form.values : []);
   }
   set(name, value) { this.values.set(String(name), String(value)); }
   append(name, value) {
@@ -58,22 +58,31 @@ function runtime(fetchImpl, cfgOverride = {}, productionValues = false) {
 	let monotonicNow = 100;
   const idInput = {value: ''};
   const versionInput = {value: ''};
+  const controls = new Map();
+  function valueControl(name) {
+    if (!controls.has(name)) controls.set(name, {
+      name, form, tagName: 'INPUT', type: 'text', classList: {contains() { return false; }},
+      get value() { return form.values.get(name); },
+      set value(value) { form.values.set(name, value); },
+      closest(selector) { return selector === '#main-form' ? form : null; },
+    });
+    return controls.get(name);
+  }
   const form = {
     id: 'main-form',
     values: new Map([['Наименование', 'Черновик']]),
-    querySelectorAll() { return []; },
+    querySelectorAll(selector) {
+      if (!productionValues) return [];
+      if (selector === '[name]') return Array.from(this.values.keys(), valueControl);
+      const match = selector.match(/^\[name="([^"]+)"\]$/);
+      return match && this.values.has(match[1]) ? [valueControl(match[1])] : [];
+    },
     querySelector(selector) {
       if (selector === '[name="_id"]') return idInput;
       if (selector === '[name="_version"]') return versionInput;
       const match = selector.match(/^\[name="([^"]+)"\]$/);
       if (productionValues && match && this.values.has(match[1])) {
-        const name = match[1];
-        return {
-          tagName: 'INPUT', type: 'text', classList: {contains() { return false; }},
-          get value() { return form.values.get(name); },
-          set value(value) { form.values.set(name, value); },
-          closest(selector) { return selector === '#main-form' ? form : null; },
-        };
+        return valueControl(match[1]);
       }
       return null;
     },
@@ -1806,7 +1815,7 @@ function withFileSubmit(app) {
   app.context.__fileReads = () => readDone ? Promise.resolve(true) : new Promise((resolve) => {
     finishRead = () => { readDone = true; resolve(true); };
   });
-  const helper = {};
+  const helper = {getAttribute() { return null; }};
   app.form.querySelectorAll = (selector) => selector === '[data-ob-file-content-for]' ? [helper] : [];
   const submitter = {name: '_action', value: 'post'};
   function submit(button) {
@@ -1904,5 +1913,34 @@ for (const mode of ['post', 'post_and_close']) {
     assert.equal(calls.length, 1, 'posting escaped the failed preflight');
     assert.equal(formEventName(calls[0]), 'ПередПроведением');
     assert.ok(app.applied.some(entry => entry[0] === 'flash' && entry[1] === error));
+  });
+}
+
+
+for (const beforePost of [false, true]) {
+  test('integrated form-event preserves native input and handler changes, beforePost=' + beforePost, async () => {
+    let complete;
+    let question;
+    const app = runtime(() => new Promise((resolve) => { complete = resolve; }),
+      {kind: 'document', docId: 'doc-1', beforePost}, true);
+    app.form.values.set('Статус', 'Исходный');
+    app.context.obOpenQuestion = (payload, elementName, handlers) => { question = handlers; };
+    const pending = beforePost ? app.context.obRequestFormClose({mode: 'post'}) : app.context.obFire('Кнопка', 'Нажатие');
+    await waitFor(() => complete);
+    const input = app.form.querySelector('[name="Наименование"]');
+    input.value = 'Свежий ввод';
+    app.document.dispatch('input', {target: input});
+    complete(response({ok: true, dirty: false, version: 3,
+      values: {Наименование: 'Черновик', Статус: 'Правка обработчика'},
+      ...(beforePost ? {question: {text: 'Провести?', variants: ['Да']}} : {})}));
+    if (beforePost) {
+      await waitFor(() => question);
+      question.onDismiss();
+      assert.equal((await pending).allowed, false);
+    } else await pending;
+    assert.equal(input.value, 'Свежий ввод');
+    assert.equal(app.form.values.get('Статус'), 'Правка обработчика');
+    assert.equal(app.versionInput.value, '3');
+    assert.equal(app.context._obFormDirty, true);
   });
 }
