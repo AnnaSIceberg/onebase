@@ -1394,6 +1394,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// заведомо цифры, и заставлять автора объявлять это второй раз незачем.
 		"inputMaskDigitsOnly": metadata.InputMaskDigitsOnly,
 		"inputAutocomplete":   inputAutocomplete,
+		"inputMaskHint":       metadata.InputMaskHint,
 		"wcell":               widgetCell,
 		"echartsJSON":         echartsJSON,
 		"stageChartJSON":      stageChartJSON,
