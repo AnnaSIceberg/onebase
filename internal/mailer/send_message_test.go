@@ -55,7 +55,7 @@ func startFakeSMTP(t *testing.T, tlsCfg, starttls *tls.Config, mechs string) *fa
 }
 
 func (f *fakeSMTP) serve(conn net.Conn, starttls *tls.Config, mechs string) {
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	r := bufio.NewReader(conn)
 	w := func(s string) { conn.Write([]byte(s + "\r\n")) } //nolint:errcheck
 	w("220 fake ESMTP")
