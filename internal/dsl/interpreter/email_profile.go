@@ -66,7 +66,7 @@ func parseEmailProfile(v any) (*EmailProfile, error) {
 	}
 	s, ok := v.(*Struct)
 	if !ok || s == nil {
-		return nil, errors.New("Профиль — Структура {Сервер, Порт, Пользователь, Пароль, Защита, Таймаут, Отправитель, ИмяОтправителя}")
+		return nil, errors.New("профиль — Структура {Сервер, Порт, Пользователь, Пароль, Защита, Таймаут, Отправитель, ИмяОтправителя}")
 	}
 	p := &EmailProfile{
 		Host:     structStr(s, "сервер", "server", "host"),
@@ -82,7 +82,7 @@ func parseEmailProfile(v any) (*EmailProfile, error) {
 		return nil, errors.New("в профиле не указан Сервер")
 	}
 	if hasEmailHeaderControl(p.Host) || hasEmailHeaderControl(p.User) || strings.ContainsAny(p.Password, "\r\n") {
-		return nil, errors.New("Сервер, Пользователь и Пароль профиля не могут содержать управляющих символов")
+		return nil, errors.New("управляющие символы в Сервер, Пользователь или Пароль профиля недопустимы")
 	}
 	switch strings.ToLower(structStr(s, "защита", "security", "tls")) {
 	case "", "tls", "ssl", "истина", "true":
@@ -213,7 +213,7 @@ func newEmailAttachment(name, raw, mimeType string, isB64 bool) (EmailAttachment
 	if isB64 {
 		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(raw))
 		if err != nil {
-			return EmailAttachment{}, fmt.Errorf("Данные вложения %q не base64: %w", name, err)
+			return EmailAttachment{}, fmt.Errorf("данные вложения %q не base64: %w", name, err)
 		}
 		data = decoded
 	}
@@ -257,14 +257,14 @@ func parseEmailParams(v any, msg EmailMessage) (emailParams, error) {
 	}
 	s, ok := v.(*Struct)
 	if !ok || s == nil {
-		return out, errors.New("Параметры — Структура {HTML, Копия, Вложения, Профиль, Отправитель, ИмяОтправителя}")
+		return out, errors.New("параметры — Структура {HTML, Копия, Вложения, Профиль, Отправитель, ИмяОтправителя}")
 	}
 	if h := firstNonNil(s.Get("html"), s.Get("htmlтело"), s.Get("htmlbody")); h != nil {
 		out.msg.HTML = fmt.Sprint(h)
 	}
 	cc, err := splitEmailRecipients(firstNonNil(s.Get("копия"), s.Get("cc")))
 	if err != nil {
-		return out, fmt.Errorf("Копия: %w", err)
+		return out, fmt.Errorf("копия: %w", err)
 	}
 	out.msg.Cc = cc
 	if f := structStr(s, "отправитель", "from"); f != "" {
@@ -276,7 +276,7 @@ func parseEmailParams(v any, msg EmailMessage) (emailParams, error) {
 	if att := firstNonNil(s.Get("вложения"), s.Get("attachments")); att != nil {
 		arr, ok := att.(*Array)
 		if !ok {
-			return out, errors.New("Вложения — Массив Структур {ИмяФайла, Данные, ТипСодержимого, Base64}")
+			return out, errors.New("вложения — Массив Структур {ИмяФайла, Данные, ТипСодержимого, Base64}")
 		}
 		for _, it := range arr.Iterate() {
 			a, err := parseEmailAttachment(it)
