@@ -181,6 +181,8 @@ type formYAMLDoc struct {
 		RefCardButton *bool `yaml:"ref_card_button"`
 		// EnterSubmitsForm — форма возвращает себе прежний Enter-submit (#1486).
 		EnterSubmitsForm bool `yaml:"enter_submits_form"`
+		// Density — плотность раскладки формы ("" | "compact").
+		Density string `yaml:"density"`
 	} `yaml:"form"`
 	Attributes            []*metadata.FormAttribute       `yaml:"attributes"`
 	Commands              []*metadata.FormCommand         `yaml:"commands"`
@@ -232,6 +234,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		VerticalScroll:         doc.Form.VerticalScroll,
 		RefCardButton:          doc.Form.RefCardButton,
 		EnterSubmitsForm:       doc.Form.EnterSubmitsForm,
+		Density:                doc.Form.Density,
 		Attributes:             doc.Attributes,
 		Commands:               doc.Commands,
 		AutoCommandBar:         doc.CommandBar,
