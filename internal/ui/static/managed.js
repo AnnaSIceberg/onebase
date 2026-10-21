@@ -4849,7 +4849,7 @@ function obManagedSwitchTab(btn) {
   if (window._obResizeGrids) setTimeout(window._obResizeGrids, 0);
   // Вложенный набор на только что открытой странице до этого был скрыт и не
   // мог измериться.
-  obEqualizeAllTabs();
+  if (window.obEqualizeAllTabs) window.obEqualizeAllTabs();
 }
 
 // obManagedSetPageHidden применяет пересчитанное событием формы условие
