@@ -647,6 +647,8 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		// пройти собственную проверку (#1014).
 		"orientation", "background", "input_mask", "language", "virtual_columns",
 		"title_from",
+		// Таблица значений как выдача (история, результат поиска).
+		"rows", "show_count", "empty_text",
 	} {
 		element.keys[k] = nil
 	}
