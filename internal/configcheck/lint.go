@@ -638,6 +638,9 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		"halign", "valign", "readonly", "readonly_when", "hidden_when", "use_grid", "no_grid", "auto_sum", "hint", "mask",
 		"accesskey", "hotkey", "multiline", "format", "display_format", "type", "choice", "unknown_xml", "view",
 		"scroll_x", "primary", "editable_admin_only", "choice_folders", "choice_dropdown",
+		// Явная видимость кнопки «Открыть карточку» у поля — сильнее ключей
+		// формы (#1876).
+		"ref_card_button",
 		// Ключи, поддержанные загрузчиком, но забытые здесь: линт объявлял их
 		// неизвестными, а гейт CI считает предупреждение ошибкой — то есть
 		// документированный «language» у kind: ПолеКода не давал примеру
@@ -685,7 +688,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 
 	// filter — постоянный отбор формы списка (поле ListFilter), читается
 	// загрузчиком внутри блока form:.
-	formHeader := with(obj("entity", "name", "kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "ref_card_button"), map[string]*yamlLintSchema{
+	formHeader := with(obj("entity", "name", "kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "ref_card_button", "ref_card_button_admin_only"), map[string]*yamlLintSchema{
 		"title":  freeMap(),
 		"filter": seq(obj("field", "op", "value", "roles")),
 	})
