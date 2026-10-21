@@ -32,7 +32,7 @@ const tplManagedForm = `
 {{/* Кнопка, скрытая hidden_when при отрисовке, рисуется с display:none, а не пропускается: иначе после события формы, снявшего условие, показать её нечем — «Утвердить» после «ОК» появлялась только при повторном открытии. Остальные виды пока пропускаются (поля — #1914). Защитой hidden_when не служит: событие кнопки сервер принимает и без неё в разметке. */}}
 {{if and (elHidden $ctx $el) (ne (str $el.Kind) "Кнопка")}}
 {{else if eq (str $el.Kind) "ГруппаФормы"}}
-  <fieldset class="form-group-box{{if eq $el.Orientation "horizontal"}} managed-group-horizontal{{end}}{{if $el.ScrollX}} managed-group-scrollx{{end}}{{if $el.UsesEqualColumns}} ob-equal-columns{{end}}"{{if $el.FitWindow}} data-ob-fit-group="1"{{end}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{elBackground $el}}{{elLayout $el}}">
+  <fieldset class="form-group-box{{if eq $el.Orientation "horizontal"}} managed-group-horizontal{{end}}{{if $el.ScrollX}} managed-group-scrollx{{end}}{{if $el.UsesEqualColumns}} ob-equal-columns{{end}}"{{if hasHandler $el "ПослеОткрытия"}} data-ob-after-open="{{$el.Name}}"{{end}}{{if $el.FitWindow}} data-ob-fit-group="1"{{end}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{elBackground $el}}{{elLayout $el}}">
     {{if $el.TitleMap}}<legend style="font-weight:600;color:#475569;padding:0 6px;font-size:13px">{{fieldTitleRU $el.TitleMap $el.Name}}</legend>{{end}}
     <div class="managed-group-body">
       {{range $el.Children}}{{template "managed-element" (dict "El" . "Ctx" $ctx)}}{{end}}
@@ -321,7 +321,7 @@ const tplManagedForm = `
        родительской группой, клиент включил бы добавление строк там, где сервер
        его запретил. Каскад от группы табличную часть достаёт, но на отрисовке:
        $ro уже содержит условие предка (#1184). */}}
-  <div class="managed-tp" data-ob-tp="{{$el.Name}}">
+  <div class="managed-tp" data-ob-tp="{{$el.Name}}"{{if hasHandler $el "ПослеОткрытия"}} data-ob-after-open="{{$el.Name}}"{{end}}>
   {{/* show_count — число записей в заголовке таблицы значений: «Заявки клиента (5)».
        После событий формы число обновляет перерисовка таблицы (applyFormTables). */}}
   <h3 style="margin:18px 0 8px;font-size:14px">{{fieldTitleRU $el.TitleMap (or (tablePartTitle $tpMeta) $tpName)}}{{if and $el.ShowCount (formAttrVT $ctx.Form $tpName)}} <span data-ob-vt-count="{{$tpName}}">({{len (index $ctx.TablePartRows $tpName)}})</span>{{end}}</h3>
@@ -640,6 +640,9 @@ const tplManagedForm = `
 /* deadline_warn: поле-срок подсвечивается по часам браузера (obDeadlineTick). */
 input.ob-deadline-soon,.form-group input.ob-deadline-soon[readonly]{background:#fef3c7 !important;border-color:#f59e0b !important;color:#92400e !important}
 input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#fee2e2 !important;border-color:#ef4444 !important;color:#991b1b !important;font-weight:600}
+/* ПослеОткрытия: пока грузятся данные элемента — индикатор поверх него. */
+.ob-loading{position:relative;pointer-events:none}
+.ob-loading::after{content:"";position:absolute;inset:0;background:rgba(255,255,255,.55) no-repeat center/28px 28px url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 50 50%27%3E%3Ccircle cx=%2725%27 cy=%2725%27 r=%2720%27 fill=%27none%27 stroke=%27%233b82f6%27 stroke-width=%275%27 stroke-dasharray=%2790 60%27%3E%3CanimateTransform attributeName=%27transform%27 type=%27rotate%27 from=%270 25 25%27 to=%27360 25 25%27 dur=%27.9s%27 repeatCount=%27indefinite%27/%3E%3C/circle%3E%3C/svg%3E");border-radius:8px;z-index:5}
 .ob-managed-control{border:0;padding:0;min-width:0}
 .managed-group-horizontal>.managed-group-body{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
 /* scroll_x: ряд действий не рвётся на вторую строку, а прокручивается. */

@@ -1464,7 +1464,10 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
       // not emit input/change, so raise it before touching mutable DOM state.
       if (data.dirty === true) setManagedFormDirty(true);
       var beforePostMerged = beforePostSnapshot(snapshot) && formEditState.revision !== snapshot.editRevision;
-      if (beforePostMerged) {
+      if (data.deferred) {
+        applyValues(data.values || {}, data.refOptions, snapshot.body, snapshot.controlState);
+        applyFormTables(data.formTables);
+      } else if (beforePostMerged) {
         // Перед ответом на вопрос сохранить свежий ввод, но принять правки
         // обработчика в полях и таблицах, которых пользователь не касался.
         var mergeRevision = formEditState.revision;
@@ -1594,8 +1597,12 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
 	// Серверный поиск диалога не пишет документ: гоняем его вне общей очереди
 	// записи, чтобы он не ждал обычные события формы и не блокировал их.
 	var standaloneSearch = !!(pickerRequest && pickerRequest.search);
+	// ПослеОткрытия (отложенная загрузка, _deferred) тоже идёт мимо очереди: долгий
+	// запрос к внешней системе не должен задерживать действия пользователя, а
+	// его ответ несёт только изменённое обработчиком.
+	var standaloneDeferred = !!(capturedExtra && capturedExtra._deferred === '1');
 	var queued;
-	if (standaloneSearch) {
+	if (standaloneSearch || standaloneDeferred) {
 	  queued = runEvent();
 	} else {
 	  formEventPendingCount++;
@@ -4817,10 +4824,27 @@ function obGridColumnIds(columns) {
 
 // Авто-вызов ПриОткрытииФормы при загрузке страницы. Без этого
 // серверный handler на event="ПриОткрытии" не запускается сам по себе.
+// obStartDeferredLoads — ПослеОткрытия: элементы с отложенной загрузкой
+// получают индикатор и своё событие; запросы идут параллельно, мимо очереди.
+var obDeferredStarted = false;
+function obStartDeferredLoads() {
+  if (obDeferredStarted || !window.obFire) return;
+  obDeferredStarted = true;
+  document.querySelectorAll('[data-ob-after-open]').forEach(function (el) {
+    var name = el.getAttribute('data-ob-after-open');
+    if (!name) return;
+    el.classList.add('ob-loading');
+    var done = function () { el.classList.remove('ob-loading'); };
+    Promise.resolve(window.obFire(name, 'ПослеОткрытия', {_deferred: '1'})).then(done, done);
+  });
+}
 obManagedReady(function () {
   var cfg = obManagedConfig();
-  if (!cfg.autoOpen) return;
-  setTimeout(function () { if (window.obFire) obFire('', 'ПриОткрытии'); }, 0);
+  if (!cfg.autoOpen) { setTimeout(obStartDeferredLoads, 0); return; }
+  setTimeout(function () {
+    var opened = window.obFire ? obFire('', 'ПриОткрытии') : null;
+    Promise.resolve(opened).then(obStartDeferredLoads, obStartDeferredLoads);
+  }, 0);
 });
 
 function obManagedTabKey(tabs) {
