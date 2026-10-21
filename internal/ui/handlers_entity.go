@@ -1480,6 +1480,9 @@ func (s *Server) treeChildRows(r *http.Request, entity *metadata.Entity, rows []
 			folderURL += "&" + subQS
 			openURL += "?" + subQS
 		}
+		if off := r.URL.Query().Get(listFormFilterOffParam); off != "" {
+			folderURL += "&" + listFormFilterOffParam + "=" + url.QueryEscape(off)
+		}
 		copyURL := ""
 		if canCopy {
 			copyURL = base + "/new?copy=" + url.QueryEscape(id)

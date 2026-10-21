@@ -233,8 +233,18 @@ func (s *Server) listFilterQueryIDs(ctx context.Context, text string, user *auth
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
+	if denied := s.deniedQuerySource(ctx, compiled.Sources); denied != "" {
+		return nil, errors.New("нет доступа к источнику запроса отбора")
+	}
+	maskPlan := s.queryMaskPlan(ctx, compiled)
+	if maskPlan.Denied != "" {
+		return nil, errors.New("нет доступа к полю запроса отбора")
+	}
 	rows, cols, err := query.Run(ctx, s.store, &compiled)
 	if err != nil {
+		return nil, err
+	}
+	if err := maskPlan.Apply(rows); err != nil {
 		return nil, err
 	}
 	if len(cols) == 0 {
