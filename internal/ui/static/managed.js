@@ -1474,6 +1474,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
           return;
         }
         applyCloseResponse(data, snapshot.body, mergeBody);
+        obApplyConcealed(data.revealed);
         setManagedFormDirty(true);
       } else {
         if (Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
@@ -1484,6 +1485,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
         applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
         applyChoiceList(elementName, data.choiceList);
         applyFormTables(data.formTables);
+        obApplyConcealed(data.revealed);
       }
 	  // Server events repaint controls programmatically and therefore do not
 	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
@@ -5195,3 +5197,22 @@ obManagedReady(function () {
     if (e.target && e.target.hasAttribute && e.target.hasAttribute("data-ob-deadline")) obDeadlineTick();
   });
 });
+
+// obApplyConcealed — conceal/reveal_when: раскрытое ответом события скрытое
+// поле становится доступным (если не readonly) и отправляется с формой;
+// нераскрытое — снова отключено и пусто, значение в браузере не остаётся.
+// Решение принимает сервер: список revealed приходит в каждом ответе события.
+function obApplyConcealed(revealed) {
+  var open = {};
+  (revealed || []).forEach(function (n) { open[String(n).toLowerCase()] = true; });
+  document.querySelectorAll("[data-ob-concealed]").forEach(function (el) {
+    var name = String(el.getAttribute("name") || "").toLowerCase();
+    if (open[name]) {
+      el.disabled = false;
+    } else {
+      el.disabled = true;
+      el.value = "";
+    }
+  });
+}
+window.obApplyConcealed = obApplyConcealed;
