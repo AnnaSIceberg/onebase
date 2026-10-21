@@ -353,6 +353,10 @@ type FormElement struct {
 	Rows      int    `yaml:"rows,omitempty"`
 	ShowCount bool   `yaml:"show_count,omitempty"`
 	EmptyText string `yaml:"empty_text,omitempty"`
+
+	// HintInline — hint печатается текстом под полем, как раньше; по умолчанию
+	// подсказка всплывающая: значок ⓘ у подписи и title.
+	HintInline bool `yaml:"hint_inline,omitempty"`
 }
 
 // FormChoiceOperator — закрытый набор операторов choice_filter v1.

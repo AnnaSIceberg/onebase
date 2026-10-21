@@ -574,6 +574,7 @@ func managedFormSchema() map[string]any {
 			"rows":                map[string]any{"type": "integer", "minimum": 1, "maximum": 50, "description": "ТабличнаяЧасть над ValueTable: видимых строк, шапка закреплена, остальное — прокрутка внутри"},
 			"show_count":          boolSchema("ТабличнаяЧасть над ValueTable: число записей в заголовке таблицы — «Заявки клиента (5)»"),
 			"empty_text":          stringSchema("ТабличнаяЧасть над ValueTable: надпись пустой таблицы — «Заявок нет»"),
+			"hint_inline":         boolSchema("Печатать hint текстом под полем; по умолчанию подсказка всплывающая (значок ⓘ у подписи)"),
 			"scroll_x":            boolSchema("Прокручивать горизонтальную ГруппаФормы вместо переноса содержимого на следующую строку; по умолчанию false"),
 			"children": map[string]any{
 				"type":  "array",
