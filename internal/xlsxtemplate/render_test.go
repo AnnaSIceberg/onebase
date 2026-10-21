@@ -2,6 +2,7 @@ package xlsxtemplate
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/ivantit66/onebase/internal/printform"
@@ -297,5 +298,73 @@ func assertNumFmt(t *testing.T, f *excelize.File, sheet, axis, want string) {
 			got = *style.CustomNumFmt
 		}
 		t.Errorf("%s number format = %q (NumFmt %d), want %q", axis, got, style.NumFmt, want)
+	}
+}
+
+// Точность недоверенного тега ограничивается до округления и создания стиля.
+func TestRenderBytesBoundsNumericPrecision(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		precision    string
+		wantDecimals int
+	}{
+		{"zero", "0", 0},
+		{"maximum", "30", 30},
+		{"above maximum", "31", 30},
+		{"int32 maximum", "2147483647", 30},
+		{"negative", "-1", 0},
+		{"invalid", "invalid", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := excelize.NewFile()
+			if err := f.SetCellStr("Sheet1", "A1", "{{Amount | number:"+tc.precision+"}}"); err != nil {
+				t.Fatal(err)
+			}
+			// Свой формат шаблона не отменяет проверку перед округлением.
+			if err := f.SetCellStr("Sheet1", "B1", "{{Amount | number:"+tc.precision+"}}"); err != nil {
+				t.Fatal(err)
+			}
+			custom := "0.00"
+			style, err := f.NewStyle(&excelize.Style{CustomNumFmt: &custom})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.SetCellStyle("Sheet1", "B1", "B1", style); err != nil {
+				t.Fatal(err)
+			}
+			var input bytes.Buffer
+			if err := f.Write(&input); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			result, err := RenderBytes(input.Bytes(), &printform.RenderContext{
+				Document: map[string]any{"Amount": decimal.RequireFromString("1.25")},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := excelize.OpenReader(bytes.NewReader(result))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if err := out.Close(); err != nil {
+					t.Error(err)
+				}
+			}()
+			wantValue := "1.25"
+			code := "0"
+			if tc.wantDecimals == 0 {
+				wantValue = "1"
+			} else {
+				code += "." + strings.Repeat("0", tc.wantDecimals)
+			}
+			assertNumberCell(t, out, "Sheet1", "A1", wantValue)
+			assertNumberCell(t, out, "Sheet1", "B1", wantValue)
+			assertNumFmt(t, out, "Sheet1", "A1", code)
+			assertNumFmt(t, out, "Sheet1", "B1", custom)
+		})
 	}
 }
