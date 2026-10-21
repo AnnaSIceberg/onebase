@@ -137,7 +137,7 @@ func structNum(s *Struct, names ...string) (float64, bool) {
 func parseMailProfile(v any) (mailProfile, error) {
 	s, ok := v.(*Struct)
 	if !ok || s == nil {
-		return mailProfile{}, errors.New("Профиль — Структура {Протокол, Сервер, Порт, Пользователь, Пароль, Защита, Таймаут, Папка}")
+		return mailProfile{}, errors.New("профиль — Структура {Протокол, Сервер, Порт, Пользователь, Пароль, Защита, Таймаут, Папка}")
 	}
 	p := mailProfile{
 		host:     structStr(s, "сервер", "server", "host"),
@@ -176,7 +176,7 @@ func parseMailProfile(v any) (mailProfile, error) {
 		return p, errors.New("не указан Пользователь")
 	}
 	if strings.ContainsAny(p.user+p.password+p.folder, "\r\n") {
-		return p, errors.New("Пользователь, Пароль и Папка не могут содержать перевод строки")
+		return p, errors.New("перевод строки в Пользователь, Пароль или Папка недопустим")
 	}
 	if port, ok := structNum(s, "порт", "port"); ok && port > 0 {
 		if port > 65535 {
@@ -224,7 +224,7 @@ func parseMailReceiveOptions(v any) (mailReceiveOptions, error) {
 	}
 	s, ok := v.(*Struct)
 	if !ok {
-		return opts, errors.New("Параметры — Структура {Пропустить, Максимум, МаксимальныйРазмер, ОтметитьПрочитанными}")
+		return opts, errors.New("параметры — Структура {Пропустить, Максимум, МаксимальныйРазмер, ОтметитьПрочитанными}")
 	}
 	if n, ok := structNum(s, "максимум", "max", "limit"); ok && n > 0 {
 		if n > mailReceiveMaxMessages {
@@ -252,7 +252,7 @@ func parseMailReceiveOptions(v any) (mailReceiveOptions, error) {
 			if it, ok := v.(interface{ Iterate() []any }); ok {
 				items = it.Iterate()
 			} else {
-				return opts, errors.New("Пропустить — массив Ид уже полученных писем")
+				return opts, errors.New("свойство Пропустить — массив Ид уже полученных писем")
 			}
 		}
 		for _, it := range items {
