@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -72,21 +73,37 @@ func TestManagedFormConcealedField(t *testing.T) {
 	if v := anyString(valueCI(resp.Values, "Наименование")); v != secret {
 		t.Fatalf("после раскрытия значение не пришло: %q", v)
 	}
-
-	// 4. Запись формы без скрытого поля (оно отключено) значение не затирает.
-	req := httptest.NewRequest("POST", "/ui/catalog/"+ent.Name+"/"+id.String(), strings.NewReader(url.Values{"_action": {""}}.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("entity", ent.Name)
-	rctx.URLParams.Add("id", id.String())
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	srv.submitEdit(httptest.NewRecorder(), req)
-	row, err := srv.store.GetByID(context.Background(), ent.Name, id, ent)
-	if err != nil {
-		t.Fatal(err)
+	if len(resp.Revealed) != 1 || !strings.EqualFold(resp.Revealed[0], "Наименование") {
+		t.Fatalf("ответ раскрытия не назвал раскрытое поле: %v", resp.Revealed)
 	}
-	if row["Наименование"] != secret {
-		t.Fatalf("запись формы затёрла скрытое значение: %v", row["Наименование"])
+
+	submit := func(form url.Values) any {
+		t.Helper()
+		req := httptest.NewRequest("POST", "/ui/catalog/"+ent.Name+"/"+id.String(), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("entity", ent.Name)
+		rctx.URLParams.Add("id", id.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		srv.submitEdit(httptest.NewRecorder(), req)
+		row, err := srv.store.GetByID(context.Background(), ent.Name, id, ent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return row["Наименование"]
+	}
+	// 4. Запись без скрытого поля (оно отключено) значение не затирает.
+	if v := submit(url.Values{"_action": {""}}); v != secret {
+		t.Fatalf("запись формы затёрла скрытое значение: %v", v)
+	}
+	// 5. Поле не раскрыто (маска стоит), а значение прислано — подделка: база
+	// не меняется.
+	if v := submit(url.Values{"_action": {""}, "Маской": {"true"}, "Наименование": {"подмена"}}); v != secret {
+		t.Fatalf("нераскрытое поле приняло присланное значение: %v", v)
+	}
+	// 6. Раскрытое поле правится: присланное значение записывается.
+	if v := submit(url.Values{"_action": {""}, "Маской": {"false"}, "Наименование": {"исправлено оператором"}}); v != "исправлено оператором" {
+		t.Fatalf("раскрытое поле не записало правку: %v", v)
 	}
 }
 
@@ -107,4 +124,15 @@ func anyString(v any) string {
 		return s
 	}
 	return strings.TrimSpace(fmt.Sprint(v))
+}
+
+func TestConcealBehavior(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("нужен node")
+	}
+	cmd := exec.Command(node, "--test", "static/conceal_behavior_test.js") //nolint:gosec // test-only executable resolved by exec.LookPath
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("node conceal test: %v\n%s", err, out)
+	}
 }

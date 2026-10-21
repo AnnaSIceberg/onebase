@@ -47,6 +47,7 @@ import (
 type formEventResponse struct {
 	OK             bool                        `json:"ok"`
 	Values         map[string]any              `json:"values,omitempty"`
+	Revealed       []string                    `json:"revealed,omitempty"`
 	TableParts     map[string][]map[string]any `json:"tableparts,omitempty"`
 	FormTables     map[string][]map[string]any `json:"formTables,omitempty"`
 	ConditionalCSS string                      `json:"conditionalCss"`
@@ -1851,6 +1852,7 @@ func savedFormID(this *formObjectThis) string {
 // разбирает #615, — инвариант, применённый в N−1 месте из N.
 type formEventState struct {
 	Values         map[string]any
+	Revealed       []string
 	TableParts     map[string][]map[string]any
 	FormTables     map[string][]map[string]any
 	RefOptions     map[string][]map[string]any
@@ -1864,6 +1866,7 @@ type formEventState struct {
 func (st formEventState) response(ok bool) formEventResponse {
 	return formEventResponse{
 		OK:             ok,
+		Revealed:       st.Revealed,
 		Values:         st.Values,
 		TableParts:     st.TableParts,
 		FormTables:     st.FormTables,
@@ -1979,7 +1982,7 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 	}
 	values := normalizeFormAttrKeys(fields, form, entity)
 	// conceal: true — значение уходит в браузер только при истинном reveal_when.
-	s.concealEventValues(form, entity, values)
+	revealed := s.concealEventValues(form, entity, values)
 	// Псевдо-реквизит «Ссылка» — контекст обработчика, а не значение формы:
 	// в ответ он не едет, чтобы applyValues не искал под него элемент.
 	for _, k := range []string{"ссылка", "reference", "_version"} {
@@ -2001,6 +2004,7 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 		}
 	}
 	return formEventState{
+		Revealed:       revealed,
 		Values:         values,
 		TableParts:     tableParts,
 		FormTables:     formTablesFromRows(tableParts, form),

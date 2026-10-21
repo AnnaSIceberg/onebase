@@ -550,6 +550,13 @@ func (s *Server) restoreUnsubmittedFields(
 		return nil
 	}
 	submitted := submittedFormKeys(r)
+	// Скрытое (conceal) поле принимается из браузера, только пока оно раскрыто:
+	// reveal_when истинно по присланным реквизитам формы. Иначе присланное
+	// считается неприсланным и берётся из базы (или умолчания у нового объекта).
+	for name := range s.unrevealedConcealedFields(r, entity, form) {
+		delete(submitted, name)
+		delete(submitted, strings.ToLower(name))
+	}
 	checkboxes := checkboxOmittedFields(form, entity, submitted)
 
 	// Есть ли вообще что восстанавливать — чтобы не ходить в БД зря.
@@ -680,6 +687,13 @@ func (s *Server) overlayNewObjectDefaults(
 		return entityservice.NewObjectResult{}, nil
 	}
 	submitted := submittedFormKeys(r)
+	// Скрытое (conceal) поле принимается из браузера, только пока оно раскрыто:
+	// reveal_when истинно по присланным реквизитам формы. Иначе присланное
+	// считается неприсланным и берётся из базы (или умолчания у нового объекта).
+	for name := range s.unrevealedConcealedFields(r, entity, form) {
+		delete(submitted, name)
+		delete(submitted, strings.ToLower(name))
+	}
 	checkboxes := checkboxOmittedFields(form, entity, submitted)
 
 	// NewObject вызывается и когда форма прислала все реквизиты: на POST хук

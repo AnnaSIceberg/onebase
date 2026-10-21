@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -56,11 +58,12 @@ func blankConcealedValues(form *metadata.FormModule, values any) {
 // concealEventValues прячет значения скрытых полей в ответе события формы,
 // пока их reveal_when ложно. Ошибка в выражении — поле остаётся скрытым
 // (fail closed): раскрыть данные из-за опечатки хуже, чем не показать их.
-func (s *Server) concealEventValues(form *metadata.FormModule, entity *metadata.Entity, values map[string]any) {
+func (s *Server) concealEventValues(form *metadata.FormModule, entity *metadata.Entity, values map[string]any) []string {
 	fields := concealedFormFields(form)
 	if len(fields) == 0 {
-		return
+		return nil
 	}
+	var revealed []string
 	var row compose.Row
 	ev := newInterpEvaluator(s.interp)
 	if s.interp != nil {
@@ -73,6 +76,7 @@ func (s *Server) concealEventValues(form *metadata.FormModule, entity *metadata.
 			reveal = err == nil && ok
 		}
 		if reveal {
+			revealed = append(revealed, name)
 			continue
 		}
 		for k := range values {
@@ -81,4 +85,54 @@ func (s *Server) concealEventValues(form *metadata.FormModule, entity *metadata.
 			}
 		}
 	}
+	return revealed
+}
+
+// unrevealedConcealedFields — скрытые поля, присланное значение которых
+// принимать нельзя: reveal_when ложно по присланным реквизитам формы (или его
+// нет). Присланное значение такого поля — подделка или остаток старой разметки;
+// база в обоих случаях не меняется.
+func (s *Server) unrevealedConcealedFields(r *http.Request, entity *metadata.Entity, form *metadata.FormModule) map[string]bool {
+	fields := concealedFormFields(form)
+	if len(fields) == 0 || r == nil {
+		return nil
+	}
+	header := map[string]any{}
+	for k, v := range r.PostForm {
+		if len(v) > 0 {
+			header[k] = v[0]
+		}
+	}
+	// Реквизиты формы приходят строками: булево и число приводим по типу, иначе
+	// «false» читалось бы непустой строкой, то есть истиной.
+	for _, attr := range form.Attributes {
+		if attr == nil {
+			continue
+		}
+		raw, ok := header[attr.Name].(string)
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(attr.TypeRef) {
+		case "bool", "boolean":
+			header[attr.Name] = raw == "true"
+		case "number":
+			if n, err := strconv.ParseFloat(raw, 64); err == nil {
+				header[attr.Name] = n
+			}
+		}
+	}
+	row := compose.Row(managedFormHeaderValues(entity, header))
+	out := map[string]bool{}
+	for name, expr := range fields {
+		reveal := false
+		if expr != "" && s.interp != nil {
+			ok, err := newInterpEvaluator(s.interp).EvalBool(expr, row)
+			reveal = err == nil && ok
+		}
+		if !reveal {
+			out[name] = true
+		}
+	}
+	return out
 }

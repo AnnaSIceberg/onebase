@@ -1294,6 +1294,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
       applyChoiceList(elementName, data.choiceList);
       applyFormTables(data.formTables);
+      obApplyConcealed(data.revealed);
 	  // Server events repaint controls programmatically and therefore do not
 	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
 	  // it only when this response proves a successful Object.Write and no
@@ -4651,3 +4652,22 @@ obManagedReady(function () {
     }
   });
 });
+
+// obApplyConcealed — conceal/reveal_when: раскрытое ответом события скрытое
+// поле становится доступным (если не readonly) и отправляется с формой;
+// нераскрытое — снова отключено и пусто, значение в браузере не остаётся.
+// Решение принимает сервер: список revealed приходит в каждом ответе события.
+function obApplyConcealed(revealed) {
+  var open = {};
+  (revealed || []).forEach(function (n) { open[String(n).toLowerCase()] = true; });
+  document.querySelectorAll("[data-ob-concealed]").forEach(function (el) {
+    var name = String(el.getAttribute("name") || "").toLowerCase();
+    if (open[name]) {
+      el.disabled = false;
+    } else {
+      el.disabled = true;
+      el.value = "";
+    }
+  });
+}
+window.obApplyConcealed = obApplyConcealed;
