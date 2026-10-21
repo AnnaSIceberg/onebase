@@ -58,6 +58,8 @@ assert.ok(form);
 const context = {
   window: {}, document: {getElementById: id => id === 'main-form' ? form : null, querySelector: selector => page.querySelector(selector)},
   managedRefParts: () => null, ensureRefOption: () => {},
+  // Скрытие страниц (#2170) этот сценарий не проверяет.
+  obManagedSetPageHidden: () => {},
 };
 vm.createContext(context);
 vm.runInContext(slice('// BEGIN onebase-ro-apply-values', '// END onebase-ro-apply-values') + '\n' +

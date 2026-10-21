@@ -492,6 +492,8 @@ global.document = {
 const client = new Function(
   // Страница уже «загружена»: готовность DOM наступает сразу.
   'function obManagedReady(fn) { fn(); }\n' +
+  // Скрытие страниц (#2170) здесь не проверяется: заглушка вместо обвязки закладок.
+  'function obManagedSetPageHidden() {}\n' +
   fn('managedRefParts') + '\n' + fn('ensureRefOption') + '\n' +
     region('onebase-ro-apply-states') + '\n' + region('onebase-ro-apply-values') + '\n' +
     region('onebase-form-attr-stash') +
