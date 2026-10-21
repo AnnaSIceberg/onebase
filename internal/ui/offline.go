@@ -32,6 +32,7 @@ func RunProcessorOffline(ctx context.Context, proj *project.Project, db *storage
 // переиспользовать для нескольких обработок (например, набора тестов).
 func NewOfflineServer(proj *project.Project, db *storage.DB) (*Server, *runtime.Registry, error) {
 	reg := runtime.NewRegistry()
+	reg.LoadHelp(proj.Help)
 	reg.Load(runtime.LoadOptions{
 		Entities:        proj.Entities,
 		Programs:        proj.Programs,
@@ -103,6 +104,20 @@ func (s *Server) RunProcessor(ctx context.Context, reg *runtime.Registry, procNa
 
 	paramValues := map[string]any{}
 	for _, p := range proc.Params {
+		if p.Type == processorBinaryParamType {
+			// Двоичный параметр — это путь. В CLI файл уже лежит на диске, и
+			// копировать его во временный незачем: обработка получает тот же
+			// вид значения, что и из формы.
+			path, ok := fileParams[p.Name]
+			if !ok {
+				continue
+			}
+			if _, statErr := os.Stat(path); statErr != nil {
+				return nil, nil, fmt.Errorf("файл параметра %s: %w", p.Name, statErr)
+			}
+			paramValues[p.Name] = path
+			continue
+		}
 		if p.Type == "file" {
 			path, ok := fileParams[p.Name]
 			if !ok {
