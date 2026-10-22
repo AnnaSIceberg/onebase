@@ -185,6 +185,8 @@ type formYAMLDoc struct {
 		EnterSubmitsForm bool `yaml:"enter_submits_form"`
 		// Density — плотность раскладки формы ("" | "compact").
 		Density string `yaml:"density"`
+		// HeaderInline — заголовок и строка команд одной строкой.
+		HeaderInline bool `yaml:"header_inline"`
 	} `yaml:"form"`
 	Attributes            []*metadata.FormAttribute       `yaml:"attributes"`
 	Commands              []*metadata.FormCommand         `yaml:"commands"`
@@ -238,6 +240,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		RefCardButtonAdminOnly: doc.Form.RefCardButtonAdminOnly,
 		EnterSubmitsForm:       doc.Form.EnterSubmitsForm,
 		Density:                doc.Form.Density,
+		HeaderInline:           doc.Form.HeaderInline,
 		Attributes:             doc.Attributes,
 		Commands:               doc.Commands,
 		AutoCommandBar:         doc.CommandBar,

@@ -34,6 +34,8 @@ type IRForm struct {
 	// Density — плотность раскладки формы ("" | "compact"); как и
 	// EnterSubmitsForm, настройка OneBase: в XML 1С не читается и не пишется.
 	Density string
+	// HeaderInline — заголовок и строка команд одной строкой (только YAML).
+	HeaderInline bool
 	// UnknownTopLevel — XML-узлы верхнего уровня, не имеющие IR-семантики
 	// (ДКС, Conditional Appearance, расширения). Хранятся «как есть» для
 	// round-trip; сериализуются в oneC_meta.unknown_xml в YAML.

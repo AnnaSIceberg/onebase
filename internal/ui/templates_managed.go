@@ -586,8 +586,19 @@ const tplManagedForm = `
 .ob-density-compact .ob-form-head{margin-bottom:6px !important}
 .ob-density-compact .ob-form-head h2{font-size:17px}
 .ob-density-compact .ob-form-actions{margin-bottom:6px !important}
-.ob-density-compact main>.card{padding:10px 12px}
-.ob-density-compact main{padding:10px 14px}
+.ob-density-compact main>.card{padding:8px}
+.ob-density-compact main{padding:8px}
+/* header_inline (form.header_inline): заголовок, строка команд и «×» — одной
+   строкой. Шапка раскладывается в общий поток main (display:contents), order
+   ставит строку команд между заголовком и «×»; всё остальное содержимое —
+   ниже, на всю ширину. */
+.ob-header-inline main{display:flex;flex-wrap:wrap;align-items:center;align-content:flex-start;column-gap:12px}
+.ob-header-inline main>*{flex:1 1 100%;order:3}
+.ob-header-inline main>.ob-form-head{display:contents !important}
+.ob-header-inline main>.ob-form-head>h2{flex:0 1 auto;order:0;margin-bottom:0}
+.ob-header-inline main>.ob-form-actions{flex:1 1 0;order:1;min-width:0;margin-bottom:0 !important}
+.ob-header-inline main>.ob-form-head>a{flex:0 0 auto;order:2;margin-left:auto}
+.ob-header-inline main>.ob-form-head~*:not(.ob-form-actions){margin-top:8px}
 .ob-density-compact .managed-control-row>button,.ob-density-compact .managed-control-row>a{height:28px;min-width:28px;padding:0 8px;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
 .ob-grid[data-ob-choice-error="1"] { outline: 2px solid #dc2626; }
 .ob-managed-control{border:0;padding:0;min-width:0}

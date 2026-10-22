@@ -247,10 +247,15 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"formDensityClass": func(page any) string {
 			data, _ := page.(map[string]any)
 			form, _ := data["Form"].(*metadata.FormModule)
+			var classes []string
 			if form != nil && form.Density == metadata.FormDensityCompact {
-				return "ob-density-compact"
+				classes = append(classes, "ob-density-compact")
 			}
-			return ""
+			// header_inline — заголовок и строка команд одной строкой.
+			if form != nil && form.HeaderInline {
+				classes = append(classes, "ob-header-inline")
+			}
+			return strings.Join(classes, " ")
 		},
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
 			if proc == nil {
