@@ -99,13 +99,15 @@ func TestManagedNavigationRespectsResponseDirtyState(t *testing.T) {
 const fs = require('fs');
 const source = fs.readFileSync(process.argv[2], 'utf8');
 const start = source.indexOf('  async function dispatchFormEvent(snapshot){');
+const concurrencyStart = source.indexOf('  function concurrentFormState(form){');
+const concurrencyEnd = source.indexOf('  async function snapshotFormEvent(', concurrencyStart);
 const end = source.indexOf('\n  window.obFire = function', start);
 const fireEnd = source.indexOf('\n  // One close controller', end);
 const helpersStart = source.indexOf('  function closeBodyEntries(body, predicate){');
 const helpersEnd = source.indexOf('  function setManagedFormDirty(dirty){', helpersStart);
 const mergeStart = source.indexOf('  function applyCloseResponse(data, before, current){');
 const mergeEnd = source.indexOf('\n  window.obRequestFormClose', mergeStart);
-if ([start, end, fireEnd, helpersStart, helpersEnd, mergeStart, mergeEnd].some(i => i < 0)) {
+if ([start, end, fireEnd, helpersStart, helpersEnd, mergeStart, mergeEnd, concurrencyStart, concurrencyEnd].some(i => i < 0)) {
   throw new Error('managed.js behavior slices not found');
 }
 const dirtyEnd = source.indexOf('  function applySavedIdentity(data){', helpersEnd);
@@ -121,7 +123,7 @@ if ([dirtyEnd, markStart, markEnd, gridHelpersStart, gridHelpersEnd, moveStart, 
 const fnSource = source.slice(helpersEnd, dirtyEnd) + source.slice(markStart, markEnd) +
   source.slice(gridHelpersStart, gridHelpersEnd) + source.slice(moveStart, moveEnd) +
   source.slice(helpersStart, helpersEnd) + source.slice(mergeStart, mergeEnd) +
-  source.slice(start, fireEnd);
+  source.slice(concurrencyStart, concurrencyEnd) + source.slice(start, fireEnd);
 
 async function run(response, formDirty, concurrentEdit) {
   const calls = { assign: [], flash: [], dirty: [], values: [], savedIdentity: 0 };
@@ -159,6 +161,7 @@ async function run(response, formDirty, concurrentEdit) {
     reloadRequired: false, formEventWriteUnknown: false, manualReconcileRequired: false,
     formEditState,
     formEventQueue: Promise.resolve(), formEventPendingCount: 0, formEventPending: false,
+    deferredGeneration: 0, deferredPendingCount: 0,
     closePending: null, closeHandoffPending: false, retryableClose: null,
     DOC_ID: 'doc', URL: '/ui/form-event',
     fetch: () => { fetchEntered(); return waiting; },
@@ -177,6 +180,7 @@ async function run(response, formDirty, concurrentEdit) {
     snapshotFormEvent: async () => ({
       body: bodyNow(), form: null, elementName: 'Открыть',
       extraParams: null, wasNew: false, editRevision: formEditState.revision,
+      concurrentState: new Map(), deferredGeneration: 0, deferredOverlap: false,
     }),
     refreshQueuedFormEventIdentity() {},
   };

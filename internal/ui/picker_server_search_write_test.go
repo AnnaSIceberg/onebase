@@ -30,7 +30,7 @@ func TestPicker_ServerSearchCannotWriteThroughPublicFormEvent(t *testing.T) {
 	body.Set("_event", string(metadata.FormEventOnSearch))
 	body.Set("_pick_query", "фрагмент")
 	resp := decodeFormEventResponse(t, executeFormEvent(t, f.srv, f.entity, body).Body.Bytes())
-	if resp.OK || !strings.Contains(resp.Error, "запись недоступна в обработчике Поиск") {
+	if resp.OK || !strings.Contains(resp.Error, "запись недоступна в контексте только чтения") {
 		t.Fatalf("поиск разрешил запись: ok=%v error=%q", resp.OK, resp.Error)
 	}
 	var count int
@@ -67,7 +67,7 @@ func TestPicker_ServerSearchCannotStartScheduledJob(t *testing.T) {
 	body.Set("_element", "КнопкаТест")
 	body.Set("_event", string(metadata.FormEventOnSearch))
 	resp := decodeFormEventResponse(t, executeFormEvent(t, f.srv, f.entity, body).Body.Bytes())
-	if resp.OK || !strings.Contains(resp.Error, "запись недоступна в обработчике Поиск") {
+	if resp.OK || !strings.Contains(resp.Error, "запись недоступна в контексте только чтения") {
 		t.Fatalf("поиск запустил задание: ok=%v error=%q", resp.OK, resp.Error)
 	}
 	runs, err := f.srv.store.ScheduledRuns(context.Background(), "Proof", 10)
@@ -92,7 +92,7 @@ func TestPicker_ServerSearchCannotWriteFormObject(t *testing.T) {
 	body.Set("_element", "КнопкаТест")
 	body.Set("_event", string(metadata.FormEventOnSearch))
 	resp := decodeFormEventResponse(t, executeFormEvent(t, f.srv, f.entity, body).Body.Bytes())
-	if resp.OK || !strings.Contains(resp.Error, "запись недоступна в обработчике Поиск") {
+	if resp.OK || !strings.Contains(resp.Error, "запись недоступна в контексте только чтения") {
 		t.Fatalf("поиск разрешил Объект.Записать: ok=%v error=%q", resp.OK, resp.Error)
 	}
 	row, err := f.srv.store.GetByID(context.Background(), f.entity.Name, f.docID, f.entity)
@@ -134,7 +134,7 @@ func TestPicker_ServerSearchCannotWriteFromProcessorForm(t *testing.T) {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
 	resp := decodeFormEventResponse(t, rec.Body.Bytes())
-	if resp.OK || !strings.Contains(resp.Error, "запись недоступна в обработчике Поиск") {
+	if resp.OK || !strings.Contains(resp.Error, "запись недоступна в контексте только чтения") {
 		t.Fatalf("обработка разрешила запись: ok=%v error=%q", resp.OK, resp.Error)
 	}
 	var count int

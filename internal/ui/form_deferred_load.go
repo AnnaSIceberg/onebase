@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"net/http"
 	"reflect"
 	"strings"
 
@@ -20,10 +19,10 @@ import (
 // документа он не трогает — иначе откатил бы чужие правки.
 const formEventAfterOpen = string(metadata.FormEventAfterOpen)
 
-// deferredFormEvent — запрос отложенной загрузки (клиент шлёт _deferred=1 и
-// событие ПослеОткрытия).
-func deferredFormEvent(r *http.Request) bool {
-	return r.FormValue("_deferred") == "1" && r.FormValue("_event") == formEventAfterOpen
+// ПослеОткрытия всегда выполняется без записи в БД и с фильтрацией ответа.
+// Имя события уже разрешено маршрутизатором, включая служебные поля обработок.
+func deferredFormEvent(eventName string) bool {
+	return eventName == formEventAfterOpen
 }
 
 // filterDeferredResponse сравнивает два типизированных снимка. Сырое POST-тело
@@ -65,4 +64,13 @@ func deferredRowsEqual(before, rows []map[string]any) bool {
 		}
 	}
 	return true
+}
+
+// Загрузка таблицы не заимствует полномочия её редактируемого представления.
+// Право читать форму и привязка ПослеОткрытия уже проверены resolver-ом.
+func validateManagedFormEventTarget(authorities map[string]managedFormTableAuthority, target browserFormEventTarget, eventName string) error {
+	if deferredFormEvent(eventName) {
+		return nil
+	}
+	return validateManagedFormTableEventTarget(authorities, target)
 }

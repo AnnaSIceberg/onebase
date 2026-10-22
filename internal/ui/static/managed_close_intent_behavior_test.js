@@ -205,7 +205,19 @@ function runtime(fetchImpl, cfgOverride = {}, productionValues = false) {
 		}
 	  }
 	  function applyChoiceList(name, value){ globalThis.__applied.push(['choice', name, value]); }
-      function applyFormTables(value){ globalThis.__applied.push(['tables', value]); }
+      function applyFormTables(value){
+        globalThis.__applied.push(['tables', value]);
+        if (!cfg.simulateTables || !value) return;
+        Object.keys(value).forEach(function(name){
+          var prefix = 'vt.' + name + '.';
+          Array.from(globalThis.__form.values.keys()).forEach(function(key){
+            if (key.indexOf(prefix) === 0) globalThis.__form.values.delete(key);
+          });
+          value[name].forEach(function(row, i){
+            Object.keys(row).forEach(function(field){ globalThis.__form.values.set(prefix + i + '.' + field, String(row[field])); });
+          });
+        });
+      }
 	  function openItemPicker(value, name, extra){ globalThis.__applied.push(['picker', value, name, extra]); }
       function flash(value, kind){ globalThis.__applied.push(['flash', value, kind]); }
   `;
@@ -1430,4 +1442,116 @@ test('deferred completion preserves native submit fence for an unfinished normal
   assert.equal(dispatchSubmit(app).defaultPrevented, false, 'ordinary event completion releases submit fence');
   assert.equal(before, true);
   assert.equal(after, true, 'deferred finally removed another event native submit fence');
+});
+
+
+function overlappingLoadRuntime(fetchImpl) {
+  const app = runtime(fetchImpl, {docId: 'existing', simulateTables: true}, true);
+  const controls = new Map();
+  function control(name) {
+    if (!controls.has(name)) controls.set(name, {
+      name, tagName: 'INPUT', type: 'text', readOnly: false, disabled: false,
+      classList: {contains() { return false; }},
+      get value() { return app.form.values.get(name); },
+      set value(value) { app.form.values.set(name, value); },
+      getAttribute(key) { return key === 'name' ? name : null; },
+      closest(selector) { return selector === '#main-form' ? app.form : null; },
+    });
+    return controls.get(name);
+  }
+  app.form.querySelectorAll = function(selector) {
+    const all = Array.from(this.values.keys()).map(control);
+    if (selector === '[name]') return all;
+    const match = selector.match(/^\[name="([^"]+)"\]$/);
+    return match ? all.filter(input => input.name === match[1]) : [];
+  };
+  app.form.values.set('История', '');
+  app.form.values.set('vt.Список.0.Текст', 'old table');
+  return app;
+}
+
+for (const deferredFirst of [true, false]) {
+  for (const normalFirst of [true, false]) {
+    test(`overlapping responses preserve loaded data: deferredFirst=${deferredFirst}, normalFirst=${normalFirst}`, async () => {
+      let finishDeferred, finishNormal;
+      const app = overlappingLoadRuntime((_url, options) => new Promise(resolve => {
+        if (options.body.get('_event') === 'ПослеОткрытия') finishDeferred = resolve;
+        else finishNormal = resolve;
+      }));
+      let normal, deferred;
+      const startNormal = () => { normal = app.context.obFire('UnrelatedCommand', 'Нажатие'); };
+      const startDeferred = () => { deferred = app.context.obFire('ГруппаИстория', 'ПослеОткрытия', {_deferred: '1'}); };
+      (normalFirst ? startNormal : startDeferred)();
+      await new Promise(resolve => setImmediate(resolve));
+      (normalFirst ? startDeferred : startNormal)();
+      await new Promise(resolve => setImmediate(resolve));
+      const loaded = {ok: true, deferred: true, values: {История: '3 заявки'}, formTables: {Список: [{Текст: 'loaded table'}]}};
+      const echoed = {ok: true, values: {История: ''}, formTables: {Список: [{Текст: 'old table'}]}};
+      if (deferredFirst) {
+        finishDeferred(response(loaded)); await deferred;
+        finishNormal(response(echoed)); await normal;
+      } else {
+        finishNormal(response(echoed)); await normal;
+        finishDeferred(response(loaded)); await deferred;
+      }
+      assert.equal(app.form.values.get('История'), '3 заявки');
+      assert.equal(app.form.values.get('vt.Список.0.Текст'), 'loaded table');
+    });
+  }
+}
+
+test('overlapping responses preserve newer checkbox and table edits', async () => {
+  let finishDeferred, finishNormal;
+  const app = overlappingLoadRuntime((_url, options) => new Promise(resolve => {
+    if (options.body.get('_event') === 'ПослеОткрытия') finishDeferred = resolve;
+    else finishNormal = resolve;
+  }));
+  app.form.values.set('Флаг', 'false');
+  const checkbox = app.form.querySelectorAll('[name="Флаг"]')[0];
+  checkbox.type = 'checkbox'; checkbox.checked = false;
+  const deferred = app.context.obFire('ГруппаИстория', 'ПослеОткрытия', {_deferred: '1'});
+  await new Promise(resolve => setImmediate(resolve));
+  const normal = app.context.obFire('UnrelatedCommand', 'Нажатие');
+  await new Promise(resolve => setImmediate(resolve));
+  checkbox.checked = true;
+  app.form.values.set('vt.Список.0.Текст', 'user edit');
+  finishDeferred(response({ok: true, deferred: true, values: {Флаг: false}, formTables: {Список: [{Текст: 'loaded table'}]}}));
+  await deferred;
+  finishNormal(response({ok: true, values: {Флаг: false}, formTables: {Список: [{Текст: 'old table'}]}}));
+  await normal;
+  assert.equal(checkbox.checked, true);
+  assert.equal(app.form.values.get('vt.Список.0.Текст'), 'user edit');
+});
+
+test('a failed read-only loader cannot fence saving a new form', async () => {
+  let failLoader;
+  const calls = [];
+  const app = runtime((_url, options) => {
+    calls.push(options.body.get('_event'));
+    if (options.body.get('_event') === 'ПослеОткрытия') return new Promise((_resolve, reject) => { failLoader = reject; });
+    return Promise.resolve(response({ok: true, savedId: 'single-row', version: 1}));
+  });
+  const deferred = app.context.obFire('ГруппаИстория', 'ПослеОткрытия', {_deferred: '1'});
+  await new Promise(resolve => setImmediate(resolve));
+  failLoader(new Error('external service unavailable'));
+  await deferred;
+  await app.context.obFire('SaveCommand', 'Нажатие');
+  assert.deepEqual(calls, ['ПослеОткрытия', 'Нажатие']);
+  assert.equal(app.idInput.value, 'single-row');
+});
+
+
+test('deferred service flags preserve colliding processor parameters', async () => {
+  let posted;
+  const app = runtime(async (_url, options) => {
+    posted = options.body;
+    return response({ok: true, deferred: true});
+  }, {serviceFields: {_event: '_ob_service_event', _deferred: '_ob_service_deferred_'}});
+  app.form.values.set('_event', 'user event');
+  app.form.values.set('_deferred', 'user deferred');
+  await app.context.obFire('Loader', 'ПослеОткрытия', {_deferred: '1'});
+  assert.equal(posted.get('_event'), 'user event');
+  assert.equal(posted.get('_deferred'), 'user deferred');
+  assert.equal(posted.get('_ob_service_event'), 'ПослеОткрытия');
+  assert.equal(posted.get('_ob_service_deferred_'), '1');
 });

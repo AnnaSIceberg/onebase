@@ -61,12 +61,11 @@ func TestManagedDeferredSuccessOmitsUnchangedBoolAndTable(t *testing.T) {
 func TestManagedDeferredErrorStillFiltersResponse(t *testing.T) {
 	srv, ent, body := deferredDeltaFixture(t, `
 Процедура ЗагрузитьИсторию()
-    Объект.Наименование = "Saved before error";
-    Объект.Записать();
+    Объект.Наименование = "Loaded before error";
     ВызватьИсключение("external service failed");
 КонецПроцедуры
 `)
-	body.Del("_id") // новая запись: её id нужен даже после ошибки загрузчика
+	body.Del("_id") // ошибка фоновой загрузки новой формы не должна создавать запись
 	rec := executeFormEvent(t, srv, ent, body)
 	resp := decodeFormEventResponse(t, rec.Body.Bytes())
 	if resp.OK || resp.Error == "" {
@@ -75,8 +74,8 @@ func TestManagedDeferredErrorStillFiltersResponse(t *testing.T) {
 	if !resp.Deferred {
 		t.Error("error response lost deferred marker")
 	}
-	if resp.SavedID == "" || resp.Version == 0 || resp.Dirty != nil || !strings.Contains(resp.Error, "external service failed") {
-		t.Fatalf("deferred error lost durable save identity or published dirty state: %+v", resp)
+	if resp.SavedID != "" || resp.Version != 0 || resp.Dirty != nil || !strings.Contains(resp.Error, "external service failed") {
+		t.Fatalf("deferred error returned durable save identity or dirty state: %+v", resp)
 	}
 	if len(resp.FormTables) != 0 || resp.ElementStates != nil || len(resp.TableParts) != 0 {
 		t.Errorf("error response can repaint stale tables/states: %+v", resp)

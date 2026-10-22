@@ -677,7 +677,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 				isTableTarget := eventTarget.parentTablePart != nil ||
 					eventTarget.element != nil && eventTarget.element.Kind == metadata.FormElementTablePart
 				if isTableTarget {
-					if err := validateManagedFormTableEventTarget(tableAuthorities, eventTarget); err != nil {
+					if err := validateManagedFormEventTarget(tableAuthorities, eventTarget, eventName); err != nil {
 						respondJSON(enc, formEventResponse{Error: err.Error()})
 						return
 					}
@@ -717,7 +717,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
-	if err := validateManagedFormTableEventTarget(tableAuthorities, eventTarget); err != nil {
+	if err := validateManagedFormEventTarget(tableAuthorities, eventTarget, eventName); err != nil {
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
 	}
@@ -1143,7 +1143,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// txState — «живой» контекст: обработчик может позвать модуль, который
 	// откроет транзакцию, и ссылки объекта обязаны выполнять ПолучитьОбъект()
 	// внутри неё, а не ждать второго соединения (пул SQLite — одно).
-	if eventName == string(metadata.FormEventOnSearch) {
+	if eventName == string(metadata.FormEventOnSearch) || deferredFormEvent(eventName) {
 		dslCtx = storage.ReadOnlyContext(dslCtx)
 	}
 	vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
@@ -1301,13 +1301,13 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := addEntityTPEventContext(r, entity, form, tableAuthorities, eventTarget, obj, vars); err != nil {
+	if err := addEntityTPEventContext(r, entity, form, tableAuthorities, eventTarget, obj, vars, eventName); err != nil {
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
 	}
 
 	var deferredBaseline *formEventState
-	if deferredFormEvent(r) {
+	if deferredFormEvent(eventName) {
 		baseline := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, nil)
 		deferredBaseline = &baseline
 	}
@@ -2578,7 +2578,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			return
 		}
 	}
-	if err := validateManagedFormTableEventTarget(requestControls.tableAuthorities, eventTarget); err != nil {
+	if err := validateManagedFormEventTarget(requestControls.tableAuthorities, eventTarget, eventName); err != nil {
 		opStatus = "error"
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
@@ -2645,7 +2645,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			closeInv.baselineFormTables = baseline.FormTables
 		}
 		var deferredBaseline *formEventState
-		if deferredFormEvent(r) {
+		if deferredFormEvent(eventName) {
 			baseline := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, nil, nil)
 			deferredBaseline = &baseline
 		}
@@ -2657,7 +2657,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		// request ends even when operation timeouts are disabled.
 		dslCtx, cancelDSL := context.WithCancel(opCtx)
 		defer cancelDSL()
-		if eventName == string(metadata.FormEventOnSearch) {
+		if eventName == string(metadata.FormEventOnSearch) || deferredFormEvent(eventName) {
 			dslCtx = storage.ReadOnlyContext(dslCtx)
 		}
 		vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
@@ -2755,7 +2755,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			respondJSON(enc, formEventResponse{Error: err.Error()})
 			return
 		}
-		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars); err != nil {
+		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars, eventName); err != nil {
 			opStatus = "error"
 			respondJSON(enc, formEventResponse{Error: err.Error()})
 			return
