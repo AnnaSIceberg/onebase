@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
+	"github.com/ivantit66/onebase/internal/metadata"
 )
 
 // ПоказатьВопрос (#1528, план 158 срез A): двухфазный диалог «предупреждение
@@ -204,3 +205,30 @@ func questionFieldRows(v any) int {
 }
 
 const questionFieldMaxRows = 20
+
+// entityQuestionFieldsName keeps dialog transport separate from legal entity
+// fields and form attributes. The GET config and POST handler use the same name;
+// neither the original name nor its fallback prefix is reserved for the engine.
+func entityQuestionFieldsName(entity *metadata.Entity, form *metadata.FormModule) string {
+	declared := make(map[string]bool)
+	if entity != nil {
+		for _, field := range entity.Fields {
+			declared[strings.ToLower(field.Name)] = true
+		}
+	}
+	if form != nil {
+		for _, attr := range form.Attributes {
+			if attr != nil {
+				declared[strings.ToLower(attr.Name)] = true
+			}
+		}
+	}
+	name := "_question_fields"
+	if declared[name] {
+		name = "_ob_service_question_fields"
+		for declared[strings.ToLower(name)] {
+			name += "_"
+		}
+	}
+	return name
+}

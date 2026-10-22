@@ -1344,7 +1344,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		vars["QuestionAnswer"] = ""
 	}
 	// Значения редактируемых полей диалога — структура ДиалогПоля.
-	if qf := parseQuestionFields(r.FormValue("_question_fields")); qf != nil {
+	if qf := parseQuestionFields(r.FormValue(entityQuestionFieldsName(entity, form))); qf != nil {
 		vars["ДиалогПоля"] = qf
 		vars["DialogFields"] = qf
 	}

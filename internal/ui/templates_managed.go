@@ -1033,6 +1033,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   "docId" .ID
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "beforePost" (and .Entity.Posting (hasFormHandler .Form "ПередПроведением"))
+  "serviceFields" (dict "_question_fields" (entityQuestionFieldsName .Entity .Form))
   "formAttrs" (formAttrNames .Form .Entity)
   "formAttrValues" (formAttrValues .Form .Entity .Values)
 )}}</script>
