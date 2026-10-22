@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/storage"
@@ -36,11 +37,13 @@ func TestAdminUsersTableStaysInsideCard(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &Server{store: db, reg: runtime.NewRegistry(), authRepo: authRepo, messages: NewMessageStore()}
+	router := chi.NewRouter()
+	s.Mount(router)
 
 	req := httptest.NewRequest("GET", "/ui/admin/users", nil)
 	req = req.WithContext(auth.ContextWithUser(req.Context(), admin))
 	rec := httptest.NewRecorder()
-	s.adminUsers(rec, req)
+	router.ServeHTTP(rec, req)
 	if rec.Code != 200 {
 		t.Fatalf("код %d", rec.Code)
 	}
