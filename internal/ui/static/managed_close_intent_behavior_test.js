@@ -1404,3 +1404,30 @@ test('standalone bottom link and Escape use the close controller before navigati
   assert.deepEqual(reasons, ['close', 'escape']);
   assert.deepEqual(app.assigned, ['/ui/catalog/Тест']);
 });
+
+test('deferred completion preserves native submit fence for an unfinished normal event', async () => {
+  let finishDeferred;
+  let finishNormal;
+  const calls = [];
+  const app = runtime((url, options) => {
+    calls.push(new URLSearchParams(options.body.toString()));
+    if (options.body.get('_deferred') === '1') {
+      return new Promise(resolve => { finishDeferred = resolve; });
+    }
+    return new Promise(resolve => { finishNormal = resolve; });
+  }, {docId: 'existing-record'});
+  const deferred = app.context.obFire('ГруппаИстория', 'ПослеОткрытия', {_deferred: '1'});
+  await new Promise(resolve => setImmediate(resolve));
+  const normal = app.context.obFire('SaveCommand', 'Нажатие');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 2);
+  const before = dispatchSubmit(app).defaultPrevented;
+  finishDeferred(response({ok: true, deferred: true}));
+  await deferred;
+  const after = dispatchSubmit(app).defaultPrevented;
+  finishNormal(response({ok: true}));
+  await normal;
+  assert.equal(dispatchSubmit(app).defaultPrevented, false, 'ordinary event completion releases submit fence');
+  assert.equal(before, true);
+  assert.equal(after, true, 'deferred finally removed another event native submit fence');
+});

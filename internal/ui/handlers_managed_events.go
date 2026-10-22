@@ -1306,6 +1306,11 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	var deferredBaseline *formEventState
+	if deferredFormEvent(r) {
+		baseline := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, nil)
+		deferredBaseline = &baseline
+	}
 	// Снимок полей до обработчика — по нему после Run отличаем «поле изменил сам
 	// обработчик» от «поле осталось прежним», см. refreshFieldsWrittenByHandler.
 	fieldsBefore := snapshotFieldValues(obj.Fields)
@@ -1459,6 +1464,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		resp.SavedID = savedFormID(thisObj)
 		resp.Version = versionWrittenByHandler(thisObj)
 		resp.Dirty = eventDirty
+		filterDeferredResponse(deferredBaseline, &resp)
 		compactFormCloseDelta(&resp, closeInv)
 		respondJSON(enc, resp)
 		return
@@ -1478,10 +1484,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	resp.SavedID = savedFormID(thisObj)
 	resp.Version = versionWrittenByHandler(thisObj)
 	resp.Dirty = eventDirty
-	if deferredFormEvent(r) {
-		filterDeferredResponse(r, &resp)
-		resp.Dirty = nil
-	}
+	filterDeferredResponse(deferredBaseline, &resp)
 	compactFormCloseDelta(&resp, closeInv)
 	respondJSON(enc, resp)
 }
@@ -2641,6 +2644,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			closeInv.baselineTableParts = baseline.TableParts
 			closeInv.baselineFormTables = baseline.FormTables
 		}
+		var deferredBaseline *formEventState
+		if deferredFormEvent(r) {
+			baseline := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, nil, nil)
+			deferredBaseline = &baseline
+		}
 		fieldsBefore := snapshotFieldValues(obj.Fields)
 		tablesBefore := tablePartRowsSnapshot(obj.TablePartRows)
 		mc := runtime.NewMovementsCollector("processor", uuid.Nil)
@@ -2779,6 +2787,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 				resp.Question = &q
 			}
 			resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
+			filterDeferredResponse(deferredBaseline, &resp)
 			compactFormCloseDelta(&resp, closeInv)
 			respondJSON(enc, resp)
 			return
@@ -2795,6 +2804,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		}
 		resp.ChoiceList = choiceItems
 		resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
+		filterDeferredResponse(deferredBaseline, &resp)
 		compactFormCloseDelta(&resp, closeInv)
 		respondJSON(enc, resp)
 		return

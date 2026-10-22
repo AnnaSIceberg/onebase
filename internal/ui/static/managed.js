@@ -1398,7 +1398,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	  queued = queued.finally(function(){ window.obPickerSearchFinished(pickerRequest); });
 	}
 	return queued.finally(function(){
-	  if (standaloneSearch) return;
+	  if (standaloneSearch || standaloneDeferred) return;
 	  formEventPendingCount = Math.max(0, formEventPendingCount - 1);
 	  formEventPending = formEventPendingCount > 0;
 	});

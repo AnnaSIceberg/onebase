@@ -1,10 +1,8 @@
 package ui
 
 import (
-	"fmt"
 	"net/http"
-	"sort"
-	"strconv"
+	"reflect"
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -28,98 +26,40 @@ func deferredFormEvent(r *http.Request) bool {
 	return r.FormValue("_deferred") == "1" && r.FormValue("_event") == formEventAfterOpen
 }
 
-// filterDeferredResponse оставляет в ответе отложенной загрузки только
-// изменённое обработчиком.
-func filterDeferredResponse(r *http.Request, resp *formEventResponse) {
+// filterDeferredResponse сравнивает два типизированных снимка. Сырое POST-тело
+// не подходит: браузер не отправляет false-флажки, а числа и даты присылает
+// строками. nil baseline означает обычное синхронное событие.
+func filterDeferredResponse(baseline *formEventState, resp *formEventResponse) {
+	if baseline == nil {
+		return
+	}
 	resp.Deferred = true
 	for k, v := range resp.Values {
-		posted, ok := postedValueCI(r, k)
-		if ok && posted == deferredValueString(v) {
+		if before, ok := baseline.Values[k]; ok && reflect.DeepEqual(before, v) {
 			delete(resp.Values, k)
 		}
 	}
 	for name, rows := range resp.FormTables {
-		if deferredRowsEqual(postedValueTableRows(r, name), rows) {
+		if deferredRowsEqual(baseline.FormTables[name], rows) {
 			delete(resp.FormTables, name)
 		}
 	}
 	resp.TableParts = nil
 	resp.ElementStates = nil
 	resp.ConditionalCSS = ""
+	resp.Dirty = nil
 }
 
-func postedValueCI(r *http.Request, key string) (string, bool) {
-	for k, v := range r.PostForm {
-		if strings.EqualFold(k, key) && len(v) > 0 {
-			return v[0], true
-		}
-	}
-	return "", false
-}
-
-func deferredValueString(v any) string {
-	switch x := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return x
-	case bool:
-		return strconv.FormatBool(x)
-	case map[string]any:
-		// Ссылка уходит в ответ структурой {id, label}; браузер присылает id.
-		if id, ok := x["id"]; ok {
-			return fmt.Sprint(id)
-		}
-	}
-	return fmt.Sprint(v)
-}
-
-// postedValueTableRows восстанавливает строки таблицы значений из присланных
-// полей vt.<имя>.<строка>.<колонка>.
-func postedValueTableRows(r *http.Request, name string) []map[string]string {
-	prefix := "vt." + strings.ToLower(name) + "."
-	byIndex := map[int]map[string]string{}
-	for k, v := range r.PostForm {
-		lk := strings.ToLower(k)
-		if !strings.HasPrefix(lk, prefix) || len(v) == 0 {
-			continue
-		}
-		rest := k[len(prefix):]
-		dot := strings.IndexByte(rest, '.')
-		if dot < 0 {
-			continue
-		}
-		idx, err := strconv.Atoi(rest[:dot])
-		if err != nil {
-			continue
-		}
-		if byIndex[idx] == nil {
-			byIndex[idx] = map[string]string{}
-		}
-		byIndex[idx][strings.ToLower(rest[dot+1:])] = v[0]
-	}
-	idx := make([]int, 0, len(byIndex))
-	for i := range byIndex {
-		idx = append(idx, i)
-	}
-	sort.Ints(idx)
-	out := make([]map[string]string, 0, len(idx))
-	for _, i := range idx {
-		out = append(out, byIndex[i])
-	}
-	return out
-}
-
-func deferredRowsEqual(posted []map[string]string, rows []map[string]any) bool {
-	if len(posted) != len(rows) {
+func deferredRowsEqual(before, rows []map[string]any) bool {
+	if len(before) != len(rows) {
 		return false
 	}
 	for i, row := range rows {
 		for k, v := range row {
 			if strings.HasPrefix(k, "_") {
-				continue // служебные ключи строки (оформление) браузер не шлёт
+				continue // служебное оформление не является изменением данных
 			}
-			if posted[i][strings.ToLower(k)] != deferredValueString(v) {
+			if !reflect.DeepEqual(before[i][k], v) {
 				return false
 			}
 		}
