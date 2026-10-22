@@ -36,6 +36,8 @@ type IRForm struct {
 	Density string
 	// GroupTitles — оформление заголовков групп формы OneBase (только YAML).
 	GroupTitles string
+	// HeaderInline — заголовок и строка команд одной строкой (только YAML).
+	HeaderInline bool
 	// UnknownTopLevel — XML-узлы верхнего уровня, не имеющие IR-семантики
 	// (ДКС, Conditional Appearance, расширения). Хранятся «как есть» для
 	// round-trip; сериализуются в oneC_meta.unknown_xml в YAML.

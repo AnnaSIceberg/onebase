@@ -192,6 +192,8 @@ type formYAMLDoc struct {
 		Autofocus       string `yaml:"autofocus"`
 		// GroupTitles — оформление заголовков групп и таблиц ("" | "bold").
 		GroupTitles string `yaml:"group_titles"`
+		// HeaderInline — заголовок и строка команд одной строкой.
+		HeaderInline bool `yaml:"header_inline"`
 	} `yaml:"form"`
 	Attributes            []*metadata.FormAttribute       `yaml:"attributes"`
 	Commands              []*metadata.FormCommand         `yaml:"commands"`
@@ -250,6 +252,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		TabSkipReadonly:        doc.Form.TabSkipReadonly,
 		Autofocus:              doc.Form.Autofocus,
 		GroupTitles:            doc.Form.GroupTitles,
+		HeaderInline:           doc.Form.HeaderInline,
 		Attributes:             doc.Attributes,
 		Commands:               doc.Commands,
 		AutoCommandBar:         doc.CommandBar,

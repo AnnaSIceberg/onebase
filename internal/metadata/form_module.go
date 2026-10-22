@@ -804,6 +804,10 @@ type FormModule struct {
 	// "" — обычное (полужирный серый), "bold" — жирный тёмный, как заголовки
 	// разделов в ТЗ форм колл-центра. Другие формы не меняются.
 	GroupTitles string `yaml:"group_titles,omitempty"`
+	// HeaderInline — заголовок формы и строка команд («История», печать,
+	// кнопки placement: header) одной строкой, как в карточке 1С: экономит
+	// строку высоты рабочей формы. По умолчанию — две строки, как было.
+	HeaderInline bool `yaml:"header_inline,omitempty"`
 	// OneCMeta — служебный блок, используемый только конвертером 1С,
 	// рантайм его игнорирует. Может содержать version, unknown_xml и т.п.
 	OneCMeta map[string]any `yaml:"oneC_meta,omitempty"`
