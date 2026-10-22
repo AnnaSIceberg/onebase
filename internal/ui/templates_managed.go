@@ -30,7 +30,13 @@ const tplManagedForm = `
 		{{$roUnlockable := and (not (adminOnlyLocked $ctx $el)) (or (not $ro) (ne $el.ReadOnlyWhen ""))}}
 {{$effectiveReq := effectiveFormElementRequired $ctx.Entity $el}}{{$req := nativeFormElementRequired $ctx.Entity $el}}
 {{/* Кнопка, скрытая hidden_when при отрисовке, рисуется с display:none, а не пропускается: иначе после события формы, снявшего условие, показать её нечем — «Утвердить» после «ОК» появлялась только при повторном открытии. Остальные виды пока пропускаются (поля — #1914). Защитой hidden_when не служит: событие кнопки сервер принимает и без неё в разметке. */}}
-{{if and (elHidden $ctx $el) (ne (str $el.Kind) "Кнопка")}}
+{{if and $.HeaderPass (ne (str $el.Kind) "Кнопка")}}
+  {{/* Поле в строке команд — только чтение, «Подпись: значение» одной строкой.
+       Сам контрол остаётся в теле формы (скрыт стилем строки команд): с ним
+       работают запись, события и hidden_when, а зеркало берёт у него значение
+       и видимость (obRefreshHeaderFields). */}}
+  {{if not (elHidden $ctx $el)}}<span class="ob-header-field" data-ob-header-field="{{$el.Name}}"><span class="ob-header-field-label">{{fieldTitleRU $el.TitleMap (dpField $el.DataPath)}}:</span> <span class="ob-header-field-value">{{index $ctx.Values (dpField $el.DataPath)}}</span></span>{{end}}
+{{else if and (elHidden $ctx $el) (ne (str $el.Kind) "Кнопка")}}
 {{else if eq (str $el.Kind) "ГруппаФормы"}}
   <fieldset class="form-group-box{{if eq $el.Orientation "horizontal"}} managed-group-horizontal{{end}}{{if $el.ScrollX}} managed-group-scrollx{{end}}{{if $el.UsesEqualColumns}} ob-equal-columns{{end}}{{if $el.Frameless}} ob-group-plain{{end}}"{{if hasHandler $el "ПослеОткрытия"}} data-ob-after-open="{{$el.Name}}"{{end}}{{if $el.FitWindow}} data-ob-fit-group="1"{{end}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{if $el.Frameless}}border:0;padding:0;margin:0;min-width:0;{{else}}border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{end}}{{elBackground $el}}{{elLayout $el}}">
     {{/* frame: false — только раскладка: без рамки, отступов и заголовка. */}}
@@ -264,7 +270,7 @@ const tplManagedForm = `
   </div>
 {{else if eq (str $el.Kind) "Кнопка"}}
   {{/* placement: header — кнопка рисуется в строке команд формы (form-header-commands), а не в теле. */}}
-  {{if and (eq $el.Placement "header") (not $.HeaderPass)}}{{else}}
+  {{if and (formHeaderPlaced $el) (not $.HeaderPass)}}{{else}}
   {{$clickAction := or (hasHandler $el "Нажатие") (and $ctx.IsProcessor (processorExecuteFallbackButton $ctx.Form $el))}}
   {{$hotKey := ""}}{{if and (not $ro) $clickAction}}{{$hotKey = normalizedFormHotkey $el.HotKey}}{{end}}
   {{$buttonLayout := elLayout $el}}
@@ -602,7 +608,8 @@ const tplManagedForm = `
 {{/* form-header-commands — кнопки формы с placement: header и «? Справка» в строке
      команд документа: сразу после «История» (у новой записи и обработки — в конце
      строки). Освобождает строку тела формы, где такие кнопки стояли отдельно. */}}
-{{define "form-header-commands"}}{{$page := .}}<span class="ob-header-commands">{{range formHeaderButtons .Form}}{{template "managed-element" (dict "El" . "Ctx" $page "HeaderPass" true)}}{{end}}</span>{{template "context-help" .}}{{end}}
+{{define "form-header-commands"}}{{$page := .}}<span class="ob-header-commands">{{range formHeaderElements .Form "header"}}{{template "managed-element" (dict "El" . "Ctx" $page "HeaderPass" true)}}{{end}}</span>{{template "context-help" .}}<span class="ob-header-commands">{{range formHeaderElements .Form "header_end"}}{{template "managed-element" (dict "El" . "Ctx" $page "HeaderPass" true)}}{{end}}</span>
+{{/* Поля, перенесённые в строку команд, в теле формы не видны. */}}<style>{{range formHeaderElements .Form "header"}}{{if ne (str .Kind) "Кнопка"}}#main-form [data-ob-el="{{.Name}}"]{display:none !important}{{end}}{{end}}{{range formHeaderElements .Form "header_end"}}{{if ne (str .Kind) "Кнопка"}}#main-form [data-ob-el="{{.Name}}"]{display:none !important}{{end}}{{end}}</style>{{end}}
 {{define "page-managed-form"}}
 {{template "head" .}}{{if not .IsPopup}}{{template "nav" .}}{{end}}
 {{if .TabTitle}}<meta name="ob-tab-title" content="{{.TabTitle}}">{{end}}
@@ -647,6 +654,8 @@ const tplManagedForm = `
 .ob-header-inline main>.ob-form-head~*:not(.ob-form-actions){margin-top:8px}
 .ob-density-compact .managed-control-row>button,.ob-density-compact .managed-control-row>a{height:28px;min-width:28px;padding:0 8px;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
 .ob-header-commands{display:contents}
+.ob-header-field{display:inline-flex;align-items:baseline;gap:4px;min-width:0;max-width:420px;font-size:13px;color:#64748b;white-space:nowrap}
+.ob-header-field-value{color:#1f2937;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ob-header-commands .managed-btn,.ob-header-commands .managed-btn-layout{margin:0}
 .ob-header-commands .managed-btn{padding:5px 12px;font-size:13px}
 /* deadline_warn: поле-срок подсвечивается по часам браузера (obDeadlineTick). */

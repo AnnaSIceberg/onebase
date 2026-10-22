@@ -534,6 +534,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
     if (typeof window.obRefreshChoiceFilters === 'function') {
       window.obRefreshChoiceFilters();
     }
+    if (typeof window.obRefreshHeaderFields === 'function') window.obRefreshHeaderFields();
   }
   // END onebase-ro-apply-values
   // BEGIN onebase-picture-bind
@@ -761,8 +762,39 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
     // Показанный или скрытый элемент меняет высоту страниц: equal_height
     // пересчитывается по новому содержимому.
     if (window.obEqualizeAllTabs) window.obEqualizeAllTabs();
+    if (typeof window.obRefreshHeaderFields === 'function') window.obRefreshHeaderFields();
   }
   window.applyElementStates = applyElementStates;
+  // obRefreshHeaderFields — поля с placement: header/header_end в строке
+  // команд: зеркало «Подпись: значение» контрола, который остаётся в теле
+  // формы (скрыт стилем строки команд). Значение и видимость берутся у него:
+  // так запись, события формы и hidden_when работают как у обычного поля.
+  // Длинное значение обрезается многоточием, полное — в подсказке.
+  function obRefreshHeaderFields() {
+    if (typeof document.querySelectorAll !== 'function') return;
+    var form = document.getElementById('main-form');
+    if (!form) return;
+    document.querySelectorAll('.ob-header-field').forEach(function (mirror) {
+      var name = mirror.getAttribute('data-ob-header-field');
+      var key = window.CSS && CSS.escape ? CSS.escape(name) : name;
+      var src = form.querySelector('[data-ob-el="' + key + '"]');
+      var valueEl = mirror.querySelector('.ob-header-field-value');
+      if (!src || !valueEl) { mirror.style.display = 'none'; return; }
+      mirror.style.display = src.style.display === 'none' ? 'none' : '';
+      var control = src.querySelector('select, textarea, input:not([type=hidden])');
+      var text = '';
+      if (control && control.type === 'checkbox') text = control.checked ? '✓' : '—';
+      else if (control && control.tagName === 'SELECT') {
+        var opt = control.options[control.selectedIndex];
+        text = opt && control.value ? opt.text : '';
+      } else if (control) text = control.value || '';
+      valueEl.textContent = text;
+      var label = mirror.querySelector('.ob-header-field-label');
+      mirror.title = (label ? label.textContent + ' ' : '') + text;
+    });
+  }
+  window.obRefreshHeaderFields = obRefreshHeaderFields;
+  if (typeof obManagedReady === 'function') obManagedReady(obRefreshHeaderFields);
   // END onebase-ro-apply-states
   // Перерисовка табчастей по ответу сервера. tbody у нас имеет
   // id=mtp-body-<TP> и атрибут data-tp-fields="name|type[:Ref],name|type,..."
