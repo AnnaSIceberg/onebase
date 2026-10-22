@@ -997,10 +997,8 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if closeInv != nil {
-		baseline := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, nil).response(false)
-		closeInv.baselineValues = baseline.Values
-		closeInv.baselineTableParts = baseline.TableParts
-		closeInv.baselineFormTables = baseline.FormTables
+		s.captureFormCloseBaseline(r.Context(), form, entity, obj, closeInv)
+		r = r.WithContext(withFormCloseBaseline(r.Context(), closeInv))
 	}
 	var msgs []string
 	if closeInv != nil && closeInv.mode != "discard" {
@@ -2083,6 +2081,62 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 	if obj == nil {
 		return formEventState{ConditionalCSS: conditionalCSS, Messages: msgs}
 	}
+	values, tableParts, revealed := s.serializeManagedFormEventValues(ctx, form, entity, obj)
+	// Ответ закрытия уходит браузеру дельтой к снимку до обработчика
+	// (compactFormCloseDelta): варианты выбора нужны только изменившимся
+	// полям и ТЧ, остальные он отбросит. Считать их заранее незачем — у
+	// заявки колл-центра это сотни мс на каждое закрытие.
+	refValues := values
+	if inv := formCloseBaselineFrom(ctx); inv != nil {
+		refValues = changedCloseValues(values, inv.baselineValues)
+		ctx = withTPRefOnly(ctx, changedCloseTables(tableParts, inv.baselineTableParts))
+	}
+	tpRefOptions, _ := s.loadInitialTPRefOptions(ctx, entity, tableParts, values)
+	if s.interp != nil {
+		if warnings := applyManagedFormConditionalRules(form, tableParts, values, rules, newInterpEvaluator(s.interp)); len(warnings) > 0 {
+			msgs = append(msgs, warnings...)
+		}
+	}
+	return formEventState{
+		Revealed:       revealed,
+		Values:         values,
+		TableParts:     tableParts,
+		FormTables:     formTablesFromRows(tableParts, form),
+		RefOptions:     s.eventRefOptions(ctx, form, entity, refValues),
+		TPRefOptions:   tpRefOptions,
+		ConditionalCSS: conditionalCSS,
+		Messages:       msgs,
+		// Условия readonly_when/hidden_when считаются здесь же, где известны
+		// значения ПОСЛЕ обработчика: команда, изменившая состояние объекта,
+		// сразу меняет доступность полей.
+		ElementStates: s.timedFormElementStates(ctx, form, entity, values),
+		ColumnTitles:  managedTPColumnTitles(form, entity, values, langFromCtx(ctx)),
+	}
+}
+
+// captureFormCloseBaseline запоминает значения и строки формы до обработчика
+// закрытия — то, к чему compactFormCloseDelta сводит ответ. Вариантов выбора
+// и состояний элементов снимок не считает: из него берутся только значения.
+// Условное оформление снимается так же, как в ответе (без правил оно только
+// очищает стили строк), иначе строки снимка и ответа разошлись бы на нём.
+func (s *Server) captureFormCloseBaseline(ctx context.Context, form *metadata.FormModule, entity *metadata.Entity, obj *runtime.Object, inv *formCloseInvocation) {
+	if obj == nil {
+		inv.baselineValues, inv.baselineTableParts, inv.baselineFormTables = nil, nil, nil
+		return
+	}
+	values, tableParts, _ := s.serializeManagedFormEventValues(ctx, form, entity, obj)
+	if s.interp != nil {
+		applyManagedFormConditionalRules(form, tableParts, values, nil, newInterpEvaluator(s.interp))
+	}
+	inv.baselineValues = values
+	inv.baselineTableParts = tableParts
+	inv.baselineFormTables = formTablesFromRows(tableParts, form)
+}
+
+// serializeManagedFormEventValues — значения шапки и строки ТЧ ответа события
+// в том виде, в каком их получает браузер: с маской, именами формы и
+// виртуальными колонками.
+func (s *Server) serializeManagedFormEventValues(ctx context.Context, form *metadata.FormModule, entity *metadata.Entity, obj *runtime.Object) (map[string]any, map[string][]map[string]any, []string) {
 	fields := serializeFieldsForEntity(obj.Fields, entity)
 	// Маска накладывается ЗДЕСЬ, на пути к клиенту, а не при чтении из БД
 	// (issue #609). Разделение принципиальное: те же значения нужны настоящими
@@ -2116,27 +2170,7 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 	// «пересчёт на лету»: выбрал в строке другую ссылку, обработчик строки
 	// отработал — колонка приехала обновлённой.
 	s.applyVirtualTPColumns(ctx, entity, form, tableParts)
-	tpRefOptions, _ := s.loadInitialTPRefOptions(ctx, entity, tableParts, values)
-	if s.interp != nil {
-		if warnings := applyManagedFormConditionalRules(form, tableParts, values, rules, newInterpEvaluator(s.interp)); len(warnings) > 0 {
-			msgs = append(msgs, warnings...)
-		}
-	}
-	return formEventState{
-		Revealed:       revealed,
-		Values:         values,
-		TableParts:     tableParts,
-		FormTables:     formTablesFromRows(tableParts, form),
-		RefOptions:     s.eventRefOptions(ctx, form, entity, values),
-		TPRefOptions:   tpRefOptions,
-		ConditionalCSS: conditionalCSS,
-		Messages:       msgs,
-		// Условия readonly_when/hidden_when считаются здесь же, где известны
-		// значения ПОСЛЕ обработчика: команда, изменившая состояние объекта,
-		// сразу меняет доступность полей.
-		ElementStates: s.timedFormElementStates(ctx, form, entity, values),
-		ColumnTitles:  managedTPColumnTitles(form, entity, values, langFromCtx(ctx)),
-	}
+	return values, tableParts, revealed
 }
 
 func (s *Server) timedFormElementStates(ctx context.Context, form *metadata.FormModule, entity *metadata.Entity, values map[string]any) *elementStates {
@@ -2769,10 +2803,8 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			return
 		}
 		if closeInv != nil {
-			baseline := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, nil, nil).response(false)
-			closeInv.baselineValues = baseline.Values
-			closeInv.baselineTableParts = baseline.TableParts
-			closeInv.baselineFormTables = baseline.FormTables
+			s.captureFormCloseBaseline(r.Context(), form, virtEntity, obj, closeInv)
+			r = r.WithContext(withFormCloseBaseline(r.Context(), closeInv))
 		}
 		fieldsBefore := snapshotFieldValues(obj.Fields)
 		tablesBefore := tablePartRowsSnapshot(obj.TablePartRows)

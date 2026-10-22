@@ -404,6 +404,9 @@ func (s *Server) loadInitialTPRefOptions(ctx context.Context, entity *metadata.E
 		if delta == nil && placed != nil && !placed[strings.ToLower(tp.Name)] {
 			continue
 		}
+		if skipTPRefOnly(ctx, tp.Name) {
+			continue
+		}
 		tpOpts := make(map[string][]map[string]any)
 		for _, f := range tp.Fields {
 			if f.RefEntity == "" {
