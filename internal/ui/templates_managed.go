@@ -110,6 +110,9 @@ const tplManagedForm = `
                может сначала встретиться у скрытой по hidden_when копии. */}}
           {{if $roUnlockable}}
           <button type="button" data-ob-ref-picker="closest" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">…</button>
+          {{if choiceDropdownCollapsed $el}}{{/* Без выпадающего списка очистить поле больше нечем: пункт «— выбрать —» был в самом списке. */}}
+          <button type="button" data-ob-ref-clear="closest" title="Очистить (Shift+F4)" style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">✕</button>
+          {{end}}
           {{end}}
           {{if and (or (not $ro) (index $ctx.Values $fn)) (not (hideRefCard $ctx $el)) (refHasCard $f.RefEntity)}}
           <button type="button" data-ob-ref-current="closest" data-ob-readonly-navigation="1" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px" title="Открыть карточку">🔍</button>
@@ -202,6 +205,9 @@ const tplManagedForm = `
             {{end}}
           </select>
           <button type="button" data-ob-ref-picker="closest"{{if $ro}} disabled{{end}} style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">…</button>
+          {{if choiceDropdownCollapsed $el}}{{/* Без выпадающего списка очистить поле больше нечем: пункт «— выбрать —» был в самом списке. */}}
+          <button type="button" data-ob-ref-clear="closest"{{if $ro}} disabled{{end}} title="Очистить (Shift+F4)" style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px">✕</button>
+          {{end}}
           {{if and (or (not $ro) (index $ctx.Values $fn)) (not (hideRefCard $ctx $el)) (refHasCard (attrRefEntity $attr.TypeRef))}}
           <button type="button" data-ob-ref-current="closest" data-ob-readonly-navigation="1" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px" title="Открыть карточку">🔍</button>
           {{end}}
