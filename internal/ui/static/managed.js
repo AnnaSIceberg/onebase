@@ -1137,6 +1137,20 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
     tbody.appendChild(tr);
   }
 
+  // Manual add/delete paths share the same empty state and count as refresh.
+  function obVtRowsChanged(tbody) {
+    if (!tbody || !tbody.hasAttribute('data-vt-fields')) return;
+    tbody.querySelectorAll('.ob-vt-empty').forEach(function(row){ row.remove(); });
+    var count = tbody.rows.length;
+    var vtName = (tbody.getAttribute('id') || '').slice('vt-body-'.length);
+    obVtEmptyRow(tbody, count);
+    document.querySelectorAll('[data-ob-vt-count]').forEach(function(span){
+      if (span.getAttribute('data-ob-vt-count') === vtName) span.textContent = '(' + count + ')';
+    });
+    obFitVtRows(tbody);
+  }
+  window.obVtRowsChanged = obVtRowsChanged;
+
   // obFitVtRows — высота блока таблицы ровно в rows строк (ключ rows): шапка
   // плюс rows высот настоящей строки. В пустой таблице измеряем такую же
   // строку с тем же планом колонок, затем сразу убираем её из DOM.
@@ -2604,10 +2618,7 @@ function addVtRow(vtName, fields, tbodyOverride) {
   var idx = tbody.rows.length;
   var tr = window.obCreateVtRow(tbody, vtName, {}, idx);
   tbody.appendChild(tr);
-  document.querySelectorAll('[data-ob-vt-count]').forEach(function(span){
-    if (span.getAttribute('data-ob-vt-count') === vtName) span.textContent = '(' + tbody.rows.length + ')';
-  });
-  if (window.obFitVtRows) window.obFitVtRows(tbody);
+  window.obVtRowsChanged(tbody);
 }
 
 function obManagedClosestSelect(btn) {
@@ -2689,11 +2700,13 @@ function obManagedVtRowActivated(tr) {
   var elName = tbody.getAttribute && tbody.getAttribute('data-ob-vt-activate');
   var vtName = tbody.getAttribute && tbody.getAttribute('data-ob-vt-name');
   if (!elName || !vtName) return;
-  var row = tr.getAttribute('data-ob-vt-row');
-  if (row === null || row === '') return;
+  if (!tr.hasAttribute('data-ob-vt-row')) return;
+  // Deletion leaves the rendered marker stale; the payload follows live order.
+  var row = Array.prototype.indexOf.call(tbody.rows, tr);
+  if (row < 0) return;
   if (obManagedVtActiveRow.get(tbody) === tr) return;
   obManagedVtActiveRow.set(tbody, tr);
-  if (window.obFire) window.obFire(elName, 'ПриАктивизацииСтроки', {_tp: vtName, _tp_row: row});
+  if (window.obFire) window.obFire(elName, 'ПриАктивизацииСтроки', {_tp: vtName, _tp_row: String(row)});
 }
 
 function obManagedAddVtRow(btn) {
@@ -2712,6 +2725,7 @@ function obManagedRemoveRow(btn) {
   var body = tr.parentElement;
   var index = tr.sectionRowIndex;
   tr.remove();
+  if (window.obVtRowsChanged) window.obVtRowsChanged(body);
   if (window.obSetManagedFormDirty) window.obSetManagedFormDirty(true);
   if (table && body && window.obDOMFinishMutation) {
     var next = body.rows.length ? body.rows[Math.min(Math.max(index, 0), body.rows.length - 1)] : null;
