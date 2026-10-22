@@ -4618,8 +4618,30 @@ function obEqualizeAllTabs() {
   document.querySelectorAll('[data-ob-equal-height="1"]').forEach(obEqualizeTabs);
   document.querySelectorAll('[data-ob-fit-window="1"]').forEach(obFitTabsToWindow);
   groups.forEach(obFitGroupToWindow);
+  if (window.obTrimFitOverflow) window.obTrimFitOverflow(groups);
 }
 window.obEqualizeAllTabs = obEqualizeAllTabs;
+// obTrimFitOverflow — сверка подгонки с тем, что видит браузер. Подгонка
+// считает высоту по нижним краям блоков main и не видит того, что не
+// попадает в их прямоугольники (отступы flex-строк, псевдоэлементы, вложенные
+// выступы), — форма оказывалась выше окна на несколько пикселей и получала
+// полосу прокрутки. Если main всё-таки прокручивается, подогнанные страницы и
+// группы ужимаются ровно на перебор (не ниже тех же 120px).
+function obTrimFitOverflow(groups) {
+  var fitted = document.querySelectorAll('[data-ob-fit-window="1"]');
+  var first = fitted[0] || (groups && groups[0]);
+  var scroller = first && first.closest ? first.closest('main') : null;
+  if (!scroller) return;
+  var over = scroller.scrollHeight - scroller.clientHeight;
+  if (!(over > 0)) return;
+  var shrink = function (el) {
+    var h = parseFloat(el.style.height);
+    if (h > 0) el.style.height = Math.max(120, Math.floor(h - over)) + 'px';
+  };
+  fitted.forEach(function (tabs) { obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(shrink); });
+  if (groups) groups.forEach(shrink);
+}
+window.obTrimFitOverflow = obTrimFitOverflow;
 
 obManagedReady(function () {
   // Native constraint validation fires `invalid` before it tries to focus the
@@ -4675,6 +4697,24 @@ obManagedReady(function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(obEqualizeAllTabs, 150);
   });
+  // Подгонка под окно считается по вёрстке на момент вызова. Позже вёрстка
+  // меняется без resize окна: догружаются шрифты и отложенные группы
+  // (ПослеОткрытия), событие формы показывает вторую строку шапки — и форма
+  // становилась выше окна на эти пиксели. Блоки main наблюдаются: изменился
+  // размер — подгонка пересчитывается следующей задачей. Пересчёт, давший тот
+  // же размер, нового уведомления не порождает, поэтому цикла нет.
+  var fitAnchor = document.querySelector('[data-ob-fit-window="1"],[data-ob-fit-group="1"]');
+  var fitMain = fitAnchor && fitAnchor.closest ? fitAnchor.closest('main') : null;
+  if (fitMain && window.ResizeObserver) {
+    var fitQueued = false;
+    var refit = function () { fitQueued = false; obEqualizeAllTabs(); };
+    var fitObserver = new window.ResizeObserver(function () {
+      if (fitQueued) return;
+      fitQueued = true;
+      setTimeout(refit, 0);
+    });
+    for (var fi = 0; fi < fitMain.children.length; fi++) fitObserver.observe(fitMain.children[fi]);
+  }
   var groups = document.querySelectorAll('.managed-tabs');
   for (var i = 0; i < groups.length; i++) {
     var tabs = groups[i];
