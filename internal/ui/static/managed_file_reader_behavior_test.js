@@ -875,3 +875,67 @@ test('ValueTable repaint preserves server column order, types and hidden values'
   assert.equal(cells[2].style.display, 'none');
   assert.equal(cells[2].children[0].name, 'vt.Results.0.ID');
 });
+
+test('ValueTable activation survives a real obFire echo but resets on changed data', async () => {
+  resetDOM();
+  const tbody = installTableBody('vt-body-Results', {
+    'data-vt-fields': 'Name|string,ID|string', 'data-vt-flags': 'Name:r,ID:rh',
+    'data-vt-editable': '0', 'data-ob-vt-activate': 'Results', 'data-ob-vt-name': 'Results'
+  });
+  const rows = [{Name: 'row', ID: 'one'}];
+  const originalFetch = global.fetch;
+  const originalFire = window.obFire;
+  let fired;
+  let requests = 0;
+  global.fetch = async () => {
+    requests++;
+    return {ok: true, json: async () => ({ok: true, formTables: {Results: rows}})};
+  };
+  window.obFire = (...args) => (fired = originalFire(...args));
+  const click = () => {
+    const row = tbody.children[0];
+    for (const listener of documentListeners.get('click') || []) {
+      listener({target: {closest(selector) {return selector === 'tr[data-ob-vt-row]' ? row : null;}}});
+    }
+  };
+  try {
+    window.applyFormTables({Results: rows});
+    click();
+    await fired;
+    click();
+    await fired;
+    assert.equal(requests, 1, 'unchanged server echo reactivated the same row');
+    rows[0].ID = 'two';
+    window.applyFormTables({Results: rows});
+    click();
+    await fired;
+    assert.equal(requests, 2, 'a hidden identifier change must clear the selection');
+  } finally {
+    global.fetch = originalFetch;
+    window.obFire = originalFire;
+  }
+});
+
+test('ValueTable delegated add preserves column flags, bool carriers and activation', () => {
+  resetDOM();
+  const tbody = installTableBody('vt-body-Results', {
+    'data-vt-fields': 'Name|string,Locked|number,Flag|bool,ID|string',
+    'data-vt-flags': 'Locked:r,Flag:rh,ID:rh', 'data-vt-editable': '1',
+    'data-ob-vt-activate': 'Results', 'data-ob-vt-name': 'Results'
+  });
+  const button = domNode('button');
+  button.setAttribute('data-ob-add-vt', 'Results');
+  button.closest = selector => selector.includes('[data-ob-add-vt]') ? button : null;
+  for (const listener of documentListeners.get('click') || []) listener({target: button, preventDefault() {}});
+  const row = tbody.children[0];
+  assert.ok(row, 'delegated add failed');
+  assert.equal(row.getAttribute('data-ob-vt-row'), '0');
+  assert.equal(row.children[1].children[0].readOnly, true);
+  assert.equal(row.children[2].style.display, 'none');
+  assert.equal(row.children[3].style.display, 'none');
+  const [checkbox, carrier] = row.children[2].children;
+  assert.equal(checkbox.disabled, true);
+  assert.equal(carrier.type, 'hidden');
+  assert.equal(carrier.value, 'false');
+  assert.equal(carrier.name, 'vt.Results.0.Flag');
+});

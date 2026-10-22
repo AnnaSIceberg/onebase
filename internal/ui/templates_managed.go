@@ -477,11 +477,12 @@ const tplManagedForm = `
         <td{{with formCellClass $row $c.Name}} class="{{.}}"{{end}}{{if $col.Hidden}} style="display:none"{{end}}>
           {{$v := index $row $c.Name}}
           {{if eq (lower $c.TypeRef) "number"}}
-            <input type="number" step="any" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}" data-vt-num="{{$c.Name}}"{{if $cellRO}} readonly{{end}}>
+            <input type="number" step="any" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}" data-vt-num="{{$c.Name}}"{{if $tpReadOnly}} disabled{{else if $col.ReadOnly}} readonly{{end}}>
           {{else if eq (lower $c.TypeRef) "bool"}}
             <input type="checkbox" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="true" {{if eq (str $v) "true"}}checked{{end}}{{if $cellRO}} disabled{{end}}>
+            {{if and $col.ReadOnly (not $tpReadOnly)}}<input type="hidden" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{if eq (str $v) "true"}}true{{else}}false{{end}}">{{end}}
           {{else}}
-            <input type="text" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}"{{if $cellRO}} readonly{{end}}>
+            <input type="text" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}"{{if $tpReadOnly}} disabled{{else if $col.ReadOnly}} readonly{{end}}>
           {{end}}
         </td>
         {{end}}
