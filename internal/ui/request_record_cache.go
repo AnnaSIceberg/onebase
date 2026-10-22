@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -50,9 +51,17 @@ func (s *Server) recordForRequest(ctx context.Context, entity *metadata.Entity, 
 	hit, ok := c.rows[key]
 	c.mu.Unlock()
 	if ok && hit.at == at {
+		serverTimingCount(ctx, "recordHit")
 		return copyRecord(hit.row), nil
 	}
+	if ok {
+		// Запрос успел записать между чтениями — кэш обесценен.
+		serverTimingCount(ctx, "recordStale")
+		serverTimingNote(ctx, "recordStaleWrites", strings.Join(c.writes.Sample(), " | "))
+	}
+	endRead := serverTimingSpan(ctx, "recordRead")
 	row, err := s.store.GetByID(ctx, entity.Name, id, entity)
+	endRead()
 	if err != nil || row == nil {
 		return row, err
 	}
