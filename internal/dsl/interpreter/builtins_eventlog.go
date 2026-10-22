@@ -1,9 +1,11 @@
 package interpreter
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -36,17 +38,11 @@ func universalMillisFn(args []any, _ string, _ int) (any, error) {
 func writeLogEventFn(args []any, file string, line int) (any, error) {
 	event := eventLogText(strArg(args, 0))
 	comment := eventLogText(strArg(args, 4))
-	attrs := []any{"component", "dsl", "event", event, "comment", comment, "source", file, "line", line}
-	switch eventLogLevel(strArg(args, 1)) {
-	case slog.LevelWarn:
-		slog.Warn("dsl event log", attrs...)
-	case slog.LevelError:
-		slog.Error("dsl event log", attrs...)
-	case slog.LevelDebug:
-		slog.Debug("dsl event log", attrs...)
-	default:
-		slog.Info("dsl event log", attrs...)
-	}
+	// Значения — структурные атрибуты: обработчик журнала их экранирует, а
+	// управляющие символы eventLogText уже заменил, поэтому подделать строку
+	// журнала из модуля нельзя.
+	slog.Log(context.Background(), eventLogLevel(strArg(args, 1)), "dsl event log", //nolint:gosec // G706: событие и комментарий очищены eventLogText и пишутся атрибутами, не в текст сообщения
+		"component", "dsl", "event", event, "comment", comment, "source", file, "line", line)
 	return nil, nil
 }
 
@@ -62,7 +58,16 @@ func eventLogLevel(level string) slog.Level {
 	return slog.LevelInfo
 }
 
+// eventLogText обрезает событие и комментарий до eventLogCommentLimit символов
+// и заменяет управляющие символы (перевод строки, возврат каретки, табуляцию)
+// пробелом: запись из модуля — одна строка журнала.
 func eventLogText(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
 	if utf8.RuneCountInString(s) <= eventLogCommentLimit {
 		return s
 	}

@@ -75,3 +75,17 @@ func TestEventLogTruncatesLongComment(t *testing.T) {
 	assert.Equal(t, 4001, len([]rune(comment)), "4000 символов и многоточие")
 	assert.True(t, strings.HasSuffix(comment, "…"))
 }
+
+// Перевод строки в комментарии из модуля не даёт второй строки журнала.
+func TestEventLogStripsControlChars(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	runHTTPSrc(t, `Процедура Тест()
+  ЗаписьЖурналаРегистрации("Замер", , , , "шаг" + Символы.ПС + "level=ERROR msg=поддельная");
+КонецПроцедуры`, nil)
+	out := strings.TrimRight(buf.String(), "\n")
+	assert.NotContains(t, out, "\n", "комментарий с переводом строки разбил запись журнала")
+	assert.Contains(t, out, "шаг level=ERROR")
+}
