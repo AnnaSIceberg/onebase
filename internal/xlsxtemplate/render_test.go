@@ -368,3 +368,62 @@ func TestRenderBytesBoundsNumericPrecision(t *testing.T) {
 		})
 	}
 }
+
+// Одинаковый тег округляется одинаково с текстом вокруг него и без текста.
+// Полноячеечный тег при этом остаётся числом для формул Excel.
+func TestRenderBytesNumericRoundingMatchesMixedText(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		value  any
+		format string
+		want   string
+	}{
+		{"decimal number", decimal.RequireFromString("2.675"), "number:2", "2.67"},
+		{"decimal currency", decimal.RequireFromString("2.675"), "currency", "2.67"},
+		{"negative number", decimal.RequireFromString("-2.675"), "number:2", "-2.67"},
+		{"negative currency", decimal.RequireFromString("-2.675"), "currency", "-2.67"},
+		{"float number", 2.675, "number:2", "2.67"},
+		{"half even", 2.625, "number:2", "2.62"},
+		{"half away positive", 2.5, "number:0", "3"},
+		{"half away negative", -2.5, "number:0", "-3"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := excelize.NewFile()
+			must := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			for axis, expr := range map[string]string{
+				"A1": "Amount", "A2": "Итог.Items.Amount", "A3": "Items.Amount",
+			} {
+				tag := "{{" + expr + " | " + tc.format + "}}"
+				must(f.SetCellStr("Sheet1", axis, tag))
+				must(f.SetCellStr("Sheet1", "B"+axis[1:], "Total: "+tag))
+			}
+			must(f.SetCellFormula("Sheet1", "C1", "SUM(A1:A1)"))
+			var input bytes.Buffer
+			must(f.Write(&input))
+			must(f.Close())
+			result, err := RenderBytes(input.Bytes(), &printform.RenderContext{
+				Document:   map[string]any{"Amount": tc.value},
+				TableParts: map[string][]map[string]any{"Items": {{"Amount": tc.value}}},
+			})
+			must(err)
+			out, err := excelize.OpenReader(bytes.NewReader(result))
+			must(err)
+			defer func() { must(out.Close()) }()
+			for _, row := range []string{"1", "2", "3"} {
+				assertNumberCell(t, out, "Sheet1", "A"+row, tc.want)
+				assertTextCell(t, out, "Sheet1", "B"+row, "Total: "+tc.want)
+				assertCell(t, out, "Sheet1", "A"+row, tc.want)
+			}
+			got, err := out.CalcCellValue("Sheet1", "C1")
+			must(err)
+			if got != tc.want {
+				t.Errorf("SUM of numeric tag = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

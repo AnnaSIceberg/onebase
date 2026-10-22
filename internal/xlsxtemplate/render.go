@@ -192,11 +192,17 @@ func setNumberCell(f *excelize.File, sheet, axis string, value any, format strin
 		return true, f.SetCellFloat(sheet, axis, number, -1, 64)
 	}
 	// Как и DecimalPlaces в excelize, ограничиваем точность до 30 знаков.
-	// Проверяем до int32 и strings.Repeat: тег может прийти из чужого шаблона.
+	// Проверяем до форматирования и strings.Repeat: тег может прийти из чужого шаблона.
 	if decimals > 30 {
 		decimals = 30
 	}
-	number = decimal.NewFromFloat(number).Round(int32(decimals)).InexactFloat64()
+	// Используем то же округление, что и теги внутри текста. Иначе одна
+	// сумма может отличаться на копейку в зависимости от окружения тега.
+	rounded := printform.ApplyFormat(value, "number:"+strconv.Itoa(decimals))
+	number, err := strconv.ParseFloat(rounded, 64)
+	if err != nil {
+		return true, fmt.Errorf("parse formatted number for %s: %w", axis, err)
+	}
 	if err := f.SetCellFloat(sheet, axis, number, -1, 64); err != nil {
 		return true, err
 	}
