@@ -339,6 +339,8 @@ func (s *Server) installFormCloseAccessRecheck(
 func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Request, closeInv *formCloseInvocation) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)
+	// prepare — разбор запроса, сборка объекта и чтение базы до обработчика.
+	endPrepare := serverTimingSpan(r.Context(), "prepare")
 
 	// Сущность резолвим ДО разбора тела: от неё зависит предел (#629). Пределы не
 	// композируются — прежняя пара «1 МиБ, затем limitMultipartRequest на 52 МиБ»
@@ -1373,6 +1375,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// клиент покажет красный баннер и не закроет форму.
 	var runErr error
 	timeout := interpreter.ClampWallClock(opCtx, s.operationTimeout(opFormEvent))
+	endPrepare()
 	endDSL := serverTimingSpan(r.Context(), "dsl")
 	if closeInv != nil {
 		var entryResult interpreter.EntryCallResult
@@ -1419,12 +1422,14 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// случайный uuid, поэтому obj.ID != uuid.Nil истинно ВСЕГДА и каждое событие
 	// на «Создать» уходило бы в базу за несуществующей строкой. Ровно эта ловушка
 	// описана выше у restoreUnsubmittedFields.
+	endRefresh := serverTimingSpan(r.Context(), "refresh")
 	if (existingRecord || savedFormID(thisObj) != "") && (closeInv == nil || !closeInv.saved) {
 		s.refreshFieldsWrittenByHandler(liveCtx, r, entity, form, obj, fieldsBefore)
 	}
 	if existingRecord && tpDBBefore != nil && !thisObj.saved {
 		s.refreshTablePartsWrittenByHandler(liveCtx, entity, obj, tpBefore, tpDBBefore)
 	}
+	endRefresh()
 	var closePersisted map[string]any
 	var closePersistedErr error
 	if closeInv != nil && obj.ID != uuid.Nil && (existingFormID != "" || closeInv.saved) {
@@ -1494,10 +1499,12 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// lifecycle calls. Programmatic values/TableParts/FormTables do not emit DOM
 	// input events; without this signal an unsaved command mutation on a clean
 	// form could be silently discarded by the next Close.
+	endDirty := serverTimingSpan(r.Context(), "dirty")
 	dirty := transientManagedStateDirty(obj, fieldsBefore, tpBefore)
 	if existingRecord || thisObj.saved || (closeInv != nil && closeInv.saved) {
 		dirty = s.managedCloseStateDirty(liveCtx, entity, form, obj, fieldsBefore, tpBefore)
 	}
+	endDirty()
 	if formOpenEvent(elementName, eventName) && !thisObj.saved {
 		dirty = false
 	}
@@ -1522,7 +1529,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	}
 
 	opStatus = "ok"
+	endSerialize := serverTimingSpan(r.Context(), "serialize")
 	resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, condRuntime.rules, msgs).response(true)
+	endSerialize()
 	resp.PickerData = picker
 	if question.Variants != nil {
 		q := question
@@ -1541,6 +1550,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		resp.Dirty = nil
 	}
 	compactFormCloseDelta(&resp, closeInv)
+	defer serverTimingSpan(r.Context(), "encode")()
 	respondJSON(enc, resp)
 }
 

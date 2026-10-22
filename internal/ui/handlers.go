@@ -317,6 +317,7 @@ func (s *Server) loadRefOptionsWithMode(ctx context.Context, entity *metadata.En
 }
 
 func (s *Server) loadInitialRefOptions(ctx context.Context, entity *metadata.Entity, values map[string]string) (map[string][]map[string]any, error) {
+	defer serverTimingSpan(ctx, "refOptions")()
 	opts := make(map[string][]map[string]any)
 	for _, f := range entity.Fields {
 		if f.RefEntity == "" {
