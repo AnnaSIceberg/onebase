@@ -244,7 +244,12 @@ type FormElement struct {
 	// BorderColor — цвет рамки ввода ПолеВвода (вместе с background выделяет
 	// поле, как в ТЗ форм колл-центра); цвет проверяет csssafe.Color.
 	BorderColor string `yaml:"border_color,omitempty"`
-	ReadOnly    bool   `yaml:"readonly,omitempty"` // только чтение
+	// HeaderBackground / HeaderBorderColor — фон и цвет границы шапки таблицы
+	// ТабличнаяЧасть: на цветном фоне формы шапка иначе сливается со строками.
+	// Цвета проверяет csssafe.Color.
+	HeaderBackground  string `yaml:"header_background,omitempty"`
+	HeaderBorderColor string `yaml:"header_border_color,omitempty"`
+	ReadOnly          bool   `yaml:"readonly,omitempty"` // только чтение
 	// EditableAdminOnly — поле редактирует только администратор, остальным оно
 	// нередактируемо всегда. В отличие от ReadOnlyWhen условие тут не от данных
 	// записи, а от того, кто смотрит, поэтому вычисляется на сервере при
