@@ -1376,6 +1376,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	var runErr error
 	timeout := interpreter.ClampWallClock(opCtx, s.operationTimeout(opFormEvent))
 	endPrepare()
+	// Счётчик записей до обработчика: строки ТЧ перечитываются после него,
+	// только если за это время в базу кто-то писал (см. storage.WriteSeq).
+	writesBefore := storage.WriteSeq()
 	endDSL := serverTimingSpan(r.Context(), "dsl")
 	if closeInv != nil {
 		var entryResult interpreter.EntryCallResult
@@ -1426,7 +1429,10 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	if (existingRecord || savedFormID(thisObj) != "") && (closeInv == nil || !closeInv.saved) {
 		s.refreshFieldsWrittenByHandler(liveCtx, r, entity, form, obj, fieldsBefore)
 	}
-	if existingRecord && tpDBBefore != nil && !thisObj.saved {
+	// Без единой записи в базу за время обработчика строки ТЧ в ней те же,
+	// что до него, — перечитывать их незачем (у заявки колл-центра это 17
+	// запросов на событие). Запись через общий модуль (#579) сдвигает счётчик.
+	if existingRecord && tpDBBefore != nil && !thisObj.saved && storage.WriteSeq() != writesBefore {
 		s.refreshTablePartsWrittenByHandler(liveCtx, entity, obj, tpBefore, tpDBBefore)
 	}
 	endRefresh()
@@ -1502,7 +1508,13 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	endDirty := serverTimingSpan(r.Context(), "dirty")
 	dirty := transientManagedStateDirty(obj, fieldsBefore, tpBefore)
 	if existingRecord || thisObj.saved || (closeInv != nil && closeInv.saved) {
-		dirty = s.managedCloseStateDirty(liveCtx, entity, form, obj, fieldsBefore, tpBefore)
+		// Без записей за время обработчика строки ТЧ в базе — те же, что в
+		// снимке до него: повторно их не читаем.
+		var storedTP map[string][]map[string]any
+		if storage.WriteSeq() == writesBefore {
+			storedTP = tpDBBefore
+		}
+		dirty = s.managedCloseStateDirtyWithRows(liveCtx, entity, form, obj, fieldsBefore, tpBefore, storedTP)
 	}
 	endDirty()
 	if formOpenEvent(elementName, eventName) && !thisObj.saved {
@@ -1768,6 +1780,21 @@ func (s *Server) managedCloseStateDirty(
 	fieldsBefore map[string]string,
 	tpBefore map[string][]map[string]any,
 ) bool {
+	return s.managedCloseStateDirtyWithRows(ctx, entity, form, obj, fieldsBefore, tpBefore, nil)
+}
+
+// managedCloseStateDirtyWithRows — то же, но строки ТЧ из базы можно передать
+// готовыми (storedTP): событие формы, за время обработчика которого в базу
+// никто не писал, берёт их из снимка до обработчика. nil — читать из базы.
+func (s *Server) managedCloseStateDirtyWithRows(
+	ctx context.Context,
+	entity *metadata.Entity,
+	form *metadata.FormModule,
+	obj *runtime.Object,
+	fieldsBefore map[string]string,
+	tpBefore map[string][]map[string]any,
+	storedTP map[string][]map[string]any,
+) bool {
 	if s == nil || s.store == nil || entity == nil || obj == nil || obj.ID == uuid.Nil {
 		return true
 	}
@@ -1808,7 +1835,11 @@ func (s *Server) managedCloseStateDirty(
 		}
 	}
 	for _, tablePart := range entity.TableParts {
-		stored, rowsErr := s.store.GetTablePartRows(ctx, entity.Name, tablePart.Name, obj.ID, tablePart)
+		stored, cached := storedTP[tablePart.Name]
+		var rowsErr error
+		if !cached {
+			stored, rowsErr = s.store.GetTablePartRows(ctx, entity.Name, tablePart.Name, obj.ID, tablePart)
+		}
 		if rowsErr != nil || !tpRowsEqualStored(obj.TablePartRows[tablePart.Name], stored, tablePart, dialect) {
 			return true
 		}
