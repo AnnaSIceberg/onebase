@@ -1594,6 +1594,33 @@ func (tr *translator) advance() tok {
 	return t
 }
 
+// inAggregateArgument checks the enclosing calls of the identifier just read.
+// Closed expressions are skipped; an aggregate outside this SELECT does not
+// aggregate its subquery's ORDER BY. Scalar calls and grouping parentheses
+// inside an aggregate keep that aggregate's context.
+func (tr *translator) inAggregateArgument() bool {
+	depth := 0
+	for i := tr.pos - 2; i >= 0; i-- {
+		switch tr.tokens[i].kind {
+		case tRParen:
+			depth++
+		case tLParen:
+			if depth > 0 {
+				depth--
+			} else if i > 0 && tr.tokens[i-1].kind == tIdent {
+				if _, ok := sqlAgg(tr.tokens[i-1].val); ok {
+					return true
+				}
+			}
+		case tIdent:
+			if kw, ok := sqlKW(tr.tokens[i].val); depth == 0 && ok && kw == "SELECT" {
+				return false
+			}
+		}
+	}
+	return false
+}
+
 func (tr *translator) emit(s string) {
 	tr.parts = append(tr.parts, s)
 }
@@ -5908,7 +5935,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 						case sectionGroupBy:
 							tr.emit(rd.displayCol())
 						case sectionOrderBy:
-							if tr.grouped {
+							if tr.grouped && !tr.inAggregateArgument() {
 								// В сгруппированной выборке представление ссылки — не
 								// колонка группировки: сортируем по нему агрегатом. Внутри
 								// группы ссылка одна, значит и представление одно — порядок

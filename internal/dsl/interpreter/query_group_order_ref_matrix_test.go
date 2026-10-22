@@ -117,3 +117,57 @@ func TestQueryGroupedOrderByRefSelectScope(t *testing.T) {
 		}
 	})
 }
+
+// Explicit aggregates keep their argument; only references outside an aggregate
+// need the implicit MIN used for grouped ORDER BY.
+func TestQueryGroupedOrderByRefExplicitAggregates(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		ents := refQueryEntities()
+		require.NoError(t, db.Migrate(ctx, ents))
+		bolt, anchor, nail := uuid.New(), uuid.New(), uuid.New()
+		require.NoError(t, db.Upsert(ctx, "Номенклатура", bolt, map[string]any{"Наименование": "Болт"}, ents[0]))
+		require.NoError(t, db.Upsert(ctx, "Номенклатура", anchor, map[string]any{"Наименование": "Анкер"}, ents[0]))
+		require.NoError(t, db.Upsert(ctx, "Номенклатура", nail, map[string]any{"Наименование": "Гвоздь"}, ents[0]))
+		// Group 1 spans both sides of group 2: MIN and MAX must give
+		// different orders, while COUNT must keep the two-row group last.
+		for i, nom := range []uuid.UUID{anchor, nail, bolt} {
+			require.NoError(t, db.Upsert(ctx, "РасходТовара", uuid.New(),
+				map[string]any{"Номер": []string{"1", "1", "2"}[i], "Номенклатура": nom.String()}, ents[1]))
+		}
+		for _, tc := range []struct{ order, want string }{
+			{"МИНИМУМ(Номенклатура)", "1;2;"},
+			{"МАКСИМУМ(Номенклатура)", "2;1;"},
+			{"КОЛИЧЕСТВО(Номенклатура)", "2;1;"},
+			{"МИН(Номенклатура)", "1;2;"},
+			{"МАКС(Номенклатура)", "2;1;"},
+			{"min(Номенклатура)", "1;2;"},
+			{"MAX(Номенклатура)", "2;1;"},
+			{"COUNT(РАЗЛИЧНЫЕ Номенклатура)", "2;1;"},
+			{"МИНИМУМ((Номенклатура))", "1;2;"},
+			{`МИНИМУМ(ЕСТЬNULL(Номенклатура, ""))`, "1;2;"},
+			{`ЕСТЬNULL(МИНИМУМ(Номенклатура), "")`, "1;2;"},
+			{`ЕСТЬNULL(МИНИМУМ(Номенклатура), Номенклатура)`, "1;2;"},
+			// A closed aggregate must not suppress the implicit MIN for the next key.
+			{`КОЛИЧЕСТВО(Номенклатура), ЕСТЬNULL(Номенклатура, "")`, "2;1;"},
+			{`КОЛИЧЕСТВО(Номенклатура), (Номенклатура)`, "2;1;"},
+			// The child SELECT still needs its own implicit MIN, even inside
+			// an outer aggregate; its closing parenthesis restores the parent.
+			{`МИНИМУМ((ВЫБРАТЬ МАКСИМУМ(Д.Номер) ИЗ Документ.РасходТовара КАК Д СГРУППИРОВАТЬ ПО Д.ПометкаУдаления УПОРЯДОЧИТЬ ПО Номенклатура)), Номенклатура`, "1;2;"},
+		} {
+			t.Run(tc.order, func(t *testing.T) {
+				text := "ВЫБРАТЬ Р.Номер КАК Номер, КОЛИЧЕСТВО(*) КАК Ч ИЗ Документ.РасходТовара КАК Р СГРУППИРОВАТЬ ПО Р.Номер УПОРЯДОЧИТЬ ПО " + tc.order + ", Р.Номер"
+				src := fmt.Sprintf(`Функция Тест()
+ З = Новый Запрос;
+ З.Текст = "%s";
+ Итог = "";
+ Для Каждого С Из З.Выполнить() Цикл
+  Итог = Итог + С.Номер + ";";
+ КонецЦикла;
+ Возврат Итог;
+КонецФункции`, strings.ReplaceAll(text, `"`, `""`))
+				assert.Equal(t, tc.want, runOnDBEntities(t, db, ents, src))
+			})
+		}
+	})
+}
