@@ -1808,9 +1808,14 @@ func (s *Server) managedCloseStateDirtyWithRows(
 		return true
 	}
 	dialect := s.store.Dialect().Name()
+	// Индексы вместо перебора на каждое поле (ci_index.go): obj.Get и
+	// maskCIKeyValue — O(ключей), а полей у заявки сотни. Карты в цикле не
+	// меняются.
+	persistedKeys := newCIIndex(persisted, equalFoldKey)
+	liveKeys := newCIIndex(obj.Fields, strings.ToLower)
 	for _, field := range entity.Fields {
-		stored, _ := maskCIKeyValue(persisted, field.Name)
-		if tpCellNormStored(field, obj.Get(field.Name), dialect) != tpCellNormStored(field, stored, dialect) {
+		_, stored, _ := ciGet(persisted, persistedKeys, field.Name)
+		if tpCellNormStored(field, objectGetIndexed(obj, liveKeys, field.Name), dialect) != tpCellNormStored(field, stored, dialect) {
 			return true
 		}
 	}
@@ -1932,6 +1937,12 @@ func snapshotStringMapsEqual(left, right map[string]string) bool {
 		return false
 	}
 	for name, value := range left {
+		// Тот же ключ с тем же значением — один из исходов перебора ниже, и
+		// самый частый: снимки строятся из одной карты. Перебор (O(ключей) на
+		// каждый ключ) остаётся для расхождений.
+		if other, ok := right[name]; ok && other == value {
+			continue
+		}
 		other, ok := snapshotValueCI(right, name)
 		if !ok || other != value {
 			return false
