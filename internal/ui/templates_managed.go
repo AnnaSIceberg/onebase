@@ -485,11 +485,12 @@ const tplManagedForm = `
         <td{{with formCellClass $row $c.Name}} class="{{.}}"{{end}}{{if $col.Hidden}} style="display:none"{{end}}>
           {{$v := index $row $c.Name}}
           {{if eq (lower $c.TypeRef) "number"}}
-            <input type="number" step="any" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}" data-vt-num="{{$c.Name}}"{{if $cellRO}} readonly{{end}}>
+            <input type="number" step="any" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}" data-vt-num="{{$c.Name}}"{{if $cellRO}} readonly{{end}}{{if $tpReadOnly}} disabled{{end}}>
           {{else if eq (lower $c.TypeRef) "bool"}}
             <input type="checkbox" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="true" {{if eq (str $v) "true"}}checked{{end}}{{if $cellRO}} disabled{{end}}>
+            {{if and $col.ReadOnly (not $tpReadOnly)}}<input type="hidden" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{if eq (str $v) "true"}}true{{else}}false{{end}}">{{end}}
           {{else}}
-            <input type="text" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}"{{if $cellRO}} readonly title="{{$v}}"{{end}}>
+            <input type="text" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}"{{if $cellRO}} readonly title="{{$v}}"{{end}}{{if $tpReadOnly}} disabled{{end}}>
           {{end}}
         </td>
         {{end}}
@@ -591,7 +592,7 @@ const tplManagedForm = `
 .managed-vt-scroll>.tp-table{overflow:visible;margin-bottom:0}
 .managed-vt-scroll>.tp-table thead th{position:sticky;top:0;z-index:1}
 .managed-vt-rows{overflow-y:auto;margin-bottom:12px;border:1px solid #e2e8f0;border-radius:6px}
-.managed-vt-rows>.tp-table{margin-bottom:0}
+.managed-vt-rows>.tp-table{overflow:visible;margin-bottom:0}
 .managed-vt-rows>.tp-table thead th{position:sticky;top:0;z-index:1}
 .tp-table .ob-vt-empty td{color:#94a3b8;font-style:italic;text-align:center;padding:10px}
 .tp-table input[readonly]{text-overflow:ellipsis}
