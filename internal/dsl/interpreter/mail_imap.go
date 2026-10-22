@@ -1,20 +1,23 @@
 package interpreter
 
 import (
+	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 )
 
 // receiveIMAP забирает письма по IMAP4rev1 (RFC 3501): SELECT папки,
 // UID SEARCH, размер (RFC822.SIZE) до загрузки, тело — BODY.PEEK[]: PEEK
 // не ставит \Seen, письмо остаётся непрочитанным, пока об этом не попросили
 // (ОтметитьПрочитанными). Письма не удаляются.
-func receiveIMAP(p mailProfile, opts mailReceiveOptions) ([]receivedMail, error) {
-	c, err := dialMail(p)
+func receiveIMAP(ctx context.Context, p mailProfile, opts mailReceiveOptions) ([]receivedMail, error) {
+	c, err := dialMail(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +45,7 @@ func receiveIMAP(p mailProfile, opts mailReceiveOptions) ([]receivedMail, error)
 			return nil, fmt.Errorf("сервер отклонил вход пользователя %s", p.user)
 		}
 	}
-	selectLines, err := s.run("SELECT", imapString(p.folder))
+	selectLines, err := s.run("SELECT", imapString(imapMailboxName(p.folder)))
 	if err != nil {
 		return nil, fmt.Errorf("папка %s: %w", p.folder, err)
 	}
@@ -140,6 +143,39 @@ func (s *imapSession) searchUIDs(first uint64, limit int, prefix string, skip ma
 	}
 	_, err := s.runWithSearch("UID SEARCH UID "+strconv.FormatUint(first, 10)+":4294967295", collect)
 	return uids, err
+}
+
+// imapMailboxName encodes IMAP4rev1 mailbox names as modified UTF-7
+// (RFC 3501 section 5.1.3). Credentials still use ordinary IMAP strings.
+func imapMailboxName(name string) string {
+	var out strings.Builder
+	var encoded []uint16
+	flush := func() {
+		if len(encoded) == 0 {
+			return
+		}
+		data := make([]byte, 0, 2*len(encoded))
+		for _, u := range encoded {
+			data = append(data, byte(u>>8), byte(u))
+		}
+		out.WriteByte('&')
+		out.WriteString(strings.ReplaceAll(base64.RawStdEncoding.EncodeToString(data), "/", ","))
+		out.WriteByte('-')
+		encoded = encoded[:0]
+	}
+	for _, r := range name {
+		if r >= 0x20 && r <= 0x7e {
+			flush()
+			out.WriteRune(r)
+			if r == '&' {
+				out.WriteByte('-')
+			}
+		} else {
+			encoded = utf16.AppendRune(encoded, r)
+		}
+	}
+	flush()
+	return out.String()
 }
 
 // imapArg — аргумент команды: строка в кавычках или литерал {n} для значений
