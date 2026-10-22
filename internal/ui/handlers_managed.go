@@ -294,8 +294,25 @@ func managedFormElementStates(form *metadata.FormModule, header map[string]any, 
 			}
 			ro[visit.path] = state
 		}
-		if strings.TrimSpace(el.HiddenWhen) != "" {
-			hidden[visit.path] = eval(el.HiddenWhen, "условие hidden_when", el.Name)
+		hasHidden := strings.TrimSpace(el.HiddenWhen) != ""
+		hiddenState := false
+		if hasHidden {
+			hiddenState = eval(el.HiddenWhen, "условие hidden_when", el.Name)
+		}
+		// Header commands leave their ancestor DOM containers. Carry those
+		// containers' visibility to the command's own placement key, including
+		// false states so a later form event can reveal it again.
+		if el.Kind == metadata.FormElementButton && el.Placement == metadata.FormPlacementHeader {
+			for path := visit.path; strings.Contains(path, "."); {
+				path = path[:strings.LastIndex(path, ".")]
+				if state, ok := hidden[path]; ok {
+					hasHidden = true
+					hiddenState = hiddenState || state
+				}
+			}
+		}
+		if hasHidden {
+			hidden[visit.path] = hiddenState
 		}
 	})
 	return ro, hidden, paths, wc.msgs

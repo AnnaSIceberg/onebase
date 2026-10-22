@@ -1655,12 +1655,20 @@ function obResolveActionableFormHotkey(key) {
   var wanted = obNormalizeFormHotkey(key);
   if (!wanted) return null;
   var form = document.getElementById('main-form');
-  if (!form || !document.contains(form)) return null;
-  var candidates = form.querySelectorAll('[data-ob-hotkey]');
+  if (!form || !document.contains(form) || !obElementVisible(form)) return null;
+  var candidates = Array.prototype.slice.call(form.querySelectorAll('[data-ob-hotkey]'));
+  // Native form ownership includes header buttons outside the form subtree.
+  // Never widen the search to unrelated commands elsewhere in the document.
+  if (form.elements) {
+    for (var j = 0; j < form.elements.length; j++) {
+      var control = form.elements[j];
+      if (control.form === form && !form.contains(control) && control.hasAttribute('data-ob-hotkey')) candidates.push(control);
+    }
+  }
   for (var i = 0; i < candidates.length; i++) {
     var candidate = candidates[i];
     if (obNormalizeFormHotkey(candidate.getAttribute('data-ob-hotkey')) !== wanted) continue;
-    if (!document.contains(candidate) || !form.contains(candidate)) continue;
+    if (!document.contains(candidate) || (candidate.form ? candidate.form !== form : !form.contains(candidate))) continue;
     // Managed buttons without an official click action are visual decoration:
     // clicking them is a no-op and must not suppress F9's table-row copy.
     if (!candidate.getAttribute || !String(candidate.getAttribute('data-ob-fire-click') || '').trim()) continue;

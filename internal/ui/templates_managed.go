@@ -2,6 +2,11 @@ package ui
 
 import "github.com/ivantit66/onebase/internal/metadata"
 
+type managedHeaderButton struct {
+	Element *metadata.FormElement
+	Table   *metadata.FormElement
+}
+
 // tplManagedForm — шаблон рендеринга «управляемой формы» из FormModule
 // (план 37, этап 3). В отличие от tplForm, который автоматически выводит
 // все поля Entity подряд, этот шаблон обходит дерево FormModule.Elements
@@ -25,7 +30,7 @@ const tplManagedForm = `
      effectiveFormElementReadOnly, условного — карта ElReadOnly, которую строит
      managedFormElementStates. Скрытые контейнеры не отрисовываются; простые
      поля остаются в DOM с disabled fieldset для безопасной отправки. */}}
-{{$ro := or (effectiveFormElementReadOnly $ctx.Form $el) (elReadOnly $ctx $el) (adminOnlyLocked $ctx $el)}}
+{{$ro := or (effectiveFormElementReadOnly $ctx.Form $el) (elReadOnly $ctx $el) (adminOnlyLocked $ctx $el) $.TableReadOnly}}
 		{{/* $roUnlockable — запрет, который клиент может снять без перезагрузки (readonly_when): такой элемент несёт кнопку подбора и data-ob-fire-change даже в запертом состоянии, иначе после разблокировки работать нечем (#1612). */}}
 		{{$roUnlockable := and (not (adminOnlyLocked $ctx $el)) (or (not $ro) (ne $el.ReadOnlyWhen ""))}}
 {{$effectiveReq := effectiveFormElementRequired $ctx.Entity $el}}{{$req := nativeFormElementRequired $ctx.Entity $el}}
@@ -262,7 +267,7 @@ const tplManagedForm = `
   {{$buttonLayout := elLayout $el}}
   {{$buttonHidden := elHidden $ctx $el}}
   {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{if $buttonHidden}}display:none;{{end}}{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground $el}}"{{else}}{{with elBackground $el}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{end}}>
+  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground $el}}"{{else}}{{with elBackground $el}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
   {{if $buttonLayout}}</div>{{end}}
@@ -563,7 +568,11 @@ const tplManagedForm = `
 {{/* form-header-commands — кнопки формы с placement: header и «? Справка» в строке
      команд документа: сразу после «История» (у новой записи и обработки — в конце
      строки). Освобождает строку тела формы, где такие кнопки стояли отдельно. */}}
-{{define "form-header-commands"}}{{$page := .}}<span class="ob-header-commands">{{range formHeaderButtons .Form}}{{template "managed-element" (dict "El" . "Ctx" $page "HeaderPass" true)}}{{end}}</span>{{template "context-help" .}}{{end}}
+{{define "form-header-commands"}}{{$page := .}}<span class="ob-header-commands">{{range formHeaderButtons .Form}}
+  {{$tableName := ""}}{{$tableRO := false}}
+  {{with .Table}}{{$tableName = canonicalFormTableName $page.Form $page.Entity (dpField .DataPath)}}{{$tableRO = or (not $page.CanWrite) (elReadOnly $page .) (adminOnlyLocked $page .)}}{{end}}
+  {{template "managed-element" (dict "El" .Element "Ctx" $page "HeaderPass" true "TableName" $tableName "TableReadOnly" $tableRO "TableWriteDenied" (and .Table (not $page.CanWrite)))}}
+{{end}}</span>{{template "context-help" .}}{{end}}
 {{define "page-managed-form"}}
 {{template "head" .}}{{if not .IsPopup}}{{template "nav" .}}{{end}}
 {{if .TabTitle}}<meta name="ob-tab-title" content="{{.TabTitle}}">{{end}}
@@ -776,6 +785,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   {{if or .IsNew .IsProcessor}}{{template "form-header-commands" .}}{{end}}
 </div>
 {{end}}{{/* end if not .IsPopup */}}
+{{if .IsPopup}}<div class="ob-popup-commands" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">{{template "form-header-commands" .}}</div>{{end}}
 {{if and (not .IsNew) .Entity.Posting}}
 {{if eq (index .Values "posted") "true"}}
 <form id="form-unpost" method="POST" action="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/{{.ID}}/unpost"></form>

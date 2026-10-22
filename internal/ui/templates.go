@@ -241,19 +241,14 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			form, _ := v.(*metadata.FormModule)
 			return form != nil && form.EnterSubmitsForm
 		},
-		// formHeaderButtons — кнопки формы с placement: header по всему дереву
-		// элементов, в порядке объявления: их рисует строка команд документа.
-		"formHeaderButtons": func(v any) []*metadata.FormElement {
-			form, _ := v.(*metadata.FormModule)
-			if form == nil {
-				return nil
-			}
-			var out []*metadata.FormElement
-			form.Walk(func(el *metadata.FormElement) bool {
-				if el != nil && el.Kind == metadata.FormElementButton && el.Placement == metadata.FormPlacementHeader {
-					out = append(out, el)
+		// Keep the table owner when moving a command out of its original toolbar.
+		"formHeaderButtons": func(form *metadata.FormModule) []managedHeaderButton {
+			var out []managedHeaderButton
+			walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+				el := visit.element
+				if el.Kind == metadata.FormElementButton && el.Placement == metadata.FormPlacementHeader {
+					out = append(out, managedHeaderButton{Element: el, Table: visit.parentTablePart})
 				}
-				return true
 			})
 			return out
 		},
@@ -864,7 +859,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			var out []*metadata.FormElement
 			for _, ch := range el.Children {
-				if ch != nil && ch.Kind == metadata.FormElementButton {
+				if ch != nil && ch.Kind == metadata.FormElementButton && ch.Placement != metadata.FormPlacementHeader {
 					out = append(out, ch)
 				}
 			}
