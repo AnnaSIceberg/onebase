@@ -341,6 +341,10 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	enc := json.NewEncoder(w)
 	// prepare — разбор запроса, сборка объекта и чтение базы до обработчика.
 	endPrepare := serverTimingSpan(r.Context(), "prepare")
+	// Счётчик записей этого запроса: строки ТЧ после обработчика перечитываются,
+	// только если обработчик писал в базу (storage.WithWriteCounter).
+	writeCtx, requestWrites := storage.WithWriteCounter(r.Context())
+	r = r.WithContext(writeCtx)
 
 	// Сущность резолвим ДО разбора тела: от неё зависит предел (#629). Пределы не
 	// композируются — прежняя пара «1 МиБ, затем limitMultipartRequest на 52 МиБ»
@@ -1378,7 +1382,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	endPrepare()
 	// Счётчик записей до обработчика: строки ТЧ перечитываются после него,
 	// только если за это время в базу кто-то писал (см. storage.WriteSeq).
-	writesBefore := storage.WriteSeq()
+	writesBefore := requestWrites.Load()
 	endDSL := serverTimingSpan(r.Context(), "dsl")
 	if closeInv != nil {
 		var entryResult interpreter.EntryCallResult
@@ -1432,7 +1436,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// Без единой записи в базу за время обработчика строки ТЧ в ней те же,
 	// что до него, — перечитывать их незачем (у заявки колл-центра это 17
 	// запросов на событие). Запись через общий модуль (#579) сдвигает счётчик.
-	if existingRecord && tpDBBefore != nil && !thisObj.saved && storage.WriteSeq() != writesBefore {
+	if existingRecord && tpDBBefore != nil && !thisObj.saved && requestWrites.Load() != writesBefore {
 		s.refreshTablePartsWrittenByHandler(liveCtx, entity, obj, tpBefore, tpDBBefore)
 	}
 	endRefresh()
@@ -1511,7 +1515,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		// Без записей за время обработчика строки ТЧ в базе — те же, что в
 		// снимке до него: повторно их не читаем.
 		var storedTP map[string][]map[string]any
-		if storage.WriteSeq() == writesBefore {
+		if requestWrites.Load() == writesBefore {
 			storedTP = tpDBBefore
 		}
 		dirty = s.managedCloseStateDirtyWithRows(liveCtx, entity, form, obj, fieldsBefore, tpBefore, storedTP)

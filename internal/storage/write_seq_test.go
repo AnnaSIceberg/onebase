@@ -10,8 +10,8 @@ import (
 	"github.com/ivantit66/onebase/internal/metadata"
 )
 
-// Счётчик записей сдвигают изменяющие операторы — и через DB, и через
-// транзакцию; чтение и служебные команды транзакции его не трогают.
+// Счётчик записей запроса сдвигают изменяющие операторы с его контекстом —
+// и через DB, и в транзакции; чтение и записи с чужим контекстом — нет.
 func TestWriteSeqCountsWritesNotReads(t *testing.T) {
 	ctx := context.Background()
 	db, err := ConnectSQLite(ctx, filepath.Join(t.TempDir(), "seq.db"))
@@ -28,26 +28,31 @@ func TestWriteSeqCountsWritesNotReads(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	before := WriteSeq()
-	if _, err := db.GetByID(ctx, ent.Name, id, ent); err != nil {
+	cctx, writes := WithWriteCounter(ctx)
+	if _, err := db.GetByID(cctx, ent.Name, id, ent); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.QueryAll(ctx, `SELECT 1`); err != nil {
+	if _, err := db.QueryAll(cctx, `SELECT 1`); err != nil {
 		t.Fatal(err)
 	}
-	if got := WriteSeq(); got != before {
-		t.Fatalf("чтение сдвинуло счётчик записей: %d → %d", before, got)
+	if got := writes.Load(); got != 0 {
+		t.Fatalf("чтение сдвинуло счётчик записей: %d", got)
 	}
-
-	if err := db.Upsert(ctx, ent.Name, id, map[string]any{"Наименование": "после"}, ent); err != nil {
+	// Запись с другим контекстом (фоновый исполнитель) счётчик запроса не трогает.
+	if err := db.Upsert(ctx, ent.Name, id, map[string]any{"Наименование": "фон"}, ent); err != nil {
 		t.Fatal(err)
 	}
-	afterWrite := WriteSeq()
-	if afterWrite == before {
-		t.Fatal("запись не сдвинула счётчик")
+	if got := writes.Load(); got != 0 {
+		t.Fatalf("чужая запись сдвинула счётчик запроса: %d", got)
 	}
-
-	tx, txCtx, err := db.BeginTx(ctx)
+	if err := db.Upsert(cctx, ent.Name, id, map[string]any{"Наименование": "после"}, ent); err != nil {
+		t.Fatal(err)
+	}
+	afterWrite := writes.Load()
+	if afterWrite == 0 {
+		t.Fatal("запись с контекстом запроса не сдвинула счётчик")
+	}
+	tx, txCtx, err := db.BeginTx(cctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +62,7 @@ func TestWriteSeqCountsWritesNotReads(t *testing.T) {
 	if err := tx.Commit(txCtx); err != nil {
 		t.Fatal(err)
 	}
-	if WriteSeq() == afterWrite {
-		t.Fatal("запись в транзакции не сдвинула счётчик")
+	if writes.Load() == afterWrite {
+		t.Fatal("запись в транзакции запроса не сдвинула счётчик")
 	}
 }
