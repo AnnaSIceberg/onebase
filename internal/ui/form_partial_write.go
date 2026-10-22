@@ -572,7 +572,7 @@ func (s *Server) restoreUnsubmittedFields(
 		return nil
 	}
 
-	row, err := s.store.GetByID(ctx, entity.Name, id, entity)
+	row, err := s.recordForRequest(ctx, entity, id)
 	if err != nil {
 		return err
 	}
