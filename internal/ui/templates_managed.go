@@ -572,7 +572,7 @@ const tplManagedForm = `
   {{$tableName := ""}}{{$tableRO := false}}
   {{with .Table}}{{$tableName = canonicalFormTableName $page.Form $page.Entity (dpField .DataPath)}}{{$tableRO = or (not $page.CanWrite) (elReadOnly $page .) (adminOnlyLocked $page .)}}{{end}}
   {{template "managed-element" (dict "El" .Element "Ctx" $page "HeaderPass" true "TableName" $tableName "TableReadOnly" $tableRO "TableWriteDenied" (and .Table (not $page.CanWrite)))}}
-{{end}}</span>{{template "context-help" .}}{{end}}
+{{end}}</span>{{if not .IsPopup}}{{template "context-help" .}}{{end}}{{end}}
 {{define "page-managed-form"}}
 {{template "head" .}}{{if not .IsPopup}}{{template "nav" .}}{{end}}
 {{if .TabTitle}}<meta name="ob-tab-title" content="{{.TabTitle}}">{{end}}
@@ -785,7 +785,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   {{if or .IsNew .IsProcessor}}{{template "form-header-commands" .}}{{end}}
 </div>
 {{end}}{{/* end if not .IsPopup */}}
-{{if .IsPopup}}<div class="ob-popup-commands" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">{{template "form-header-commands" .}}</div>{{end}}
+{{if and .IsPopup (formHeaderButtons .Form)}}<div class="ob-popup-commands" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">{{template "form-header-commands" .}}</div>{{end}}
 {{if and (not .IsNew) .Entity.Posting}}
 {{if eq (index .Values "posted") "true"}}
 <form id="form-unpost" method="POST" action="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/{{.ID}}/unpost"></form>
