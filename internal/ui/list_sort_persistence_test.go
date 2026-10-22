@@ -4,7 +4,9 @@ package ui
 // сущности, как вид списка (#1485). Всё через публичный обработчик списка.
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/url"
 	"os/exec"
 	"strings"
@@ -161,5 +163,89 @@ func TestListSortFeedBehaviorInNode(t *testing.T) {
 	cmd := exec.Command(node, "--test", "static/list_sort_feed_behavior_test.js") //nolint:gosec // test-only executable resolved by exec.LookPath
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("node feed sort test: %v\n%s", err, output)
+	}
+}
+
+// Exercise the rendered list attributes and the production live-list listener,
+// then send its refresh URL through the same HTTP handler after another tab has
+// changed the saved preference.
+func TestListSortPersistence_LiveRefreshKeepsRestoredOrder(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for the live-list sort regression test")
+	}
+	for _, mode := range []string{"feed", "pages"} {
+		t.Run(mode, func(t *testing.T) {
+			ent := &metadata.Entity{Name: "Клиент", Kind: metadata.KindCatalog,
+				Fields:        []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}},
+				ListRefreshOn: []string{"данные.клиент"}}
+			s, _ := newSubmitTestServer(t, []*metadata.Entity{ent})
+			for i, name := range []string{"Alpha", "Beta", "Gamma", "Omega"} {
+				id := uuidMust("1111111" + string(rune('1'+i)) + "-1111-1111-1111-111111111111")
+				if err := s.store.Upsert(t.Context(), ent.Name, id, map[string]any{"Наименование": name}, ent); err != nil {
+					t.Fatal(err)
+				}
+			}
+			user := user1485("u1")
+			listView1485(t, s, user, "?sort=Наименование&dir=desc")
+			query := "?lm=" + mode + "&limit=2&q=a&subsystem=sales"
+			body := listView1485(t, s, user, query)
+			doc, err := html.Parse(strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			attrs := map[string]string{}
+			var walk func(*html.Node)
+			walk = func(n *html.Node) {
+				if class, _ := keyboardHTMLAttr(n, "class"); strings.Contains(" "+class+" ", " ob-list-content ") {
+					for _, a := range n.Attr {
+						attrs[a.Key] = a.Val
+					}
+				}
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
+			}
+			walk(doc)
+			if attrs["data-ob-refresh-on"] != "данные.клиент" {
+				t.Fatalf("missing live-list subscription: %v", attrs)
+			}
+			// A different tab now changes this user's persisted choice to asc.
+			listView1485(t, s, user, "?sort=Наименование&dir=asc")
+			fixture, err := json.Marshal(map[string]any{
+				"attrs": attrs, "href": "https://onebase.test/ui/catalog/клиент" + query,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command(node, "static/list_sort_live_refresh_probe.js") //nolint:gosec // test-only executable resolved by exec.LookPath
+			cmd.Stdin = bytes.NewReader(fixture)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("live-list event test: %v\n%s", err, output)
+			}
+			var requests []string
+			if err := json.Unmarshal(output, &requests); err != nil {
+				t.Fatalf("decode live-list requests: %v\n%s", err, output)
+			}
+			if len(requests) != 3 {
+				t.Fatalf("expected named, reconnect and imperative refresh requests, got %v", requests)
+			}
+			for _, request := range requests {
+				u, err := url.Parse(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				q := u.Query()
+				if q.Get("q") != "a" || q.Get("lm") != mode || q.Get("limit") != "2" || q.Get("subsystem") != "sales" {
+					t.Fatalf("live refresh lost list state: %s", request)
+				}
+				refreshed := listView1485(t, s, user, "?"+u.RawQuery)
+				omega, gamma := strings.Index(refreshed, ">Omega<"), strings.Index(refreshed, ">Gamma<")
+				if omega < 0 || gamma < omega || strings.Contains(refreshed, ">Alpha<") || strings.Contains(refreshed, ">Beta<") {
+					t.Fatalf("live refresh changed restored sort; request=%s", request)
+				}
+			}
+		})
 	}
 }
