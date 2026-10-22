@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -25,6 +26,20 @@ type serverTiming struct {
 	start time.Time
 	order []string
 	spans map[string]time.Duration
+	notes []string
+}
+
+// serverTimingNote добавляет в заголовок запись без длительности — с
+// описанием (desc), закодированным для заголовка HTTP (url.QueryEscape):
+// например, сколько и каких записей сделал обработчик события.
+func serverTimingNote(ctx context.Context, name, desc string) {
+	st, _ := ctx.Value(serverTimingKey{}).(*serverTiming)
+	if st == nil {
+		return
+	}
+	st.mu.Lock()
+	st.notes = append(st.notes, fmt.Sprintf("%s;desc=%q", name, url.QueryEscape(desc)))
+	st.mu.Unlock()
 }
 
 func serverTimingOn() bool { return os.Getenv("ONEBASE_SERVER_TIMING") == "1" }
@@ -56,6 +71,7 @@ func (st *serverTiming) header() string {
 	for _, name := range st.order {
 		parts = append(parts, fmt.Sprintf("%s;dur=%.1f", name, float64(st.spans[name].Microseconds())/1000))
 	}
+	parts = append(parts, st.notes...)
 	parts = append(parts, fmt.Sprintf("total;dur=%.1f", float64(time.Since(st.start).Microseconds())/1000))
 	return strings.Join(parts, ", ")
 }

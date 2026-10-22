@@ -1410,6 +1410,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// ошибкой процедуры, чтобы конфигурационная ошибка не оставалась незаметной.
 	runErr = finishDSLExecution(txState, runErr)
 	endDSL()
+	if n := requestWrites.Load() - writesBefore; n > 0 {
+		serverTimingNote(r.Context(), "handlerWrites", fmt.Sprintf("%d: %s", n, strings.Join(requestWrites.Sample(), " | ")))
+	}
 	liveCtx := txState.Ctx()
 	if closeInv != nil && thisObj.saved {
 		// BeforeClose itself may save in discard mode. Promote that durable

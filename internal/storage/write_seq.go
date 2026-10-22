@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -21,19 +22,50 @@ import (
 
 type writeCounterKey struct{}
 
+// WriteCounter — счётчик записей запроса и начала первых операторов (для
+// диагностики: что именно писал запрос).
+type WriteCounter struct {
+	n      atomic.Uint64
+	mu     sync.Mutex
+	sample []string
+}
+
+// Load — сколько изменяющих операторов насчитано.
+func (c *WriteCounter) Load() uint64 { return c.n.Load() }
+
+// Sample — начала первых операторов (до writeSampleLimit штук).
+func (c *WriteCounter) Sample() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.sample...)
+}
+
+const writeSampleLimit = 5
+
 // WithWriteCounter добавляет в контекст счётчик записей и возвращает его.
-func WithWriteCounter(ctx context.Context) (context.Context, *atomic.Uint64) {
-	c := &atomic.Uint64{}
+func WithWriteCounter(ctx context.Context) (context.Context, *WriteCounter) {
+	c := &WriteCounter{}
 	return context.WithValue(ctx, writeCounterKey{}, c), c
 }
 
-func countWrite(ctx context.Context) {
+func countWrite(ctx context.Context, sqlText string) {
 	if ctx == nil {
 		return
 	}
-	if c, _ := ctx.Value(writeCounterKey{}).(*atomic.Uint64); c != nil {
-		c.Add(1)
+	c, _ := ctx.Value(writeCounterKey{}).(*WriteCounter)
+	if c == nil {
+		return
 	}
+	c.n.Add(1)
+	c.mu.Lock()
+	if len(c.sample) < writeSampleLimit {
+		head := strings.Join(strings.Fields(sqlText), " ")
+		if len(head) > 48 {
+			head = head[:48]
+		}
+		c.sample = append(c.sample, head)
+	}
+	c.mu.Unlock()
 }
 
 // noteExec учитывает оператор Exec: всё, кроме служебных команд транзакции и
@@ -43,7 +75,7 @@ func noteExec(ctx context.Context, sqlText string) {
 	case "SAVEPOINT", "RELEASE", "BEGIN", "COMMIT", "ROLLBACK", "SET", "PRAGMA", "ANALYZE", "SHOW":
 		return
 	}
-	countWrite(ctx)
+	countWrite(ctx, sqlText)
 }
 
 // noteQuery учитывает Query/QueryRow: запись — всё, что не чистый SELECT
@@ -53,7 +85,7 @@ func noteQuery(ctx context.Context, sqlText string) {
 	if firstSQLWord(sqlText) == "SELECT" && !strings.Contains(sqlText, ";") {
 		return
 	}
-	countWrite(ctx)
+	countWrite(ctx, sqlText)
 }
 
 func firstSQLWord(sqlText string) string {
