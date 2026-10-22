@@ -1123,6 +1123,20 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
     tbody.appendChild(tr);
   }
 
+  // Manual add/delete paths share the same empty state and count as refresh.
+  function obVtRowsChanged(tbody) {
+    if (!tbody || !tbody.hasAttribute('data-vt-fields')) return;
+    tbody.querySelectorAll('.ob-vt-empty').forEach(function(row){ row.remove(); });
+    var count = tbody.rows.length;
+    var vtName = (tbody.getAttribute('id') || '').slice('vt-body-'.length);
+    obVtEmptyRow(tbody, count);
+    document.querySelectorAll('[data-ob-vt-count]').forEach(function(span){
+      if (span.getAttribute('data-ob-vt-count') === vtName) span.textContent = '(' + count + ')';
+    });
+    obFitVtRows(tbody);
+  }
+  window.obVtRowsChanged = obVtRowsChanged;
+
   // obFitVtRows — высота блока таблицы ровно в rows строк (ключ rows): шапка
   // плюс rows высот настоящей строки. В пустой таблице измеряем такую же
   // строку с тем же планом колонок, затем сразу убираем её из DOM.
@@ -2755,6 +2769,7 @@ function obManagedRemoveRow(btn) {
   var index = tr.sectionRowIndex;
   tr.remove();
   obManagedReindexVtRows(body);
+  if (window.obVtRowsChanged) window.obVtRowsChanged(body);
   if (window.obSetManagedFormDirty) window.obSetManagedFormDirty(true);
   if (table && body && window.obDOMFinishMutation) {
     var next = body.rows.length ? body.rows[Math.min(Math.max(index, 0), body.rows.length - 1)] : null;

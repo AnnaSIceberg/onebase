@@ -36,8 +36,8 @@ test.beforeAll(async () => {
     elements += '  - kind: ПолеВвода\n    name: Following\n    data_path: Объект.Наименование\n';
     write(`forms/${scenario.name.toLowerCase()}/object.form.yaml`, `schema: onebase.form/v1\nform:\n  name: Object\n  kind: object\n  entity: ${scenario.name}\nattributes:\n  - name: Объект\n    type: CatalogRef.${scenario.name}\n    main: true\n    save: true\n  - name: История\n    type: ValueTable\n    columns:\n      - name: Номер\n        type: string\nelements:\n${elements}`);
   }
-  for (const editable of [false, true]) {
-    const name = editable ? 'RowsEditable' : 'RowsOutput';
+  for (const name of ['RowsOutput', 'RowsEditable', 'RowsDelete']) {
+    const editable = name !== 'RowsOutput';
     write(`catalogs/${name}.yaml`, `name: ${name}
 kind: catalog
 fields:
@@ -68,7 +68,7 @@ elements:
     rows: 5
     show_count: true
     empty_text: No records
-    events: {ПриАктивизацииСтроки: Selected}
+${name === 'RowsDelete' ? '' : '    events: {ПриАктивизацииСтроки: Selected}'}
     children:
       - {kind: Колонка, name: NameColumn, data_path: Name, readonly: ${!editable}}
       - {kind: Колонка, name: FlagColumn, data_path: Flag, readonly: true}
@@ -269,3 +269,47 @@ for (const name of ['RowsOutput', 'RowsEditable']) {
     expect(errors).toEqual([]);
   });
 }
+
+test('RowsEditable: activate the last remaining row after deleting the first', async ({ page }) => {
+  await page.goto(`${base}/ui/catalog/RowsEditable/new`);
+  const tbody = page.locator('.managed-vt-rows tbody');
+  const [loaded] = await Promise.all([
+    page.waitForResponse(r => r.url().includes('/form-event') && r.request().method() === 'POST'),
+    page.locator('[data-ob-fire-click="Load"]').click(),
+  ]);
+  expect((await loaded.json()).ok).toBe(true);
+  await tbody.locator('[data-ob-remove-row]').first().click();
+  await expect(tbody.locator('tr')).toHaveCount(29);
+  const [response] = await Promise.all([
+    page.waitForResponse(r => r.url().includes('/form-event') && r.request().method() === 'POST'),
+    tbody.locator('tr').last().locator('td').first().click(),
+  ]);
+  expect(new URLSearchParams(response.request().postData()).get('_tp_row')).toBe('28');
+  const selected = await response.json();
+  expect(selected.ok, selected.error).toBe(true);
+  expect(selected.messages).toContain('kept-true');
+});
+
+test('RowsDelete: manual deletion updates count and restores empty_text', async ({ page }) => {
+  await page.goto(`${base}/ui/catalog/RowsDelete/new`);
+  const tbody = page.locator('.managed-vt-rows tbody');
+  const count = page.locator('[data-ob-vt-count="Results"]').first();
+  const [loaded] = await Promise.all([
+    page.waitForResponse(r => r.url().includes('/form-event') && r.request().method() === 'POST'),
+    page.locator('[data-ob-fire-click="Load"]').click(),
+  ]);
+  expect((await loaded.json()).ok).toBe(true);
+  await expect(count).toHaveText('(30)');
+  await tbody.locator('[data-ob-remove-row]').first().click();
+  await expect(tbody.locator('tr')).toHaveCount(29);
+  await expect(count).toHaveText('(29)');
+  for (let i = 0; i < 29; i++) await tbody.locator('[data-ob-remove-row]').first().click();
+  await expect(count).toHaveText('(0)');
+  await expect(tbody.locator('.ob-vt-empty')).toHaveText('No records');
+  await page.locator('[data-ob-add-vt="Results"]').click();
+  await expect(count).toHaveText('(1)');
+  await expect(tbody.locator('.ob-vt-empty')).toHaveCount(0);
+  await tbody.locator('[data-ob-remove-row]').click();
+  await expect(count).toHaveText('(0)');
+  await expect(tbody.locator('.ob-vt-empty')).toHaveCount(1);
+});
