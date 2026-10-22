@@ -4663,23 +4663,26 @@ obManagedReady(function () {
 // ("first_empty") или указанной группы; после ответа события (ПриОткрытии
 // заполнило поля) — ещё раз, если пользователь никуда не перешёл сам.
 var obAutofocusDone = null;
-function obKeyboardControls(scope) {
-  return Array.prototype.slice.call(scope.querySelectorAll('input, select, textarea')).filter(function (el) {
+function obKeyboardControls(scope, tableFocus) {
+  var selector = 'input, select, textarea';
+  // SlickGrid uses div focus sinks; no_grid uses a roving tabindex on tr.
+  // Keep those out of autofocus, which must still choose an input field.
+  if (tableFocus) selector += ', .ob-grid[tabindex], .ob-grid [tabindex], .tp-table [tabindex]';
+  return Array.prototype.slice.call(scope.querySelectorAll(selector)).filter(function (el) {
     var t = String(el.type || '').toLowerCase();
     return t !== 'hidden' && t !== 'button' && t !== 'submit';
   });
 }
 function obKeyboardReadonly(el) {
-  return !!(el.readOnly || el.disabled || (el.closest && el.closest('fieldset[disabled], [data-ob-table-readonly]')));
+  return !!(el.readOnly || el.disabled || (el.closest && el.closest('fieldset[disabled], [data-ob-table-readonly="1"], .ob-grid[data-sg-ro="1"]')));
 }
-function obFormKeyboard(afterEvent) {
-  var form = document.getElementById('main-form');
-  if (!form || !form.getAttribute) return;
+function obFormTabOrder(form) {
   if (form.getAttribute('data-ob-tab-skip-readonly') === '1') {
-    obKeyboardControls(form).forEach(function (el) {
+    obKeyboardControls(form, true).forEach(function (el) {
       if (obKeyboardReadonly(el)) {
         if (!el.hasAttribute('data-ob-tab-orig')) el.setAttribute('data-ob-tab-orig', el.getAttribute('tabindex') || '');
-        el.setAttribute('tabindex', '-1');
+        // Idempotence matters: the observer also sees our own tabindex writes.
+        if (el.getAttribute('tabindex') !== '-1') el.setAttribute('tabindex', '-1');
       } else if (el.hasAttribute('data-ob-tab-orig')) {
         var orig = el.getAttribute('data-ob-tab-orig');
         if (orig) el.setAttribute('tabindex', orig); else el.removeAttribute('tabindex');
@@ -4687,6 +4690,11 @@ function obFormKeyboard(afterEvent) {
       }
     });
   }
+}
+function obFormKeyboard(afterEvent) {
+  var form = document.getElementById('main-form');
+  if (!form || !form.getAttribute) return;
+  obFormTabOrder(form);
   var target = form.getAttribute('data-ob-autofocus');
   if (!target) return;
   var active = document.activeElement;
@@ -4713,6 +4721,16 @@ function obFormKeyboard(afterEvent) {
 window.obFormKeyboard = obFormKeyboard;
 obManagedReady(function () {
   obFormKeyboard(false);
+  var form = document.getElementById('main-form');
+  if (form && form.getAttribute('data-ob-tab-skip-readonly') === '1' && !form._obTabObserver) {
+    // Table renderers can replace focus nodes or move their roving tabindex
+    // after a form response. Reapply only Tab policy, without moving focus.
+    form._obTabObserver = new MutationObserver(function () { obFormTabOrder(form); });
+    form._obTabObserver.observe(form, {
+      childList: true, subtree: true, attributes: true,
+      attributeFilter: ['tabindex', 'readonly', 'disabled', 'data-sg-ro', 'data-ob-table-readonly']
+    });
+  }
   document.addEventListener('focusin', function (e) {
     if (obAutofocusDone && obAutofocusDone !== 'manual' && e.target !== obAutofocusDone) obAutofocusDone = 'manual';
   });

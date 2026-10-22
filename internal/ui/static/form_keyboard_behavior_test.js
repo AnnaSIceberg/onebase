@@ -62,3 +62,16 @@ test('autofocus first_empty: первое пустое доступное пол
   assert.equal(empty.focused, true);
   assert.equal(next.focused, false);
 });
+
+test('tab_skip_readonly: возвращает исходный tabindex после снятия readonly', () => {
+  const explicit = control('Explicit', { readOnly: true, attrs: { tabindex: '2' } });
+  const implicit = control('Implicit', { readOnly: true });
+  run([explicit, implicit], { 'data-ob-tab-skip-readonly': '1' });
+  explicit.readOnly = false;
+  implicit.readOnly = false;
+  ctx.obFormKeyboard(true);
+  assert.equal(explicit.getAttribute('tabindex'), '2');
+  assert.equal(implicit.getAttribute('tabindex'), null);
+  assert.equal(explicit.hasAttribute('data-ob-tab-orig'), false);
+  assert.equal(implicit.hasAttribute('data-ob-tab-orig'), false);
+});
