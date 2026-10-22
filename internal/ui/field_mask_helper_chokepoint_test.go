@@ -53,6 +53,10 @@ type maskHelperExemption struct {
 }
 
 var maskHelperExempt = map[string]maskHelperExemption{
+	// Кэш записи запроса формы: отдаёт вызывающему сырую строку, как
+	// store.GetByID; вызов recordForRequest страж считает чтением store, так что
+	// каждый вызывающий сам стоит под этим правилом.
+	"Server.recordForRequest": {reason: "обёртка GetByID с кэшем на время запроса; маску накладывают вызывающие, их чтения страж видит"},
 	// ── Проверки строкового доступа (RLS): наружу идёт bool, 403 или
 	// ErrRowAccessDenied, значения реквизитов никуда не отдаются. Маскировать
 	// строку здесь означало бы решать доступ по маске вместо данных.
@@ -171,6 +175,12 @@ func maskHelperScan(t *testing.T) map[string]maskHelperFact {
 					if inner, ok := sel.X.(*ast.SelectorExpr); ok && inner.Sel.Name == "store" {
 						readsStore = true
 					}
+				}
+				// recordForRequest — GetByID с кэшем запроса: вызывающий читает
+				// ту же сырую запись, что и прямым store.GetByID, и отвечает за
+				// маску сам. Без этого обёртка спрятала бы чтение от стража.
+				if sel.Sel.Name == "recordForRequest" {
+					readsStore = true
 				}
 				return true
 			})

@@ -209,7 +209,7 @@ func (s *Server) refreshFieldsWrittenByHandler(
 	}
 	// Ошибку чтения глотаем: событие не должно падать из-за того, что запись
 	// удалили параллельно — форма просто останется с прежними значениями.
-	row, err := s.store.GetByID(ctx, entity.Name, obj.ID, entity)
+	row, err := s.recordForRequest(ctx, entity, obj.ID)
 	if err != nil || row == nil {
 		return
 	}

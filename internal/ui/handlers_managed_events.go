@@ -344,7 +344,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// Счётчик записей этого запроса: строки ТЧ после обработчика перечитываются,
 	// только если обработчик писал в базу (storage.WithWriteCounter).
 	writeCtx, requestWrites := storage.WithWriteCounter(r.Context())
-	r = r.WithContext(writeCtx)
+	r = r.WithContext(withRequestRecordCache(writeCtx, requestWrites))
 
 	// Сущность резолвим ДО разбора тела: от неё зависит предел (#629). Пределы не
 	// композируются — прежняя пара «1 МиБ, затем limitMultipartRequest на 52 МиБ»
@@ -903,7 +903,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if closeInv != nil {
-			persisted, loadErr := s.store.GetByID(dslCtx, entity.Name, obj.ID, entity)
+			persisted, loadErr := s.recordForRequest(dslCtx, entity, obj.ID)
 			if loadErr != nil {
 				if storage.IsNotFound(loadErr) {
 					finishTerminalClose()
@@ -1446,7 +1446,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	var closePersisted map[string]any
 	var closePersistedErr error
 	if closeInv != nil && obj.ID != uuid.Nil && (existingFormID != "" || closeInv.saved) {
-		closePersisted, closePersistedErr = s.store.GetByID(liveCtx, entity.Name, obj.ID, entity)
+		closePersisted, closePersistedErr = s.recordForRequest(liveCtx, entity, obj.ID)
 		switch {
 		case storage.IsNotFound(closePersistedErr):
 			// A trusted handler may delete or replace the row through another
@@ -1805,7 +1805,7 @@ func (s *Server) managedCloseStateDirtyWithRows(
 	if s == nil || s.store == nil || entity == nil || obj == nil || obj.ID == uuid.Nil {
 		return true
 	}
-	persisted, err := s.store.GetByID(ctx, entity.Name, obj.ID, entity)
+	persisted, err := s.recordForRequest(ctx, entity, obj.ID)
 	if err != nil || persisted == nil {
 		return true
 	}
