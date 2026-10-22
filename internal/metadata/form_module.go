@@ -787,6 +787,10 @@ type FormModule struct {
 	// Autofocus — курсор при открытии формы: "first_empty" — в первое пустое
 	// доступное поле формы, имя группы — в первое пустое поле этой группы.
 	Autofocus string `yaml:"autofocus,omitempty"`
+	// GroupTitles — оформление заголовков групп и таблиц этой формы:
+	// "" — обычное (полужирный серый), "bold" — жирный тёмный, как заголовки
+	// разделов в ТЗ форм колл-центра. Другие формы не меняются.
+	GroupTitles string `yaml:"group_titles,omitempty"`
 	// OneCMeta — служебный блок, используемый только конвертером 1С,
 	// рантайм его игнорирует. Может содержать version, unknown_xml и т.п.
 	OneCMeta map[string]any `yaml:"oneC_meta,omitempty"`
@@ -1142,3 +1146,7 @@ func FormTitleSourceName(source string) string {
 	}
 	return name
 }
+
+// FormGroupTitlesBold — жирные тёмные заголовки групп и таблиц формы
+// (FormModule.GroupTitles).
+const FormGroupTitlesBold = "bold"

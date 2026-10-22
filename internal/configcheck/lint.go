@@ -696,7 +696,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 
 	// filter — постоянный отбор формы списка (поле ListFilter), читается
 	// загрузчиком внутри блока form:.
-	formHeader := with(obj("entity", "name", "kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "ref_card_button", "ref_card_button_admin_only", "density", "tab_skip_readonly", "autofocus"), map[string]*yamlLintSchema{
+	formHeader := with(obj("entity", "name", "kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "ref_card_button", "ref_card_button_admin_only", "group_titles", "density", "tab_skip_readonly", "autofocus"), map[string]*yamlLintSchema{
 		"title": freeMap(),
 		"filter": seq(with(obj("field", "op", "value", "roles", "query", "removable"), map[string]*yamlLintSchema{
 			"label": freeMap(),
