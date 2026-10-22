@@ -274,7 +274,10 @@ jobs:
       # Coverage собирается тем же прогоном, чтобы не гонять тесты дважды.
       - name: Unit tests (-race, coverage)
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+        # The timeout covers a whole package. internal/ui exceeds the default
+        # 10m under race instrumentation and atomic coverage; retain both checks
+        # with the same package budget as the PostgreSQL UI matrix below.
+        run: go test -race -timeout 20m -coverprofile=coverage.out -covermode=atomic ./...
 
       # Раннеры работают в UTC, поэтому целый класс дефектов «время
       # канонизируется не в той зоне» для CI невидим: #945 поймали случайно, на

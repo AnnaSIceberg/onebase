@@ -2276,6 +2276,26 @@ function obManagedAddTpRow(btn) {
 // при изменении данных, а не при обычном эхо-ответе обработчика.
 var obManagedVtActiveRow = new WeakMap();
 
+// Both ui.js and the managed fallback delete rows. Keep the activation index
+// and every transport control (including protected bool carriers) contiguous.
+function obManagedReindexVtRows(tbody) {
+  if (!tbody || tbody.getAttribute('data-vt-fields') === null) return;
+  var vtName = tbody.getAttribute('data-ob-vt-name') || String(tbody.id || '').slice('vt-body-'.length);
+  var prefix = 'vt.' + vtName + '.';
+  obManagedVtActiveRow.delete(tbody);
+  Array.prototype.forEach.call(tbody.rows, function(tr, index){
+    if (tr.hasAttribute('data-ob-vt-row')) tr.setAttribute('data-ob-vt-row', String(index));
+    tr.querySelectorAll('[name]').forEach(function(control){
+      var name = control.getAttribute('name') || '';
+      if (name.indexOf(prefix) !== 0) return;
+      var suffix = name.slice(prefix.length);
+      var dot = suffix.indexOf('.');
+      if (dot >= 0) control.setAttribute('name', prefix + index + suffix.slice(dot));
+    });
+  });
+}
+window.obManagedReindexVtRows = obManagedReindexVtRows;
+
 // Compare rendered values rather than response JSON: initial HTML has no stored
 // response, and numeric/string representations must compare the same way.
 function obManagedVtRowsKey(tbody) {
@@ -2316,8 +2336,8 @@ function obManagedRemoveRow(btn) {
   var table = tr.closest && tr.closest('table[data-ob-dom-table]');
   var body = tr.parentElement;
   var index = tr.sectionRowIndex;
-  if (body) obManagedVtActiveRow.delete(body);
   tr.remove();
+  obManagedReindexVtRows(body);
   if (window.obSetManagedFormDirty) window.obSetManagedFormDirty(true);
   if (table && body && window.obDOMFinishMutation) {
     var next = body.rows.length ? body.rows[Math.min(Math.max(index, 0), body.rows.length - 1)] : null;

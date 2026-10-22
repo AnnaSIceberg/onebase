@@ -78,3 +78,65 @@ test('ValueTable columns survive native payload and real activation round trips'
   expect(response.messages).toEqual(['new row', 'false', 'false']);
   expect(errors).toEqual([]);
 });
+
+for (const selected of [null, 0, 1]) {
+  test(`ValueTable deletion reindexes activation and payload (selected=${selected})`, async ({ page }) => {
+    const errors = [];
+    const responses = [];
+    page.on('pageerror', error => errors.push(String(error)));
+    page.on('response', async response => {
+      if (response.url().includes('/form-event')) responses.push(await response.json());
+    });
+    await page.goto('/ui/catalog/Контрагент/new');
+    const body = page.locator('tbody[data-vt-fields]:not([data-ob-table-readonly="1"])');
+    const rows = body.locator('tr');
+    await expect(rows).toHaveCount(2);
+    async function activate(index, messages) {
+      const count = responses.length;
+      const reply = page.waitForResponse(response => response.url().includes('/form-event'));
+      await rows.nth(index).locator('td').first().click();
+      const response = await (await reply).json();
+      expect(response.ok).toBe(true);
+      expect(response.messages).toEqual(messages);
+      // Wait for the real event echo to finish replacing the row DOM.
+      await expect(rows.nth(index).locator('input[type="text"]').first()).toHaveValue(messages[0]);
+      await expect.poll(() => responses.length).toBe(count + 1);
+      await rows.nth(index).locator('td').first().click();
+      await page.waitForTimeout(150);
+      expect(responses).toHaveLength(count + 1);
+    }
+    if (selected !== null) {
+      await activate(selected, selected === 0 ? ['row0', 'true', 'true'] : ['row1', 'false', 'false']);
+    }
+    const count = responses.length;
+    await rows.first().locator('[data-ob-remove-row]').click();
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toHaveAttribute('data-ob-vt-row', '0');
+    const payload = await page.evaluate(() => [...new FormData(document.getElementById('main-form'))]
+      .filter(([name]) => name.startsWith('vt.')));
+    expect(payload).toEqual([
+      ['vt.Results.0.Name', 'row1'], ['vt.Results.0.Locked', '7'],
+      ['vt.Results.0.VisibleFlag', 'false'], ['vt.Results.0.Flag', 'false'], ['vt.Results.0.ID', 'id1'],
+    ]);
+    await page.waitForTimeout(150);
+    expect(responses).toHaveLength(count);
+    // The surviving row now occupies the old selected index; it must activate.
+    await activate(0, ['row1', 'false', 'false']);
+    // Add after deletion must not reuse an existing transport index.
+    await page.locator('[data-ob-add-vt="Results"]').click();
+    await expect(rows).toHaveCount(2);
+    await expect(rows.last()).toHaveAttribute('data-ob-vt-row', '1');
+    await rows.last().locator('input[type="text"]').first().fill('added');
+    await activate(1, ['added', 'false', 'false']);
+    // Deleting the selected last row, then the final row, also clears selection.
+    await rows.last().locator('[data-ob-remove-row]').click();
+    await expect(rows).toHaveCount(1);
+    await activate(0, ['row1', 'false', 'false']);
+    await rows.first().locator('[data-ob-remove-row]').click();
+    await expect(rows).toHaveCount(0);
+    await page.locator('[data-ob-add-vt="Results"]').click();
+    await rows.first().locator('input[type="text"]').first().fill('replacement');
+    await activate(0, ['replacement', 'false', 'false']);
+    expect(errors).toEqual([]);
+  });
+}
