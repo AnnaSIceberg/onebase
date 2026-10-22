@@ -4512,7 +4512,10 @@ function obRefreshDependentSelects(sourceEl) {
           while (sel.options.length) sel.remove(0);
           var empty = document.createElement('option');
           empty.value = '';
-          empty.textContent = '— выбрать —';
+          // Поле без списка пустое значение показывает пустым, как в 1С:
+          // подсказка «— выбрать —» в узком поле обрезалась и ничего не
+          // объясняла — выбирают кнопкой «…».
+          empty.textContent = collapsed ? '' : '— выбрать —';
           sel.appendChild(empty);
           for (var j = 0; j < rows.length; j++) {
             var id = String(rows[j].id);
