@@ -529,6 +529,29 @@ func InputMaskDigitsOnly(mask string) bool {
 	return seen
 }
 
+// InputMaskHint — подсказка пустого поля по маске ввода: заполнители
+// (InputMaskPlaceholders) заменяются подчёркиванием, литералы остаются на
+// местах. «(000)000-00-00» превращается в «(___)___-__-__», «Пл0000000» — в
+// «Пл_______».
+//
+// Нужна потому, что маска до первого символа ничем себя не выдаёт: поле
+// выглядит обычным, и человек не знает ни формата, ни того, что «Пл»
+// подставится само.
+func InputMaskHint(mask string) string {
+	if mask == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range mask {
+		if strings.ContainsRune(InputMaskPlaceholders, r) {
+			b.WriteRune('_')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 // FormChoice — один пункт списка значений элемента ПолеСписка. Value хранится
 // в реквизите (строкой), Title — локализованная подпись (ru, en, ...) по образцу
 // Enum.ValueTitles; если перевода нет, в качестве подписи используется Value.
