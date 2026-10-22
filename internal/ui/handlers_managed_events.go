@@ -1511,7 +1511,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	eventDirty := boolPtr(dirty)
 	if runErr != nil {
 		opStatus = operationStatus(opCtx, runErr)
-		resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, condRuntime.rules, msgs).response(false)
+		resp := s.serializeManagedFormEventState(withTPRefDelta(r.Context(), form, tpBefore, obj.TablePartRows), form, entity, obj, condRuntime.rules, msgs).response(false)
 		resp.Error = interpreter.FormatUserError(runErr)
 		resp.PickerData = picker
 		if question.Variants != nil {
@@ -1530,7 +1530,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 
 	opStatus = "ok"
 	endSerialize := serverTimingSpan(r.Context(), "serialize")
-	resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, condRuntime.rules, msgs).response(true)
+	resp := s.serializeManagedFormEventState(withTPRefDelta(r.Context(), form, tpBefore, obj.TablePartRows), form, entity, obj, condRuntime.rules, msgs).response(true)
 	endSerialize()
 	resp.PickerData = picker
 	if question.Variants != nil {
