@@ -645,7 +645,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		// неизвестными, а гейт CI считает предупреждение ошибкой — то есть
 		// документированный «language» у kind: ПолеКода не давал примеру
 		// пройти собственную проверку (#1014).
-		"orientation", "background", "grow", "frame", "border_color", "header_background", "header_border_color", "input_mask", "language", "virtual_columns",
+		"orientation", "background", "title_hidden", "grow", "frame", "border_color", "header_background", "header_border_color", "input_mask", "language", "virtual_columns",
 		"title_from",
 		// Таблица значений как выдача (история, результат поиска).
 		"rows", "show_count", "empty_text",

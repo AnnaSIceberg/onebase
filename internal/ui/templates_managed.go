@@ -325,7 +325,7 @@ const tplManagedForm = `
   <div class="managed-tp" data-ob-tp="{{$el.Name}}"{{if hasHandler $el "ПослеОткрытия"}} data-ob-after-open="{{$el.Name}}"{{end}}>
   {{/* show_count — число записей в заголовке таблицы значений: «Заявки клиента (5)».
        После событий формы число обновляет перерисовка таблицы (applyFormTables). */}}
-  <h3 class="ob-table-title" style="margin:18px 0 8px;font-size:14px;{{tableTitleStyle $ctx.Form}}">{{fieldTitleRU $el.TitleMap (or (tablePartTitle $tpMeta) $tpName)}}{{if and $el.ShowCount (formAttrVT $ctx.Form $tpName)}} <span data-ob-vt-count="{{$tpName}}">({{len (index $ctx.TablePartRows $tpName)}})</span>{{end}}</h3>
+  {{if not $el.TitleHidden}}<h3 class="ob-table-title" style="margin:18px 0 8px;font-size:14px;{{tableTitleStyle $ctx.Form}}">{{fieldTitleRU $el.TitleMap (or (tablePartTitle $tpMeta) $tpName)}}{{if and $el.ShowCount (formAttrVT $ctx.Form $tpName)}} <span data-ob-vt-count="{{$tpName}}">({{len (index $ctx.TablePartRows $tpName)}})</span>{{end}}</h3>{{end}}
   {{if $tpMeta}}
   {{$tpVirtualCols := managedTPVirtualColumns $tpMeta.Fields $el.VirtualColumns}}
   {{/* Состав и порядок колонок задают дети kind: Колонка (план 154). Реквизит,
