@@ -94,3 +94,25 @@ func tpRefOwnerScoped(entity *metadata.Entity, tp metadata.TablePart, reg interf
 	}
 	return false
 }
+
+// formPlacedFieldNames — реквизиты (в нижнем регистре), на которые ссылается
+// хоть один элемент управляемой формы: каждый сегмент data_path, — лишний
+// реквизит в наборе стоит только запроса, пропущенный — подписи. nil —
+// управляемой формы нет: авто-форма рисует все поля.
+func formPlacedFieldNames(form *metadata.FormModule) map[string]bool {
+	if form == nil {
+		return nil
+	}
+	placed := map[string]bool{}
+	form.Walk(func(el *metadata.FormElement) bool {
+		if el != nil && strings.TrimSpace(el.DataPath) != "" {
+			for _, part := range strings.Split(el.DataPath, ".") {
+				if part = strings.TrimSpace(part); part != "" {
+					placed[strings.ToLower(part)] = true
+				}
+			}
+		}
+		return true
+	})
+	return placed
+}

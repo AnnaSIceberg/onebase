@@ -319,8 +319,15 @@ func (s *Server) loadInitialRefOptions(ctx context.Context, entity *metadata.Ent
 	defer serverTimingSpan(ctx, "refOptions")()
 	opts := make(map[string][]map[string]any)
 	dropdown := refDropdownFields(entity)
+	placed := formPlacedFieldNames(pickManagedForm(entity, "object"))
 	for _, f := range entity.Fields {
 		if f.RefEntity == "" {
+			continue
+		}
+		// Поля, которого нет на управляемой форме, браузер не рисует: ни
+		// списка, ни подписи ему не нужно, а запрос на каждое такое поле стоил
+		// открытию заявки колл-центра заметной доли времени.
+		if placed != nil && !placed[strings.ToLower(f.Name)] {
 			continue
 		}
 		if f.RefEntity == "_users" {
@@ -437,9 +444,16 @@ func (s *Server) loadInitialTPRefOptions(ctx context.Context, entity *metadata.E
 	var placed map[string]bool
 	if delta != nil {
 		placed = delta.placedTableParts(entity)
+	} else if form := pickManagedForm(entity, "object"); form != nil {
+		// Открытие управляемой формы: варианты нужны только ТЧ, стоящим на
+		// ней, — остальные браузер не рисует.
+		placed = (&tpRefDelta{form: form}).placedTableParts(entity)
 	}
 	for _, tp := range entity.TableParts {
 		if delta != nil && delta.skipTablePart(entity, tp, placed, tpRefOwnerScoped(entity, tp, s.reg)) {
+			continue
+		}
+		if delta == nil && placed != nil && !placed[strings.ToLower(tp.Name)] {
 			continue
 		}
 		tpOpts := make(map[string][]map[string]any)
