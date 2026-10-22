@@ -940,10 +940,8 @@ type translator struct {
 	derivedAs    map[int]string    // позиция закрывающей скобки → отложенный AS простой ссылки
 	mainRef      mainRefSource     // главный источник запроса: чья ссылка стоит за голым «Ссылка»
 
-	// groupedDepths — глубины SELECT, у которых уже был GROUP BY. Сортировка по
-	// ссылке там идёт по представлению из авто-JOIN, а его колонки в GROUP BY нет:
-	// PostgreSQL такой ORDER BY отвергает (42803), SQLite молча принимает.
-	groupedDepths map[int]bool
+	// grouped belongs to the active SELECT, independently of expression parentheses.
+	grouped bool
 
 	joinedRefs      []joinedRefSource // ссылочные поля присоединённых источников (#1385)
 	pendingRefJoins []pendingRefJoin  // авто-JOIN присоединённых источников ждут конца ПО
@@ -5383,7 +5381,6 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		aliases:         map[string]struct{}{},
 		unionDepths:     map[int]bool{},
 		unionOrders:     map[int]bool{},
-		groupedDepths:   map[int]bool{},
 		section:         sectionOther,
 		activeSelect:    -1,
 	}
@@ -5604,7 +5601,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				tr.emit("ORDER BY")
 			} else {
 				tr.section = sectionGroupBy
-				tr.groupedDepths[tr.parenDepth] = true
+				tr.grouped = true
 				tr.emit("GROUP BY")
 			}
 			if tr.peek(0).kind == tIdent && upperFast(tr.peek(0).val) == "ПО" {
@@ -5858,12 +5855,12 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				switch kw {
 				case "SELECT":
 					tr.section = sectionSelect
-					delete(tr.groupedDepths, tr.parenDepth)
+					tr.grouped = false
 				case "FROM":
 					tr.section = sectionFrom
 				case "GROUP":
 					tr.section = sectionGroupBy
-					tr.groupedDepths[tr.parenDepth] = true
+					tr.grouped = true
 				case "HAVING":
 					tr.section = sectionHaving
 				case "ORDER":
@@ -5911,7 +5908,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 						case sectionGroupBy:
 							tr.emit(rd.displayCol())
 						case sectionOrderBy:
-							if tr.groupedDepths[tr.parenDepth] {
+							if tr.grouped {
 								// В сгруппированной выборке представление ссылки — не
 								// колонка группировки: сортируем по нему агрегатом. Внутри
 								// группы ссылка одна, значит и представление одно — порядок

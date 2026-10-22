@@ -11,6 +11,8 @@ package interpreter_test
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,5 +57,63 @@ func TestQueryGroupedOrderByRefPresentation(t *testing.T) {
 `)
 		// «Анкер» раньше «Болта» — порядок по представлению, а не по UUID.
 		assert.Equal(t, anchor.String()+"=1;"+bolt.String()+"=2;", result, "сортировка по представлению ссылки в сгруппированной выборке")
+	})
+}
+
+// GROUP BY belongs to its SELECT, even when an outer expression reuses the
+// child's parenthesis depth or the grouped SELECT orders inside an expression.
+func TestQueryGroupedOrderByRefSelectScope(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		ents := refQueryEntities()
+		require.NoError(t, db.Migrate(ctx, ents))
+		bolt, anchor := uuid.New(), uuid.New()
+		require.NoError(t, db.Upsert(ctx, "Номенклатура", bolt, map[string]any{"Наименование": "Болт"}, ents[0]))
+		require.NoError(t, db.Upsert(ctx, "Номенклатура", anchor, map[string]any{"Наименование": "Анкер"}, ents[0]))
+		docs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
+		for i, nom := range []uuid.UUID{bolt, bolt, anchor} {
+			require.NoError(t, db.Upsert(ctx, "РасходТовара", docs[i],
+				map[string]any{"Номер": fmt.Sprint(i + 1), "Номенклатура": nom.String()}, ents[1]))
+		}
+		for _, groupedChild := range []bool{false, true} {
+			for _, order := range []string{"Номенклатура", "(Номенклатура)", `ЕСТЬNULL(Номенклатура, "")`} {
+				t.Run(fmt.Sprintf("child_grouped=%t/order=%s", groupedChild, order), func(t *testing.T) {
+					child := "ВЫБРАТЬ Д.Номенклатура ИЗ Документ.РасходТовара КАК Д"
+					if groupedChild {
+						child += " СГРУППИРОВАТЬ ПО Д.Номенклатура"
+					}
+					query := "ВЫБРАТЬ Р.Ссылка КАК Док ИЗ Документ.РасходТовара КАК Р ГДЕ Р.Номенклатура В (" + child + ") УПОРЯДОЧИТЬ ПО " + order + ", Р.Номер"
+					result := runOnDBEntities(t, db, ents, fmt.Sprintf(`
+Функция Тест()
+ З = Новый Запрос;
+ З.Текст = "%s";
+ Итог = "";
+ Для Каждого С Из З.Выполнить() Цикл
+  Итог = Итог + Строка(С.Док) + ";";
+ КонецЦикла;
+ Возврат Итог;
+КонецФункции
+`, strings.ReplaceAll(query, `"`, `""`)))
+					assert.Equal(t, docs[2].String()+";"+docs[0].String()+";"+docs[1].String()+";", result)
+				})
+			}
+		}
+		for _, order := range []string{"Номенклатура", "(Номенклатура)", `ЕСТЬNULL(Номенклатура, "")`} {
+			t.Run("grouped_outer/order="+order, func(t *testing.T) {
+				query := "ВЫБРАТЬ Р.Номенклатура КАК Номенклатура, КОЛИЧЕСТВО(*) КАК Ч ИЗ Документ.РасходТовара КАК Р СГРУППИРОВАТЬ ПО Р.Номенклатура УПОРЯДОЧИТЬ ПО " + order
+				result := runOnDBEntities(t, db, ents, fmt.Sprintf(`
+Функция Тест()
+ З = Новый Запрос;
+ З.Текст = "%s";
+ Итог = "";
+ Для Каждого С Из З.Выполнить() Цикл
+  Итог = Итог + Строка(С.Номенклатура) + "=" + Строка(С.Ч) + ";";
+ КонецЦикла;
+ Возврат Итог;
+КонецФункции
+`, strings.ReplaceAll(query, `"`, `""`)))
+				assert.Equal(t, anchor.String()+"=1;"+bolt.String()+"=2;", result)
+			})
+		}
 	})
 }
