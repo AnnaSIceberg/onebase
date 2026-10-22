@@ -8,11 +8,15 @@ package ui
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/auth"
 
 	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
@@ -89,6 +93,95 @@ func TestHierarchyListSearchFindsWholeCatalog(t *testing.T) {
 		total, err := db.CountList(ctx, ent.Name, ent, storage.ListParams{Search: "Севрюкова"})
 		if err != nil || total != 1 {
 			t.Fatalf("CountList по всему справочнику = %d, %v", total, err)
+		}
+	})
+}
+
+// Подпись группы не должна обходить строковые права: ребёнок может быть
+// доступен, даже если его родитель запрещён. Проверяем настоящие GET-маршруты
+// списка и формы, а также сохранение подписи разрешённой группы.
+func TestHierarchyListSearchHidesUnreadableGroups(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		ent := &metadata.Entity{
+			Name: "ГруппыПоиска", Kind: metadata.KindCatalog, Hierarchical: true,
+			Fields: []metadata.Field{
+				{Name: "Наименование", Type: metadata.FieldTypeString},
+				{Name: "Доступен", Type: metadata.FieldTypeBool},
+			},
+		}
+		if err := db.Migrate(ctx, []*metadata.Entity{ent}); err != nil {
+			t.Fatal(err)
+		}
+		hidden, visible, hiddenChild, visibleChild := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+		for _, row := range []struct {
+			id              uuid.UUID
+			name            string
+			parent          string
+			folder, allowed bool
+		}{
+			{hidden, "Секретная_группа", "", true, false},
+			{visible, "Открытая_группа", "", true, true},
+			{hiddenChild, "Найденный_ребёнок_скрытой", hidden.String(), false, true},
+			{visibleChild, "Найденный_ребёнок_открытой", visible.String(), false, true},
+		} {
+			if err := db.Upsert(ctx, ent.Name, row.id, map[string]any{
+				"Наименование": row.name, "parent_id": row.parent,
+				"is_folder": row.folder, "Доступен": row.allowed,
+			}, ent); err != nil {
+				t.Fatal(err)
+			}
+		}
+		reg := runtime.NewRegistry()
+		reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{ent}})
+		srv := &Server{store: db, reg: reg, interp: interpreter.New(), lockMgr: runtime.NewLockManager(),
+			messages: NewMessageStore(), ops: newOperationLimiter()}
+		user := &auth.User{Login: "reader", Roles: []*auth.Role{{Permissions: auth.Permission{
+			Catalogs: map[string][]string{ent.Name: {"read"}},
+			RowAccess: auth.RowAccess{Catalogs: map[string]auth.RowPolicies{
+				ent.Name: {"read": {Field: "Доступен", Op: "eq", Value: auth.RowValue{Literal: true}}},
+			}},
+		}}}}
+		router := chi.NewRouter()
+		srv.Mount(router)
+		listURL := "/ui/catalog/" + url.PathEscape(strings.ToLower(ent.Name))
+		get := func(path string, who *auth.User) *httptest.ResponseRecorder {
+			t.Helper()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req = req.WithContext(auth.ContextWithUser(req.Context(), who))
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			return rec
+		}
+		if rec := get(listURL+"/"+hidden.String(), user); rec.Code != http.StatusForbidden {
+			t.Fatalf("закрытая группа: status=%d, ожидалось 403", rec.Code)
+		}
+		for _, query := range []string{
+			"?q=" + url.QueryEscape("Найденный"),
+			"?f." + url.QueryEscape("Доступен") + "=true",
+		} {
+			rec := get(listURL+query, user)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("%s: status=%d", query, rec.Code)
+			}
+			body := rec.Body.String()
+			for _, id := range []uuid.UUID{hiddenChild, visibleChild} {
+				if !strings.Contains(body, "/"+id.String()) {
+					t.Fatalf("%s: нет строки ребёнка %s", query, id)
+				}
+			}
+			if strings.Contains(body, "Секретная_группа") || strings.Contains(body, "?parent="+hidden.String()) {
+				t.Errorf("%s: раскрыты подпись или ссылка закрытой группы", query)
+			}
+			if !strings.Contains(body, "📁 Открытая_группа") || !strings.Contains(body, "?parent="+visible.String()) {
+				t.Errorf("%s: нет подписи или ссылки разрешённой группы", query)
+			}
+		}
+		// Администратор видит обе группы: ограничение не меняет его права.
+		rec := get(listURL+"?q="+url.QueryEscape("Найденный"), &auth.User{Login: "admin", IsAdmin: true})
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "📁 Секретная_группа") ||
+			!strings.Contains(rec.Body.String(), "?parent="+hidden.String()) {
+			t.Fatal("администратор не видит подпись и ссылку группы")
 		}
 	})
 }

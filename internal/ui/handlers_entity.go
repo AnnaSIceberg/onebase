@@ -231,27 +231,25 @@ func listSearchesWholeHierarchy(params storage.ListParams) bool {
 }
 
 // markHierarchyGroups подписывает строки результата поиска по всему
-// иерархическому справочнику их группой: «_group_id» и «_group_label». Без
-// этого найденный элемент из глубины дерева не отличить от одноимённого в
-// другой папке. Подпись — та же, что у хлебных крошек (maskedRecordLabel).
+// иерархическому справочнику их группой: «_group_id» и «_group_label».
+// Родитель может быть закрыт строковыми правами даже при доступном ребёнке:
+// подпись и ссылку добавляем только после RBAC/RLS-проверки родителя.
 func (s *Server) markHierarchyGroups(ctx context.Context, entity *metadata.Entity, rows []map[string]any) {
-	labels := map[string]string{}
+	ids := make(map[string]uuid.UUID)
 	for _, row := range rows {
-		pid := refValueString(row["parent_id"])
-		if pid == "" {
-			continue
+		if pid, id, ok := uuidFromValue(row["parent_id"]); ok {
+			ids[pid] = id
 		}
-		label, ok := labels[pid]
-		if !ok {
-			if id, err := uuid.Parse(pid); err == nil {
-				if parent, err := s.store.GetByID(ctx, entity.Name, id, entity); err == nil {
-					label = s.maskedRecordLabel(ctx, entity, parent)
-				}
+	}
+	labels := make(map[string]string, len(ids))
+	s.batchReadableLabels(ctx, entity, ids, labels)
+	for _, row := range rows {
+		if pid, _, ok := uuidFromValue(row["parent_id"]); ok {
+			if label, readable := labels[pid]; readable {
+				row["_group_id"] = pid
+				row["_group_label"] = label
 			}
-			labels[pid] = label
 		}
-		row["_group_id"] = pid
-		row["_group_label"] = label
 	}
 }
 
