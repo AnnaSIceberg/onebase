@@ -197,6 +197,7 @@ func (s *Server) refreshFieldsWrittenByHandler(
 		return true
 	}
 
+	endScan := serverTimingSpan(ctx, "refreshScan")
 	need := false
 	for _, f := range entity.Fields {
 		if stale(f) {
@@ -204,6 +205,7 @@ func (s *Server) refreshFieldsWrittenByHandler(
 			break
 		}
 	}
+	endScan()
 	if !need {
 		return
 	}
@@ -213,6 +215,7 @@ func (s *Server) refreshFieldsWrittenByHandler(
 	if err != nil || row == nil {
 		return
 	}
+	defer serverTimingSpan(ctx, "refreshApply")()
 	for _, f := range entity.Fields {
 		if !stale(f) {
 			continue

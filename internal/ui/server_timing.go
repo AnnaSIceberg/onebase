@@ -27,6 +27,27 @@ type serverTiming struct {
 	order []string
 	spans map[string]time.Duration
 	notes []string
+	// counts — счётчики без длительности (попадания кэша и т. п.), в
+	// заголовке идут после фаз как name;desc="N".
+	countOrder []string
+	counts     map[string]int
+}
+
+// serverTimingCount увеличивает именованный счётчик запроса.
+func serverTimingCount(ctx context.Context, name string) {
+	st, _ := ctx.Value(serverTimingKey{}).(*serverTiming)
+	if st == nil {
+		return
+	}
+	st.mu.Lock()
+	if st.counts == nil {
+		st.counts = map[string]int{}
+	}
+	if _, ok := st.counts[name]; !ok {
+		st.countOrder = append(st.countOrder, name)
+	}
+	st.counts[name]++
+	st.mu.Unlock()
 }
 
 // serverTimingNote добавляет в заголовок запись без длительности — с
@@ -70,6 +91,9 @@ func (st *serverTiming) header() string {
 	parts := make([]string, 0, len(st.order)+1)
 	for _, name := range st.order {
 		parts = append(parts, fmt.Sprintf("%s;dur=%.1f", name, float64(st.spans[name].Microseconds())/1000))
+	}
+	for _, name := range st.countOrder {
+		parts = append(parts, fmt.Sprintf("%s;desc=\"%d\"", name, st.counts[name]))
 	}
 	parts = append(parts, st.notes...)
 	parts = append(parts, fmt.Sprintf("total;dur=%.1f", float64(time.Since(st.start).Microseconds())/1000))
