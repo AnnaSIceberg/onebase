@@ -252,7 +252,7 @@ type FormElement struct {
 	// строку полей внутри раздела (как в карточке 1С: рамка у раздела, а не у
 	// каждой строки). nil и true — рамка, как было.
 	Frame      *bool  `yaml:"frame,omitempty"`
-	Background string `yaml:"background,omitempty"` // фон: ГруппаФормы (#1547), Кнопка, у ПолеВвода — фон самого ввода; цвет проверяет csssafe.Color
+	Background string `yaml:"background,omitempty"` // фон: ГруппаФормы (#1547), СтраницыФормы (весь набор), Кнопка, у ПолеВвода — фон самого ввода; цвет проверяет csssafe.Color
 	// BorderColor — цвет рамки ввода ПолеВвода (вместе с background выделяет
 	// поле, как в ТЗ форм колл-центра); цвет проверяет csssafe.Color.
 	BorderColor string `yaml:"border_color,omitempty"`

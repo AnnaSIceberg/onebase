@@ -56,7 +56,7 @@ const tplManagedForm = `
   {{/* equal_height — область страниц высотой с самую высокую (obEqualizeTabs);
        fit_window — страницы занимают остаток окна, рамка формы без прокрутки (obFitTabsToWindow);
        height — постоянная высота набора, длинная страница прокручивается внутри. */}}
-  <div class="managed-tabs{{if elFill $el}} managed-tabs-fill{{end}}" data-tabs="{{$el.Name}}"{{if $el.EqualHeight}} data-ob-equal-height="1"{{end}}{{if $el.FitWindow}} data-ob-fit-window="1"{{end}}{{if hasHandler $el "ПриСменеСтраницы"}} data-ob-fire-pagechange="{{$el.Name}}"{{end}} style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{elLayout $el}}">
+  <div class="managed-tabs{{if elFill $el}} managed-tabs-fill{{end}}" data-tabs="{{$el.Name}}"{{if $el.EqualHeight}} data-ob-equal-height="1"{{end}}{{if $el.FitWindow}} data-ob-fit-window="1"{{end}}{{if hasHandler $el "ПриСменеСтраницы"}} data-ob-fire-pagechange="{{$el.Name}}"{{end}} style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{elBackground $el}}{{elLayout $el}}">
     <div class="managed-tab-headers" style="display:flex;gap:2px;border-bottom:2px solid #e2e8f0;margin-bottom:12px">
       {{range $i, $page := $pages}}
         <button type="button" class="managed-tab-btn{{if eq $i 0}} active{{end}}" data-tab-idx="{{$i}}" data-tab-page="{{$page.Name}}"{{with elPath $ctx $page}} data-ob-tab-path="{{.}}"{{end}} data-ob-readonly-navigation="1">

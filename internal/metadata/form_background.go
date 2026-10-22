@@ -19,10 +19,10 @@ func FormElementBackgroundCSS(el *FormElement) string {
 }
 
 // FormElementSupportsBackground — виды элементов, для которых ключ background
-// применяется: контейнер, кнопка и поле ввода (у поля — фон самого ввода,
+// применяется: контейнеры (группа; набор страниц — весь набор с полосой закладок), кнопка и поле ввода (у поля — фон самого ввода,
 // FormElementFieldColors).
 func FormElementSupportsBackground(kind FormElementType) bool {
-	return kind == FormElementGroupBox || kind == FormElementButton || kind == FormElementField
+	return kind == FormElementGroupBox || kind == FormElementPages || kind == FormElementButton || kind == FormElementField
 }
 
 // FormElementSupportsBorderColor — ключ border_color читает только ПолеВвода.
