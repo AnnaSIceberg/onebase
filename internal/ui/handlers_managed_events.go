@@ -337,6 +337,7 @@ func (s *Server) installFormCloseAccessRecheck(
 }
 
 func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Request, closeInv *formCloseInvocation) {
+	r = r.WithContext(withShellID(r.Context(), r.Header.Get(shellHeader)))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)
 	// prepare — разбор запроса, сборка объекта и чтение базы до обработчика.
@@ -2544,6 +2545,7 @@ func (s *Server) handleProcessorFormEvent(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Request, closeInv *formCloseInvocation) {
+	r = r.WithContext(withShellID(r.Context(), r.Header.Get(shellHeader)))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)
 
