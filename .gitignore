@@ -68,6 +68,7 @@ Thumbs.db
 # Рабочие материалы / документация (не в публичном репо)
 docs/*
 !docs/forms.md
+!docs/configuration-help.md
 !docs/forms-1c-converter.md
 !docs/migrate-scan.md
 !docs/ai-assistant.md

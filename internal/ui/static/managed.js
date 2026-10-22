@@ -693,6 +693,8 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       const hiddenNames = obManagedHiddenColumnNames(tbody);
       const rows = tps[tpName] || [];
       const refOpts = (window._tpRefOpts && window._tpRefOpts[tpName]) || {};
+      const refMeta = (obTPRefMeta()[tpName]) || {};
+      var choices={};try{choices=JSON.parse(tbody.getAttribute('data-tp-choice')||'{}')||{};}catch(e){}
       const tpEnumLabels = (window._tpEnumLabels && window._tpEnumLabels[tpName]) || {};
       const tpEnumOrder = (window._tpEnumOrder && window._tpEnumOrder[tpName]) || {};
       const hasCmd = tbody.getAttribute('data-tp-cmd') === '1';
@@ -732,16 +734,21 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
           const v = row[f.name];
           const isRef = f.type === 'reference' || f.type.indexOf('reference') === 0;
           const isEnum = f.type === 'enum' || f.type.indexOf('enum') === 0;
-          if (isRef && refOpts[f.name]) {
+          if (isRef && (refOpts[f.name] || choices[f.name])) {
             const sel = document.createElement('select');
             sel.name = 'tp.' + tpName + '.' + idx + '.' + f.name;
+            var choice=choices[f.name];
+            const meta = refMeta[f.name];
+            if (meta && meta.filter) sel.setAttribute('data-ref-filter', meta.filter);
+            if(choice) {sel.setAttribute('data-ref-choice-context',choice);sel.setAttribute('data-ref-row-id',String(idx));sel.setAttribute('data-ref-entity',f.ref.split(':').pop());}
             const empty = document.createElement('option');
             empty.value = ''; empty.textContent = '— выбрать —';
             sel.appendChild(empty);
             // v приходит сериализованным как UUID-string (serializeTablePartRows),
             // но на всякий случай учитываем и legacy-формат с GetRefUUID-методом.
             const cur = (v && typeof v === 'object' && v.GetRefUUID) ? v.GetRefUUID() : (v == null ? '' : String(v));
-            refOpts[f.name].forEach(function(opt){
+            (refOpts[f.name] || []).forEach(function(opt){
+              if(choice && String(opt.id)!==cur)return;
               const o = document.createElement('option');
               o.value = opt.id;
               o.textContent = opt._label;
@@ -807,6 +814,19 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
               inp.type = 'number';
               inp.step = 'any';
               inp.value = (v == null ? '' : v);
+            } else if (f.type === 'date') {
+              // Как при первичной отрисовке: иначе после первого же события
+              // формы дата снова становилась сырым текстом. Только для
+              // чтения — текст «19.10.2026 09:15:30», иначе поле даты.
+              if (readOnly) {
+                inp.type = 'text';
+                inp.value = window.obManagedDateText(v);
+                inp.setAttribute('data-ob-date-text', '');
+              } else {
+                inp.type = 'datetime-local';
+                inp.step = '1';
+                inp.value = window.obManagedDateInputValue(v);
+              }
             } else {
               inp.type = 'text';
               inp.value = (v == null ? '' : v);
@@ -1622,7 +1642,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	  } catch (_) {}
 	  try {
 		if (window.parent && window.parent !== window) {
-		  window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL}, location.origin);
+		  window.parent.postMessage({source: 'obFrameURLChanged', url: savedURL, documentToken: obManagedFrameDocumentToken}, location.origin);
 		}
 	  } catch (_) {}
 	}
@@ -2236,7 +2256,8 @@ function obManagedAddTpRow(btn) {
   var fields = meta.map(function (f) { return f.name; });
   var nums = meta.filter(function (f) { return f.type === 'number'; }).map(function (f) { return f.name; });
   var bools = meta.filter(function (f) { return f.type === 'bool'; }).map(function (f) { return f.name; });
-  addTpRow(tpName, fields, nums, tbody.rows.length, tbody, obManagedVirtualColumnNames(tbody), bools);
+  var dates = meta.filter(function (f) { return f.type === 'date'; }).map(function (f) { return f.name; });
+  addTpRow(tpName, fields, nums, tbody.rows.length, tbody, obManagedVirtualColumnNames(tbody), bools, dates);
   // Новая строка строится по data-tp-fields, где скрытые колонки перечислены
   // наравне с показываемыми (без них значения не уехали бы на сервер). Прячем
   // их ячейки так же, как это делают первичный рендер и applyTableParts.
@@ -2631,6 +2652,8 @@ function obGridColumnIds(columns) {
   // drop: vendored SlickGrid без Sortable.js свой reorder не включает) и
   // сохранение порядка за пользователем; «Стандартный порядок колонок»
   // возвращает порядок формы.
+  // Очередь общая для одного ключа, включая повторные представления таблицы.
+  var gridOrderSaves = Object.create(null);
   function enableColumnReorder(state, defaultIds) {
     var div = state.div, grid = state.grid;
     var key = div.getAttribute("data-sg-layout");
@@ -2650,11 +2673,28 @@ function obGridColumnIds(columns) {
     }
     function save(order) {
       if (!window.fetch) return;
-      var body = "grid=" + encodeURIComponent(key) + "&order=" + encodeURIComponent(order);
-      window.fetch("/ui/_grid-order", {
-        method: "POST", credentials: "same-origin",
-        headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: body
-      }).catch(function() {});
+      var queue = gridOrderSaves[key] || (gridOrderSaves[key] = {running: false, pending: null});
+      queue.pending = order; // Пустая строка — сброс, null — нет ожидающей записи.
+      if (queue.running) return;
+      function sendNext() {
+        if (queue.pending === null) {
+          queue.running = false;
+          delete gridOrderSaves[key];
+          return;
+        }
+        var body = "grid=" + encodeURIComponent(key) + "&order=" + encodeURIComponent(queue.pending);
+        queue.pending = null;
+        queue.running = true;
+        // Пока сервер не закончил старую запись, новую не отправляем.
+        // Ошибка не должна блокировать более позднее действие пользователя.
+        try {
+          window.fetch("/ui/_grid-order", {
+            method: "POST", credentials: "same-origin",
+            headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: body
+          }).then(sendNext, sendNext);
+        } catch (e) { sendNext(); }
+      }
+      sendNext();
     }
     function applyColumns() {
       grid.setColumns(state.columns);
@@ -2779,6 +2819,9 @@ function obGridColumnIds(columns) {
     var isOpen = false, selectedId = '', defaultValue = '';
     var refEntity = (args.column && args.column.refEntity) || '';
     var refFilter = (args.column && args.column.refFilter) || '';
+    var choiceContext = (args.column && args.column.choiceContext) || '';
+    function choiceCarrier() { return window.obTPChoiceCarrier(choiceContext, args.item, args.row, args.container.closest('form'), args.column.field, refEntity, refFilter); }
+    function requestParam() { return choiceContext ? window.obRefChoiceSnapshot(choiceCarrier()).query : filterParam(); }
     var initialFilter = '';
     try {
       if (refFilter) {
@@ -2797,7 +2840,9 @@ function obGridColumnIds(columns) {
     var serverFilter = '';
     var shown = [];        // что сейчас отрисовано в списке (для ↑/↓ и Enter)
     var activeIdx = -1;    // подсвеченный пункт списка, -1 — нет подсветки
-    var searchTimer = null, searchSeq = 0;
+    var searchTimer = null, searchSeq = 0, lastChoiceRequest = "";
+    function choiceSourceChanged(){if(!choiceContext || !input || lastChoiceRequest===requestParam())return;serverRows=[];buildList(input.value);searchServer(input.value);}
+    if(choiceContext){document.addEventListener("change",choiceSourceChanged);window._obTPChoiceEditorRefresh=choiceSourceChanged;}
 
     function label(id) {
       for (var k = 0; k < refOptsList.length; k++) {
@@ -2831,8 +2876,13 @@ function obGridColumnIds(columns) {
         seen[key] = true;
         out.push({id: o.id, _label: lbl});
       }
-      var currentFilter = filterParam();
-      for (var i = 0; i < refOptsList.length; i++) {
+      var currentFilter = requestParam();
+      if(choiceContext && args.column.choiceSeeds) {
+        var seed=args.column.choiceSeeds.get(args.item);
+        var snapshot=window.obRefChoiceSnapshot(choiceCarrier());
+        if(seed && seed.fingerprint===snapshot.fingerprint)seed.items.forEach(function(o){if(!o._choice_outside_filter)push(o);});
+      }
+      for (var i = 0; !choiceContext && i < refOptsList.length; i++) {
         if ((refOptsList[i]._ownerFilter || initialFilter) === currentFilter) push(refOptsList[i]);
       }
       if (currentFilter === serverFilter) {
@@ -2932,13 +2982,14 @@ function obGridColumnIds(columns) {
     function searchServer(q) {
       if (!refEntity || !window.fetch) return;
       var seq = ++searchSeq;
-      var requestFilter = filterParam();
+      var requestFilter = requestParam();
+      lastChoiceRequest=requestFilter;
       var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) +
                 '?limit=50&q=' + encodeURIComponent(q || '') + requestFilter;
       fetch(url, {credentials: 'same-origin', headers: {'Accept': 'application/json'}})
         .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
         .then(function(data) {
-          if (seq !== searchSeq || requestFilter !== filterParam()) return; // ответ устарел
+          if (seq !== searchSeq || requestFilter !== requestParam()) return; // ответ устарел
           var keep = (activeIdx >= 0 && shown[activeIdx]) ? shown[activeIdx].id : '';
           serverRows = ((data && data.items) || []).map(function(row) {
             return {id: row && row.id != null ? String(row.id) : '', _label: String((row && row._label) || '')};
@@ -2983,6 +3034,7 @@ function obGridColumnIds(columns) {
       if (typeof window.openRefPicker !== 'function') return;
       var selEl = document.createElement('select');
       selEl.setAttribute('data-ref-entity', refEntity);
+      if(choiceContext) { selEl.setAttribute('data-ref-choice-context',choiceContext); selEl.setAttribute('data-ref-row-id',String(args.row)); selEl._obChoiceRow=args.item; selEl._obChoiceForm=args.container.closest('form'); }
       if (refFilter) selEl.setAttribute('data-ref-filter', refFilter);
       // «+ Создать» в форме подбора включается тем же признаком колонки, что и
       // в автоформе (allow_inline_create у поля ТЧ). Без переноса на временный
@@ -2996,6 +3048,9 @@ function obGridColumnIds(columns) {
         o.textContent = opts[k]._label;
         selEl.appendChild(o);
       }
+      if(choiceContext && selectedId && !opts.some(function(o){return String(o.id)===String(selectedId);})) {
+        var current=document.createElement('option');current.value=selectedId;current.textContent=label(selectedId)||selectedId;current.setAttribute('data-ob-choice-outside-filter','1');selEl.appendChild(current);
+      }
       selEl.value = selectedId;
       selEl.addEventListener('change', function() {
         var id = selEl.value;
@@ -3007,6 +3062,13 @@ function obGridColumnIds(columns) {
       closeList();
       window.openRefPicker(selEl);
     }
+
+    function ownsEnter(target) {
+      return target === input && isOpen && activeIdx >= 0 && !!shown[activeIdx];
+    }
+    // Document-capture навигации должен дать редактору выбрать подсказку
+    // раньше, чем коммитить ячейку. Состояние принадлежит этому редактору.
+    this.ownsEnter = ownsEnter;
 
     function onKeyDown(e) {
       var key = e.key || '';
@@ -3026,7 +3088,7 @@ function obGridColumnIds(columns) {
         return;
       }
       if (key === 'Enter') {
-        if (isOpen && activeIdx >= 0 && shown[activeIdx]) {
+        if (ownsEnter(e.target)) {
           // Подставляем значение и ОСТАЁМСЯ в ячейке (ввод по строке в 1С);
           // следующий Enter/Tab уже коммитит правку средствами SlickGrid.
           e.preventDefault();
@@ -3094,6 +3156,7 @@ function obGridColumnIds(columns) {
       // список уже уничтоженного редактора.
       if (searchTimer) { clearTimeout(searchTimer); searchTimer = null; }
       searchSeq++;
+      if(choiceContext){document.removeEventListener("change",choiceSourceChanged);if(window._obTPChoiceEditorRefresh===choiceSourceChanged)window._obTPChoiceEditorRefresh=null;}
       closeList();
       isOpen = false;
       if (list && list.parentElement) list.remove();
@@ -3107,6 +3170,7 @@ function obGridColumnIds(columns) {
       defaultValue = v;
       selectedId = refId(v);
       input.value = label(selectedId);
+      if(choiceContext) searchServer('');
     };
     this.serializeValue = function() { resolveTyped(); return selectedId; };
     this.applyValue = function(item, state) { item[args.column.field] = state; };
@@ -3232,6 +3296,37 @@ function obGridColumnIds(columns) {
       seconds: (m[6] !== undefined) ? m[6] : ''
     };
   }
+
+  // obManagedDateInputValue — значение для <input type="datetime-local">:
+  // «ГГГГ-ММ-ДДTчч:мм[:сс]». Сервер отдаёт дату уже стенными часами без зоны;
+  // строку с зоной (Z или ±чч:мм) переводим в местное время браузера, а не
+  // отрезаем зону — иначе время сдвинулось бы на смещение.
+  function obManagedDateInputValue(value) {
+    if (value == null || value === '') return '';
+    var s = String(value);
+    if (/(Z|[+-]\d{2}:?\d{2})$/.test(s)) {
+      var d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        var p = function(n) { return (n < 10 ? '0' : '') + n; };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+          p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+      }
+    }
+    var parts = obManagedSplitDate(s);
+    if (!parts) return '';
+    return parts.date + 'T' + (parts.time || '00:00') + (parts.seconds ? ':' + parts.seconds : '');
+  }
+  window.obManagedDateInputValue = obManagedDateInputValue;
+
+  // obManagedDateText — дата текстом, как fmtDate на сервере: «19.10.2026»,
+  // со временем «19.10.2026 09:15:30», только когда оно ненулевое.
+  function obManagedDateText(value) {
+    var parts = obManagedSplitDate(obManagedDateInputValue(value));
+    if (!parts) return value == null ? '' : String(value);
+    var time = parts.time ? parts.time + ':' + (parts.seconds || '00') : '';
+    return (time && time !== '00:00:00') ? parts.day + ' ' + time : parts.day;
+  }
+  window.obManagedDateText = obManagedDateText;
 
   // obManagedFormatDate — вид даты в ячейке: «14.03.1985», со временем только
   // когда оно ненулевое. Тот же принцип, что у fmtDate на сервере.
@@ -3771,6 +3866,70 @@ function obGridColumnIds(columns) {
     updateTotals(g);
   };
 
+  // gridFirstEditableCell — первая колонка строки, в которую можно встать.
+  // Служебные колонки (маркер выбора, номер) редактировать нельзя, и вставать
+  // на них оператору незачем.
+  function gridFirstEditableCell(g, row) {
+    var cols = g.grid.getColumns() || [];
+    for (var i = 0; i < cols.length; i++) {
+      if (g.grid.isCellEditable && !g.grid.isCellEditable(row, i)) continue;
+      return i;
+    }
+    return 0;
+  }
+
+  // gridEnterNavigate — коммит текущей ячейки и переход к следующей.
+  function gridEnterNavigate(g) {
+    if (!g || !g.grid) return false;
+    var grid = g.grid;
+    var lock = grid.getEditorLock && grid.getEditorLock();
+    if (lock && lock.isActive() && !lock.commitCurrentEdit()) {
+      // Значение не принято редактором — остаёмся в ячейке, чтобы человек
+      // увидел отказ там же, где ввёл.
+      return true;
+    }
+    var active = grid.getActiveCell();
+    var rows = (g.dataView && g.dataView.getLength) ? g.dataView.getLength() : 0;
+    if (!active) {
+      if (rows > 0) grid.setActiveCell(0, gridFirstEditableCell(g, 0));
+      return true;
+    }
+    var cols = (grid.getColumns() || []).length;
+    if (active.row >= rows - 1 && active.cell >= cols - 1) {
+      // Конец таблицы: ни новой строки, ни записи.
+      return true;
+    }
+    if (grid.navigateNext) grid.navigateNext();
+    return true;
+  }
+
+  // obGridFocusFirstCell — вход в табличную часть из шапки формы: фокус
+  // становится в первую доступную ячейку. Зовёт ui.js, когда следующей
+  // остановкой маршрута Enter оказывается грид.
+  window.obGridFocusFirstCell = function(host) {
+    var tpName = host && host.getAttribute ? (host.getAttribute("data-sg-tp") || "") : "";
+    // Одна ТЧ может иметь readonly и writable представления. Проверяем именно
+    // host маршрута, а не канонический writable grid с тем же именем.
+    var g = host && host._obGridState;
+    if (!g || !g.grid || g.div !== host || g.readOnly ||
+        !document.contains(host) || !managedElementVisible(host)) return false;
+    var rows = (g.dataView && g.dataView.getLength) ? g.dataView.getLength() : 0;
+    if (rows <= 0) return false;
+    var lock = g.grid.getEditorLock && g.grid.getEditorLock();
+    if (lock && lock.isActive() && !lock.commitCurrentEdit()) {
+      // setActiveCell уничтожает редактор без коммита. При отказе валидации
+      // редактор сохраняет ввод и фокус; нажатие обработано, маршрут не продолжаем.
+      return true;
+    }
+    var cell = gridFirstEditableCell(g, 0);
+    g.grid.setActiveCell(0, cell);
+    if (g.grid.focus) g.grid.focus();
+    var active = g.grid.getActiveCell();
+    if (!active || active.row !== 0 || active.cell !== cell || !host.contains(document.activeElement)) return false;
+    rememberActiveGrid(tpName);
+    return true;
+  };
+
   function gridNameFromTarget(el) {
     var host = el && el.closest ? el.closest(".ob-grid[data-sg-tp]") : null;
     return host ? (host.getAttribute("data-sg-tp") || "") : "";
@@ -3881,6 +4040,26 @@ function obGridColumnIds(columns) {
         if (window.obGridAddRow) window.obGridAddRow(tp);
         return;
       }
+      // Enter в табличной части — переход к следующей колонке, а из последней
+      // колонки к первой колонке следующей строки (#1486). На конце таблицы
+      // фокус остаётся на месте: строку не создаём и форму не записываем.
+      // Штатный Enter грида коммитит ячейку и остаётся в ней, поэтому берём
+      // клавишу себе в фазе перехвата и делаем оба шага явно.
+      if (e.key === "Enter" && !e.ctrlKey && direct) {
+        if (e.isComposing === true || e.keyCode === 229) {
+          // Оставляем браузеру подтверждение IME, но не передаём Enter
+          // SlickGrid: при keyCode=13 он тоже завершил бы редактор.
+          e.stopPropagation();
+          return;
+        }
+        var form = active.div && active.div.closest('form');
+        if (form && form.getAttribute('data-ob-enter-submits') === '1') return;
+        var editor = active.grid.getCellEditor();
+        if (editor && editor.ownsEnter && editor.ownsEnter(e.target)) return;
+        take();
+        gridEnterNavigate(active);
+        return;
+      }
       // Явный hotkey кнопки формы важнее встроенного значения клавиши.
       if (e.key === "F9" && !e.ctrlKey && !hasActionableFormHotkey("F9")) {
         take();
@@ -3926,7 +4105,74 @@ function obGridColumnIds(columns) {
       });
     });
     if (origApplyTP) origApplyTP(tps);
+    if(window.obAttachTPChoiceContexts)window.obAttachTPChoiceContexts(document);
+    if(window.obRefreshChoiceFilters)window.obRefreshChoiceFilters();
+    if(window.obRefreshTPChoiceFilters)window.obRefreshTPChoiceFilters();
   };
+
+  // BEGIN onebase-tp-choice-refresh
+  var tpChoiceStates = new WeakMap();
+  function updateTPChoiceErrors(g, rowStates) {
+    var failed=g.dataView.getItems().some(function(row){
+      var states=rowStates.get(row);
+      return states && g.columns.some(function(col){
+        return col.choiceContext && states[col.field] && states[col.field].error;
+      });
+    });
+    if(failed)g.div.setAttribute('data-ob-choice-error','1');
+    else g.div.removeAttribute('data-ob-choice-error');
+  }
+  window.obRefreshTPChoiceFilters = function() {
+    if(window._obTPChoiceEditorRefresh)window._obTPChoiceEditorRefresh();
+    var jobs=[];
+    (window._obGridViews || []).forEach(function(g){
+      if(g.readOnly || !window.fetch || !window.obTPChoiceCarrier)return;
+      var rowStates=tpChoiceStates.get(g);
+      if(!rowStates){rowStates=new WeakMap();tpChoiceStates.set(g,rowStates);}
+      var items=g.dataView.getItems();
+      updateTPChoiceErrors(g,rowStates);
+      items.forEach(function(row,index){
+        var states=rowStates.get(row);
+        if(!states){states={};rowStates.set(row,states);}
+        g.columns.forEach(function(col){
+          if(!col.choiceContext)return;
+          var carrier=window.obTPChoiceCarrier(col.choiceContext,row,index,g.div.closest('form'),col.field,col.refEntity,col.refFilter);
+          var snapshot=window.obRefChoiceSnapshot(carrier);
+          var state=states[col.field] || (states[col.field]={seq:0});
+          var key=snapshot.fingerprint+'|'+snapshot.selected;
+          if(state.pending===key || (state.applied===key && !state.error))return;
+          var seq=++state.seq;state.pending=key;
+          var picker=document.getElementById('_ref-picker-modal');
+          if(picker && window._rpTarget && window._rpTarget._obChoiceRow===row && typeof picker._obChoiceReload==='function')picker._obChoiceReload();
+          var job=window.fetch('/ui/_ref-options/'+encodeURIComponent(col.refEntity)+'?limit=50'+snapshot.query,{credentials:'same-origin',headers:{Accept:'application/json'}})
+            .then(function(resp){if(!resp.ok)throw new Error('HTTP '+resp.status);return resp.json();})
+            .then(function(data){
+              if(state.seq!==seq || g.dataView.getItems().indexOf(row)<0)return;
+              var current=window.obRefChoiceSnapshot(carrier);
+              if(current.fingerprint!==snapshot.fingerprint || current.selected!==snapshot.selected){state.pending='';return window.obRefreshTPChoiceFilters();}
+              if(snapshot.selected && typeof data.selected_allowed!=='boolean')throw new Error('missing selected_allowed');
+              state.pending='';state.applied=key;state.error=false;
+              updateTPChoiceErrors(g,rowStates);
+              if(snapshot.selected && data.selected_allowed===false){
+                row[col.field]='';g.grid.invalidate();g.grid.render();
+                if(window.obSetManagedFormDirty)window.obSetManagedFormDirty(true);
+                return window.obRefreshTPChoiceFilters();
+              }
+            }).catch(function(){
+              if(state.seq!==seq)return;
+              state.pending='';
+              if(g.dataView.getItems().indexOf(row)<0){updateTPChoiceErrors(g,rowStates);return;}
+              var current=window.obRefChoiceSnapshot(carrier);
+              if(current.fingerprint!==snapshot.fingerprint || current.selected!==snapshot.selected)return window.obRefreshTPChoiceFilters();
+              state.error=true;updateTPChoiceErrors(g,rowStates);
+            });
+          jobs.push(job);
+        });
+      });
+    });
+    return Promise.all(jobs);
+  };
+  // END onebase-tp-choice-refresh
 
   // setupGrid инициализирует один грид. Вынесено из цикла в отдельную функцию,
   // чтобы каждый грид замыкал свои grid/dataView/tpName (иначе при нескольких
@@ -3960,6 +4206,9 @@ function obGridColumnIds(columns) {
     // алфавитный, а список должен идти в порядке объявления values:.
     var enumOrder = (window._tpEnumOrder && window._tpEnumOrder[tpName]) || {};
     var columns = buildColumns(colsRaw, refOpts, enumLabels, enumOrder);
+    var choiceContexts={};
+    try { choiceContexts=JSON.parse(div.getAttribute('data-sg-choice') || '{}') || {}; } catch(e) {}
+    columns.forEach(function(col){col.choiceContext=choiceContexts[col.field] || '';});
     var defaultColumnIds = obGridColumnIds(columns);
     obGridApplyOrder(columns, obGridParseOrder(div.getAttribute("data-sg-order")));
     // _ord — исходный порядок строки. Клиентская сортировка меняет ПОРЯДОК
@@ -4014,8 +4263,18 @@ function obGridColumnIds(columns) {
       columnsMeta: colsRaw, refOpts: refOpts, div: div, readOnly: readOnly,
       tpName: tpName
     };
+    var choiceRows={};try{choiceRows=JSON.parse(div.getAttribute('data-sg-choice-rows')||'{}')||{};}catch(e){}
+    columns.forEach(function(col){
+      if(!col.choiceContext || !window.obTPChoiceCarrier)return;
+      col.choiceSeeds=new WeakMap();
+      dataView.getItems().forEach(function(row,index){
+        var carrier=window.obTPChoiceCarrier(col.choiceContext,row,index,div.closest('form'),col.field,col.refEntity,col.refFilter);
+        col.choiceSeeds.set(row,{fingerprint:window.obRefChoiceSnapshot(carrier).fingerprint,items:(choiceRows[col.field]||[])[index]||[]});
+      });
+    });
     div._obGridState = gridState;
     window._obGridViews.push(gridState);
+    if(Object.keys(choiceContexts).length)Promise.resolve().then(function(){window.obRefreshTPChoiceFilters();});
     enableColumnReorder(gridState, defaultColumnIds);
     var registered = window._obGrids[tpName];
     if (!registered || (!readOnly && registered.readOnly)) {
@@ -4029,7 +4288,7 @@ function obGridColumnIds(columns) {
     }
 
    try {
-    dataView.onRowCountChanged.subscribe(function() { grid.updateRowCount(); grid.render(); updateTotals(gridState); });
+    dataView.onRowCountChanged.subscribe(function() { grid.updateRowCount(); grid.render(); updateTotals(gridState); if(window.obRefreshTPChoiceFilters)window.obRefreshTPChoiceFilters(); });
     dataView.onRowsChanged.subscribe(function(e, args) { grid.invalidateRows(args.rows); grid.render(); });
 
     // Сортировка по клику на заголовок (колонки sortable). Порядок ОТОБРАЖЕНИЯ;
@@ -4087,6 +4346,7 @@ function obGridColumnIds(columns) {
         }
       }
       updateTotals(gridState);
+      if(window.obRefreshTPChoiceFilters)window.obRefreshTPChoiceFilters();
     });
 
     // Ячейка не прошла проверку (например, в колонке-ссылке набрано то, чего нет

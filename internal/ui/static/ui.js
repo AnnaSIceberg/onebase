@@ -414,6 +414,7 @@ function obReady(fn) {
   else fn();
 }
 
+
 function obReadJSONScript(id, fallback) {
   var el = document.getElementById(id);
   if (!el) return fallback;
@@ -428,6 +429,25 @@ function obReadJSONScript(id, fallback) {
 
 (function () {
   if (window.__obNavInit) return;
+  // Раскрытие разделов бокового меню — из localStorage, со слежением за
+  // переключением. Общая функция: вкладочная оболочка подменяет меню при смене
+  // раздела без перезагрузки и зовёт её для нового #ob-nav.
+  window.obInitNavSections = function (scope) {
+    try {
+      (scope || document).querySelectorAll('aside details.navsec').forEach(function (d) {
+        var key = 'navsec:' + d.getAttribute('data-navsec');
+        var saved = localStorage.getItem(key);
+        var legacy = d.getAttribute('data-navsec-legacy');
+        if (saved === null && legacy) {
+          saved = localStorage.getItem('navsec:' + legacy);
+          if (saved === '1' || saved === '0') localStorage.setItem(key, saved);
+        }
+        if (saved === '1') d.open = true;
+        else if (saved === '0') d.open = false;
+        d.addEventListener('toggle', function () { localStorage.setItem(key, d.open ? '1' : '0'); });
+      });
+    } catch (e) {}
+  };
   window.__obNavInit = true;
   // Гамбургер значит разное по сторонам брейкпоинта: на узком экране он
   // выдвигает шторку (класс `nav-open` на body, живёт только до перехода), на
@@ -505,20 +525,7 @@ function obReadJSONScript(id, fallback) {
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && document.body.classList.contains('nav-open')) setNav(false);
     });
-    try {
-      document.querySelectorAll('aside details.navsec').forEach(function (d) {
-        var key = 'navsec:' + d.getAttribute('data-navsec');
-        var saved = localStorage.getItem(key);
-        var legacy = d.getAttribute('data-navsec-legacy');
-        if (saved === null && legacy) {
-          saved = localStorage.getItem('navsec:' + legacy);
-          if (saved === '1' || saved === '0') localStorage.setItem(key, saved);
-        }
-        if (saved === '1') d.open = true;
-        else if (saved === '0') d.open = false;
-        d.addEventListener('toggle', function () { localStorage.setItem(key, d.open ? '1' : '0'); });
-      });
-    } catch (e) {}
+    window.obInitNavSections(document);
   });
 })();
 
@@ -850,11 +857,19 @@ function obInitReportChart() {
   }
 }
 
-obReady(function () {
+// Виджеты рабочего стола: диаграммы и контроллеры обновления. Оболочка зовёт
+// повторно после смены раздела без перезагрузки — уже инициализированные
+// узлы пропускаются (data-ob-init, card._obWidgetController).
+window.obInitDashboard = function () {
   obInitMappedCharts('ob-widget-charts', '.w-chart-canvas[data-widget]', 'data-widget', 'chart init failed', true);
+  obInitWidgetControllers();
+  if (window.obInitLiveList) window.obInitLiveList();
+};
+
+obReady(function () {
+  window.obInitDashboard();
   obInitMappedCharts('ob-page-charts', '.w-chart-canvas[data-pagechart]', 'data-pagechart', 'page chart init failed', false);
   obInitReportChart();
-  obInitWidgetControllers();
 });
 
 function obInitFormDirty() {
@@ -2098,6 +2113,7 @@ function toggleTreeNode(btn) {
   var depth = (tr && tr.dataset.treeDepth) || '0';
   var url = '/ui/_tree-children/' + encodeURIComponent(cfg.treeEntity || '') + '?parent=' + encodeURIComponent(fid) + '&depth=' + encodeURIComponent(depth);
   if (cfg.subsystem) url += '&subsystem=' + encodeURIComponent(cfg.subsystem);
+  if (cfg.listFormOff) url += '&lf_off=' + encodeURIComponent(cfg.listFormOff);
   fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
     .then(function (resp) {
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -3330,7 +3346,7 @@ function obInitFormDelegates() {
       var tpName = addTp.getAttribute('data-tp-name') || '';
       var tbody = document.getElementById('tp-body-' + tpName);
       addTpRow(tpName, obSplitDataList(addTp.getAttribute('data-tp-fields')), obSplitDataList(addTp.getAttribute('data-tp-num-fields')), tbody ? tbody.rows.length : 0,
-        null, null, obSplitDataList(addTp.getAttribute('data-tp-bool-fields')));
+        null, null, obSplitDataList(addTp.getAttribute('data-tp-bool-fields')), obSplitDataList(addTp.getAttribute('data-tp-date-fields')));
       var table = tbody && tbody.closest ? tbody.closest('table[data-ob-dom-table]') : null;
       if (table) obDOMNotifyMutation(table, 'add');
       return;
@@ -3398,7 +3414,7 @@ function obTPEnumOrder() {
 
 // boolFields — список булевых колонок: тип колонки в разметке автоформы больше
 // нигде не виден, а флажок вместо текстового поля нужен и в добавленной строке.
-function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, boolFields) {
+function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, boolFields, dateFields) {
   var tbody = tbodyOverride || document.getElementById('tp-body-' + tpName);
   var table = tbody && tbody.closest ? tbody.closest('table[data-ob-dom-table]') : null;
   var domWritable = !!(table && !obDOMTableReadOnly(table));
@@ -3408,6 +3424,8 @@ function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, 
   var enumLabels = (obTPEnumLabels()[tpName]) || {};
   var enumOrder = (obTPEnumOrder()[tpName]) || {};
   var bools = Array.isArray(boolFields) ? boolFields : [];
+  var choiceContexts={};try{choiceContexts=JSON.parse(tbody.getAttribute("data-tp-choice")||"{}")||{};}catch(e){}
+  var dates = Array.isArray(dateFields) ? dateFields : [];
   if (tbody && tbody.getAttribute('data-tp-cmd') === '1') {
     var tdSel = document.createElement('td');
     tdSel.style.textAlign = 'center';
@@ -3424,6 +3442,7 @@ function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, 
       wrapper.style.cssText = 'display:flex;gap:4px;align-items:center';
       var sel = document.createElement('select');
       sel.name = 'tp.' + tpName + '.' + idx + '.' + fn;
+      if(choiceContexts[fn]) {sel.setAttribute('data-ref-choice-context',choiceContexts[fn]);sel.setAttribute('data-ref-row-id',String(idx));}
       sel.style.flex = '1';
       var meta = refMeta[fn];
       if (meta && meta.entity) {
@@ -3435,7 +3454,7 @@ function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, 
       defOpt.value = '';
       defOpt.textContent = '— выбрать —';
       sel.appendChild(defOpt);
-      (refOpts[fn] || []).forEach(function (opt) {
+      (choiceContexts[fn] ? [] : (refOpts[fn] || [])).forEach(function (opt) {
         var o = document.createElement('option');
         o.value = opt.id;
         o.textContent = opt._label || opt.id;
@@ -3491,6 +3510,10 @@ function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, 
         inp.type = 'number';
         inp.setAttribute('data-tp-num', fn);
         inp.setAttribute('data-ob-tp-recalc', '');
+      } else if (dates.indexOf(fn) !== -1) {
+        // Новая строка простой таблицы — то же поле даты, что у записанных.
+        inp.type = 'datetime-local';
+        inp.step = '1';
       } else {
         inp.type = 'text';
       }
@@ -3518,6 +3541,8 @@ function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, 
   tr.appendChild(tdDel);
   tbody.appendChild(tr);
   if (table) obDOMFinishMutation(table, tr, true);
+  if(window.obAttachTPChoiceContexts)window.obAttachTPChoiceContexts(document);
+  if(window.obRefreshChoiceFilters)window.obRefreshChoiceFilters();
 }
 
 function recalcTpRow(inp) {
@@ -3928,6 +3953,11 @@ function openItemPicker(payload, elementName, eventContext, request) {
     var tr = document.createElement('tr');
     tr.setAttribute('data-id', r.id || '');
     tr.setAttribute('data-search', rowText(r));
+    // Конфиг.ПолеВыделения: строка видна и выбирается, но выделена
+    // светло-серым — как архивная номенклатура в подборе 1С.
+    if (r.highlight) {
+      tr.className = '_ip-row-highlight';
+    }
     tr._obRow = r;
     var tdCb = document.createElement('td');
     tdCb.style.textAlign = 'center';
@@ -4093,7 +4123,9 @@ function openItemPicker(payload, elementName, eventContext, request) {
   }
   // rowObject — строка в том виде, в каком она уходит обработчику события Выбор.
   function rowObject(tr) {
-    var obj = { id: tr.getAttribute('data-id') };
+    // Имена колонок, включая __proto__, должны стать собственными полями JSON.
+    var obj = Object.create(null);
+    obj.id = tr.getAttribute('data-id');
     cols.forEach(function (c) {
       if (c.editable) {
         var inp = tr.querySelector('._ip-val[data-col="' + c.name + '"]');
@@ -4581,16 +4613,34 @@ function obRefChoiceSnapshot(sel) {
   if (!ctx || !ctx.form_entity || !ctx.form || !ctx.element) return null;
   var values = {};
   var declared = ctx.sources || {};
+  var form = sel.form || sel._obChoiceForm;
+  var rowID = sel.getAttribute("data-ref-row-id");
+  // Structural no_grid operations reindex names without dispatching change.
+  // Read the live row index so pickers and pending-response fingerprints use
+  // the current row immediately. Detached SlickGrid carriers keep their id.
+  if (ctx.table_part && !sel._obChoiceRow) {
+    var rowName = (sel.name || '').split('.');
+    if (rowName.length === 4 && rowName[0] === 'tp' &&
+        rowName[1] === ctx.table_part && /^[0-9]+$/.test(rowName[2])) {
+      rowID = rowName[2];
+    }
+  }
   var paths = Object.keys(declared).sort();
   paths.forEach(function (path) {
     var name = declared[path];
-    values[path] = obRefSourceValue(sel.form || document, name) || '';
+    if (ctx.table_part && path.split(".")[0].toLowerCase() === ctx.table_part.toLowerCase()) {
+      if (sel._obChoiceRow) { var key=Object.keys(sel._obChoiceRow).find(function(key){return key.toLowerCase()===String(name).toLowerCase();});
+        values[path] = obChoiceRowValue(sel._obChoiceRow[key]); return; }
+      name = "tp." + ctx.table_part + "." + rowID + "." + name;
+    }
+    values[path] = obRefSourceValue(form || document, name) || '';
   });
   var query = '&form_entity=' + encodeURIComponent(ctx.form_entity) +
     // Форма обработки (#1840): вид владельца — из серверного контекста.
     (ctx.form_kind ? '&form_kind=' + encodeURIComponent(ctx.form_kind) : '') +
     '&form=' + encodeURIComponent(ctx.form) +
     '&element=' + encodeURIComponent(ctx.element) +
+    (ctx.table_part ? '&row_id=' + encodeURIComponent(rowID == null ? '' : rowID) : '') +
     '&sources=' + encodeURIComponent(JSON.stringify(values));
   if (sel.value) query += '&selected_id=' + encodeURIComponent(sel.value);
   var ownerQuery = obRefFilterParam(sel);
@@ -4598,11 +4648,29 @@ function obRefChoiceSnapshot(sel) {
   var fingerprintParts = paths.map(function (path) { return [path, values[path]]; });
   return {
     query: query,
-    fingerprint: JSON.stringify([ctx.form_entity, ctx.form_kind || '', ctx.form, ctx.element, fingerprintParts, ownerQuery]),
+    fingerprint: JSON.stringify([ctx.form_entity, ctx.form_kind || '', ctx.form, ctx.element, rowID, fingerprintParts, ownerQuery]),
     selected: sel.value == null ? '' : String(sel.value)
   };
 }
 
+function obChoiceRowValue(value) {
+  if (value && typeof value === 'object') return String(value.id || value.ID || '');
+  return value == null ? '' : String(value);
+}
+window.obTPChoiceCarrier = function(context, row, rowID, form, field, entity, filter) {
+  var carrier = document.createElement('select');
+  carrier.setAttribute('data-ref-choice-context', context);
+  carrier.setAttribute('data-ref-row-id', String(rowID));
+  carrier.setAttribute('data-ref-entity', entity);
+  if (filter) carrier.setAttribute('data-ref-filter', filter);
+  carrier._obChoiceRow = row;
+  carrier._obChoiceForm = form;
+  // Detached selects have no option matching the UUID. The snapshot must read
+  // the row's value rather than the DOM select's empty fallback.
+  Object.defineProperty(carrier, 'value', {get: function(){return obChoiceRowValue(row[field]);}, configurable:true});
+  return carrier;
+};
+window.obRefChoiceSnapshot = obRefChoiceSnapshot;
 function obRefChoiceQuery(sel) {
   if (!sel || !sel.getAttribute || !sel.getAttribute('data-ref-choice-context')) return '';
   var snapshot = obRefChoiceSnapshot(sel);
@@ -4782,9 +4850,25 @@ window.obRefreshChoiceFilters = function () {
   var selects = document.querySelectorAll('select[data-ref-choice-context]');
   var pending = [];
   for (var i = 0; i < selects.length; i++) pending.push(obRefreshChoiceSelect(selects[i], false));
+  if(window.obRefreshTPChoiceFilters)pending.push(window.obRefreshTPChoiceFilters());
   return Promise.all(pending);
 };
 
+function obAttachTPChoiceContexts(scope) {
+  if (!scope || !scope.querySelectorAll) return;
+  var bodies = scope.querySelectorAll('tbody[data-tp-choice]');
+  for (var i=0; i<bodies.length; i++) {
+    var contexts; try { contexts=JSON.parse(bodies[i].getAttribute('data-tp-choice') || '{}') || {}; } catch(e) {continue;}
+    var controls=bodies[i].querySelectorAll('select[name]');
+    for(var j=0;j<controls.length;j++) {
+      var parts=controls[j].name.split('.'), context=contexts[parts[3]];
+      if(!context)continue;
+      controls[j].setAttribute('data-ref-choice-context',context);
+      controls[j].setAttribute('data-ref-row-id',parts[2]);
+    }
+  }
+}
+window.obAttachTPChoiceContexts=obAttachTPChoiceContexts;
 function obInitChoiceFilterRefresh() {
   if (!document.querySelectorAll) return;
   var selects = document.querySelectorAll('select[data-ref-choice-context]');
@@ -4792,7 +4876,7 @@ function obInitChoiceFilterRefresh() {
     var snapshot = obRefChoiceSnapshot(selects[i]);
     if (snapshot) obChoiceRefreshState(selects[i]).appliedFingerprint = snapshot.fingerprint;
   }
-  document.addEventListener('change', function () { window.obRefreshChoiceFilters(); });
+  document.addEventListener('change', function () { obAttachTPChoiceContexts(document); window.obRefreshChoiceFilters(); });
 }
 obReady(obInitChoiceFilterRefresh);
 
@@ -5800,6 +5884,8 @@ window.onebaseDevice = {
       }
     }
   }
+  // После подмены рабочего стола добавляем только ещё не привязанные события.
+  window.obInitLiveList = bindEvents;
 
   // Скрытая вкладка копит dirty; при возврате — один перечитывающий GET.
   document.addEventListener('visibilitychange', function () {
@@ -6109,7 +6195,7 @@ function initDetailPanel() {
     'object-fit:contain;object-position:center;border-radius:6px}' +
     '.ob-detail-empty{color:#94a3b8;font-size:13px;margin:4px 0 0}' +
     /* Узкий экран: третья колонка недопустима — панель уходит под список. */
-    '@media(max-width:820px){.ob-list-wrap{flex-direction:column}.ob-detail{width:auto!important;max-height:none}}';
+    '@media(max-width:820px){.ob-list-wrap{flex-direction:column;align-items:stretch}.ob-detail{width:auto!important;max-height:none}}';
   var st = document.createElement('style');
   st.textContent = css;
   (document.head || document.documentElement).appendChild(st);
@@ -6163,4 +6249,118 @@ function initDetailPanel() {
       btn.appendChild(document.createTextNode(text));
     }, 0);
   }, true);
+})();
+
+// ─── Enter — навигация по полям формы (#1486) ──────────────────────────────
+//
+// Прежнее «Enter записывает объект» не было спроектированным контрактом: это
+// неявная отправка HTML-формы. В табличной части и в ссылочных редакторах Enter
+// уже вёл себя иначе, то есть поведение и так было непоследовательным, а
+// оператор, вводящий данные потоком, ожидает перевода фокуса — как в 1С.
+//
+// Умолчание платформы: Enter переводит фокус к следующему полю. Форма может
+// вернуть себе прежнее поведение ключом enter_submits_form — тогда на ней стоит
+// data-ob-enter-submits="1". Явные команды записи (Ctrl+S, Ctrl+Enter, кнопки
+// «Записать»/«Провести») этой правкой не затронуты вовсе.
+
+// obEnterOwnedByElement — элементы, у которых Enter имеет собственный смысл.
+function obEnterOwnedByElement(el) {
+  if (!el || el.nodeType !== 1) return false;
+  var tag = String(el.tagName || '').toLowerCase();
+  // textarea — перенос строки; кнопка/ссылка/summary — активация.
+  if (tag === 'textarea' || tag === 'button' || tag === 'a' || tag === 'summary') return true;
+  if (tag === 'input') {
+    var type = String(el.type || 'text').toLowerCase();
+    if (type === 'submit' || type === 'button' || type === 'reset' || type === 'file') return true;
+  }
+  if (el.isContentEditable) return true;
+  return false;
+}
+
+// obEnterFieldUsable — поле, на которое имеет смысл ставить фокус. Скрытые,
+// readonly и disabled пропускаются: по решению они не участвуют в переходе.
+function obEnterFieldUsable(el) {
+  if (!el || el.disabled || el.readOnly) return false;
+  if (String(el.type || '').toLowerCase() === 'hidden') return false;
+  if (typeof el.tabIndex === 'number' && el.tabIndex < 0) return false;
+  if (typeof obElementVisible === 'function' && !obElementVisible(el)) return false;
+  return true;
+}
+
+// obEnterStops — остановки маршрута Enter в порядке разметки: обычные поля и
+// табличные части целиком. Грид — одна остановка, а не набор полей: его ячейки
+// рисует SlickGrid, отдельных input'ов в разметке у них нет, и внутри грида
+// Enter обслуживает он сам.
+function obEnterStops(form, source) {
+  var out = [];
+  var nodes = form.querySelectorAll('input,select,textarea,.ob-grid[data-sg-tp]');
+  for (var i = 0; i < nodes.length; i++) {
+    var el = nodes[i];
+    if (el.classList && el.classList.contains('ob-grid')) {
+      if (obElementVisible(el)) out.push(el);
+      continue;
+    }
+    if (el.closest && el.closest('.ob-grid[data-sg-tp]')) continue; // редактор ячейки грида
+    // readonly/tabindex=-1 не являются остановками, но могут получить фокус
+    // мышью. Сохраняем позицию источника, чтобы Enter и оттуда не записывал форму.
+    if (el !== source && !obEnterFieldUsable(el)) continue;
+    out.push(el);
+  }
+  return out;
+}
+
+// obEnterNavigateFrom переводит фокус с поля target к следующей остановке.
+// Возвращает true, если нажатие обработано (и форму отправлять не нужно).
+function obEnterNavigateFrom(target) {
+  if (!target || obEnterOwnedByElement(target)) return false;
+  var form = target.form || (target.closest ? target.closest('form') : null);
+  if (!form) return false;
+  // Только форма объекта/обработки. Поиск в шапке, фильтр списка и прочие
+  // маленькие формы обязаны отправляться по Enter: там нажатие и есть команда,
+  // а не переход к следующему полю.
+  if (form.id !== 'main-form') return false;
+  // Прежнее поведение оставлено форме явным ключом конфигурации.
+  if (form.getAttribute && form.getAttribute('data-ob-enter-submits') === '1') return false;
+  // Внутри грида Enter обслуживает сам грид: коммит ячейки и переход вправо.
+  if (target.closest && target.closest('.ob-grid[data-sg-tp]')) return false;
+
+  // В no_grid ячейки — обычные поля DOM, но маршрут из ячейки ограничен
+  // её табличной частью: конец последней строки не ведёт в следующее поле формы.
+  var table = target.closest ? target.closest('table[data-ob-dom-table]') : null;
+  var stops = obEnterStops(table || form, target);
+  var idx = -1;
+  for (var i = 0; i < stops.length; i++) {
+    if (stops[i] === target) { idx = i; break; }
+  }
+  if (idx < 0) return false;
+  for (var j = idx + 1; j < stops.length; j++) {
+    var next = stops[j];
+    if (next.classList && next.classList.contains('ob-grid')) {
+      // Из последнего поля шапки — в первую доступную ячейку табличной части.
+      if (typeof window.obGridFocusFirstCell === 'function' && window.obGridFocusFirstCell(next)) return true;
+      continue; // грид не принял фокус (пустой или только для чтения) — идём дальше
+    }
+    next.focus();
+    if (typeof next.select === 'function') {
+      try { next.select(); } catch (err) { /* select() есть не у всех типов */ }
+    }
+    return true;
+  }
+  // Конец формы или табличной части: фокус остаётся на месте. Неявной записи
+  // не происходит — для неё есть Ctrl+S, Ctrl+Enter и кнопки формы.
+  return true;
+}
+
+(function () {
+  if (window.__obEnterNav) return;
+  window.__obEnterNav = true;
+  document.addEventListener('keydown', function (e) {
+    if (e.defaultPrevented) return;
+    if (e.key !== 'Enter' && e.keyCode !== 13) return;
+    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+    // Активная IME-композиция: Enter подтверждает набранное, а не переходит.
+    if (e.isComposing === true || e.keyCode === 229) return;
+    if (typeof obHasBlockingModal === 'function' && obHasBlockingModal()) return;
+    if (obEnterNavigateFrom(e.target)) e.preventDefault();
+  });
 })();
