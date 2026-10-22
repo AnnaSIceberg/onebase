@@ -36,7 +36,7 @@ type sqlTx struct {
 }
 
 func (t *sqlTx) Exec(ctx context.Context, sql string, args ...any) (CommandTag, error) {
-	noteExec(sql)
+	noteExec(ctx, sql)
 	if err := writeAllowed(ctx); err != nil {
 		return CommandTag{}, err
 	}
@@ -50,7 +50,7 @@ func (t *sqlTx) Exec(ctx context.Context, sql string, args ...any) (CommandTag, 
 }
 
 func (t *sqlTx) Query(ctx context.Context, sql string, args ...any) (Rows, error) {
-	noteQuery(sql)
+	noteQuery(ctx, sql)
 	if err := queryAllowed(ctx, sql); err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (t *sqlTx) Query(ctx context.Context, sql string, args ...any) (Rows, error
 }
 
 func (t *sqlTx) QueryRow(ctx context.Context, sql string, args ...any) Row {
-	noteQuery(sql)
+	noteQuery(ctx, sql)
 	if err := queryAllowed(ctx, sql); err != nil {
 		return errorRow{err: err}
 	}
