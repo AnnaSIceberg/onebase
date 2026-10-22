@@ -4717,6 +4717,9 @@ obManagedReady(function () {
     };
     if (window.ResizeObserver) {
       var fitObserver = new window.ResizeObserver(queueRefit);
+      // Панель сообщений вне main меняет его доступную высоту, даже когда
+      // размеры дочерних блоков остаются прежними.
+      fitObserver.observe(fitMain);
       for (var fi = 0; fi < fitMain.children.length; fi++) fitObserver.observe(fitMain.children[fi]);
     }
     // Вставка и удаление узлов (отложенная группа, строка шапки, перерисовка
