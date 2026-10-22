@@ -4,105 +4,141 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"golang.org/x/net/html"
 
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/processor"
 )
 
-// Поле с маской ввода — почти всегда телефон. Автозаполнение Яндекс Браузера
-// на autocomplete="off" (#595) не смотрит и подсказывает сохранённые номера из
-// своего профиля; на поле "one-time-code" (по стандарту — код подтверждения)
-// эти подсказки в Яндекс Браузере пропадают, проверено вручную. Поле без маски
-// остаётся "off". Тест проверяет выдаваемый атрибут в разметке формы, отданной
-// обычным GET (и у поля объекта, и у реквизита формы), а не поведение браузеров.
-func TestManagedForm_MaskedInputSuppressesBrowserAutofill(t *testing.T) {
-	srv, ent := setupManagedEventsServer(t, ``, nil, []*metadata.FormElement{
-		{Kind: metadata.FormElementField, Name: "ПолеНаименование", DataPath: "Объект.Наименование", InputMask: "(000)000-00-00"},
-		{Kind: metadata.FormElementField, Name: "ПолеТелефон", DataPath: "Телефон", InputMask: "(000)000-00-00"},
-		{Kind: metadata.FormElementField, Name: "ПолеКомментарий", DataPath: "Комментарий"},
-	})
-	ent.Forms[0].Attributes = append(ent.Forms[0].Attributes,
-		&metadata.FormAttribute{Name: "Телефон", TypeRef: "string"},
-		&metadata.FormAttribute{Name: "Комментарий", TypeRef: "string"})
-	id := uuid.New()
-	if err := srv.store.Upsert(context.Background(), ent.Name, id,
-		map[string]any{"Наименование": "(495)111-22-33"}, ent); err != nil {
+// Проверяем совместность атрибутов в одном уникальном input из публичного GET,
+// а не совпадения в разных местах страницы или поведение браузерного профиля.
+func assertManagedMaskedInput(t *testing.T, body, name, mask, value string) {
+	t.Helper()
+	doc, err := html.Parse(strings.NewReader(body))
+	if err != nil {
 		t.Fatal(err)
 	}
-	body := renderObjectFormGET(t, srv, ent, id)
-
-	for name, want := range map[string]string{
-		"Наименование": "one-time-code", // поле объекта с маской
-		"Телефон":      "one-time-code", // реквизит формы с маской
-		"Комментарий":  "off",           // без маски — как прежде (#595)
-	} {
-		re := regexp.MustCompile(`<input type="text" autocomplete="([^"]*)" name="` + regexp.QuoteMeta(name) + `"`)
-		m := re.FindStringSubmatch(body)
-		if m == nil {
-			t.Fatalf("нет текстового поля %s в разметке формы", name)
+	var inputs []map[string]string
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "input" {
+			attrs := map[string]string{}
+			for _, a := range n.Attr {
+				attrs[a.Key] = a.Val
+			}
+			if attrs["type"] == "text" && attrs["name"] == name {
+				inputs = append(inputs, attrs)
+			}
 		}
-		if m[1] != want {
-			t.Errorf("%s: autocomplete=%q, ожидалось %q", name, m[1], want)
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	if len(inputs) != 1 {
+		t.Fatalf("ожидалось одно текстовое поле %s, получено %d", name, len(inputs))
+	}
+	want := map[string]string{"autocomplete": "one-time-code", "value": value, "data-ob-input-mask": mask}
+	absent := []string{"inputmode"}
+	switch mask {
+	case "(000)000-00-00":
+		want["placeholder"] = "(___)___-__-__"
+		want["inputmode"] = "numeric"
+		absent = nil
+	case "Пл0000000":
+		want["placeholder"] = "Пл_______"
+		want["inputmode"] = "numeric"
+		absent = nil
+	case "XX-***":
+		want["placeholder"] = "__-___"
+	case "":
+		want["autocomplete"] = "off"
+		delete(want, "data-ob-input-mask")
+		absent = append(absent, "data-ob-input-mask", "placeholder")
+	default:
+		t.Fatalf("неизвестная тестовая маска %q", mask)
+	}
+	for attr, expected := range want {
+		if got, ok := inputs[0][attr]; !ok || got != expected {
+			t.Errorf("%s: %s=%q (есть=%v), ожидалось %q", name, attr, got, ok, expected)
+		}
+	}
+	for _, attr := range absent {
+		if got, ok := inputs[0][attr]; ok {
+			t.Errorf("%s: лишний атрибут %s=%q", name, attr, got)
 		}
 	}
 }
 
-// Форма обработки проходит через Server.Mount и публичный GET: и параметры
-// обработки, и локальные реквизиты должны сохранить autocomplete из managed-
-// шаблона. Проверяем HTML-атрибут, а не поведение браузерного автозаполнения.
-func TestManagedProcessorForm_MaskedInputAutocompleteThroughHTTP(t *testing.T) {
-	srv, _ := newSubmitTestServer(t, nil)
-	proc := &processor.Processor{
-		Name: "ТелефоннаяОбработка",
-		Params: []processor.Param{
-			{Name: "Телефон", Type: "string"},
-			{Name: "Комментарий", Type: "string"},
-		},
-		Forms: []*metadata.FormModule{{
-			Name:       "ФормаОбработки",
-			Kind:       "object",
-			LayoutKind: metadata.FormLayoutManaged,
-			Attributes: []*metadata.FormAttribute{
-				{Name: "ЛокальныйТелефон", TypeRef: "string"},
-				{Name: "ЛокальныйКомментарий", TypeRef: "string"},
-			},
-			Elements: []*metadata.FormElement{
-				{Kind: metadata.FormElementField, Name: "ПолеТелефон", DataPath: "Объект.Телефон", InputMask: "(000)000-00-00"},
-				{Kind: metadata.FormElementField, Name: "ПолеКомментарий", DataPath: "Объект.Комментарий"},
-				{Kind: metadata.FormElementField, Name: "ПолеЛокальныйТелефон", DataPath: "ЛокальныйТелефон", InputMask: "(000)000-00-00"},
-				{Kind: metadata.FormElementField, Name: "ПолеЛокальныйКомментарий", DataPath: "ЛокальныйКомментарий"},
-			},
-		}},
-	}
-	srv.reg.LoadProcessors([]*processor.Processor{proc})
-	router := chi.NewRouter()
-	srv.Mount(router)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/processor/"+proc.Name, nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET формы обработки: статус %d, ожидался %d: %s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-
-	for _, tc := range []struct{ name, want string }{
-		{"Телефон", "one-time-code"},
-		{"Комментарий", "off"},
-		{"ЛокальныйТелефон", "one-time-code"},
-		{"ЛокальныйКомментарий", "off"},
+// Маска сохраняет одновременно autocomplete и подсказку формата, независимо
+// от заполненности поля. Без маски остаётся off, как в регрессии #595.
+func TestManagedForm_MaskedInputSuppressesBrowserAutofill(t *testing.T) {
+	for _, tc := range []struct{ name, mask, filled string }{
+		{"phone", "(000)000-00-00", "(495)111-22-33"},
+		{"prefix", "Пл0000000", "Пл1234567"},
+		{"letters", "XX-***", "AB-C12"},
+		{"plain", "", "Обычный текст"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			re := regexp.MustCompile(`<input type="text" autocomplete="([^"]*)" name="` + regexp.QuoteMeta(tc.name) + `"`)
-			matches := re.FindAllStringSubmatch(rec.Body.String(), -1)
-			if len(matches) != 1 {
-				t.Fatalf("ожидалось одно текстовое поле %s, получено %d", tc.name, len(matches))
-			}
-			if got := matches[0][1]; got != tc.want {
-				t.Errorf("autocomplete=%q, ожидалось %q", got, tc.want)
-			}
-		})
+		for _, value := range []string{"", tc.filled} {
+			t.Run(tc.name+"/"+value, func(t *testing.T) {
+				srv, ent := setupManagedEventsServer(t, ``, nil, []*metadata.FormElement{
+					{Kind: metadata.FormElementField, Name: "ПолеНаименование", DataPath: "Объект.Наименование", InputMask: tc.mask},
+					{Kind: metadata.FormElementField, Name: "ПолеЛокальное", DataPath: "Локальное", InputMask: tc.mask},
+				})
+				ent.Forms[0].Attributes = []*metadata.FormAttribute{{Name: "Локальное", TypeRef: "string"}}
+				id := uuid.New()
+				if err := srv.store.Upsert(context.Background(), ent.Name, id, map[string]any{"Наименование": value}, ent); err != nil {
+					t.Fatal(err)
+				}
+				body := renderObjectFormGET(t, srv, ent, id)
+				assertManagedMaskedInput(t, body, "Наименование", tc.mask, value)
+				assertManagedMaskedInput(t, body, "Локальное", tc.mask, "")
+			})
+		}
+	}
+}
+
+// Server.Mount → GET формы обработки: параметры с пустым/заданным default и
+// локальные реквизиты проходят обе ветки managed-element. Локальный реквизит
+// при первом GET пуст: его значение появляется позднее, в событиях формы.
+func TestManagedProcessorForm_MaskedInputAutocompleteThroughHTTP(t *testing.T) {
+	for _, tc := range []struct{ name, mask, filled string }{
+		{"phone", "(000)000-00-00", "(495)111-22-33"},
+		{"prefix", "Пл0000000", "Пл1234567"},
+		{"letters", "XX-***", "AB-C12"},
+		{"plain", "", "Текст & <значение>"},
+	} {
+		for _, value := range []string{"", tc.filled} {
+			t.Run(tc.name+"/"+value, func(t *testing.T) {
+				srv, _ := newSubmitTestServer(t, nil)
+				proc := &processor.Processor{
+					Name:   "ТелефоннаяОбработка",
+					Params: []processor.Param{{Name: "Параметр", Type: "string", Default: value}},
+					Forms: []*metadata.FormModule{{
+						Name: "ФормаОбработки", Kind: "object", LayoutKind: metadata.FormLayoutManaged,
+						Attributes: []*metadata.FormAttribute{{Name: "Локальное", TypeRef: "string"}},
+						Elements: []*metadata.FormElement{
+							{Kind: metadata.FormElementField, Name: "ПолеПараметр", DataPath: "Объект.Параметр", InputMask: tc.mask},
+							{Kind: metadata.FormElementField, Name: "ПолеЛокальное", DataPath: "Локальное", InputMask: tc.mask},
+						},
+					}},
+				}
+				srv.reg.LoadProcessors([]*processor.Processor{proc})
+				router := chi.NewRouter()
+				srv.Mount(router)
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/processor/"+proc.Name, nil))
+				if rec.Code != http.StatusOK {
+					t.Fatalf("GET формы обработки: статус %d: %s", rec.Code, rec.Body.String())
+				}
+				assertManagedMaskedInput(t, rec.Body.String(), "Параметр", tc.mask, value)
+				assertManagedMaskedInput(t, rec.Body.String(), "Локальное", tc.mask, "")
+			})
+		}
 	}
 }
