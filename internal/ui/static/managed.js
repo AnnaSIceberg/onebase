@@ -4626,6 +4626,39 @@ function obFitGroupToWindow(group) {
   var natural = bottom - top + scroller.scrollTop + (cs ? parseFloat(cs.paddingBottom) || 0 : 0);
   group.style.height = Math.max(120, Math.floor(group.offsetHeight + scroller.clientHeight - natural)) + 'px';
 }
+// obFitNaturalHeight — естественная высота содержимого прокручиваемого блока:
+// нижний край его детей от верха блока, с прокруткой и нижним отступом.
+function obFitNaturalHeight(box) {
+  var top = box.getBoundingClientRect().top, bottom = top;
+  for (var i = 0; i < box.children.length; i++) {
+    var b = box.children[i].getBoundingClientRect().bottom;
+    if (b > bottom) bottom = b;
+  }
+  var cs = window.getComputedStyle ? window.getComputedStyle(box) : null;
+  return bottom - top + (box.scrollTop || 0) + (cs ? parseFloat(cs.paddingBottom) || 0 : 0);
+}
+// obFitSetGridHeight — высота сетки и пересчёт SlickGrid, только если она
+// изменилась: resizeCanvas перерисовывает строки, а перерисовку видит
+// наблюдатель подгонки — без этой проверки подгонка запускала бы себя снова.
+function obFitSetGridHeight(div, h) {
+  var v = h + 'px';
+  if (div.style.height === v) return;
+  div.style.height = v;
+  var g = (window._obGrids || {})[div.getAttribute('data-sg-tp') || ''];
+  if (g && g.grid && g.div === div && div.offsetParent !== null) g.grid.resizeCanvas();
+}
+// obFitGridToWindow — fit_window у ТабличнаяЧасть: сетка занимает остаток
+// высоты окна (main), а на подогнанной странице (fit_window у СтраницыФормы) —
+// остаток этой страницы. Шапка колонок у SlickGrid своя и стоит на месте,
+// строки прокручиваются внутри. Не меньше 120px, как у страниц.
+function obFitGridToWindow(div) {
+  if (!div || div.offsetParent === null || !div.closest) return;
+  var page = div.closest('.managed-tab-content');
+  var box = page && page.style.height ? page : div.closest('main');
+  if (!box) return;
+  var other = obFitNaturalHeight(box) - div.offsetHeight;
+  obFitSetGridHeight(div, Math.max(120, Math.floor(box.clientHeight - other)));
+}
 function obEqualizeAllTabs() {
   var groups = Array.prototype.slice.call(document.querySelectorAll('[data-ob-fit-group="1"]'));
   groups.forEach(function (g) { g.style.height = '0px'; g.style.overflowY = 'hidden'; });
@@ -4649,6 +4682,7 @@ function obEqualizeAllTabs() {
     obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(function (c) { c.style.height = ''; c.style.overflowY = ''; });
   });
   fitGroups.forEach(obFitGroupToWindow);
+  document.querySelectorAll('[data-ob-fit-grid="1"]').forEach(obFitGridToWindow);
   if (window.obTrimFitOverflow) window.obTrimFitOverflow(fitGroups);
 }
 window.obEqualizeAllTabs = obEqualizeAllTabs;
@@ -4664,7 +4698,7 @@ function obTrimFitOverflow(groups) {
   var fitted = Array.prototype.filter.call(document.querySelectorAll('[data-ob-fit-window="1"]'), function (el) {
     return !(el.getAttribute && el.getAttribute('data-ob-fit-stacked') === '1');
   });
-  var first = fitted[0] || (groups && groups[0]);
+  var first = fitted[0] || (groups && groups[0]) || document.querySelector('[data-ob-fit-grid="1"]');
   var scroller = first && first.closest ? first.closest('main') : null;
   if (!scroller) return;
   var over = scroller.scrollHeight - scroller.clientHeight;
@@ -4675,6 +4709,13 @@ function obTrimFitOverflow(groups) {
   };
   fitted.forEach(function (tabs) { obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(shrink); });
   if (groups) groups.forEach(shrink);
+  // Сетка на остатке main (не на подогнанной странице — её ужали выше).
+  document.querySelectorAll('[data-ob-fit-grid="1"]').forEach(function (div) {
+    var page = div.closest ? div.closest('.managed-tab-content') : null;
+    if (page && page.style.height) return;
+    var h = parseFloat(div.style.height);
+    if (h > 0) obFitSetGridHeight(div, Math.max(120, Math.floor(h - over)));
+  });
 }
 window.obTrimFitOverflow = obTrimFitOverflow;
 
@@ -4740,7 +4781,8 @@ obManagedReady(function () {
   // же размер, нового уведомления не порождает, поэтому цикла нет.
   // Два запроса, а не список через запятую: так селектор понимают и
   // упрощённые DOM поведенческих тестов.
-  var fitAnchor = document.querySelector('[data-ob-fit-window="1"]') || document.querySelector('[data-ob-fit-group="1"]');
+  var fitAnchor = document.querySelector('[data-ob-fit-window="1"]') || document.querySelector('[data-ob-fit-group="1"]') ||
+    document.querySelector('[data-ob-fit-grid="1"]');
   var fitMain = fitAnchor && fitAnchor.closest ? fitAnchor.closest('main') : null;
   if (fitMain) {
     var fitQueued = false;
