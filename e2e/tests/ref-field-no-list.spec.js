@@ -18,6 +18,10 @@ test('поле без списка: выбор подбором, очистка 
   await expect(field).toHaveAttribute('data-ref-choice-dropdown', 'false');
   // Без стрелки: вид поля значения, а не выпадающего списка.
   expect(await field.evaluate((el) => getComputedStyle(el).appearance)).toBe('none');
+  // Пустое значение — пустое поле, как в 1С: «— выбрать —» в узком поле
+  // обрезалось и ничего не объясняло.
+  const shown = () => field.evaluate((el) => el.selectedOptions[0] ? el.selectedOptions[0].text : '');
+  expect(await shown()).toBe('');
 
   // Щелчок по самому полю открывает форму подбора, а не список.
   await field.click();
@@ -36,6 +40,7 @@ test('поле без списка: выбор подбором, очистка 
   // Delete очищает, F4 снова открывает подбор.
   await page.keyboard.press('Delete');
   await expect(field).toHaveValue('');
+  expect(await shown()).toBe('');
   await page.keyboard.press('F4');
   await expect(page.locator('#_ref-picker-modal')).toBeVisible();
   await page.locator('#_rp-list ._rp-item').filter({ hasText: SALE }).click();
