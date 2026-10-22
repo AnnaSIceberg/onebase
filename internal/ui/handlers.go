@@ -433,7 +433,15 @@ func (s *Server) loadInitialTPRefOptions(ctx context.Context, entity *metadata.E
 		values = formValues[0]
 	}
 	result := make(map[string]map[string][]map[string]any)
+	delta, _ := ctx.Value(tpRefDeltaKey{}).(*tpRefDelta)
+	var placed map[string]bool
+	if delta != nil {
+		placed = delta.placedTableParts(entity)
+	}
 	for _, tp := range entity.TableParts {
+		if delta != nil && delta.skipTablePart(entity, tp, placed, tpRefOwnerScoped(entity, tp, s.reg)) {
+			continue
+		}
 		tpOpts := make(map[string][]map[string]any)
 		for _, f := range tp.Fields {
 			if f.RefEntity == "" {
