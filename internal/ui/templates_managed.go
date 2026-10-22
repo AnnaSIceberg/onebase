@@ -620,7 +620,7 @@ input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#
 .managed-vt-scroll>.tp-table{overflow:visible;margin-bottom:0}
 .managed-vt-scroll>.tp-table thead th{position:sticky;top:0;z-index:1}
 .managed-vt-rows{overflow-y:auto;margin-bottom:12px;border:1px solid #e2e8f0;border-radius:6px}
-.managed-vt-rows>.tp-table{margin-bottom:0}
+.managed-vt-rows>.tp-table{overflow:visible;margin-bottom:0}
 .managed-vt-rows>.tp-table thead th{position:sticky;top:0;z-index:1}
 .tp-table .ob-vt-empty td{color:#94a3b8;font-style:italic;text-align:center;padding:10px}
 .tp-table input[readonly]{text-overflow:ellipsis}

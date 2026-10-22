@@ -1012,6 +1012,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
   // в цепочку, а не остаётся мёртвым кодом.
   window.applyTableParts = applyTableParts;
 
+
   // applyFormTables(vts) — перерисовка ValueTable (формовых атрибутов-таблиц) по
   // ответу сервера (formTables). Зеркалит applyTableParts, но для tbody
   // id=vt-body-<name>: имена инпутов vt.<name>.<idx>.<field>, типы берутся из
@@ -1123,8 +1124,8 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
   }
 
   // obFitVtRows — высота блока таблицы ровно в rows строк (ключ rows): шапка
-  // плюс rows высот настоящей строки. Без строк берётся оценка сервера, чтобы
-  // пустая таблица осталась той же высоты, что заполненная.
+  // плюс rows высот настоящей строки. В пустой таблице измеряем такую же
+  // строку с тем же планом колонок, затем сразу убираем её из DOM.
   function obFitVtRows(tbody) {
     var box = tbody && tbody.closest ? tbody.closest('.managed-vt-rows') : null;
     if (!box) return;
@@ -1134,8 +1135,17 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
     for (var i = 0; i < tbody.rows.length; i++) {
       if (tbody.rows[i].className.indexOf('ob-vt-empty') < 0) { first = tbody.rows[i]; break; }
     }
-    if (!(n > 0) || !first || !table || !table.tHead) return;
+    if (!(n > 0) || !table || !table.tHead) return;
+    var sample = null;
+    if (!first) {
+      sample = buildVtRow(tbody, '', 0, {});
+      sample.style.visibility = 'hidden';
+      sample.setAttribute('aria-hidden', 'true');
+      tbody.insertBefore(sample, tbody.firstChild);
+      first = sample;
+    }
     var rowH = first.offsetHeight, headH = table.tHead.offsetHeight;
+    if (sample) sample.remove();
     if (!(rowH > 0) || !(headH > 0)) return;
     box.style.height = (headH + n * rowH + 2) + 'px';
   }
@@ -2565,9 +2575,14 @@ function addVtRow(vtName, fields, tbodyOverride) {
   var tbody = tbodyOverride || document.getElementById("vt-body-" + vtName);
   if (!tbody || tbody.getAttribute('data-ob-table-readonly') === '1') return;
   if (tbody.getAttribute('data-vt-editable') === '0') return;
+  tbody.querySelectorAll('.ob-vt-empty').forEach(function(row){ row.remove(); });
   var tr = window.obBuildVtRow(tbody, vtName, tbody.rows.length, {});
   tbody.appendChild(tr);
   obManagedVtActiveRow.delete(tbody);
+  document.querySelectorAll('[data-ob-vt-count]').forEach(function(span){
+    if (span.getAttribute('data-ob-vt-count') === vtName) span.textContent = '(' + tbody.rows.length + ')';
+  });
+  if (window.obFitVtRows) window.obFitVtRows(tbody);
 }
 
 function obManagedClosestSelect(btn) {

@@ -36,6 +36,81 @@ test.beforeAll(async () => {
     elements += '  - kind: ПолеВвода\n    name: Following\n    data_path: Объект.Наименование\n';
     write(`forms/${scenario.name.toLowerCase()}/object.form.yaml`, `schema: onebase.form/v1\nform:\n  name: Object\n  kind: object\n  entity: ${scenario.name}\nattributes:\n  - name: Объект\n    type: CatalogRef.${scenario.name}\n    main: true\n    save: true\n  - name: История\n    type: ValueTable\n    columns:\n      - name: Номер\n        type: string\nelements:\n${elements}`);
   }
+  for (const editable of [false, true]) {
+    const name = editable ? 'RowsEditable' : 'RowsOutput';
+    write(`catalogs/${name}.yaml`, `name: ${name}
+kind: catalog
+fields:
+  - name: Наименование
+    type: string
+`);
+    write(`forms/${name.toLowerCase()}/object.form.yaml`, `schema: onebase.form/v1
+form:
+  name: Object
+  kind: object
+  entity: ${name}
+attributes:
+  - name: Объект
+    type: CatalogRef.${name}
+    main: true
+    save: true
+  - name: Results
+    type: ValueTable
+    columns:
+      - {name: Name, type: string}
+      - {name: Flag, type: bool}
+      - {name: HiddenFlag, type: bool}
+      - {name: Amount, type: number}
+elements:
+  - kind: ТабличнаяЧасть
+    name: History
+    data_path: Форма.Results
+    rows: 5
+    show_count: true
+    empty_text: No records
+    events: {ПриАктивизацииСтроки: Selected}
+    children:
+      - {kind: Колонка, name: NameColumn, data_path: Name, readonly: ${!editable}}
+      - {kind: Колонка, name: FlagColumn, data_path: Flag, readonly: true}
+      - {kind: Колонка, name: AmountColumn, data_path: Amount, readonly: true}
+  - kind: ТабличнаяЧасть
+    name: ReadonlyHistory
+    data_path: Форма.Results
+    readonly: true
+    children:
+      - {kind: Колонка, name: ReadonlyName, data_path: Name, readonly: true}
+      - {kind: Колонка, name: ReadonlyAmount, data_path: Amount, readonly: true}
+  - {kind: Кнопка, name: Load, events: {Нажатие: LoadRows}}
+  - {kind: Кнопка, name: Clear, events: {Нажатие: ClearRows}}
+  - {kind: Кнопка, name: Check, events: {Нажатие: CheckRows}}
+`);
+    write(`forms/${name.toLowerCase()}/object.form.os`, `Процедура LoadRows()
+ Results.Очистить();
+ Для Счетчик = 1 По 30 Цикл
+  Стр = Results.Добавить();
+  Стр.Name = "row " + Строка(Счетчик);
+  Стр.Flag = Истина;
+  Стр.HiddenFlag = Истина;
+  Стр.Amount = 7;
+ КонецЦикла;
+КонецПроцедуры
+Процедура ClearRows()
+ Results.Очистить();
+КонецПроцедуры
+Процедура Selected()
+ Если ТекущаяСтрока.Flag И ТекущаяСтрока.HiddenFlag Тогда
+  Сообщить("kept-true");
+ ИначеЕсли НЕ ТекущаяСтрока.Flag И НЕ ТекущаяСтрока.HiddenFlag Тогда
+  Сообщить("kept-false");
+ Иначе
+  ВызватьИсключение("bool payload lost");
+ КонецЕсли;
+КонецПроцедуры
+Процедура CheckRows()
+ Сообщить("received");
+КонецПроцедуры
+`);
+  }
   const binary = process.env.OB_BIN || path.join(work, process.platform === 'win32' ? 'onebase.exe' : 'onebase');
   if (!process.env.OB_BIN) {
     execFileSync('go', ['build', '-o', binary, './cmd/onebase'], { cwd: repo, timeout: 90_000 });
@@ -122,4 +197,75 @@ for (const width of [1000, 360]) {
       expect(errors).toEqual([]);
     });
   }
+}
+
+// Native FormData and real form-event routes cover both the writable source and
+// a readonly duplicate; no hand-built payload can hide a disabled bool here.
+for (const name of ['RowsOutput', 'RowsEditable']) {
+  test(`${name}: rows geometry, column plan and native payload survive round-trips`, async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(`${base}/ui/catalog/${name}/new`);
+    const box = page.locator('.managed-vt-rows');
+    const tbody = box.locator('tbody');
+    const height = () => box.evaluate(el => el.getBoundingClientRect().height);
+    const emptyHeight = await height();
+    async function event(button) {
+      const [response] = await Promise.all([
+        page.waitForResponse(r => r.url().includes('/form-event') && r.request().method() === 'POST'),
+        page.locator(`[data-ob-fire-click="${button}"]`).click(),
+      ]);
+      const result = await response.json();
+      expect(result.ok, result.error).toBe(true);
+      return result;
+    }
+    async function payload() {
+      return page.evaluate(() => Array.from(new FormData(document.getElementById('main-form')).entries()));
+    }
+    await event('Load');
+    await expect(tbody.locator('[data-ob-vt-row]')).toHaveCount(30);
+    expect(await height()).toBe(emptyHeight);
+    const pairs = await payload();
+    for (const field of ['Name', 'Flag', 'HiddenFlag', 'Amount']) {
+      const values = pairs.filter(([key]) => key === `vt.Results.0.${field}`).map(([, value]) => value);
+      expect(values).toEqual([field === 'Name' ? 'row 1' : field === 'Amount' ? '7' : 'true']);
+    }
+    const readonly = page.locator('tbody[data-ob-table-readonly="1"]');
+    expect(await readonly.locator('input').evaluateAll(inputs => inputs.every(input => input.disabled))).toBe(true);
+    const [selectedResponse] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/form-event') && r.request().method() === 'POST'),
+      tbody.locator('[data-ob-vt-row="0"] td').first().click(),
+    ]);
+    const selected = await selectedResponse.json();
+    expect(selected.ok, selected.error).toBe(true);
+    expect(selected.messages).toContain('kept-true');
+    await event('Check');
+    await box.evaluate(el => { el.scrollTop = 160; });
+    const b = await box.boundingBox();
+    const h = await box.locator('th').first().boundingBox();
+    expect(Math.abs(h.y - b.y)).toBeLessThanOrEqual(2);
+    await event('Clear');
+    await expect(tbody.locator('.ob-vt-empty')).toHaveCount(1);
+    expect(await height()).toBe(emptyHeight);
+    if (name === 'RowsEditable') {
+      await page.locator('[data-ob-add-vt="Results"]').click();
+      await expect(tbody.locator('.ob-vt-empty')).toHaveCount(0);
+      const row = tbody.locator('[data-ob-vt-row="0"]');
+      await expect(row).toHaveCount(1);
+      await expect(row.locator('input[name="vt.Results.0.Name"]')).toBeEditable();
+      await expect(row.locator('input[name="vt.Results.0.HiddenFlag"][type="checkbox"]')).toBeHidden();
+      await expect(row.locator('input[name="vt.Results.0.Flag"][type="checkbox"]')).toBeDisabled();
+      expect((await payload()).filter(([key]) => key === 'vt.Results.0.HiddenFlag').map(([, value]) => value)).toEqual(['false']);
+      const [response] = await Promise.all([
+        page.waitForResponse(r => r.url().includes('/form-event') && r.request().method() === 'POST'),
+        row.locator('td').first().click(),
+      ]);
+      const activated = await response.json();
+      expect(activated.ok, activated.error).toBe(true);
+      expect(activated.messages).toContain('kept-false');
+      await expect(page.locator('[data-ob-vt-count="Results"]').first()).toHaveText('(1)');
+      expect(await height()).toBe(emptyHeight);
+    }
+    expect(errors).toEqual([]);
+  });
 }
