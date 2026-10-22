@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -97,7 +98,11 @@ setTimeout(function(){out.afterAnswer=st();var p=document.createElement('pre');p
 		}
 	}))
 	defer ts.Close()
-	out, err := exec.Command(browser, "--headless=new", "--disable-gpu", "--no-first-run", "--window-size=1440,784", "--virtual-time-budget=6000", "--user-data-dir="+t.TempDir(), "--dump-dom", ts.URL).Output()
+	args := []string{"--headless=new", "--disable-gpu", "--no-first-run", "--window-size=1440,784", "--virtual-time-budget=6000", "--user-data-dir=" + t.TempDir(), "--dump-dom", ts.URL}
+	if runtime.GOOS == "linux" {
+		args = append([]string{"--no-sandbox"}, args...)
+	}
+	out, err := exec.CommandContext(t.Context(), browser, args...).Output() //nolint:gosec // browser selected from existing test allow-list
 	if err != nil {
 		t.Fatal(err)
 	}
