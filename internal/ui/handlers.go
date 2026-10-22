@@ -613,8 +613,12 @@ func (s *Server) renderReadHookDenied(w http.ResponseWriter, r *http.Request, de
 		s.renderForbidden(w, r)
 		return
 	}
+	// Keep the error chain for localization, but omit diagnostic source data
+	// from the copy passed to the HTTP renderer. Logs retain the original error.
+	userErr := *dslErr
+	userErr.File, userErr.Line = "", 0
 	w.WriteHeader(http.StatusForbidden)
-	s.render(w, r, "page-forbidden", map[string]any{"Reason": s.errText(r, dslErr)})
+	s.render(w, r, "page-forbidden", map[string]any{"Reason": s.errText(r, &userErr)})
 }
 
 // can reports whether the current request may perform op on (kind, entity).
