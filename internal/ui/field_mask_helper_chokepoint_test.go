@@ -98,9 +98,9 @@ var maskHelperExempt = map[string]maskHelperExemption{
 	// DelegatedGatesStillMask следит, что он там действительно есть.
 	"docWriter.read":                        {reason: "значения кладутся в obj и маскируются на выдаче", maskedBy: "docWriter.Get"},
 	"dslRefAttrResolver.preloadIDs":         {reason: "наполняет кэш, значения отдаёт только ResolveRefAttr", maskedBy: "dslRefAttrResolver.ResolveRefAttr"},
-	"Server.restoreUnsubmittedFields":       {reason: "дочитывает неприсланные реквизиты ДЛЯ ЗАПИСИ, к клиенту они идут через сериализацию ответа (#609)", maskedBy: "Server.serializeManagedFormEventState"},
-	"Server.refreshFieldsWrittenByHandler":  {reason: "перечитывает записанное обработчиком ДЛЯ ЗАПИСИ, к клиенту — через сериализацию ответа (#609)", maskedBy: "Server.serializeManagedFormEventState"},
-	"Server.managedCloseStateDirtyWithRows": {reason: "сравнивает серверное состояние с БД и наружу отдаёт только bool; сами поля идут через сериализацию ответа", maskedBy: "Server.serializeManagedFormEventState"},
+	"Server.restoreUnsubmittedFields":       {reason: "дочитывает неприсланные реквизиты ДЛЯ ЗАПИСИ, к клиенту они идут через сериализацию ответа (#609)", maskedBy: "Server.serializeManagedFormEventValues"},
+	"Server.refreshFieldsWrittenByHandler":  {reason: "перечитывает записанное обработчиком ДЛЯ ЗАПИСИ, к клиенту — через сериализацию ответа (#609)", maskedBy: "Server.serializeManagedFormEventValues"},
+	"Server.managedCloseStateDirtyWithRows": {reason: "сравнивает серверное состояние с БД и наружу отдаёт только bool; сами поля идут через сериализацию ответа", maskedBy: "Server.serializeManagedFormEventValues"},
 	"Server.saveManagedObject":              {reason: "путь записи: GetByID используется только для RLS-предиката, значения клиенту не возвращаются"},
 
 	// ── Особый случай.
