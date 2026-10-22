@@ -507,6 +507,17 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return rows
 		},
+		// hideRefCard — убрать ли у поля кнопку «Открыть карточку» (🔍): явный
+		// ref_card_button поля решает сам, иначе — решение формы (HideRefCard из
+		// prepareManagedFormData: ref_card_button: false или «только
+		// администратору» для неадминистратора), #1876.
+		"hideRefCard": func(ctx map[string]any, element *metadata.FormElement) bool {
+			if element != nil && element.RefCardButton != nil {
+				return !*element.RefCardButton
+			}
+			hidden, _ := ctx["HideRefCard"].(bool)
+			return hidden
+		},
 		"choiceDropdownCollapsed": func(element *metadata.FormElement) bool {
 			return element != nil && element.ChoiceDropdown != nil && !*element.ChoiceDropdown
 		},
@@ -925,6 +936,21 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return b.String()
 		},
 		"fmtDate": fmtDateValue,
+		// boolFilterValue — значение булева отбора из адреса: "true"/"false",
+		// "" — пусто или не распознано (storage.ParseBoolValue).
+		"boolFilterValue": func(raw string) string {
+			if strings.TrimSpace(raw) == "" {
+				return ""
+			}
+			b, ok := storage.ParseBoolValue(raw)
+			if !ok {
+				return ""
+			}
+			if b {
+				return "true"
+			}
+			return "false"
+		},
 		"filterVal": func(params storage.ListParams, fieldName string) storage.FilterValue {
 			return filterValue(params, fieldName)
 		},
@@ -1245,6 +1271,31 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return template.JS(b) //nolint:gosec // G203: JSON сформирован encoding/json
 		},
 		"managedTPColumnPlan": managedTPColumnPlan,
+		"tpChoiceContexts": func(ctx map[string]any, table *metadata.FormElement) map[string]string {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].Contexts
+			}
+			return nil
+		},
+		"tpChoiceRows": func(ctx map[string]any, table *metadata.FormElement) map[string][][]map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].Options
+			}
+			return nil
+		},
+		"tpChoiceOptions": func(ctx map[string]any, table *metadata.FormElement, field string, row int, fallback map[string][]map[string]any) []map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil && all[table].Contexts[field] != "" {
+				rows := all[table].Options[field]
+				if row < len(rows) {
+					return rows[row]
+				}
+				return nil
+			}
+			return fallback[field]
+		},
 		// managedTPFieldsAttr — значение data-tp-fields в порядке отрисовки
 		// ячеек: applyTableParts перестраивает строку по этому списку, и любое
 		// расхождение порядка развалило бы соответствие ячеек колонкам.
@@ -1306,6 +1357,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// Решается по составу маски, а не отдельным ключом: «00.00.00» — это
 		// заведомо цифры, и заставлять автора объявлять это второй раз незачем.
 		"inputMaskDigitsOnly": metadata.InputMaskDigitsOnly,
+		"inputMaskHint":       metadata.InputMaskHint,
 		"wcell":               widgetCell,
 		"echartsJSON":         echartsJSON,
 		"stageChartJSON":      stageChartJSON,
@@ -2121,6 +2173,20 @@ const tplList = `
           </select>
           <button type="button" data-ob-ref-picker="flt-{{$f.Name}}" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;flex-shrink:0" title="{{t $.Lang "Выбрать из списка"}}">...</button>
         </div>
+      </div>
+    {{else if eq (str .Type) "bool"}}{{$raw := (filterVal $params .Name).Value}}{{$bv := boolFilterValue $raw}}
+      <div>
+        <label>{{.DisplayName $.Lang}}</label>
+        {{/* Значение из адреса распознаётся тем же правилом, что у хранилища
+             («нет», «1», «истина»…), и отправляется нормализованным. Нераспознанное
+             остаётся выбранным как есть: повторное «Применить» не превращает
+             пустой список во весь (#2184). */}}
+        <select name="f.{{.Name}}">
+          <option value="">{{t $.Lang "— все —"}}</option>
+          <option value="true" {{if eq $bv "true"}}selected{{end}}>{{t $.Lang "Да"}}</option>
+          <option value="false" {{if eq $bv "false"}}selected{{end}}>{{t $.Lang "Нет"}}</option>
+          {{if and $raw (eq $bv "")}}<option value="{{$raw}}" selected>{{$raw}}</option>{{end}}
+        </select>
       </div>
     {{else}}
       <div>
