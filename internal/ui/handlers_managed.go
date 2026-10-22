@@ -86,6 +86,7 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 	managed := pickManagedForm(entity, kind)
 	if managed != nil {
 		data["Form"] = managed
+		s.issueConcealInstance(w, r, entity, managed, data)
 		// Фикс A: команды формы, не размещённые вручную элементом kind: Кнопка,
 		// рисуются автоматической командной панелью (иначе объявленная в commands:
 		// команда в UI не видна — её кнопку рисует только kind: Кнопка). Fire-click

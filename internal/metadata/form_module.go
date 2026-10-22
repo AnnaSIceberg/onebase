@@ -333,12 +333,9 @@ type FormElement struct {
 	// такая колонка выглядела бы редактируемой, а редактировать нечего.
 	VirtualColumns []FormVirtualColumn `yaml:"virtual_columns,omitempty"`
 
-	// Conceal / RevealWhen — значение поля объекта не уходит в браузер: при
-	// отрисовке поле пустое и отключено (не отправляется, запись формы значение
-	// в базе не трогает), в ответе события формы значение отдаётся, только когда
-	// RevealWhen (выражение по реквизитам формы) истинно. Обработчики формы видят
-	// настоящее значение. Аналог ПоказатьЛичныеДанные 1С: условие ставит DSL
-	// формы, а не роль.
+	// Conceal hides a string object field until a successful trusted event
+	// explicitly assigns its boolean form controller (optionally НЕ/NOT).
+	// Disclosure is session/form/object-bound server state, never browser input.
 	Conceal    bool   `yaml:"conceal,omitempty"`
 	RevealWhen string `yaml:"reveal_when,omitempty"`
 }

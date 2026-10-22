@@ -551,7 +551,7 @@ func (s *Server) restoreUnsubmittedFields(
 	}
 	submitted := submittedFormKeys(r)
 	// Скрытое (conceal) поле принимается из браузера, только пока оно раскрыто:
-	// reveal_when истинно по присланным реквизитам формы. Иначе присланное
+	// серверное разрешение действительно. Иначе присланное
 	// считается неприсланным и берётся из базы (или умолчания у нового объекта).
 	for name := range s.unrevealedConcealedFields(r, entity, form) {
 		delete(submitted, name)
@@ -686,9 +686,12 @@ func (s *Server) overlayNewObjectDefaults(
 	if entity == nil || form == nil || obj == nil || s.entitySvc == nil {
 		return entityservice.NewObjectResult{}, nil
 	}
+	if !keepFilled {
+		s.dropConcealedInput(r, entity, form, obj.Fields)
+	}
 	submitted := submittedFormKeys(r)
 	// Скрытое (conceal) поле принимается из браузера, только пока оно раскрыто:
-	// reveal_when истинно по присланным реквизитам формы. Иначе присланное
+	// серверное разрешение действительно. Иначе присланное
 	// считается неприсланным и берётся из базы (или умолчания у нового объекта).
 	for name := range s.unrevealedConcealedFields(r, entity, form) {
 		delete(submitted, name)

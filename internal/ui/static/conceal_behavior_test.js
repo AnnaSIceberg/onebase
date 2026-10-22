@@ -18,9 +18,22 @@ test('раскрытое включается, нераскрытое отклю
   other.disabled = false;
   const ctx = { document: { querySelectorAll: () => [opis, other] } };
   vm.runInNewContext(source.slice(start, end) + '\nthis.obApplyConcealed = obApplyConcealed;', ctx);
-  ctx.obApplyConcealed(['описание']);
+  ctx.obApplyConcealed(['описание'], ctx.document);
   assert.equal(opis.disabled, false);
   assert.equal(opis.value, 'полный текст');
   assert.equal(other.disabled, true);
   assert.equal(other.value, '');
+});
+
+test('раскрытие ограничено своим экземпляром и сохраняет readonly', () => {
+ const own={value:'text',disabled:true,readOnly:true,getAttribute:()=> 'Описание'};
+ const alien={value:'hidden',disabled:true};
+ const form={querySelectorAll:()=>[own]};
+ const ctx={document:{querySelectorAll:()=>{throw Error('global DOM access');}}};
+ vm.runInNewContext(source.slice(start,end)+'\nthis.apply=obApplyConcealed;',ctx);
+ ctx.apply(['описание'],form);
+ assert.equal(own.readOnly,true);
+ assert.equal(alien.disabled,true);
+ ctx.apply([],form);
+ assert.equal(own.value,'');
 });
