@@ -158,6 +158,11 @@ func longOutputLabels(tokens []tok, sql string, ctx sourceContext) (map[string]s
 		// source projection supplies the full logical name missing from SQL.
 		if out.Alias != "" {
 			add(metadata.SQLIdent(out.Alias), out.Alias)
+		} else if out.Output != "" && len(out.Path) == 0 {
+			// Expressions expose their explicit AS name as Output, without a
+			// field Path/Alias. It still names this selected result column;
+			// identifiers inside the expression must not supply output labels.
+			add(metadata.SQLIdent(out.Output), out.Output)
 		} else if len(out.Path) > 0 {
 			physical := lowerFast(out.Path[len(out.Path)-1])
 			logical := physical
