@@ -241,22 +241,24 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			form, _ := v.(*metadata.FormModule)
 			return form != nil && form.EnterSubmitsForm
 		},
-		// formHeaderButtons — кнопки формы с placement: header по всему дереву
-		// элементов, в порядке объявления: их рисует строка команд документа.
-		"formHeaderButtons": func(v any) []*metadata.FormElement {
+		// formHeaderElements — элементы формы с placement: header (перед
+		// «? Справка») или header_end (после неё) по всему дереву элементов, в
+		// порядке объявления: их рисует строка команд документа.
+		"formHeaderElements": func(v any, placement string) []*metadata.FormElement {
 			form, _ := v.(*metadata.FormModule)
 			if form == nil {
 				return nil
 			}
 			var out []*metadata.FormElement
 			form.Walk(func(el *metadata.FormElement) bool {
-				if el != nil && el.Kind == metadata.FormElementButton && el.Placement == metadata.FormPlacementHeader {
+				if metadata.FormHeaderPlaced(el) && el.Placement == placement {
 					out = append(out, el)
 				}
 				return true
 			})
 			return out
 		},
+		"formHeaderPlaced": metadata.FormHeaderPlaced,
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
 			if proc == nil {
 				return processorParamPresencePrefix + name

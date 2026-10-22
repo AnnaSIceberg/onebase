@@ -186,9 +186,24 @@ const (
 	FormLayoutManaged = "managed"
 )
 
+// FormPlacementHeader — элемент в строке команд документа перед «? Справка»
+// (FormElement.Placement); FormPlacementHeaderEnd — после «? Справка».
+const (
+	FormPlacementHeader    = "header"
+	FormPlacementHeaderEnd = "header_end"
+)
+
+// FormHeaderPlaced — элемент рисуется в строке команд документа: кнопка, поле
+// ввода или флажок с placement: header/header_end. Поле там только для
+// чтения: «Подпись: значение» одной строкой.
+func FormHeaderPlaced(el *FormElement) bool {
+	if el == nil || (el.Placement != FormPlacementHeader && el.Placement != FormPlacementHeaderEnd) {
+		return false
+	}
+	return el.Kind == FormElementButton || el.Kind == FormElementField || el.Kind == FormElementCheckbox
+}
+
 // FormElement represents a single form element (field, button, etc.)
-// FormPlacementHeader — кнопка в строке команд документа (FormElement.Placement).
-const FormPlacementHeader = "header"
 
 type FormElement struct {
 	ID   string          `yaml:"id,omitempty"`
@@ -336,8 +351,9 @@ type FormElement struct {
 	// такая колонка выглядела бы редактируемой, а редактировать нечего.
 	VirtualColumns []FormVirtualColumn `yaml:"virtual_columns,omitempty"`
 
-	// Placement — где рисуется кнопка: "" — в теле формы, "header" — в строке
-	// команд документа сразу после «История» (FormPlacementHeader).
+	// Placement — где рисуется элемент: "" — в теле формы, "header" — в строке
+	// команд документа после «История», "header_end" — в ней же после
+	// «? Справка». Кнопка, ПолеВвода и Флажок (поле — только чтение).
 	Placement string `yaml:"placement,omitempty"`
 }
 
