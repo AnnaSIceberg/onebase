@@ -164,3 +164,40 @@ var p=document.createElement('pre');p.id='hdr-measure';p.textContent=JSON.string
 		t.Error("hidden_when (applyElementStates) не скрыл поле в строке команд")
 	}
 }
+
+// Во всплывающей форме строки команд нет: поле с placement: header_end
+// остаётся в теле формы видимым, зеркала и стиля скрытия нет.
+func TestManagedHeaderFields_PopupKeepsFieldInBody(t *testing.T) {
+	src := "schema: onebase.form/v1\nform:\n  name: ФормаОбъекта\n  kind: object\n  entity: Задача\nelements:\n" +
+		"  - kind: ПолеВвода\n    name: ПолеНомерВ1С\n    data_path: Объект.НомерВ1С\n    readonly: true\n    placement: header_end\n"
+	path := filepath.Join(t.TempDir(), "ФормаОбъекта.form.yaml")
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := loader.NewManagedFormLoader().LoadFormFile(path, "Задача")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ent := &metadata.Entity{Name: "Задача", Kind: metadata.KindCatalog,
+		Fields: []metadata.Field{{Name: "НомерВ1С", Type: metadata.FieldTypeString}}, Forms: []*metadata.FormModule{fm}}
+	srv, _ := newSubmitTestServer(t, []*metadata.Entity{ent})
+	render := func(target string) string {
+		rec := httptest.NewRecorder()
+		srv.form(rec, reqWithChi(http.MethodGet, target, nil, map[string]string{"entity": "задача"}))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("form %s: %d", target, rec.Code)
+		}
+		return rec.Body.String()
+	}
+	popup := render("/ui/catalog/задача/new?_popup=1")
+	if strings.Contains(popup, `data-ob-header-field=`) || strings.Contains(popup, `[data-ob-el="ПолеНомерВ1С"]{display:none`) {
+		t.Error("во всплывающей форме поле не должно уходить в строку команд")
+	}
+	if !strings.Contains(popup, `data-ob-el="ПолеНомерВ1С"`) {
+		t.Error("во всплывающей форме поле пропало из тела")
+	}
+	full := render("/ui/catalog/задача/new")
+	if !strings.Contains(full, `data-ob-header-field="ПолеНомерВ1С"`) {
+		t.Error("в обычной форме поле не попало в строку команд")
+	}
+}
