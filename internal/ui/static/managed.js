@@ -4703,17 +4703,26 @@ obManagedReady(function () {
   // становилась выше окна на эти пиксели. Блоки main наблюдаются: изменился
   // размер — подгонка пересчитывается следующей задачей. Пересчёт, давший тот
   // же размер, нового уведомления не порождает, поэтому цикла нет.
-  var fitAnchor = document.querySelector('[data-ob-fit-window="1"],[data-ob-fit-group="1"]');
+  // Два запроса, а не список через запятую: так селектор понимают и
+  // упрощённые DOM поведенческих тестов.
+  var fitAnchor = document.querySelector('[data-ob-fit-window="1"]') || document.querySelector('[data-ob-fit-group="1"]');
   var fitMain = fitAnchor && fitAnchor.closest ? fitAnchor.closest('main') : null;
-  if (fitMain && window.ResizeObserver) {
+  if (fitMain) {
     var fitQueued = false;
     var refit = function () { fitQueued = false; obEqualizeAllTabs(); };
-    var fitObserver = new window.ResizeObserver(function () {
+    var queueRefit = function () {
       if (fitQueued) return;
       fitQueued = true;
       setTimeout(refit, 0);
-    });
-    for (var fi = 0; fi < fitMain.children.length; fi++) fitObserver.observe(fitMain.children[fi]);
+    };
+    if (window.ResizeObserver) {
+      var fitObserver = new window.ResizeObserver(queueRefit);
+      for (var fi = 0; fi < fitMain.children.length; fi++) fitObserver.observe(fitMain.children[fi]);
+    }
+    // Вставка и удаление узлов (отложенная группа, строка шапки, перерисовка
+    // таблицы) — отдельным сигналом: он не ждёт кадра отрисовки. Сама
+    // подгонка меняет только стили, поэтому себя не перезапускает.
+    if (window.MutationObserver) new window.MutationObserver(queueRefit).observe(fitMain, {childList: true, subtree: true});
   }
   var groups = document.querySelectorAll('.managed-tabs');
   for (var i = 0; i < groups.length; i++) {
