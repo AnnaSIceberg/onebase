@@ -272,9 +272,12 @@ jobs:
       # -race на Linux работает без CGo-плясок (на Windows нужен gcc) и ловит
       # гонки разделяемого интерпретатора и других синглтонов (план 52/56).
       # Coverage собирается тем же прогоном, чтобы не гонять тесты дважды.
+      # Лимит Go относится ко всему пакету: internal/ui с -race и coverage
+      # превышает стандартные 10 минут. Как и в интеграционном прогоне UI,
+      # даём пакету 20 минут; общий лимит build остаётся 30 минут.
       - name: Unit tests (-race, coverage)
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: go test -race -timeout 20m -coverprofile=coverage.out -covermode=atomic ./...
 
       # Раннеры работают в UTC, поэтому целый класс дефектов «время
       # канонизируется не в той зоне» для CI невидим: #945 поймали случайно, на
