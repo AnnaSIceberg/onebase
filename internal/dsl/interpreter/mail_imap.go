@@ -4,12 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
 
 // receiveIMAP забирает письма по IMAP4rev1 (RFC 3501): SELECT папки,
-// UID SEARCH ALL, размер (RFC822.SIZE) до загрузки, тело — BODY.PEEK[]: PEEK
+// UID SEARCH, размер (RFC822.SIZE) до загрузки, тело — BODY.PEEK[]: PEEK
 // не ставит \Seen, письмо остаётся непрочитанным, пока об этом не попросили
 // (ОтметитьПрочитанными). Письма не удаляются.
 func receiveIMAP(p mailProfile, opts mailReceiveOptions) ([]receivedMail, error) {
@@ -41,59 +42,104 @@ func receiveIMAP(p mailProfile, opts mailReceiveOptions) ([]receivedMail, error)
 			return nil, fmt.Errorf("сервер отклонил вход пользователя %s", p.user)
 		}
 	}
-	if _, err := s.run("SELECT", imapString(p.folder)); err != nil {
+	selectLines, err := s.run("SELECT", imapString(p.folder))
+	if err != nil {
 		return nil, fmt.Errorf("папка %s: %w", p.folder, err)
 	}
-	lines, err := s.run("UID SEARCH ALL")
+	validity, err := imapUIDValidity(selectLines)
 	if err != nil {
-		return nil, fmt.Errorf("UID SEARCH: %w", err)
+		return nil, err
 	}
-	var uids []string
-	for _, l := range lines {
-		if strings.HasPrefix(strings.ToUpper(l.text), "* SEARCH") {
-			uids = append(uids, strings.Fields(l.text)[2:]...)
-		}
-	}
+	prefix := validity + ":"
 	var out []receivedMail
-	for _, uid := range uids {
-		if len(out) >= opts.max {
+	// SEARCH читается потоком; в памяти остаётся только следующая порция
+	// подходящих UID. Если письма оказались слишком большими, продолжим за
+	// последним UID порции, не загружая список всего ящика.
+	for next := uint64(1); len(out) < opts.max && next <= 1<<32-1; {
+		uids, err := s.searchUIDs(next, opts.max-len(out), prefix, opts.skip)
+		if err != nil {
+			return out, fmt.Errorf("UID SEARCH: %w", err)
+		}
+		if len(uids) == 0 {
 			break
 		}
-		if opts.skip[uid] {
-			continue
-		}
-		if _, err := strconv.ParseUint(uid, 10, 32); err != nil {
-			continue
-		}
-		sizeLines, err := s.run("UID FETCH " + uid + " (RFC822.SIZE)")
-		if err != nil {
-			return out, fmt.Errorf("UID FETCH %s: %w", uid, err)
-		}
-		if size, ok := imapFetchSize(sizeLines); ok && size > opts.maxSize {
-			continue
-		}
-		bodyLines, err := s.run("UID FETCH " + uid + " (BODY.PEEK[])")
-		if err != nil {
-			return out, fmt.Errorf("UID FETCH %s: %w", uid, err)
-		}
-		raw := imapFetchBody(bodyLines)
-		if raw == nil || int64(len(raw)) > opts.maxSize {
-			continue
-		}
-		m, err := parseMailMessage(raw)
-		if err != nil {
-			return out, err
-		}
-		m.ID = uid
-		out = append(out, m)
-		if opts.markSeen {
-			if _, err := s.run("UID STORE " + uid + ` +FLAGS (\Seen)`); err != nil {
-				return out, fmt.Errorf("UID STORE %s: %w", uid, err)
+		for _, n := range uids {
+			next = uint64(n) + 1
+			uid := strconv.FormatUint(uint64(n), 10)
+			sizeLines, err := s.run("UID FETCH " + uid + " (RFC822.SIZE)")
+			if err != nil {
+				return out, fmt.Errorf("UID FETCH %s: %w", uid, err)
+			}
+			if size, ok := imapFetchSize(sizeLines); ok && size > opts.maxSize {
+				continue
+			}
+			bodyLines, err := s.run("UID FETCH " + uid + " (BODY.PEEK[])")
+			if err != nil {
+				return out, fmt.Errorf("UID FETCH %s: %w", uid, err)
+			}
+			raw := imapFetchBody(bodyLines)
+			if raw == nil || int64(len(raw)) > opts.maxSize {
+				continue
+			}
+			m, err := parseMailMessage(raw)
+			if err != nil {
+				return out, err
+			}
+			m.ID = prefix + uid
+			out = append(out, m)
+			if opts.markSeen {
+				if _, err := s.run("UID STORE " + uid + ` +FLAGS (\Seen)`); err != nil {
+					return out, fmt.Errorf("UID STORE %s: %w", uid, err)
+				}
 			}
 		}
 	}
 	_, _ = s.run("LOGOUT")
 	return out, nil
+}
+
+var imapValidityRe = regexp.MustCompile(`(?i)\[UIDVALIDITY ([0-9]+)\]`)
+
+func imapUIDValidity(lines []imapLine) (string, error) {
+	var validity string
+	for _, l := range lines {
+		for _, m := range imapValidityRe.FindAllStringSubmatch(l.text, -1) {
+			n, err := strconv.ParseUint(m[1], 10, 32)
+			if err != nil || n == 0 {
+				return "", errors.New("неверный UIDVALIDITY папки IMAP")
+			}
+			v := strconv.FormatUint(n, 10)
+			if validity != "" && validity != v {
+				return "", errors.New("неоднозначный UIDVALIDITY папки IMAP")
+			}
+			validity = v
+		}
+	}
+	if validity == "" {
+		return "", errors.New("сервер не вернул UIDVALIDITY папки IMAP")
+	}
+	return validity, nil
+}
+
+func (s *imapSession) searchUIDs(first uint64, limit int, prefix string, skip map[string]bool) ([]uint32, error) {
+	uids := make([]uint32, 0, limit)
+	collect := func(uid uint32) {
+		if uint64(uid) < first || skip[prefix+strconv.FormatUint(uint64(uid), 10)] {
+			return
+		}
+		// Не полагаемся на порядок SEARCH и не допускаем дублей.
+		i := sort.Search(len(uids), func(i int) bool { return uids[i] >= uid })
+		if i < len(uids) && uids[i] == uid || i >= limit {
+			return
+		}
+		if len(uids) < limit {
+			uids = append(uids, 0)
+		}
+		copy(uids[i+1:], uids[i:len(uids)-1])
+		uids[i] = uid
+	}
+	_, err := s.runWithSearch("UID SEARCH UID "+strconv.FormatUint(first, 10)+":4294967295", collect)
+	return uids, err
 }
 
 // imapArg — аргумент команды: строка в кавычках или литерал {n} для значений
@@ -127,6 +173,10 @@ var imapLiteralTail = regexp.MustCompile(`\{(\d+)\}$`)
 // run отправляет команду и читает ответ до строки со своим тегом. Строки
 // без тега возвращаются вместе с литералами {n}, прочитанными побайтно.
 func (s *imapSession) run(cmd string, args ...any) ([]imapLine, error) {
+	return s.runWithSearch(cmd, nil, args...)
+}
+
+func (s *imapSession) runWithSearch(cmd string, collect func(uint32), args ...any) ([]imapLine, error) {
 	s.seq++
 	tag := "A" + strconv.Itoa(s.seq)
 	line := tag + " " + cmd
@@ -154,7 +204,7 @@ func (s *imapSession) run(cmd string, args ...any) ([]imapLine, error) {
 	}
 	var out []imapLine
 	for {
-		text, err := s.c.readLine()
+		text, err := s.c.readIMAPLine(collect)
 		if err != nil {
 			return nil, err
 		}

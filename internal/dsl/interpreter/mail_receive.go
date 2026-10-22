@@ -14,7 +14,7 @@ import (
 
 // ПолучитьПисьма(Профиль[, Параметры]) — чтение почтового ящика по POP3 или
 // IMAP (как ИнтернетПочта в 1С). Письма с сервера не удаляются никогда:
-// «новизну» ведёт вызывающий код по Ид (UIDL у POP3, UID у IMAP) и передаёт
+// «новизну» ведёт вызывающий код по Ид (UIDL у POP3, UIDVALIDITY:UID у IMAP) и передаёт
 // уже полученные в Параметры.Пропустить.
 const (
 	mailReceiveDefaultMax  = 50
@@ -345,4 +345,68 @@ func serverText(s string) string {
 		s = s[:200]
 	}
 	return strings.TrimSpace(s)
+}
+
+// readIMAPLine сохраняет обычный предел строки, но разбирает SEARCH по
+// буферным фрагментам. Ни весь ответ, ни полный список UID не накапливаются.
+func (c *mailConn) readIMAPLine(collect func(uint32)) (string, error) {
+	if collect == nil {
+		return c.readLine()
+	}
+	c.touch()
+	chunk, err := c.r.ReadSlice('\n')
+	search := len(chunk) >= 8 && strings.EqualFold(string(chunk[:8]), "* SEARCH") &&
+		(len(chunk) == 8 || chunk[8] == ' ' || chunk[8] == '\r' || chunk[8] == '\n')
+	if !search {
+		buf := append([]byte(nil), chunk...)
+		for err == bufio.ErrBufferFull {
+			chunk, err = c.r.ReadSlice('\n')
+			if len(buf)+len(chunk) > mailReceiveMaxLine {
+				return "", errors.New("слишком длинная строка ответа сервера")
+			}
+			buf = append(buf, chunk...)
+		}
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimRight(string(buf), "\r\n"), nil
+	}
+	chunk = chunk[8:]
+	token := make([]byte, 0, 10)
+	emit := func() error {
+		if len(token) == 0 {
+			return nil
+		}
+		n, err := strconv.ParseUint(string(token), 10, 32)
+		if err != nil || n == 0 {
+			return errors.New("неверный UID в ответе SEARCH")
+		}
+		collect(uint32(n))
+		token = token[:0]
+		return nil
+	}
+	for {
+		for _, b := range chunk {
+			if b == ' ' || b == '\r' || b == '\n' {
+				if e := emit(); e != nil {
+					return "", e
+				}
+			} else {
+				if b < '0' || b > '9' || len(token) == 10 {
+					return "", errors.New("неверный UID в ответе SEARCH")
+				}
+				token = append(token, b)
+			}
+		}
+		if err == nil {
+			if e := emit(); e != nil {
+				return "", e
+			}
+			return "* SEARCH", nil
+		}
+		if err != bufio.ErrBufferFull {
+			return "", err
+		}
+		chunk, err = c.r.ReadSlice('\n')
+	}
 }
