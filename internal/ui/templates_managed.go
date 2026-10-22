@@ -364,7 +364,8 @@ const tplManagedForm = `
   <div id="sg-{{$tpName}}" class="ob-grid{{tableHeaderClass $el}}" style="{{tpGridCSS $el (len $tpRows)}}{{tableHeaderVars $el}}"
        data-sg-tp="{{$tpName}}"
        data-sg-el="{{$el.Name}}"
-       data-sg-path="{{elPath $ctx $el}}"
+       data-sg-path="{{elPath $ctx $el}}"{{if $el.FitWindow}}
+       data-ob-fit-grid="1"{{end}}
        {{with gridLayoutAttr $ctx $el.Name}}data-sg-layout="{{.}}"{{end}}
        {{with gridOrderAttr $ctx $el.Name}}data-sg-order="{{.}}"{{end}}
        {{if $tpReadOnly}}data-sg-ro="1"{{end}}
