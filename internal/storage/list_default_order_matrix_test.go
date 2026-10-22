@@ -10,6 +10,7 @@ package storage_test
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -21,11 +22,11 @@ import (
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
-func collectPages(t *testing.T, db *storage.DB, ent *metadata.Entity, field string, total int) string {
+func collectPages(t *testing.T, ctx context.Context, db *storage.DB, ent *metadata.Entity, field string, total int) string {
 	t.Helper()
 	var got []string
 	for offset := 0; offset < total+3; offset += 3 {
-		rows, err := db.List(context.Background(), ent.Name, ent, storage.ListParams{Limit: 3, Offset: offset})
+		rows, err := db.List(ctx, ent.Name, ent, storage.ListParams{Limit: 3, Offset: offset})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -65,7 +66,7 @@ func TestListDefaultOrderNullsLastPaged(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if got, want := collectPages(t, db, cat, "Наименование", len(names)), "А#2,А#6,Б#1,В#4,Г#7,∅#3,∅#5"; got != want {
+		if got, want := collectPages(t, ctx, db, cat, "Наименование", len(names)), "А#2,А#6,Б#1,В#4,Г#7,∅#3,∅#5"; got != want {
 			t.Fatalf("справочник: %s, ожидалось %s", got, want)
 		}
 		base := time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local)
@@ -79,8 +80,35 @@ func TestListDefaultOrderNullsLastPaged(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if got, want := collectPages(t, db, doc, "Дата", len(days)), "05#3,03#1,03#4,01#6,∅#2,∅#5"; got != want {
+		if got, want := collectPages(t, ctx, db, doc, "Дата", len(days)), "05#3,03#1,03#4,01#6,∅#2,∅#5"; got != want {
 			t.Fatalf("документы: %s, ожидалось %s", got, want)
+		}
+		// A borrowed transaction may use READ COMMITTED on PostgreSQL.
+		// Both the paged and unlimited List paths must retain the same order
+		// and include this transaction's writes without changing its outcome.
+		if err := db.WithTx(ctx, func(txCtx context.Context) error {
+			if got, want := collectPages(t, txCtx, db, cat, "Наименование", len(names)), "А#2,А#6,Б#1,В#4,Г#7,∅#3,∅#5"; got != want {
+				t.Fatalf("справочник в транзакции: %s, ожидалось %s", got, want)
+			}
+			if got, want := collectPages(t, txCtx, db, doc, "Дата", len(days)), "05#3,03#1,03#4,01#6,∅#2,∅#5"; got != want {
+				t.Fatalf("документы в транзакции: %s, ожидалось %s", got, want)
+			}
+			for _, ent := range []*metadata.Entity{cat, doc} {
+				rows, err := db.List(txCtx, ent.Name, ent, storage.ListParams{})
+				if err != nil {
+					return err
+				}
+				paged, err := db.List(txCtx, ent.Name, ent, storage.ListParams{Limit: 100})
+				if err != nil {
+					return err
+				}
+				if !reflect.DeepEqual(rows, paged) {
+					t.Fatalf("%s: unlimited and paged List disagree", ent.Name)
+				}
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
 		}
 	})
 }

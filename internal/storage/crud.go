@@ -1074,7 +1074,24 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 		return db.scanListRows(ctx, entityName, entity, cols, hasPredefined, query, args)
 	}
 	if split != nil {
-		return db.listNullsLast(ctx, entityName, table, baseSelect, whereClause, args, split, params, scan)
+		if HasTx(ctx) {
+			// A borrowed PostgreSQL transaction may be READ COMMITTED and
+			// already in use: neither sharing it nor a savepoint fixes the
+			// snapshot across statements. Read this List in one statement,
+			// retaining the caller's own writes and transaction settings.
+			query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, id ASC", split.col, split.dir)
+		} else {
+			var result []map[string]any
+			err := db.WithReadSnapshot(ctx, func(readCtx context.Context) error {
+				readScan := func(query string, args []any) ([]map[string]any, error) {
+					return db.scanListRows(readCtx, entityName, entity, cols, hasPredefined, query, args)
+				}
+				var err error
+				result, err = db.listNullsLast(readCtx, entityName, table, baseSelect, whereClause, args, split, params, readScan)
+				return err
+			})
+			return result, err
+		}
 	}
 	if params.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d OFFSET %d", params.Limit, params.Offset)
