@@ -5081,13 +5081,27 @@ function obFitTabsToWindow(tabs) {
 // закладками): высота как у fit_window-набора страниц той же строки, без
 // соседа — остаток окна; содержимое прокручивается внутри. Перед подгонкой
 // страниц группа схлопывается, иначе высоту строки задавала бы она.
-function obFitGroupToWindow(group) {
-  var row = group.parentElement;
-  var tabs = null;
+function obFitSiblingTabs(group) {
+  var row = group && group.parentElement;
   if (row) for (var i = 0; i < row.children.length; i++) {
     var sib = row.children[i];
-    if (sib !== group && sib.getAttribute && sib.getAttribute('data-ob-fit-window') === '1') { tabs = sib; break; }
+    if (sib !== group && sib.getAttribute && sib.getAttribute('data-ob-fit-window') === '1') return sib;
   }
+  return null;
+}
+// obFitGroupStacked — строка перенесла группу ПОД набор страниц: окно уже,
+// чем страницы и группа вместе (развёрнутое левое меню, полоса прокрутки,
+// окно не на весь экран). Подгонка «рядом» в такой раскладке ужимала и
+// страницы, и группу до 120px — обе части обрезаны и прокручиваются в
+// крошечных окнах. Перенесённую раскладку не подгоняем вовсе: форма ложится
+// естественной высотой и прокручивается целиком, как до fit_window.
+function obFitGroupStacked(group) {
+  var tabs = obFitSiblingTabs(group);
+  if (!tabs || !group.getBoundingClientRect || !tabs.getBoundingClientRect) return false;
+  return group.getBoundingClientRect().top >= tabs.getBoundingClientRect().bottom - 1;
+}
+function obFitGroupToWindow(group) {
+  var tabs = obFitSiblingTabs(group);
   group.style.overflowY = 'auto';
   if (tabs) { group.style.height = tabs.offsetHeight + 'px'; return; }
   group.style.height = '';
@@ -5103,12 +5117,29 @@ function obFitGroupToWindow(group) {
   group.style.height = Math.max(120, Math.floor(group.offsetHeight + scroller.clientHeight - natural)) + 'px';
 }
 function obEqualizeAllTabs() {
-  var groups = document.querySelectorAll('[data-ob-fit-group="1"]');
+  var groups = Array.prototype.slice.call(document.querySelectorAll('[data-ob-fit-group="1"]'));
   groups.forEach(function (g) { g.style.height = '0px'; g.style.overflowY = 'hidden'; });
+  // Перенос считается по ширинам и от высот не зависит, поэтому его видно
+  // и при схлопнутой группе.
+  var stackedTabs = [];
+  var fitGroups = groups.filter(function (g) {
+    if (!obFitGroupStacked(g)) return true;
+    g.style.height = ''; g.style.overflowY = '';
+    stackedTabs.push(obFitSiblingTabs(g));
+    return false;
+  });
   document.querySelectorAll('[data-ob-equal-height="1"]').forEach(obEqualizeTabs);
-  document.querySelectorAll('[data-ob-fit-window="1"]').forEach(obFitTabsToWindow);
-  groups.forEach(obFitGroupToWindow);
-  if (window.obTrimFitOverflow) window.obTrimFitOverflow(groups);
+  document.querySelectorAll('[data-ob-fit-window="1"]').forEach(function (tabs) {
+    if (stackedTabs.indexOf(tabs) < 0) {
+      tabs.removeAttribute('data-ob-fit-stacked');
+      obFitTabsToWindow(tabs);
+      return;
+    }
+    tabs.setAttribute('data-ob-fit-stacked', '1');
+    obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(function (c) { c.style.height = ''; c.style.overflowY = ''; });
+  });
+  fitGroups.forEach(obFitGroupToWindow);
+  if (window.obTrimFitOverflow) window.obTrimFitOverflow(fitGroups);
 }
 window.obEqualizeAllTabs = obEqualizeAllTabs;
 // obTrimFitOverflow — сверка подгонки с тем, что видит браузер. Подгонка
@@ -5118,7 +5149,11 @@ window.obEqualizeAllTabs = obEqualizeAllTabs;
 // полосу прокрутки. Если main всё-таки прокручивается, подогнанные страницы и
 // группы ужимаются ровно на перебор (не ниже тех же 120px).
 function obTrimFitOverflow(groups) {
-  var fitted = document.querySelectorAll('[data-ob-fit-window="1"]');
+  // Перенесённая раскладка не подгоняется (obFitGroupStacked) — ужимать
+  // в ней нечего.
+  var fitted = Array.prototype.filter.call(document.querySelectorAll('[data-ob-fit-window="1"]'), function (el) {
+    return !(el.getAttribute && el.getAttribute('data-ob-fit-stacked') === '1');
+  });
   var first = fitted[0] || (groups && groups[0]);
   var scroller = first && first.closest ? first.closest('main') : null;
   if (!scroller) return;
