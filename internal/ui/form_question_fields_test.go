@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -109,5 +113,94 @@ func TestParseQuestionFields_DropsNonStrings(t *testing.T) {
 	}
 	if parseQuestionFields(`не json`) != nil || parseQuestionFields("") != nil {
 		t.Fatal("мусор не даёт структуры")
+	}
+}
+
+// The browser must carry dialog JSON separately from both entity fields and
+// form-only attributes, even when a fallback transport name is also declared.
+func TestShowQuestion_EntityDialogFieldsNameCollision(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		fields []string
+		attrs  []string
+	}{
+		{name: "no collision"},
+		{name: "entity field", fields: []string{"_question_fields"}},
+		{name: "form attribute", attrs: []string{"_question_fields"}},
+		{name: "fallback names", fields: []string{"_question_fields", "_ob_service_question_fields"}, attrs: []string{"_ob_service_question_fields_"}},
+		{name: "case insensitive", fields: []string{"_QUESTION_FIELDS"}, attrs: []string{"_OB_SERVICE_QUESTION_FIELDS"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			program := `
+Процедура КомандаНажатие()
+	Поля = Новый Массив;
+	Поля.Добавить(Новый Структура("имя, правка, многострочное", "Примечание", Истина, Истина));
+	ПоказатьВопрос("Сохранить?", "ДаНет", "", Поля);
+КонецПроцедуры
+
+Процедура КомандаОтвет()
+	Сообщить("Ответ=" + ВопросОтвет + "; Примечание=" + ДиалогПоля.Примечание);
+`
+			ent := &metadata.Entity{Name: "ДиалогИРеквизиты", Kind: metadata.KindCatalog}
+			form := managedObjectForm()
+			ent.Forms = []*metadata.FormModule{form}
+			body := url.Values{"_element": {"Команда"}, "_event": {string(metadata.FormEventOnClick)}}
+			want := []string{"Ответ=Да; Примечание=строка 1\nстрока 2"}
+			names := append(append([]string{}, tc.fields...), tc.attrs...)
+			for i, name := range names {
+				if i < len(tc.fields) {
+					ent.Fields = append(ent.Fields, metadata.Field{Name: name, Type: metadata.FieldTypeString})
+				} else {
+					form.Attributes = append(form.Attributes, &metadata.FormAttribute{Name: name, TypeRef: "Строка"})
+				}
+				form.Elements = append(form.Elements, fieldEl(fmt.Sprintf("Поле%d", i), "Объект."+name))
+				value := fmt.Sprintf("реквизит %d", i)
+				body.Set(name, value)
+				program += fmt.Sprintf("\tСообщить(Объект.%s);\n", name)
+				want = append(want, value)
+			}
+			program += "КонецПроцедуры\n"
+			form.ProgramAST = mustParse(t, program)
+			form.Elements = append(form.Elements, &metadata.FormElement{
+				Kind: metadata.FormElementButton, Name: "Команда",
+				Handlers: map[metadata.FormEventType]string{
+					metadata.FormEventOnClick:  "КомандаНажатие",
+					metadata.FormEventOnAnswer: "КомандаОтвет",
+				},
+			})
+			srv, _ := newSubmitTestServer(t, []*metadata.Entity{ent})
+			page := httptest.NewRecorder()
+			srv.form(page, reqWithChi(http.MethodGet, "/ui/catalog/"+ent.Name+"/new", nil,
+				map[string]string{"kind": "catalog", "entity": ent.Name}))
+			if page.Code != http.StatusOK {
+				t.Fatalf("GET status=%d body=%s", page.Code, page.Body.String())
+			}
+			config := managedConfigScript.FindStringSubmatch(page.Body.String())
+			if config == nil {
+				t.Fatal("GET carries no ob-managed-config")
+			}
+			var cfg struct {
+				ServiceFields map[string]string `json:"serviceFields"`
+			}
+			if err := json.Unmarshal([]byte(config[1]), &cfg); err != nil {
+				t.Fatal(err)
+			}
+			fieldName := cfg.ServiceFields["_question_fields"]
+			if fieldName == "" {
+				fieldName = "_question_fields"
+			}
+			resp := decodeFormEventResponse(t, executeFormEvent(t, srv, ent, body).Body.Bytes())
+			if !resp.OK || resp.Question == nil || len(resp.Question.Fields) != 1 || !resp.Question.Fields[0].Multiline {
+				t.Fatalf("phase1: %+v", resp)
+			}
+			body.Set("_event", string(metadata.FormEventOnAnswer))
+			body.Set("_question_answer", "Да")
+			// managed.js appends extra parameters after serializing the form.
+			body.Add(fieldName, `{"Примечание":"строка 1\nстрока 2"}`)
+			resp = decodeFormEventResponse(t, executeFormEvent(t, srv, ent, body).Body.Bytes())
+			if !resp.OK || strings.Join(resp.Messages, "\x00") != strings.Join(want, "\x00") {
+				t.Fatalf("phase2: ok=%v error=%q messages=%q, want=%q", resp.OK, resp.Error, resp.Messages, want)
+			}
+		})
 	}
 }
