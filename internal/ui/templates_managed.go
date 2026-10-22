@@ -84,6 +84,7 @@ const tplManagedForm = `
       style="width:100%;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px"
       {{if $el.AccessKey}}accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>{{index $ctx.Values $fn}}</textarea>
     {{if not $ro}}<div class="code-editor" data-code-language="{{if $el.Language}}{{$el.Language}}{{else}}plaintext{{end}}" style="height:320px;border:1px solid #e2e8f0;border-radius:8px"></div>{{end}}
+    {{if and $el.Hint $el.HintInline}}<small style="color:#94a3b8;font-size:11px">{{$el.Hint}}</small>{{end}}
   </div>
 {{else if eq (str $el.Kind) "ПолеВвода"}}
   {{$fn := dpField $el.DataPath}}
@@ -241,7 +242,7 @@ const tplManagedForm = `
 {{else if eq (str $el.Kind) "Флажок"}}
   {{$fn := dpField $el.DataPath}}
   {{$hChg := hasHandler $el "ПриИзменении"}}
-  <div class="form-group managed-checkbox" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="display:flex;align-items:center;gap:8px;{{elLayout $el}}">
+  <div class="form-group managed-checkbox" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="display:flex;align-items:center;gap:8px;{{if and $el.Hint $el.HintInline}}flex-wrap:wrap;{{end}}{{elLayout $el}}">
     {{/* ПриИзменении у флажка работает так же, как у остальных полей: без
          data-ob-fire-change обработчик «поставил галку → выполнилось действие»
          молча не вызывался. */}}
@@ -249,6 +250,7 @@ const tplManagedForm = `
     <input type="checkbox" id="cb-{{$fn}}" name="{{$fn}}" value="true"{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}
       {{if eq (index $ctx.Values $fn) "true"}}checked{{end}}{{if $ro}} disabled{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
     <label for="cb-{{$fn}}" style="margin-bottom:0;cursor:pointer">{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}{{if and $el.Hint (not $el.HintInline)}} <span class="ob-hint" title="{{$el.Hint}}" aria-label="{{$el.Hint}}">ⓘ</span>{{end}}</label>
+    {{if and $el.Hint $el.HintInline}}<small style="color:#94a3b8;font-size:11px;flex-basis:100%">{{$el.Hint}}</small>{{end}}
   </div>
 {{else if eq (str $el.Kind) "Надпись"}}
   <div class="form-decoration" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="padding:6px 0;color:#475569;font-size:13px;{{elLayout $el}}">
@@ -507,6 +509,7 @@ const tplManagedForm = `
   {{if $el.HiddenWhen}}<fieldset class="form-group ob-managed-control{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}" data-ob-control-fieldset="1"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{if elHiddenStyle $ctx $el}} disabled{{end}}{{with elLayoutEx $ctx $el}} style="{{.}}"{{end}}>{{else}}<div class="form-group{{if elFill $el}} ob-el-fill{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{with elLayout $el}} style="{{.}}"{{end}}>{{end}}
     <label>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}{{if and $el.Hint (not $el.HintInline)}} <span class="ob-hint" title="{{$el.Hint}}" aria-label="{{$el.Hint}}">ⓘ</span>{{end}}</label>
     <input type="date" name="{{$fn}}" value="{{if ge (len $dv) 10}}{{slice $dv 0 10}}{{else}}{{$dv}}{{end}}"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+    {{if and $el.Hint $el.HintInline}}<small style="color:#94a3b8;font-size:11px">{{$el.Hint}}</small>{{end}}
   {{if $el.HiddenWhen}}</fieldset>{{else}}</div>{{end}}
 {{else if eq (str $el.Kind) "Переключатель"}}
   {{/* Поле с набором значений: радио-переключатель (по умолчанию) или список
