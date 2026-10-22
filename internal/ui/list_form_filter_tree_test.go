@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/project"
 	"github.com/ivantit66/onebase/internal/storage"
 	"github.com/xuri/excelize/v2"
 	"golang.org/x/net/html"
@@ -21,10 +24,52 @@ import (
 // Один и тот же отбор и его переключатель действуют в списке, Excel и дереве.
 func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
-		entity := &metadata.Entity{Name: "Заявка", Kind: metadata.KindCatalog, Hierarchical: true,
-			Fields: []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}, {Name: "Автор", Type: metadata.FieldTypeString}}}
-		form := &metadata.FormModule{Name: "ФормаСписка", Kind: "list", EntityName: entity.Name, LayoutKind: metadata.FormLayoutManaged}
-		entity.Forms = []*metadata.FormModule{form}
+		// Load the combined contracts through the same project loader as the CLI.
+		dir := t.TempDir()
+		for name, body := range map[string]string{
+			"catalogs/заявка.yaml": `name: Заявка
+hierarchical: true
+list_filters: [Автор]
+fields:
+  - {name: Наименование, type: string}
+  - {name: Автор, type: string}
+  - {name: Метка, type: string}
+`,
+			"forms/заявка/списка.form.yaml": `schema: onebase.form/v1
+form:
+  name: ФормаСписка
+  kind: list
+  entity: Заявка
+  ref_card_button_admin_only: true
+  enter_submits_form: true
+  filter:
+    - query: ВЫБРАТЬ З.Ссылка КАК Ссылка ИЗ Справочник.Заявка КАК З ГДЕ З.Автор = &ТекущийПользователь
+      roles: [Оператор]
+      removable: true
+      label: {ru: Только мои}
+`,
+		} {
+			path := filepath.Join(dir, name)
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		p, err := project.Load(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(p.Entities) != 1 || len(p.Entities[0].Forms) != 1 {
+			t.Fatal("project lost the list form")
+		}
+		entity := p.Entities[0]
+		form := entity.Forms[0]
+		if !form.RefCardButtonAdminOnly || !form.EnterSubmitsForm || len(form.ListFilter) != 1 || !form.ListFilter[0].Removable || form.ListFilter[0].Query != listQueryMine {
+			t.Fatalf("combined YAML keys lost: %+v", form)
+		}
+		condition := form.ListFilter[0]
 		s, ctx := newSubmitTestServer(t, []*metadata.Entity{entity})
 		if err := db.Migrate(ctx, []*metadata.Entity{entity}); err != nil {
 			t.Fatal(err)
@@ -32,12 +77,13 @@ func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 		s.store = db
 		s.entitySvc.Store = db
 		parent := uuid.New()
-		if err := db.Upsert(ctx, entity.Name, parent, map[string]any{"Наименование": "Folder", "Автор": "u-op", "is_folder": true}, entity); err != nil {
+		if err := db.Upsert(ctx, entity.Name, parent, map[string]any{"Наименование": "Folder", "Автор": "u-op", "Метка": "keep", "is_folder": true}, entity); err != nil {
 			t.Fatal(err)
 		}
 		for _, row := range []map[string]any{
-			{"Наименование": "first-child", "Автор": "u-op", "parent_id": parent.String(), "is_folder": true},
-			{"Наименование": "second-child", "Автор": "u-other", "parent_id": parent.String()},
+			{"Наименование": "first-child", "Автор": "u-op", "Метка": "keep", "parent_id": parent.String(), "is_folder": true},
+			{"Наименование": "second-child", "Автор": "u-other", "Метка": "keep", "parent_id": parent.String()},
+			{"Наименование": "excluded-child", "Автор": "u-op", "Метка": "skip", "parent_id": parent.String()},
 		} {
 			if err := db.Upsert(ctx, entity.Name, uuid.New(), row, entity); err != nil {
 				t.Fatal(err)
@@ -48,6 +94,7 @@ func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 			removable bool
 			off       string
 			admin     bool
+			otherRole bool
 			wantOther bool
 		}{
 			{name: "permanent"},
@@ -55,24 +102,37 @@ func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 			{name: "default_on", removable: true},
 			{name: "default_off", removable: true, off: "0", wantOther: true},
 			{name: "administrator", admin: true, wantOther: true},
+			{name: "other_role", removable: true, otherRole: true, wantOther: true},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				form.ListFilter = []metadata.FormListCondition{{Query: listQueryMine, Removable: tc.removable}}
+				condition.Removable = tc.removable
+				form.ListFilter = []metadata.FormListCondition{condition}
 				u := listQueryUser("u-op")
 				u.IsAdmin = tc.admin
-				qs := url.Values{"parent": {parent.String()}}
+				if tc.otherRole {
+					u.Roles[0].Name = "Контроль"
+				}
+				back := "/ui/catalog/заявка?view=tree&f.Метка=keep"
+				if tc.off != "" {
+					back += "&lf_off=" + tc.off
+				}
+				saved := listFiltersPost(t, s, u, entity.Name, back, "Метка")
+				if saved.Code != http.StatusSeeOther || location(saved) != back {
+					t.Fatalf("save panel fields: status=%d location=%q", saved.Code, location(saved))
+				}
+				qs := url.Values{"parent": {parent.String()}, "f.Метка": {"keep"}}
 				if tc.off != "" {
 					qs.Set(listFormFilterOffParam, tc.off)
 				}
 				check := func(body string) {
 					t.Helper()
-					if !strings.Contains(body, "first-child") || strings.Contains(body, "second-child") != tc.wantOther {
+					if !strings.Contains(body, "first-child") || strings.Contains(body, "second-child") != tc.wantOther || strings.Contains(body, "excluded-child") {
 						t.Fatal("list entries differ from the selected form filter")
 					}
 				}
 				// Follow the rendered root-folder button and the URL base used by
 				// Enter/context-menu navigation, rather than supplying lf_off ourselves.
-				rootQuery := url.Values{"view": {"tree"}}
+				rootQuery := url.Values{"view": {"tree"}, "f.Метка": {"keep"}}
 				if tc.off != "" {
 					rootQuery.Set(listFormFilterOffParam, tc.off)
 				}
@@ -85,13 +145,26 @@ func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 					if w.Code != http.StatusOK {
 						t.Fatalf("list: HTTP %d", w.Code)
 					}
-					return w.Body.String()
+					body := w.Body.String()
+					if !strings.Contains(body, `name="f.Метка"`) || !strings.Contains(body, `name="field" value="Метка" checked`) {
+						t.Fatal("saved extra panel field lost alongside form filter toggles")
+					}
+					if tc.removable && !tc.admin && !tc.otherRole {
+						pressed := "true"
+						if tc.off != "" {
+							pressed = "false"
+						}
+						if !strings.Contains(body, "Только мои") || !strings.Contains(body, `aria-pressed="`+pressed+`"`) {
+							t.Fatal("form toggle lost alongside saved panel fields")
+						}
+					}
+					return body
 				}
 				doc, err := html.Parse(strings.NewReader(listPage(t, "/ui/catalog/"+entity.Name+"?"+rootQuery.Encode())))
 				if err != nil {
 					t.Fatal(err)
 				}
-				var buttonURL, rowBaseURL string
+				var buttonURL, rowBaseURL, toggleURL string
 				var walk func(*html.Node)
 				walk = func(n *html.Node) {
 					if n.Type == html.ElementNode {
@@ -100,6 +173,9 @@ func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 						}
 						if n.Data == "a" {
 							value, _ := keyboardHTMLAttr(n, "href")
+							if _, ok := keyboardHTMLAttr(n, "aria-pressed"); ok {
+								toggleURL = value
+							}
 							if link, err := url.Parse(value); err == nil && link.Query().Get("parent") == parent.String() {
 								buttonURL = value
 							}
@@ -110,6 +186,27 @@ func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 					}
 				}
 				walk(doc)
+				if tc.removable && !tc.admin && !tc.otherRole {
+					if toggleURL == "" {
+						t.Fatal("removable toggle link missing")
+					}
+					toggled, err := url.Parse(toggleURL)
+					if err != nil {
+						t.Fatal(err)
+					}
+					toggled.Path = "/ui/catalog/" + entity.Name
+					q := toggled.Query()
+					q.Del("view")
+					q.Set("parent", parent.String())
+					toggled.RawQuery = q.Encode()
+					r := reqWithChi(http.MethodGet, toggled.String(), nil, map[string]string{"kind": "catalog", "entity": entity.Name})
+					r = r.WithContext(auth.ContextWithUser(r.Context(), u))
+					rec := httptest.NewRecorder()
+					s.list(rec, r)
+					if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "first-child") || strings.Contains(rec.Body.String(), "second-child") == tc.wantOther || strings.Contains(rec.Body.String(), "excluded-child") {
+						t.Fatal("following the rendered toggle lost the panel filter or did not switch the form condition")
+					}
+				}
 				for name, target := range map[string]string{"root_button": buttonURL, "root_row_navigation": rowBaseURL} {
 					t.Run(name, func(t *testing.T) {
 						if target == "" {
@@ -133,8 +230,11 @@ func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 						} else if q.Get("parent") != parent.String() {
 							t.Fatal("root button points to a different folder")
 						}
+						if q.Get("f.Метка") != "keep" {
+							t.Fatal("root folder link lost the panel filter")
+						}
 						body := listPage(t, link.String())
-						if !strings.Contains(body, "first-child") || strings.Contains(body, "second-child") != tc.wantOther {
+						if !strings.Contains(body, "first-child") || strings.Contains(body, "second-child") != tc.wantOther || strings.Contains(body, "excluded-child") {
 							t.Fatal("root folder navigation changed the selected form filter")
 						}
 					})
@@ -180,7 +280,13 @@ func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 					}
 					check(text.String())
 				}
-				w := serveTreeChildren(t, s, entity.Name, qs.Encode()+"&depth=0", u)
+				// Lazy tree expansion has no panel-filter contract; exercise the
+				// form condition and its toggle on that entry point separately.
+				treeQuery := url.Values{"parent": {parent.String()}, "depth": {"0"}}
+				if tc.off != "" {
+					treeQuery.Set(listFormFilterOffParam, tc.off)
+				}
+				w := serveTreeChildren(t, s, entity.Name, treeQuery.Encode(), u)
 				if w.Code != http.StatusOK {
 					t.Fatalf("tree: HTTP %d", w.Code)
 				}
@@ -196,7 +302,9 @@ func TestUI_ListFormFilterEntryPointsMatrix(t *testing.T) {
 						t.Fatal("tree folder link lost the filter toggle")
 					}
 				}
-				check(text.String())
+				if !strings.Contains(text.String(), "first-child") || strings.Contains(text.String(), "second-child") != tc.wantOther {
+					t.Fatal("lazy tree entries differ from the selected form filter")
+				}
 			})
 		}
 	})

@@ -210,8 +210,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"RequestURI":       r.URL.RequestURI(),
 		"ListFormToggles":  s.listFormFilterToggles(r, entity),
 		"ListFormOff":      r.URL.Query().Get(listFormFilterOffParam),
-
-		"ListFilterExtra": listFilterExtra,
+		"ListFilterExtra":  listFilterExtra,
 	})
 }
 
