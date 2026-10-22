@@ -62,7 +62,7 @@ func TestFormEventTablePartRefreshOnlyAfterWrites(t *testing.T) {
 	}
 	tp := metadata.TablePart{Name: "Товары", Fields: []metadata.Field{{Name: "Товар", Type: metadata.FieldTypeString}}}
 	ent := &metadata.Entity{Name: "Заказ", Kind: metadata.KindCatalog,
-		Fields: []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}},
+		Fields:     []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}},
 		TableParts: []metadata.TablePart{tp}, Forms: []*metadata.FormModule{fm}}
 	if err := db.Migrate(t.Context(), []*metadata.Entity{ent}); err != nil {
 		t.Fatal(err)
@@ -109,7 +109,7 @@ func TestFormEventTablePartRefreshOnlyAfterWrites(t *testing.T) {
 		reads.Store(0)
 		router.ServeHTTP(rec, req)
 		var resp struct {
-			OK         bool                          `json:"ok"`
+			OK         bool                        `json:"ok"`
 			TableParts map[string][]map[string]any `json:"tableparts"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil || !resp.OK {
