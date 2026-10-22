@@ -2918,6 +2918,12 @@ func (s *Server) resolveListSort(r *http.Request, entity *metadata.Entity, param
 	}
 	params.Sort = field
 	params.Dir = dir
+	// Pin the restored order in this list's links, forms and refresh URL.
+	// Another tab may change the saved preference before the next page loads.
+	q := r.URL.Query()
+	q.Set("sort", field)
+	q.Set("dir", dir)
+	r.URL.RawQuery = q.Encode()
 }
 
 // listModeCookie — кука с per-сущностными предпочтениями режима списка

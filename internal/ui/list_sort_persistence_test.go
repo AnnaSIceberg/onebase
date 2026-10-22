@@ -5,10 +5,13 @@ package ui
 
 import (
 	"context"
+	"net/url"
+	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/ivantit66/onebase/internal/metadata"
+	"golang.org/x/net/html"
 )
 
 func TestListSortPersistence(t *testing.T) {
@@ -59,5 +62,104 @@ func TestListSortPersistence(t *testing.T) {
 	listView1485(t, s, u1, "?sort=НетТакого&dir=desc")
 	if f, d, _ := s.store.GetListSortUserSettings(context.Background(), ent.Name, "u1"); f != "Наименование" || d != "asc" {
 		t.Fatalf("сохранено %q|%q, ожидалось Наименование|asc", f, d)
+	}
+}
+
+// A saved preference may change in another tab after page one has rendered.
+// Every continuation of that rendered list must keep its original order.
+func TestListSortPersistence_PaginationKeepsRestoredOrder(t *testing.T) {
+	for _, mode := range []string{"feed", "pages"} {
+		t.Run(mode, func(t *testing.T) {
+			ent := &metadata.Entity{Name: "Клиент", Kind: metadata.KindCatalog,
+				Fields: []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}}}
+			s, _ := newSubmitTestServer(t, []*metadata.Entity{ent})
+			for i, name := range []string{"Alpha", "Beta", "Gamma", "Omega"} {
+				id := uuidMust("1111111" + string(rune('1'+i)) + "-1111-1111-1111-111111111111")
+				if err := s.store.Upsert(t.Context(), ent.Name, id, map[string]any{"Наименование": name}, ent); err != nil {
+					t.Fatal(err)
+				}
+			}
+			user := user1485("u1")
+			listView1485(t, s, user, "?sort=Наименование&dir=desc")
+			body := listView1485(t, s, user, "?lm="+mode+"&limit=2&q=a")
+			assertRows := func(body string, first, second, absent1, absent2 string) {
+				t.Helper()
+				a, b := strings.Index(body, ">"+first+"<"), strings.Index(body, ">"+second+"<")
+				if a < 0 || b < a || strings.Contains(body, ">"+absent1+"<") || strings.Contains(body, ">"+absent2+"<") {
+					t.Fatalf("expected only %s,%s in that order", first, second)
+				}
+			}
+			assertRows(body, "Omega", "Gamma", "Beta", "Alpha")
+			doc, err := html.Parse(strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var next string
+			var walk func(*html.Node)
+			walk = func(n *html.Node) {
+				if n.Type == html.ElementNode && n.Data == "a" {
+					for _, a := range n.Attr {
+						if a.Key == "href" {
+							u, err := url.Parse(a.Val)
+							if err == nil && u.Query().Get("page") == "2" {
+								next = a.Val
+							}
+						}
+					}
+				}
+				// Search and filter forms must preserve the effective sort too.
+				if n.Type == html.ElementNode && n.Data == "form" {
+					method, _ := keyboardHTMLAttr(n, "method")
+					if strings.EqualFold(method, "GET") {
+						fields := map[string]string{}
+						var inputs func(*html.Node)
+						inputs = func(child *html.Node) {
+							if child.Type == html.ElementNode && child.Data == "input" {
+								name, _ := keyboardHTMLAttr(child, "name")
+								value, _ := keyboardHTMLAttr(child, "value")
+								fields[name] = value
+							}
+							for c := child.FirstChild; c != nil; c = c.NextSibling {
+								inputs(c)
+							}
+						}
+						inputs(n)
+						if _, ok := fields["lm"]; ok && (fields["sort"] != "Наименование" || fields["dir"] != "desc") {
+							t.Errorf("list form lost restored order: %v", fields)
+						}
+					}
+				}
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
+			}
+			walk(doc)
+			if next == "" {
+				t.Fatal("missing page-two link")
+			}
+			u, err := url.Parse(next)
+			if err != nil {
+				t.Fatal(err)
+			}
+			q := u.Query()
+			if q.Get("sort") != "Наименование" || q.Get("dir") != "desc" || q.Get("q") != "a" || q.Get("limit") != "2" || q.Get("lm") != mode {
+				t.Fatalf("continuation lost effective list state: %s", next)
+			}
+			// The second tab changes the same user's stored preference.
+			listView1485(t, s, user, "?sort=Наименование&dir=asc")
+			assertRows(listView1485(t, s, user, "?lm="+mode+"&limit=2&q=a"), "Alpha", "Beta", "Gamma", "Omega")
+			assertRows(listView1485(t, s, user, next), "Beta", "Alpha", "Gamma", "Omega")
+		})
+	}
+}
+
+func TestListSortFeedBehaviorInNode(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for the feed sort regression test")
+	}
+	cmd := exec.Command(node, "--test", "static/list_sort_feed_behavior_test.js") //nolint:gosec // test-only executable resolved by exec.LookPath
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("node feed sort test: %v\n%s", err, output)
 	}
 }
