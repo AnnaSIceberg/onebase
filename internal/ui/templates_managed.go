@@ -125,7 +125,7 @@ const tplManagedForm = `
         </select>
         {{if or $ro $el.ReadOnlyWhen}}<input type="hidden" name="{{$fn}}" value="{{index $ctx.Values $fn}}" id="ro-mirror-{{$fn}}" data-ob-ro-mirror="1"{{if not $ro}} disabled{{end}}>{{end}}
       {{else if eq (str $f.Type) "date"}}
-        <input type="datetime-local" step="1" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+        <input type="datetime-local" step="1" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if gt $el.DeadlineWarn 0}} data-ob-deadline="{{$el.DeadlineWarn}}"{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{else if eq (str $f.Type) "bool"}}
         <select name="{{$fn}}"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
           <option value="false" {{if eq (index $ctx.Values $fn) "false"}}selected{{end}}>Нет</option>

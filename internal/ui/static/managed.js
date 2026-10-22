@@ -4662,16 +4662,39 @@ obManagedReady(function () {
 function obDeadlineParse(raw, now) {
   var v = String(raw || "").trim();
   if (!v) return null;
-  var m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(v);
-  if (m) {
-    var d = new Date(now.getTime());
-    d.setHours(+m[1], +m[2], m[3] ? +m[3] : 0, 0);
-    return d;
+  function validTime(h, min, sec) {
+    return h <= 23 && min <= 59 && sec <= 59;
   }
-  m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(v);
-  if (m) return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0);
-  m = /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(v);
-  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], m[6] ? +m[6] : 0);
+  function dateTime(y, month, day, h, min, sec, ms, zone) {
+    if (!validTime(h, min, sec)) return null;
+    // Validate calendar components before Date can normalize an invalid day.
+    // setUTCFullYear also avoids the constructor's special handling of 0–99.
+    var utc = new Date(0);
+    utc.setUTCFullYear(y, month - 1, day);
+    utc.setUTCHours(h, min, sec, ms);
+    if (utc.getUTCFullYear() !== y || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) return null;
+    if (zone) {
+      var offset = 0;
+      if (zone !== "Z") {
+        var parts = /^([+-])(\d{2}):(\d{2})$/.exec(zone);
+        if (!parts || !validTime(+parts[2], +parts[3], 0)) return null;
+        offset = (+parts[2] * 60 + +parts[3]) * (parts[1] === "+" ? 1 : -1);
+      }
+      return new Date(utc.getTime() - offset * 60000);
+    }
+    var local = new Date(0);
+    local.setFullYear(y, month - 1, day);
+    local.setHours(h, min, sec, ms);
+    if (local.getFullYear() !== y || local.getMonth() !== month - 1 || local.getDate() !== day ||
+        local.getHours() !== h || local.getMinutes() !== min || local.getSeconds() !== sec) return null;
+    return local;
+  }
+  var m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(v);
+  if (m) return dateTime(now.getFullYear(), now.getMonth() + 1, now.getDate(), +m[1], +m[2], +(m[3] || 0), 0, "");
+  m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:\d{2})?$/.exec(v);
+  if (m) return dateTime(+m[1], +m[2], +m[3], +m[4], +m[5], +(m[6] || 0), +(m[7] || "").slice(0, 3).padEnd(3, "0"), m[8]);
+  m = /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(v);
+  if (m) return dateTime(+m[3], +m[2], +m[1], +m[4], +m[5], +(m[6] || 0), 0, "");
   return null;
 }
 function obDeadlineState(raw, warnMinutes, now) {
