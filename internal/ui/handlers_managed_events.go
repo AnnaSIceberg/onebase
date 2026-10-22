@@ -1713,25 +1713,15 @@ func mergePersistedFieldsUnchanged(entity *metadata.Entity, persisted, fields ma
 	}
 }
 
-// managedCloseStateDirty compares the final state returned to the browser
+// managedCloseStateDirtyWithRows compares the final state returned to the browser
 // with the durable record after BeforeClose. Entity fields/table parts are
 // compared with storage; form-only attributes and ValueTables are compared
 // with their pre-handler snapshot because they have no durable counterpart.
 // Read failures are fail-safe: the form stays dirty instead of risking loss.
-func (s *Server) managedCloseStateDirty(
-	ctx context.Context,
-	entity *metadata.Entity,
-	form *metadata.FormModule,
-	obj *runtime.Object,
-	fieldsBefore map[string]string,
-	tpBefore map[string][]map[string]any,
-) bool {
-	return s.managedCloseStateDirtyWithRows(ctx, entity, form, obj, fieldsBefore, tpBefore, nil)
-}
-
-// managedCloseStateDirtyWithRows — то же, но строки ТЧ из базы можно передать
-// готовыми (storedTP): событие формы, за время обработчика которого в базу
-// никто не писал, берёт их из снимка до обработчика. nil — читать из базы.
+//
+// Строки ТЧ из базы можно передать готовыми (storedTP): событие формы, за
+// время обработчика которого в базу никто не писал, берёт их из снимка до
+// обработчика. nil — читать из базы.
 func (s *Server) managedCloseStateDirtyWithRows(
 	ctx context.Context,
 	entity *metadata.Entity,
