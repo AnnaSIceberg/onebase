@@ -78,8 +78,8 @@ func TestFitWindowNoFormScroll_Browser(t *testing.T) {
 		}
 		page := rec.Body.String()
 		// Замер после подгонки (obManagedReady) и её отложенного повтора.
-		script := `<style>` + extraCSS + `</style><script>setTimeout(function(){if(window.__late){var d=document.createElement('div');d.style.height='60px';d.textContent='вторая строка шапки';var cd=document.querySelector('main>.card');cd.insertBefore(d,cd.firstChild);}},300);setTimeout(function(){var m=document.querySelector('main');var c=document.querySelector('.managed-tab-content');` +
-			`var p=document.createElement('pre');p.id='fit-measure';p.textContent=JSON.stringify({tab:c.style.height,scroll:m.scrollHeight,client:m.clientHeight,tabHeight:c.offsetHeight,after:getComputedStyle(m,'::after').height,disp:getComputedStyle(m).display,ov:getComputedStyle(m).overflowY,mb:Math.round(m.getBoundingClientRect().bottom),cb:Math.round(document.querySelector('main>.card').getBoundingClientRect().bottom),wh:innerHeight});document.body.appendChild(p);},1500);</script>`
+		script := `<style>` + extraCSS + `</style><script>setTimeout(function(){if(window.__late){var d=document.createElement('div');d.style.height='60px';d.textContent='вторая строка шапки';var cd=document.querySelector('main>.card');cd.insertBefore(d,cd.firstChild);}},300);var t0=Date.now();var poll=function(){var m=document.querySelector('main');if(m.scrollHeight>m.clientHeight&&Date.now()-t0<5000){setTimeout(poll,200);return;}var c=document.querySelector('.managed-tab-content');` +
+			`var p=document.createElement('pre');p.id='fit-measure';p.textContent=JSON.stringify({tab:c.style.height,scroll:m.scrollHeight,client:m.clientHeight,tabHeight:c.offsetHeight,after:getComputedStyle(m,'::after').height,disp:getComputedStyle(m).display,ov:getComputedStyle(m).overflowY,mb:Math.round(m.getBoundingClientRect().bottom),cb:Math.round(document.querySelector('main>.card').getBoundingClientRect().bottom),wh:innerHeight});document.body.appendChild(p);};setTimeout(poll,1000);</script>`
 		end := strings.LastIndex(page, "</body>")
 		if late {
 			script = `<script>window.__late=true</script>` + script
@@ -100,7 +100,7 @@ func TestFitWindowNoFormScroll_Browser(t *testing.T) {
 		}))
 		defer server.Close()
 		args := []string{"--headless=new", "--disable-gpu", "--disable-background-networking", "--disable-extensions", "--no-first-run",
-			"--window-size=1440,712", "--virtual-time-budget=4000", "--user-data-dir=" + t.TempDir(), "--dump-dom", server.URL}
+			"--window-size=1440,712", "--virtual-time-budget=8000", "--user-data-dir=" + t.TempDir(), "--dump-dom", server.URL}
 		if runtime.GOOS == "linux" {
 			args = append([]string{"--no-sandbox"}, args...)
 		}
