@@ -4756,6 +4756,9 @@ function obChoiceDispatchChange(sel) {
 // открылось позже (readonly_when, доступность из события формы), оставалось
 // «—», а у соседних сразу доступных — «— выбрать —».
 function obEmptyOptionLabel(sel) {
+  // Поле без списка (choice_dropdown: false) пустое значение показывает
+  // пустым, как в 1С: выбирают кнопкой «…», подсказке в нём не место.
+  if (sel && sel.getAttribute && sel.getAttribute('data-ref-choice-dropdown') === 'false') return '';
   return sel && sel.disabled ? '—' : '— выбрать —';
 }
 window.obEmptyOptionLabel = obEmptyOptionLabel;
