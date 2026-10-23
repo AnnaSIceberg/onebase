@@ -27,6 +27,8 @@ func TestFormObjectWriteProtectsMaskedFields(t *testing.T) {
 			name, policy, stored, submitted, script, wantPhone, wantName string
 			messages                                                     []string
 			newObject                                                    bool
+			omitPhone                                                    bool
+			phoneDefault                                                 string
 			writes                                                       int64
 		}{
 			{
@@ -66,6 +68,18 @@ func TestFormObjectWriteProtectsMaskedFields(t *testing.T) {
 				wantPhone: typed, wantName: "saved", messages: []string{typed}, writes: 1,
 			},
 			{
+				name: "new_explicit_empty_survives_rollback", policy: "hide", newObject: true, omitPhone: true, phoneDefault: "default phone",
+				script: `Объект.Телефон = Неопределено;
+НачатьТранзакцию();
+Объект.Записать();
+Объект.Записать();
+ОтменитьТранзакцию();
+Объект.Наименование = "retry";
+Объект.Записать();
+Сообщить(Объект.Телефон);`,
+				wantName: "retry", messages: []string{""}, writes: 1,
+			},
+			{
 				name: "rollback_and_retry", stored: real, submitted: "••••••",
 				script: `НачатьТранзакцию();
 Объект.Наименование = "rolled back";
@@ -95,7 +109,7 @@ func TestFormObjectWriteProtectsMaskedFields(t *testing.T) {
 			t.Run(string(kind)+"/"+tc.name, func(t *testing.T) {
 				entity := &metadata.Entity{Name: "Контакты", Kind: kind, Fields: []metadata.Field{
 					{Name: "Наименование", Type: metadata.FieldTypeString},
-					{Name: "Телефон", Type: metadata.FieldTypeString, PII: true},
+					{Name: "Телефон", Type: metadata.FieldTypeString, PII: true, Default: tc.phoneDefault},
 				}}
 				form := managedObjectForm(fieldEl("Имя", "Объект.Наименование"),
 					fieldEl("Телефон", "Объект.Телефон"), maskEventButton("Выполнить", "Выполнить"))
@@ -135,6 +149,9 @@ func TestFormObjectWriteProtectsMaskedFields(t *testing.T) {
 				s.Mount(router)
 				body := url.Values{"_element": {"Выполнить"}, "_event": {"Нажатие"},
 					"Наименование": {"initial"}, "Телефон": {tc.submitted}}
+				if tc.omitPhone {
+					body.Del("Телефон")
+				}
 				if !tc.newObject {
 					body.Set("_id", id.String())
 					body.Set("_version", strconv.FormatInt(initialVersion, 10))

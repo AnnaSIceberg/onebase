@@ -219,6 +219,7 @@ func (f *formObjectThis) write() error {
 	// original masked/hidden view, including on rejection and transaction retry.
 	// Unlike loaded DSL writers, Get on this wrapper reads Fields directly.
 	var restoreProtectedFields func(map[string]any)
+	hookState := f.hookXDTOState()
 	if !isNew {
 		originalFields := cloneRecord(f.obj.Fields)
 		restored, err := f.srv.protectMaskedFieldsOnWrite(ctx, f.entity, f.obj.ID, f.obj.Fields)
@@ -236,12 +237,15 @@ func (f *formObjectThis) write() error {
 				}
 			}
 			defer func() { restoreProtectedFields(f.obj.Fields) }()
+			// Only Save's XDTO provenance changes while it holds real values.
+			// Keep the handler's assignments intact: an explicit empty value
+			// must still suppress new-object defaults after an outer rollback.
+			hookState = &entityHookXDTOState{loaded: hookState.loaded, assigned: make(map[string]bool, len(hookState.assigned))}
+			for name, assigned := range f.hookXDTOState().assigned {
+				hookState.assigned[name] = assigned
+			}
 			for _, key := range restored {
-				name := strings.ToLower(key)
-				delete(f.assigned, name)
-				// A restored value is no longer a handler assignment. Lifecycle
-				// XDTO export must mask it while Save holds the real value.
-				delete(f.hookXDTOState().assigned, name)
+				delete(hookState.assigned, strings.ToLower(strings.TrimSpace(key)))
 			}
 		}
 	}
@@ -292,7 +296,7 @@ func (f *formObjectThis) write() error {
 		})
 	}
 	hookCtx := context.WithValue(ctx, hookXDTOOriginKey{}, hookXDTOOrigin{
-		entity: f.entity.Name, id: f.obj.ID, state: f.hookXDTOState(),
+		entity: f.entity.Name, id: f.obj.ID, state: hookState,
 	})
 	result, err := f.srv.entitySvc.Save(hookCtx, entityservice.SaveRequest{
 		Entity:        f.entity,
