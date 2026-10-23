@@ -5097,6 +5097,7 @@ function openRefPicker(selOrId) {
       fetchOptions.method = 'POST';
       fetchOptions.headers['Content-Type'] = 'application/json';
       var sourceElement = sel.getAttribute('data-ref-element') || '';
+      var sourceEntity = sel.getAttribute('data-ref-source-entity') || '';
       var contextValues = {};
       try {
         var bindings = JSON.parse(refContextRaw);
@@ -5107,7 +5108,7 @@ function openRefPicker(selOrId) {
       } catch (e) {}
       fetchOptions.body = JSON.stringify({
         q: q || '', limit: 50, offset: 0,
-        source: { entity: refEntity, element: sourceElement },
+        source: { entity: sourceEntity, element: sourceElement },
         context: contextValues,
         filters: obRefFilterValues(sel) || {}
       });
