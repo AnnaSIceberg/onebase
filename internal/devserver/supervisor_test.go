@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,13 +18,17 @@ import (
 )
 
 // The helper owns one persistent TCP connection. It replies with its PID, and
-// never closes that connection itself: EOF is evidence that the OS terminated
+// never closes that connection itself: EOF or a peer reset means the OS terminated
 // the child (or Supervisor's sole Wait reaped it), not a read of Cmd.ProcessState.
 func TestSupervisorHelperProcess(t *testing.T) {
 	if os.Getenv("ONEBASE_DEVSERVER_HELPER") != "1" {
 		t.Skip("вспомогательный процесс запускается супервизором, а не раннером")
 	}
-	conn, err := net.DialTimeout("tcp", os.Getenv("ONEBASE_DEVSERVER_OBSERVER"), 10*time.Second)
+	observer, err := netip.ParseAddrPort(os.Getenv("ONEBASE_DEVSERVER_OBSERVER"))
+	if err != nil || observer.Addr() != netip.AddrFrom4([4]byte{127, 0, 0, 1}) || observer.Port() == 0 {
+		t.Fatal("helper observer must be a numeric IPv4 loopback address with a port")
+	}
+	conn, err := net.DialTimeout("tcp4", observer.String(), 10*time.Second) //nolint:gosec // G704: numeric 127.0.0.1 and a nonzero port are checked above; no DNS or external hosts.
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +44,12 @@ func TestSupervisorHelperProcess(t *testing.T) {
 				os.Exit(2)
 			}
 		case "exit":
+			os.Exit(0)
+		case "reset":
+			// Exercise the reset path on Unix too; Windows may do this on Kill.
+			if err := conn.(*net.TCPConn).SetLinger(0); err != nil {
+				os.Exit(2)
+			}
 			os.Exit(0)
 		default:
 			os.Exit(2)
@@ -91,10 +102,13 @@ func (p *observedChild) waitStopped() error {
 	if err := p.conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		return err
 	}
-	_, err := p.reader.ReadByte()
+	b, err := p.reader.ReadByte()
+	if err == nil {
+		return fmt.Errorf("expected helper termination, got byte %q", b)
+	}
 	// A timeout or arbitrary read error cannot prove process termination.
-	if !errors.Is(err, io.EOF) {
-		return fmt.Errorf("expected helper EOF, got %v", err)
+	if !errors.Is(err, io.EOF) && !helperPeerReset(err) {
+		return fmt.Errorf("expected helper EOF or peer reset: %w", err)
 	}
 	p.stopped = true
 	return nil
@@ -185,7 +199,7 @@ func helperSupervisor(t *testing.T, srcDir string) (*Supervisor, *recorder) {
 			if err != nil {
 				return nil, err
 			}
-			defer listener.Close()
+			defer func() { _ = listener.Close() }()
 			if err := listener.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
 				return nil, err
 			}
@@ -406,6 +420,40 @@ func TestSupervisor_StopsChildOnCancel(t *testing.T) {
 		t.Fatal("Run не завершился после отмены контекста")
 	}
 	requireHelperStopped(t, proc)
+}
+
+// An unresponsive observer is not proof of exit: a live helper must still
+// answer after the read deadline, and Supervisor must remain its sole waiter.
+func TestSupervisor_ObserverTimeoutDoesNotCountAsExit(t *testing.T) {
+	dir := t.TempDir()
+	writeGo(t, dir, "main.go", "package main\n")
+	sup, rec := helperSupervisor(t, dir)
+	runSupervisor(t, sup)
+	waitFor(t, "первый запуск сервера", func() bool { _, starts := rec.counts(); return starts == 1 })
+	proc := rec.proc(0)
+	requireHelperAlive(t, proc)
+	var timeout net.Error
+	if err := proc.waitStopped(); !errors.As(err, &timeout) || !timeout.Timeout() {
+		t.Fatalf("live helper must produce a timeout, got %v", err)
+	}
+	requireHelperAlive(t, proc)
+}
+
+func TestSupervisor_PeerResetCountsAsExit(t *testing.T) {
+	dir := t.TempDir()
+	writeGo(t, dir, "main.go", "package main\n")
+	sup, rec := helperSupervisor(t, dir)
+	runSupervisor(t, sup)
+	waitFor(t, "первый запуск сервера", func() bool { _, starts := rec.counts(); return starts == 1 })
+	proc := rec.proc(0)
+	requireHelperAlive(t, proc)
+	if _, err := fmt.Fprintln(proc.conn, "reset"); err != nil {
+		t.Fatal(err)
+	}
+	requireHelperStopped(t, proc)
+	waitFor(t, "супервизор дождался завершения процесса", func() bool {
+		return bytes.Contains([]byte(rec.out.String()), []byte("процесс сервера завершился"))
+	})
 }
 
 // Сервер упал сам (занят порт, битая конфигурация) — супервизор не крутит

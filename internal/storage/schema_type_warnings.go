@@ -8,14 +8,15 @@ import (
 	"github.com/ivantit66/onebase/internal/metadata"
 )
 
-// SchemaTypeWarning describes a physical type mismatch left untouched by the
-// additive migration of fields without an ID. It is not an executable change.
+// SchemaTypeWarning describes a physical type mismatch outside the field-ID
+// restructuring plan. It does not guarantee preservation by other migration steps.
 type SchemaTypeWarning struct {
 	Table, Column, Field, ActualType, ExpectedType string
 }
 
 func (w SchemaTypeWarning) String() string {
-	return fmt.Sprintf("%s.%s (поле %s без id): SQL-тип %s, ожидается %s; аддитивная миграция тип не изменяет. "+
+	return fmt.Sprintf("%s.%s (поле %s без id): SQL-тип %s, ожидается %s; план реструктуризации не меняет тип поля без id. "+
+		"Другие операции миграции могут изменить тип и данные: на SQLite перестройка таблицы регистра сведений при смене ключа делает это даже без --allow-destructive. "+
 		"Сначала сделайте резервную копию и согласуйте схему и данные вручную; простое добавление id уже возникшее расхождение не исправит. "+
 		"Для будущих смен типа задайте устойчивый id до изменения типа.", w.Table, w.Column, w.Field, w.ActualType, w.ExpectedType)
 }

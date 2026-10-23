@@ -192,3 +192,57 @@ func TestUntrackedFieldTypeAliasesMatrix(t *testing.T) {
 		}
 	})
 }
+
+// A warning is not a preservation guarantee for the separate SQLite PK rebuild.
+// Exercise the public migration with a reordered key and a resource type change.
+func TestUntrackedFieldTypeWarningWithInfoRegPKChangeMatrix(t *testing.T) {
+	for _, destructive := range []bool{false, true} {
+		t.Run(fmt.Sprintf("allow-destructive=%t", destructive), func(t *testing.T) {
+			dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+				ctx := context.Background()
+				ir := &metadata.InfoRegister{Name: "СменаКлюча",
+					Dimensions: []metadata.Field{{Name: "Первое", Type: metadata.FieldTypeString}, {Name: "Второе", Type: metadata.FieldTypeString}},
+					Resources:  []metadata.Field{{Name: "Флаг", Type: metadata.FieldTypeString}}}
+				if err := db.MigrateInfoRegisters(ctx, []*metadata.InfoRegister{ir}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.Exec(ctx, `INSERT INTO инфо_сменаключа (первое, второе, флаг) VALUES ('a', 'b', '001')`); err != nil {
+					t.Fatal(err)
+				}
+				ir.Dimensions[0], ir.Dimensions[1] = ir.Dimensions[1], ir.Dimensions[0]
+				ir.Resources[0].Type = metadata.FieldTypeBool
+				var warnings []storage.SchemaTypeWarning
+				db.SetSchemaOptions(storage.SchemaOptions{AllowDestructive: destructive,
+					Warn: func(w storage.SchemaTypeWarning) { warnings = append(warnings, w) }})
+				if err := db.MigrateInfoRegisters(ctx, []*metadata.InfoRegister{ir}); err != nil {
+					t.Fatal(err)
+				}
+				if len(warnings) != 1 || warnings[0].Column != "флаг" {
+					t.Fatalf("migration warnings: %+v", warnings)
+				}
+				text := warnings[0].String()
+				for _, want := range []string{"план реструктуризации", "Другие операции миграции могут изменить тип и данные", "при смене ключа", "даже без --allow-destructive"} {
+					if !strings.Contains(text, want) {
+						t.Fatalf("missing warning qualifier %q: %s", want, text)
+					}
+				}
+				var value, typ string
+				if err := db.QueryRow(ctx, `SELECT CAST(флаг AS TEXT) FROM инфо_сменаключа WHERE первое='a' AND второе='b'`).Scan(&value); err != nil {
+					t.Fatal(err)
+				}
+				query := `SELECT type FROM pragma_table_info('инфо_сменаключа') WHERE name='флаг'`
+				wantType, wantValue := "INTEGER", "1"
+				if !db.IsSQLite() {
+					query = `SELECT data_type FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='инфо_сменаключа' AND column_name='флаг'`
+					wantType, wantValue = "text", "001"
+				}
+				if err := db.QueryRow(ctx, query).Scan(&typ); err != nil {
+					t.Fatal(err)
+				}
+				if typ != wantType || value != wantValue {
+					t.Fatalf("PK migration type/value: %q/%q; want %q/%q", typ, value, wantType, wantValue)
+				}
+			})
+		})
+	}
+}
