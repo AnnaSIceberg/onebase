@@ -227,14 +227,29 @@ func (l *companionLauncher) Start(list []Companion, keys []string) []string {
 	return msgs
 }
 
-// startBaseCompanions — запуск для записи базы baseID из ibases.yaml.
+// startBaseCompanions — запуск для записи базы baseID: программы манифеста
+// комплекта (companions.yaml рядом с лаунчером), поверх них — пути станции из
+// записи в ibases.yaml. Отвергнутый манифест — сообщение, записи станции при
+// этом работают.
 func startBaseCompanions(l *companionLauncher, store *Store, baseID string, keys []string) []string {
-	if store == nil || baseID == "" || len(keys) == 0 {
+	if len(keys) == 0 {
 		return nil
 	}
-	b, err := store.Get(baseID)
-	if err != nil {
-		return []string{"Сопутствующие программы не запущены: запись базы не найдена в лаунчере."}
+	var msgs []string
+	var manifest []Companion
+	if dir, err := launcherDir(); err == nil {
+		var mErr error
+		manifest, mErr = loadCompanionManifest(dir)
+		if mErr != nil {
+			msgs = append(msgs, "Сопутствующие программы комплекта не запущены: "+mErr.Error())
+			manifest = nil
+		}
 	}
-	return l.Start(b.Companions, keys)
+	var record []Companion
+	if store != nil && baseID != "" {
+		if b, err := store.Get(baseID); err == nil {
+			record = b.Companions
+		}
+	}
+	return append(msgs, l.Start(mergeCompanions(manifest, record), keys)...)
 }

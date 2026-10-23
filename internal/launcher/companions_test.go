@@ -149,7 +149,11 @@ func TestCompanionsPersistInStore(t *testing.T) {
 	if msgs := startBaseCompanions(newCompanionLauncher(f.rt()), store, b.ID, []string{"callista"}); len(msgs) != 0 || len(f.started) != 1 {
 		t.Fatalf("запуск по записи базы: %v, %v", f.started, msgs)
 	}
-	if msgs := startBaseCompanions(newCompanionLauncher(f.rt()), store, "нет-такой", []string{"callista"}); len(msgs) != 1 {
-		t.Fatalf("неизвестная запись: %v", msgs)
+	// Записи нет (список баз правили) — работает только манифест комплекта;
+	// без него запускать нечего, и это не ошибка.
+	setLauncherDir(t, t.TempDir())
+	f2 := &fakeCompanionRuntime{existing: map[string]bool{callistaPath: true}, running: map[string]bool{}}
+	if msgs := startBaseCompanions(newCompanionLauncher(f2.rt()), store, "нет-такой", []string{"callista"}); len(msgs) != 0 || len(f2.started) != 0 {
+		t.Fatalf("неизвестная запись без манифеста: %v, %v", f2.started, msgs)
 	}
 }
