@@ -114,17 +114,29 @@ func runMigrate(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+// migrationPlanRefusal is a stable, read-only diagnostic (not an I/O failure).
+// It may be printed only after the preview opener verifies its snapshot.
+type migrationPlanRefusal struct{ error }
+
 // migrationPlanText buffers output until preview verifies its stable read.
 func migrationPlanText(ctx context.Context, db *storage.DB, proj *project.Project) (string, error) {
 	var text strings.Builder
-	for _, e := range proj.Entities {
-		if err := db.CheckEntityColumnMigration(ctx, e); err != nil {
-			fmt.Fprintln(&text, "  БЛОКИРОВКА:", err)
-		}
+	if err := printLongIdentPlan(ctx, db, proj, &text); err != nil {
+		return "", err
 	}
 	plan, err := db.PlanMigration(ctx, proj.Entities, proj.Registers, proj.InfoRegisters)
 	if err != nil {
 		return "", err
+	}
+	refs := storage.UsersReferences(proj.Entities, proj.Registers, proj.InfoRegisters, proj.AccountRegisters)
+	usersPlan, err := db.PlanUsersReferenceConstraints(ctx, refs)
+	if err != nil {
+		return "", err
+	}
+	for _, e := range proj.Entities {
+		if err := db.CheckEntityColumnMigration(ctx, e); err != nil {
+			fmt.Fprintln(&text, "  БЛОКИРОВКА:", err)
+		}
 	}
 	actions, manifest, err := db.PlanEntityIndexes(ctx, proj.Entities)
 	if err != nil {
@@ -144,26 +156,44 @@ func migrationPlanText(ctx context.Context, db *storage.DB, proj *project.Projec
 		fmt.Fprintln(&text, "Манифест кандидатов: проверьте определения, сделайте backup; примите только нужные индексы через --adopt-indexes.")
 		fmt.Fprintln(&text, string(raw))
 	}
-	if len(plan) == 0 {
-		fmt.Fprintln(&text, "Реструктуризация не требуется: схема существующих таблиц соответствует метаданным.")
-		fmt.Fprintln(&text, "(Новые таблицы и колонки создаст обычный `onebase migrate` — в плане их нет.)")
-		return text.String(), nil
-	}
-	fmt.Fprintf(&text, "План реструктуризации (%d изменен.):\n", len(plan))
 	destructive := 0
-	for _, c := range plan {
-		fmt.Fprintln(&text, "  "+c.String())
-		if c.Note != "" {
-			fmt.Fprintln(&text, "      "+c.Note)
+	if len(plan) == 0 {
+		fmt.Fprintln(&text, "Реструктуризация не требуется для полей с устойчивым id: план изменений полей пуст.")
+		fmt.Fprintln(&text, "(Новые таблицы и колонки создаст обычный `onebase migrate` — в плане их нет.)")
+	} else {
+		fmt.Fprintf(&text, "План реструктуризации (%d изменен.):\n", len(plan))
+		for _, c := range plan {
+			fmt.Fprintln(&text, "  "+c.String())
+			if c.Note != "" {
+				fmt.Fprintln(&text, "      "+c.Note)
+			}
+			if c.Destructive() {
+				destructive++
+			}
 		}
-		if c.Destructive() {
-			destructive++
-		}
+		fmt.Fprintln(&text, "")
 	}
-	fmt.Fprintln(&text, "")
+	var broken int64
+	if len(usersPlan) > 0 {
+		fmt.Fprintln(&text, "Ссылки на учётные записи (_users), read-only preflight:")
+		for _, p := range usersPlan {
+			fmt.Fprintln(&text, "  "+p.String())
+			if db.IsSQLite() && (p.State == "missing-fk" || p.State == "incompatible-fk") {
+				fmt.Fprintln(&text, "      Установка FK на существующую колонку потребует перестройки SQLite.")
+			}
+			if p.BrokenCount > 0 {
+				fmt.Fprintf(&text, "      Битых ссылок: %d; идентификаторы исходных записей (до 5): %q\n", p.BrokenCount, p.RecordIDs)
+				broken += p.BrokenCount
+			}
+		}
+		fmt.Fprintln(&text, "Этот срез только проверяет ссылки; отсутствующие FK обычный migrate пока не довносит.")
+	}
 	fmt.Fprintln(&text, "Это пробный прогон — база не изменена.")
 	if destructive > 0 {
 		fmt.Fprintf(&text, "Изменений с потерей данных: %d — они выполнятся только с --allow-destructive.\n", destructive)
+	}
+	if broken > 0 {
+		return text.String(), &migrationPlanRefusal{fmt.Errorf("preflight _users: битых ссылок: %d; исправьте данные вручную и повторите dry-run; автоматическая очистка запрещена", broken)}
 	}
 	return text.String(), nil
 }
@@ -174,6 +204,9 @@ func migrationPlanText(ctx context.Context, db *storage.DB, proj *project.Projec
 // migrate и раннером тестов (onebase test), которому нужна готовая схема на
 // свежей (в т.ч. :memory:) базе.
 func applyAllMigrations(ctx context.Context, db *storage.DB, proj *project.Project) error {
+	if err := db.CheckLongIdents(ctx, proj.Entities, proj.Registers, proj.InfoRegisters, proj.AccountRegisters); err != nil {
+		return err
+	}
 	// Реквизиты reference:_users создают FK на auth-таблицу. Подготовить её
 	// нужно до сущностей, в том числе на свежей базе migrate/test.
 	if err := auth.NewRepo(db).EnsureSchema(ctx); err != nil {
@@ -223,4 +256,32 @@ func dsnFromFlags(cmd *cobra.Command) string {
 		return dsn
 	}
 	return "postgres://localhost/onebase"
+}
+
+// printLongIdentPlan — инвентаризация длинных имён (#1946): какие таблицы и
+// колонки миграция переименует и где откажет. Печатается, только если есть
+// что показать; без длинных имён вывод dry-run прежний.
+func printLongIdentPlan(ctx context.Context, db *storage.DB, proj *project.Project, text *strings.Builder) error {
+	plan, err := db.PlanLongIdents(ctx, proj.Entities, proj.Registers, proj.InfoRegisters, proj.AccountRegisters)
+	if err != nil {
+		return err
+	}
+	if len(plan) == 0 {
+		return nil
+	}
+	conflicts := 0
+	fmt.Fprintf(text, "Длинные имена (#1946, docs/long-identifiers.md), %d:\n", len(plan))
+	for _, a := range plan {
+		fmt.Fprintln(text, "  "+a.String())
+		if a.Conflict != "" {
+			conflicts++
+		}
+	}
+	if conflicts > 0 {
+		fmt.Fprintf(text, "Конфликтов: %d — миграция на них откажет, ничего не переименовав в этих таблицах.\n", conflicts)
+	} else {
+		fmt.Fprintln(text, "Переименование — ALTER … RENAME, данные не копируются. Снимите резервную копию: старая платформа переименованную базу не прочитает.")
+	}
+	fmt.Fprintln(text, "")
+	return nil
 }

@@ -23,6 +23,7 @@ func runMigrationPreview(cmd *cobra.Command) error {
 		ctx = context.Background()
 	}
 	var planText string
+	var planErr error
 	dir, _ := cmd.Flags().GetString("project")
 	sqlitePath, _ := cmd.Flags().GetString("sqlite")
 	source, _ := cmd.Flags().GetString("config-source")
@@ -57,8 +58,12 @@ func runMigrationPreview(cmd *cobra.Command) error {
 			}
 		}
 		defer proj.Close()
-		planText, err = migrationPlanText(ctx, db, proj)
-		return err
+		planText, planErr = migrationPlanText(ctx, db, proj)
+		var refusal *migrationPlanRefusal
+		if errors.As(planErr, &refusal) {
+			return nil
+		}
+		return planErr
 	}
 
 	var err error
@@ -76,7 +81,7 @@ func runMigrationPreview(cmd *cobra.Command) error {
 		return err
 	}
 	outln(planText)
-	return nil
+	return planErr
 }
 
 func readIndexManifest(path string) ([]storage.IndexAdoption, error) {

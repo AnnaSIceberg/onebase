@@ -47,6 +47,12 @@ var browserFormEventRules = []browserFormEventRule{
 		},
 	},
 	{
+		// Набор страниц шлёт смену открытой страницы; обработчик вправе
+		// показать вопрос или подбор — их вторые фазы приходят тому же набору.
+		kinds:  []FormElementType{FormElementPages},
+		events: []FormEventType{FormEventOnPageChange, FormEventOnChoice, FormEventOnAnswer},
+	},
+	{
 		// Колонка табличной части шлёт только правку своей ячейки (план 154).
 		// Остальные события строки принадлежат таблице целиком: строка
 		// добавляется и удаляется не «в колонке».
@@ -67,7 +73,12 @@ var browserFormCommandEvents = []FormEventType{FormEventOnClick, FormEventOnSear
 // browserFormLevelEvents — события, приходящие без имени элемента, на форму
 // целиком. Остальные события уровня формы серверные: их запускает сервер на
 // чтении и записи, из браузера они не вызываются.
-var browserFormLevelEvents = []FormEventType{FormEventOnOpen}
+//
+// Ответ — вторая фаза вопроса, заданного из ПриОткрытии («Принять задачу?»
+// при открытии, как в 1С): у вопроса формы нет элемента-источника, и клиент
+// отправляет ответ без имени элемента. Вызывается только объявленный в events
+// формы обработчик — иначе fail-closed отказ, как у любого события.
+var browserFormLevelEvents = []FormEventType{FormEventOnOpen, FormEventOnAnswer}
 
 // BrowserFormEventsFor возвращает копию перечня событий, которые браузер вправе
 // отправить элементу формы данного вида. Вид, ничего не отправляющий (надпись,

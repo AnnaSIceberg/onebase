@@ -635,6 +635,14 @@ type docWriter struct {
 	deletionMark bool
 }
 
+// runtimeObject exposes identity for Заполнить; Fill reloads persisted data.
+func (w *docWriter) runtimeObject() *runtime.Object {
+	if w == nil {
+		return nil
+	}
+	return w.obj
+}
+
 // setStandardAttrs берёт Проведен и ПометкаУдаления из строки шапки, прочитанной
 // из БД.
 func (w *docWriter) setStandardAttrs(row map[string]any) {
@@ -825,6 +833,8 @@ func (w *docWriter) read() error {
 	w.obj.Fields = fields
 	w.obj.TablePartRows = tpRows
 	w.setStandardAttrs(row)
+	w.obj.DeletionMark = asBool(row["deletion_mark"])
+	w.obj.Posted = asBool(row["posted"])
 	// Прочитанный объект целиком приехал из БД: присвоенного модулем в нём
 	// больше нет, а сохранённый признак снимал бы маску с реальных значений.
 	w.assigned = nil
@@ -844,13 +854,15 @@ func (w *docWriter) read() error {
 // fill реализует Документы.X.СоздатьДокумент().Заполнить(Источник): запускает
 // ОбработкаЗаполнения у приёмника, переносит результат в obj.Fields/TablePartRows.
 // Источник — *interpreter.Ref либо *runtime.Object напрямую или внутри адаптера
-// lifecycle-хука. Делегирует entityservice.Fill, единую точку вызова OnFill
+// формы, документа или lifecycle-хука. Делегирует entityservice.Fill, единую точку вызова OnFill
 // вместе с UI-handler'ом.
 func (w *docWriter) fill(src any) error {
 	var srcType string
 	var srcID uuid.UUID
+	objectSource := true
 	switch v := src.(type) {
 	case *interpreter.Ref:
+		objectSource = false
 		if v == nil {
 			return fmt.Errorf("ссылка пустая")
 		}
@@ -876,12 +888,30 @@ func (w *docWriter) fill(src any) error {
 	default:
 		return fmt.Errorf("ожидается ссылка или объект, получено %T", src)
 	}
+	// UUID is allocated before the first write. The authoritative existence
+	// check is Fill's database read, using the caller's live transaction.
+	if objectSource {
+		if srcID == uuid.Nil {
+			return fmt.Errorf("основание не записано или удалено")
+		}
+		if source := w.s.reg.GetEntity(srcType); source != nil {
+			if err := w.s.checkDSLRowAccess(w.ctx(), source, "read", srcID, nil); err != nil {
+				if storage.IsNotFound(err) {
+					return fmt.Errorf("основание не записано или удалено")
+				}
+				return err
+			}
+		}
+	}
 	result, err := w.s.entitySvc.Fill(w.ctx(), entityservice.FillRequest{
 		Receiver:   w.entity,
 		SourceType: srcType,
 		SourceID:   srcID,
 	})
 	if err != nil {
+		if objectSource && storage.IsNotFound(err) {
+			return fmt.Errorf("основание не записано или удалено")
+		}
 		return err
 	}
 	if result.DSLError != "" {
@@ -930,6 +960,11 @@ func (w *docWriter) writeInContext(ctx context.Context) error {
 }
 
 func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) error {
+	if w.loaded || w.saved {
+		if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+			return err
+		}
+	}
 	isNew := !w.loaded && !w.saved
 	// Pre-образ живого списка (план 87): для существующего документа читаем строку
 	// ДО записи, чтобы прежний владелец убрал её из списка при смене прав.
@@ -999,7 +1034,7 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 			return err
 		}
 	}
-	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc)
+	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc, w.hookXDTOState())
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
@@ -1090,6 +1125,12 @@ func (w *docWriter) accessID() uuid.UUID {
 func (w *docWriter) conduct() error {
 	return w.withLockScope(func(ctx context.Context) error {
 		provisionalCreate := !w.loaded && !w.saved
+		// Capture the pre-image only after a concurrent posting/write finishes.
+		if !provisionalCreate {
+			if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+				return err
+			}
+		}
 		var before map[string]any
 		if w.entity.NotifyChanges && !provisionalCreate {
 			before, _ = w.s.store.GetByID(ctx, w.entity.Name, w.obj.ID, w.entity)
@@ -1115,6 +1156,9 @@ func (w *docWriter) postInContext(ctx context.Context) error {
 }
 
 func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, provisionalCreate bool, before map[string]any) error {
+	if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
+		return err
+	}
 	// Инвариант: помеченный на удаление документ нельзя провести (как в 1С).
 	if marked, err := w.s.store.IsMarkedForDeletion(ctx, w.entity.Name, w.obj.ID); err != nil {
 		return err
@@ -1130,7 +1174,7 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 			return storage.PostingFrozenError(lock)
 		}
 	}
-	errMsg, hookMessages := w.s.runOnPostCtx(ctx, w.obj, mc)
+	errMsg, hookMessages := w.s.runOnPostCtx(ctx, w.obj, mc, w.hookXDTOState())
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)
@@ -1196,9 +1240,13 @@ func (w *docWriter) postInContextAfterAccess(ctx context.Context, hasPrelude, pr
 	}
 	// Признак объекта следует за транзакцией, как saved и версия: откат
 	// проведения возвращает прежнее значение.
-	wasPosted := w.posted
+	wasPosted, wasXDTOPosted := w.posted, w.obj.Posted
 	w.posted = true
-	storage.DeferUntilTxRollback(ctx, func() { w.posted = wasPosted })
+	w.obj.Posted = true
+	storage.DeferUntilTxRollback(ctx, func() {
+		w.posted = wasPosted
+		w.obj.Posted = wasXDTOPosted
+	})
 	if err := exchange.RegisterOnSave(ctx, w.s.store, w.s.reg.ExchangePlans(), w.entity, w.obj.ID, false); err != nil {
 		return err
 	}
@@ -1356,3 +1404,21 @@ func (c dslFieldSearch) IsFieldSearchDenied(ctx context.Context, entity *metadat
 }
 
 func (s *Server) dslFieldSearchChecker() interpreter.FieldSearchChecker { return dslFieldSearch{s: s} }
+
+// XDTOObject отдаёт внутреннее представление документа сериализатору XDTO:
+// шапку вместе с табличными частями. Без этого СериализаторXDTO.ЗаписатьXML
+// видел бы только Get/Set обёртки и не смог бы прочитать строки ТЧ.
+func (w *docWriter) XDTOObject() *runtime.Object { return w.obj }
+
+func (w *docWriter) hookXDTOState() *entityHookXDTOState {
+	if w.assigned == nil {
+		w.assigned = map[string]bool{}
+	}
+	return &entityHookXDTOState{loaded: w.loaded, assigned: w.assigned}
+}
+
+// XDTOMaskField — полевая политика для СериализаторXDTO.ЗаписатьXML: XDTOObject()
+// отдаёт сырой объект, минуя маскирование в Get().
+func (w *docWriter) XDTOMaskField() func(string, any) any {
+	return w.s.xdtoFieldMask(w.ctx(), w.entity, w.loaded, w.assigned)
+}

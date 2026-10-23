@@ -77,8 +77,14 @@ func (db *DB) renameSnakeCols(ctx context.Context, table string, fields []metada
 
 // MigrateRegisters creates register tables.
 func (db *DB) MigrateRegisters(ctx context.Context, registers []*metadata.Register) error {
+	if err := db.CheckLongIdents(ctx, nil, registers, nil, nil); err != nil {
+		return err
+	}
 	d := db.dialect
 	for _, reg := range registers {
+		if err := db.renameLegacyTable(ctx, metadata.RegisterTableLogical(reg.Name)); err != nil {
+			return fmt.Errorf("migrate register %s: %w", reg.Name, err)
+		}
 		if _, err := db.Exec(ctx, CreateRegisterSQL(d, reg)); err != nil {
 			return fmt.Errorf("migrate register %s: %w", reg.Name, err)
 		}
@@ -87,6 +93,9 @@ func (db *DB) MigrateRegisters(ctx context.Context, registers []*metadata.Regist
 			return fmt.Errorf("migrate register %s.period: %w", reg.Name, err)
 		}
 		allFields := append(append([]metadata.Field{}, reg.Dimensions...), append(reg.Resources, reg.Attributes...)...)
+		if err := db.renameLegacyColumns(ctx, table, logicalColumnNames(allFields)); err != nil {
+			return fmt.Errorf("migrate register %s: %w", reg.Name, err)
+		}
 		if err := db.renameSnakeCols(ctx, table, allFields); err != nil {
 			return fmt.Errorf("migrate register %s: %w", reg.Name, err)
 		}
@@ -132,6 +141,9 @@ func (db *DB) ensureRegisterIndexes(ctx context.Context, reg *metadata.Register)
 // KEY, выполняются атомарно. SQLite пересоздаёт таблицу, PostgreSQL меняет
 // constraint; разрушительное сужение ключа требует AllowDestructive.
 func (db *DB) MigrateInfoRegisters(ctx context.Context, regs []*metadata.InfoRegister) error {
+	if err := db.CheckLongIdents(ctx, nil, nil, regs, nil); err != nil {
+		return err
+	}
 	for _, ir := range regs {
 		if err := db.WithTxScope(ctx, func(txCtx context.Context) error {
 			return db.migrateInfoRegister(txCtx, ir)
@@ -144,10 +156,16 @@ func (db *DB) MigrateInfoRegisters(ctx context.Context, regs []*metadata.InfoReg
 
 func (db *DB) migrateInfoRegister(ctx context.Context, ir *metadata.InfoRegister) error {
 	d := db.dialect
+	if err := db.renameLegacyTable(ctx, metadata.InfoRegTableLogical(ir.Name)); err != nil {
+		return fmt.Errorf("migrate info register %s: %w", ir.Name, err)
+	}
 	if _, err := db.Exec(ctx, CreateInfoRegisterSQL(d, ir)); err != nil {
 		return fmt.Errorf("migrate info register %s: %w", ir.Name, err)
 	}
 	table := metadata.InfoRegTableName(ir.Name)
+	if err := db.renameLegacyColumns(ctx, table, logicalColumnNames(append(append([]metadata.Field{}, ir.Dimensions...), ir.Resources...))); err != nil {
+		return fmt.Errorf("migrate info register %s: %w", ir.Name, err)
+	}
 	// period колонка для periodic-регистров — может отсутствовать,
 	// если в YAML только что добавили `periodic: true`. ALLOW NULL,
 	// потому что existing rows иначе не вставить.
@@ -201,6 +219,20 @@ func (db *DB) migrateInfoRegister(ctx context.Context, ir *metadata.InfoRegister
 	// пересоздаёт таблицу, и построенный раньше индекс ушёл бы вместе со старой.
 	if _, err := db.Exec(ctx, CreateInfoRegisterRecorderIndexSQL(ir.Name)); err != nil {
 		return fmt.Errorf("migrate info register %s recorder index: %w", ir.Name, err)
+	}
+	// Индексы из indexes — тоже после fixInfoRegPK, по той же причине.
+	for _, idx := range ir.Indexes {
+		cols := make([]string, 0, len(idx.Fields))
+		for _, name := range idx.Fields {
+			col, ok := metadata.InfoRegisterIndexColumn(ir, name)
+			if !ok {
+				return fmt.Errorf("migrate info register %s: index references unknown field %s", ir.Name, name)
+			}
+			cols = append(cols, col)
+		}
+		if _, err := db.Exec(ctx, CreateEntityIndexSQL(table, cols, false)); err != nil {
+			return fmt.Errorf("migrate info register %s index: %w", ir.Name, err)
+		}
 	}
 	return nil
 }
@@ -423,7 +455,7 @@ func (db *DB) fixInfoRegPKPostgres(ctx context.Context, ir *metadata.InfoRegiste
 			}
 		}
 		_, err = db.Exec(txCtx, "ALTER TABLE "+pgQuoteIdent(table)+" ADD CONSTRAINT "+
-			pgQuoteIdent(table+"_pkey")+" PRIMARY KEY ("+pgIdentList(expected)+")")
+			pgQuoteIdent(metadata.SQLIdent(table+"_pkey"))+" PRIMARY KEY ("+pgIdentList(expected)+")")
 		return err
 	})
 }
@@ -524,6 +556,9 @@ func (db *DB) Migrate(ctx context.Context, entities []*metadata.Entity) error {
 
 func (db *DB) migrateEntities(ctx context.Context, entities []*metadata.Entity) error {
 	// Read-only preflight precedes every service table, DDL and field-map write.
+	if err := db.CheckLongIdents(ctx, entities, nil, nil, nil); err != nil {
+		return err
+	}
 	for _, e := range entities {
 		if _, err := desiredEntityIndexes(e); err != nil {
 			return err
@@ -537,6 +572,10 @@ func (db *DB) migrateEntities(ctx context.Context, entities []*metadata.Entity) 
 		if _, _, err := db.planEntityIndexes(ctx, entities, db.schemaOpts.AdoptIndexes); err != nil {
 			return err
 		}
+	}
+	// Repeat under writer/table locks, before any rename or setup DDL.
+	if err := db.prepareEntityLegacyIdents(ctx, entities); err != nil {
+		return err
 	}
 	d := db.dialect
 	if err := db.EnsureSeqTable(ctx); err != nil {
@@ -638,7 +677,7 @@ func (db *DB) migrateEntities(ctx context.Context, entities []*metadata.Entity) 
 				return fmt.Errorf("migrate %s._version: %w", e.Name, err)
 			}
 			if e.Hierarchical {
-				if err := db.AddHierarchyColumns(ctx, table); err != nil {
+				if err := db.AddHierarchyColumns(ctx, table, metadata.TableLogical(e.Name)); err != nil {
 					return fmt.Errorf("migrate %s hierarchy: %w", e.Name, err)
 				}
 			}

@@ -100,6 +100,11 @@ func WithSQLiteMigrationPreview(ctx context.Context, path string, existed bool, 
 	conn.SetMaxOpenConns(1)
 	conn.SetMaxIdleConns(1)
 	defer func() { resultErr = errors.Join(resultErr, conn.Close()) }()
+	// Match the normal connection's FK enforcement when classifying _users
+	// constraints. This is connection-local and does not write the immutable DB.
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
+		return err
+	}
 	if _, err := conn.ExecContext(ctx, "PRAGMA query_only=ON"); err != nil {
 		return err
 	}

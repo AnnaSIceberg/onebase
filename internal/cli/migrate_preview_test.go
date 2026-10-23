@@ -297,6 +297,7 @@ func TestMigratePreview_PostgresRoleWithoutDDL(t *testing.T) {
 		require.Error(t, err)
 		return err
 	}), "writes must be rejected")
+
 }
 
 func TestMigratePreview_MissingTargetAppears(t *testing.T) {
@@ -333,4 +334,18 @@ func TestMigratePreview_SQLiteRejectsWrites(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Equal(t, before, previewTree(t, filepath.Dir(path)))
+}
+
+// Legacy CLI matrix fixtures hold an idle connection for post-preview reads.
+// Finish their WAL and create the ordinary lifetime lock before the snapshot.
+func prepareSQLiteCLIPreview(t *testing.T, db *storage.DB) {
+	t.Helper()
+	if !db.IsSQLite() {
+		return
+	}
+	_, err := db.Exec(t.Context(), "PRAGMA wal_checkpoint(TRUNCATE)")
+	require.NoError(t, err)
+	_, err = db.Exec(t.Context(), "PRAGMA journal_mode=DELETE")
+	require.NoError(t, err)
+	previewLock(t, db.SQLitePath())
 }

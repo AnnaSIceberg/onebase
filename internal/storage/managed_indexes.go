@@ -526,7 +526,24 @@ func (db *DB) guardEntityColumnChanges(ctx context.Context, e *metadata.Entity) 
 	if err != nil {
 		return err
 	}
+	legacy, err := db.planLegacyColumns(ctx, table, logicalColumnNames(e.Fields))
+	if err != nil {
+		return err
+	}
+	legacyRenames := map[string]bool{}
+	for _, action := range legacy {
+		if action.Conflict != "" {
+			return action.err()
+		}
+		legacyRenames[action.Old+"\x00"+action.New] = true
+	}
 	for _, c := range changes {
+		// main's physical-name normalization preserves external definitions by
+		// ALTER RENAME. Signed managed ownership is checked separately before
+		// this path; ordinary logical Rename/Retype/Drop retain the dependency gate.
+		if c.Kind == ChangeRename && legacyRenames[c.From+"\x00"+c.To] {
+			continue
+		}
 		if c.Kind == ChangeAdd || c.Kind == ChangeRebindFieldID {
 			// Rebinding only changes the schema-map ID, not the physical column.
 			continue

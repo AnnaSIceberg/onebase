@@ -189,8 +189,8 @@ func TestMigrateUserReferencesDryRunMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if _, err := captureStdout(t, func() error { return migrateCmd.RunE(cmd, nil) }); err != nil {
-			t.Fatalf("onebase migrate --dry-run: %v", err)
+		if _, err := captureStdout(t, func() error { return migrateCmd.RunE(cmd, nil) }); err == nil || !strings.Contains(err.Error(), "таблица _users отсутствует") {
+			t.Fatalf("onebase migrate --dry-run must explain missing auth schema: %v", err)
 		}
 		if path != "" {
 			var err error
