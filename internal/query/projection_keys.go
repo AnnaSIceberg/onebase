@@ -183,7 +183,7 @@ func (r *projectionKeyResolver) scopeKeys(scopeID int) projectionKeySet {
 		col, _ := parseProjectionItem(item)
 		if col.Star {
 			out.add(r.starKeys(scopeID, item))
-		} else if key := projectionOutputSQLKey(r.tokens, r.ctx, col, from, from+len(item)); key != "" {
+		} else if key := projectionOutputSQLKey(r.tokens, r.ctx, r.opts, col, from, from+len(item)); key != "" {
 			out.counts[key]++
 		} else {
 			out.complete = false

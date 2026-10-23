@@ -53,7 +53,7 @@ func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 				counts[key] += count
 			}
 		}
-		output := projectionOutputSQLKey(tokens, ctx, col, from, to)
+		output := projectionOutputSQLKey(tokens, ctx, opts, col, from, to)
 		if output == "" {
 			return
 		}

@@ -87,7 +87,7 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		if column.Star {
 			stars.add(keys.starKeys(scopeID, item))
 		}
-		key := projectionOutputSQLKey(tokens, ctx, column, from, to)
+		key := projectionOutputSQLKey(tokens, ctx, keys.opts, column, from, to)
 		if key == "" || column.Star {
 			return
 		}
@@ -100,6 +100,15 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 				}
 			}
 			typ = scalarProjectionFieldTypeAt(tokens, ctx, from, from+len(expr), fields, qualified)
+			if column.Output == "" {
+				start, end := trimProjectionParentheses(tokens, from, to)
+				direct, _ := parseProjectionItem(tokens[start:end])
+				if len(direct.Path) == 0 {
+					// The newly known implicit aggregate name only reserves a
+					// collision; it does not extend scalar type inference.
+					typ = ""
+				}
+			}
 		}
 		if _, duplicate := output[key]; duplicate {
 			typ = ""
@@ -131,16 +140,39 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 	return output
 }
 
-// projectionOutputSQLKey also reserves unaliased fields wrapped in parentheses:
-// both databases keep the field's SQL name, so these outputs can collide with
-// explicit aliases. Keep this separate from the masking projection parser,
-// where a parenthesized expression still requires fail-closed field access.
-func projectionOutputSQLKey(tokens []tok, ctx sourceContext, column ProjectionColumn, from, to int) string {
+// projectionOutputSQLKey reserves names independently of expression types.
+// Keep this separate from the masking projection parser, where a parenthesized
+// expression still requires fail-closed field access.
+func projectionOutputSQLKey(tokens []tok, ctx sourceContext, opts CompileOpts, column ProjectionColumn, from, to int) string {
 	if column.Output == "" {
 		start, end := trimProjectionParentheses(tokens, from, to)
 		column, _ = parseProjectionItem(tokens[start:end])
-		// Only a direct field proves the name of an unaliased expression.
-		// Functions, arithmetic and subqueries retain unknown output names.
+		// PostgreSQL names an unaliased aggregate after its emitted SQL
+		// function, including translated DSL synonyms. SQLite instead uses
+		// the expression text (with parentheses), outside the identifier keys
+		// used by direct fields and aliases. Do not invent a scalar type for
+		// either expression merely because its output name is known.
+		if dialectOrDefault(opts.Dialect).Name() == "postgres" && end-start >= 4 &&
+			tokens[start].kind == tIdent && tokens[start+1].kind == tLParen && tokens[end-1].kind == tRParen {
+			if agg, ok := sqlAgg(tokens[start].val); ok {
+				depth := 0
+				for i := start + 1; i < end; i++ {
+					switch tokens[i].kind {
+					case tLParen:
+						depth++
+					case tRParen:
+						depth--
+					}
+					if depth == 0 {
+						if i == end-1 {
+							return lowerFast(agg)
+						}
+						break // arithmetic after the call has a different name
+					}
+				}
+			}
+		}
+		// Only a direct field proves the remaining unaliased output names.
 		if len(column.Path) == 0 || column.Alias != "" {
 			return ""
 		}
