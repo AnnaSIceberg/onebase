@@ -4,13 +4,13 @@
 с исполняемым файлом:
 
 ```powershell
-onebase-gui.exe --portable
+.\onebase-gui.exe --portable
 ```
 
 Для консольной сборки работает тот же флаг:
 
 ```sh
-onebase --portable start
+./onebase --portable start
 ```
 
 Каталог определяется по расположению программы, независимо от рабочей папки
@@ -18,8 +18,8 @@ onebase --portable start
 считаются от каталога программы. Например:
 
 ```sh
-onebase --portable migrate --project project --sqlite data/example.db
-onebase --portable ibases add --name "Пример" --source file --path project --sqlite data/example.db
+./onebase --portable migrate --project project --sqlite data/example.db
+./onebase --portable ibases add --name "Пример" --source file --path project --sqlite data/example.db
 ```
 
 Пример комплекта:
