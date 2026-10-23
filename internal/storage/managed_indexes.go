@@ -139,10 +139,21 @@ func (db *DB) readEntityIndexes(ctx context.Context, table string) ([]EntityInde
 		}
 		return out, nil
 	}
+	// PostgreSQL 14 has no indnullsnotdistinct column. Select the predicate
+	// before parsing the catalog query; catching undefined_column inside the
+	// migration transaction would leave that transaction aborted.
+	var serverVersion int
+	if err := db.QueryRow(ctx, "SELECT current_setting('server_version_num')::integer").Scan(&serverVersion); err != nil {
+		return nil, err
+	}
+	nullsDistinct := "TRUE"
+	if serverVersion >= 150000 {
+		nullsDistinct = "NOT i.indnullsnotdistinct"
+	}
 	rows, err := db.Query(ctx, `SELECT ic.relname,i.indisunique,pg_get_indexdef(i.indexrelid),
  (am.amname='btree' AND i.indpred IS NULL AND i.indexprs IS NULL
  AND i.indisvalid AND i.indisready AND NOT i.indisprimary AND NOT i.indisexclusion
- AND NOT i.indnullsnotdistinct AND i.indnkeyatts=i.indnatts
+ AND `+nullsDistinct+` AND i.indnkeyatts=i.indnatts
  AND NOT EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conindid=i.indexrelid)
  AND NOT EXISTS(SELECT 1 FROM unnest(i.indoption) o WHERE o<>0)
  AND NOT EXISTS(SELECT 1 FROM unnest(i.indclass) cl JOIN pg_opclass oc ON oc.oid=cl WHERE NOT oc.opcdefault)
