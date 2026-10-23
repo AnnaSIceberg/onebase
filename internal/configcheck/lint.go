@@ -711,7 +711,8 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		// managed-формы (план 181C, #1621); attachment endpoint не меняется.
 		"attachments": action,
 	})
-	return with(obj("schema", "entity", "name", "kind", "layout_kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "tab_skip_readonly", "autofocus"), map[string]*yamlLintSchema{
+	// tab_skip_readonly и autofocus также читаются только из form:.
+	return with(obj("schema", "entity", "name", "kind", "layout_kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll"), map[string]*yamlLintSchema{
 		"form":                   formHeader,
 		"title":                  freeMap(),
 		"events":                 freeMap(),
