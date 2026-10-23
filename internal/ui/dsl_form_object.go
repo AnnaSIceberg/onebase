@@ -215,6 +215,36 @@ func (f *formObjectThis) write() error {
 			return err
 		}
 	}
+	// Save needs the stored values, while the form handler must keep seeing its
+	// original masked/hidden view, including on rejection and transaction retry.
+	// Unlike loaded DSL writers, Get on this wrapper reads Fields directly.
+	var restoreProtectedFields func(map[string]any)
+	if !isNew {
+		originalFields := cloneRecord(f.obj.Fields)
+		restored, err := f.srv.protectMaskedFieldsOnWrite(ctx, f.entity, f.obj.ID, f.obj.Fields)
+		if err != nil {
+			return err
+		}
+		if len(restored) > 0 {
+			restoreProtectedFields = func(fields map[string]any) {
+				for _, key := range restored {
+					if value, present := originalFields[key]; present {
+						fields[key] = value
+					} else {
+						delete(fields, key)
+					}
+				}
+			}
+			defer func() { restoreProtectedFields(f.obj.Fields) }()
+			for _, key := range restored {
+				name := strings.ToLower(key)
+				delete(f.assigned, name)
+				// A restored value is no longer a handler assignment. Lifecycle
+				// XDTO export must mask it while Save holds the real value.
+				delete(f.hookXDTOState().assigned, name)
+			}
+		}
+	}
 	wasSaved := f.saved
 	previousExpectedVersion := f.expectedVersion
 	previousSavedFields := f.lastSavedFields
@@ -232,7 +262,12 @@ func (f *formObjectThis) write() error {
 			f.expectedVersion = &version
 			f.obj.Fields["_version"] = version
 		}
-		f.lastSavedFields = snapshotFieldValues(f.obj.Fields)
+		savedFields := f.obj.Fields
+		if restoreProtectedFields != nil {
+			savedFields = cloneRecord(savedFields)
+			restoreProtectedFields(savedFields)
+		}
+		f.lastSavedFields = snapshotFieldValues(savedFields)
 		f.lastSavedTableParts = tablePartRowsSnapshot(f.obj.TablePartRows)
 		storage.DeferUntilTxRollback(ctx, func() {
 			f.saved = wasSaved
