@@ -2,14 +2,11 @@ package api
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"golang.org/x/net/http2"
 
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
@@ -48,18 +45,17 @@ func serveH2CTestServer(t *testing.T) string {
 	return ln.Addr().String()
 }
 
-// h2cClient — HTTP/2-клиент по cleartext (prior knowledge): AllowHTTP + Dial без
-// TLS, так что транспорт сразу шлёт HTTP/2-преамбулу поверх обычного TCP.
-func h2cClient() *http.Client {
+// h2cClient — HTTP/2-клиент по cleartext (prior knowledge): включён только
+// UnencryptedHTTP2, без HTTP/1.1 fallback, который мог бы скрыть отказ h2c.
+func h2cClient(t *testing.T) *http.Client {
+	t.Helper()
+	protocols := new(http.Protocols)
+	protocols.SetUnencryptedHTTP2(true)
+	transport := &http.Transport{Protocols: protocols}
+	t.Cleanup(transport.CloseIdleConnections)
 	return &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http2.Transport{
-			AllowHTTP: true,
-			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
-				var d net.Dialer
-				return d.DialContext(ctx, network, addr)
-			},
-		},
+		Timeout:   5 * time.Second,
+		Transport: transport,
 	}
 }
 
@@ -69,7 +65,7 @@ func TestH2CUpstreamEnabled(t *testing.T) {
 	t.Setenv("ONEBASE_H2C", "1")
 	addr := serveH2CTestServer(t)
 
-	resp, err := h2cClient().Get("http://" + addr + "/health")
+	resp, err := h2cClient(t).Get("http://" + addr + "/health")
 	if err != nil {
 		t.Fatalf("h2c GET /health: %v", err)
 	}
@@ -83,16 +79,28 @@ func TestH2CUpstreamEnabled(t *testing.T) {
 }
 
 // Без ONEBASE_H2C сервер остаётся HTTP/1.1-only: тот же h2c-клиент не должен
-// получить HTTP/2 (ошибка протокола или даунгрейд), т.е. дефолт не меняется.
+// получить HTTP/2; обычный HTTP/1.1-запрос остаётся успешным.
 func TestH2CUpstreamDisabledByDefault(t *testing.T) {
 	t.Setenv("ONEBASE_H2C", "") // детерминизм при унаследованном окружении CI
 	addr := serveH2CTestServer(t)
 
-	resp, err := h2cClient().Get("http://" + addr + "/health")
+	resp, err := h2cClient(t).Get("http://" + addr + "/health")
 	if err == nil {
 		defer func() { _ = resp.Body.Close() }()
 		if resp.ProtoMajor == 2 {
 			t.Fatal("сервер отдал HTTP/2, хотя h2c выключен")
 		}
+	}
+
+	transport := &http.Transport{}
+	t.Cleanup(transport.CloseIdleConnections)
+	client := &http.Client{Timeout: 5 * time.Second, Transport: transport}
+	resp, err = client.Get("http://" + addr + "/health")
+	if err != nil {
+		t.Fatalf("HTTP/1.1 GET /health: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.ProtoMajor != 1 || resp.StatusCode != http.StatusOK {
+		t.Fatalf("proto = %q, status = %d, ожидали HTTP/1.1 и 200", resp.Proto, resp.StatusCode)
 	}
 }
