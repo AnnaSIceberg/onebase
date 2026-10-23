@@ -581,6 +581,8 @@ func managedFormSchema() map[string]any {
 			"deadline_warn":       map[string]any{"type": "integer", "minimum": 1, "description": "Поле-срок: за столько минут до срока — жёлтая подсветка, срок прошёл — красная (по часам браузера)"},
 			"conceal":             boolSchema("Значение поля объекта не уходит в браузер: поле пустое и не отправляется; раскрывает reveal_when в ответе события"),
 			"reveal_when":         stringSchema("Условие раскрытия скрытого (conceal) поля — выражение по реквизитам формы, вычисляется после обработчика события"),
+			"text_color":          stringSchema("Цвет текста ПолеВвода или Надпись (подпись и значение, у нередактируемого поля тоже): hex, rgb(...) или имя CSS-цвета"),
+			"importance":          map[string]any{"type": "string", "enum": []any{"error"}, "description": "Смысловое выделение ПолеВвода или Надпись: error — красный текст ошибки; text_color сильнее"},
 			"scroll_x":            boolSchema("Прокручивать горизонтальную ГруппаФормы вместо переноса содержимого на следующую строку; по умолчанию false"),
 			"children": map[string]any{
 				"type":  "array",
