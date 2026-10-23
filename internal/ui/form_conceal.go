@@ -310,7 +310,7 @@ func (s *Server) unrevealedConcealedFields(r *http.Request, entity *metadata.Ent
 }
 
 // Reject input before defaults/hooks. Later trusted assignments are preserved.
-func (s *Server) dropConcealedInput(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, fields map[string]any) {
+func (s *Server) dropConcealedInput(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, fields map[string]any) []string {
 	var dropped []string
 	for name := range s.unrevealedConcealedFields(r, entity, form) {
 		for key := range fields {
@@ -321,6 +321,7 @@ func (s *Server) dropConcealedInput(r *http.Request, entity *metadata.Entity, fo
 		dropped = append(dropped, name)
 	}
 	removeSubmittedFormFields(r, dropped)
+	return dropped
 }
 
 func (s *Server) restoreConcealControllers(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, obj *runtime.Object) {

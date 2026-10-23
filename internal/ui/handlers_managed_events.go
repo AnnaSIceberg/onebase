@@ -778,11 +778,21 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		respondJSON(enc, formEventResponse{Error: s.errText(r, err)})
 		return
 	}
-	s.dropConcealedInput(r, entity, form, obj.Fields)
+	concealed := s.dropConcealedInput(r, entity, form, obj.Fields)
 	// Что прислал клиент — до восстановлений и обработчика: ответ события не
 	// маскирует значение, которое клиент сам только что набрал (см.
 	// serializeManagedFormEventState).
 	r = r.WithContext(withSubmittedFormFields(r.Context(), obj.Fields))
+	// У новой записи скрытый ввод не приходит из браузера. До обработчика,
+	// который может раскрыть поле, возвращаем его объявленное умолчание;
+	// иначе раскрытый пустой контрол на submit затрёт серверное значение.
+	// Close-intent восстанавливает полное начальное состояние ниже.
+	if closeInv == nil && strings.TrimSpace(r.FormValue("_id")) == "" {
+		if err := s.applyRejectedFieldDefaults(r.Context(), entity, obj, concealed); err != nil {
+			respondJSON(enc, formEventResponse{Error: s.errText(r, err)})
+			return
+		}
+	}
 	// Событие может вызвать Объект.Записать() до обычного submit. Удаляем
 	// присланные значения запертых полей из объекта и POST: последующее
 	// restoreUnsubmittedFields восстановит каноничное значение из БД.
@@ -794,7 +804,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		// Объект.Записать(), сохранил бы NULL — то есть запрет на правку
 		// оборачивался бы потерей объявленного значения.
 		if strings.TrimSpace(r.FormValue("_id")) == "" {
-			if err := s.applyAdminOnlyDefaults(r.Context(), entity, obj, dropped); err != nil {
+			if err := s.applyRejectedFieldDefaults(r.Context(), entity, obj, dropped); err != nil {
 				respondJSON(enc, formEventResponse{Error: s.errText(r, err)})
 				return
 			}
@@ -1898,13 +1908,13 @@ type elementStates struct {
 	Hidden   map[string]bool `json:"hidden,omitempty"`
 }
 
-// applyAdminOnlyDefaults возвращает новой записи объявленные умолчания ровно
+// applyRejectedFieldDefaults возвращает новой записи объявленные умолчания ровно
 // тех полей, значения которых сервер только что отклонил как запертые.
 //
 // Заполняются только отклонённые поля. Событие формы и сегодня не пересчитывает
 // остальные неприсланные реквизиты и не зовёт ПриСозданииНового — расширять это
 // здесь значило бы менять поведение событийного пути под видом починки запрета.
-func (s *Server) applyAdminOnlyDefaults(ctx context.Context, entity *metadata.Entity, obj *runtime.Object, names []string) error {
+func (s *Server) applyRejectedFieldDefaults(ctx context.Context, entity *metadata.Entity, obj *runtime.Object, names []string) error {
 	if s.entitySvc == nil || entity == nil || obj == nil || len(names) == 0 {
 		return nil
 	}
