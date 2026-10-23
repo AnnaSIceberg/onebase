@@ -25,9 +25,9 @@ func TestMigrateWarnsAboutUntrackedPhysicalType(t *testing.T) {
 			}
 		}
 	})
-	migrate := func(dry string) string {
+	migrate := func(dry, destructive string) string {
 		t.Helper()
-		rootCmd.SetArgs([]string{"migrate", "--project", dir, "--sqlite", dbPath, "--dry-run=" + dry, "--allow-destructive=false", "--config-source=file", "--db="})
+		rootCmd.SetArgs([]string{"migrate", "--project", dir, "--sqlite", dbPath, "--dry-run=" + dry, "--allow-destructive=" + destructive, "--config-source=file", "--db="})
 		out, err := captureStdout(t, rootCmd.Execute)
 		if err != nil {
 			t.Fatal(err)
@@ -35,7 +35,7 @@ func TestMigrateWarnsAboutUntrackedPhysicalType(t *testing.T) {
 		return out
 	}
 	fixture("string")
-	if out := migrate("false"); strings.Contains(out, "ПРЕДУПРЕЖДЕНИЕ") {
+	if out := migrate("false", "false"); strings.Contains(out, "ПРЕДУПРЕЖДЕНИЕ") {
 		t.Fatal(out)
 	}
 	db, err := storage.ConnectSQLite(context.Background(), dbPath)
@@ -48,8 +48,9 @@ func TestMigrateWarnsAboutUntrackedPhysicalType(t *testing.T) {
 	}
 	db.Close()
 	fixture("bool")
-	for _, dry := range []string{"true", "true", "false", "true"} {
-		out := migrate(dry)
+	for _, mode := range [][2]string{{"true", "false"}, {"true", "false"}, {"false", "false"}, {"true", "true"}, {"false", "true"}, {"true", "true"}} {
+		dry, destructive := mode[0], mode[1]
+		out := migrate(dry, destructive)
 		for _, want := range []string{"ПРЕДУПРЕЖДЕНИЕ", "товар.флаг", "TEXT", "INTEGER", "без id", "добавление id"} {
 			if !strings.Contains(out, want) {
 				t.Fatalf("dry-run=%s: missing %q:\n%s", dry, want, out)
