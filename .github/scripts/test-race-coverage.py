@@ -3,6 +3,9 @@
 
 from collections import Counter
 import json
+import os
+import signal
+import threading
 from pathlib import Path
 import re
 import subprocess
@@ -11,7 +14,7 @@ import tempfile
 import time
 
 # Each process keeps the original 10m timeout. The build job still has 30m.
-BATCH_SIZE = 16
+BATCH_SIZE = 128
 BATCHED_PACKAGES = ("internal/auth", "internal/launcher", "internal/ui")
 ISOLATED_PACKAGE = "internal/dsl/interpreter"
 OTHER_CONCURRENCY = 4
@@ -64,23 +67,47 @@ def merge_profiles(profiles, destination):
 
 
 def discover_package(package, binary, report):
-    # Use the actual race/coverage build, including the current platform's tags.
+    # Compile exactly once; discovery and every group execute this same binary.
+    binary = binary.resolve()
+    cwd = subprocess.check_output(["go", "list", "-f", "{{.Dir}}", package],
+                                  text=True, encoding="utf-8").strip()
+    if not Path(cwd).is_absolute() or not Path(cwd).is_dir():
+        raise ValueError(f"invalid package directory: {cwd!r}")
+    env = dict(os.environ, PWD=cwd)
     args = ["go", "test", "-c", "-race", "-covermode=atomic", "-o", str(binary), package]
+    list_args = [str(binary), "-test.list=."]
     started = time.monotonic()
-    entry = {"kind": "discovery", "args": args, "package": package}
+    entry = {"kind": "discovery", "args": args, "list_args": list_args,
+             "package": package, "cwd": cwd}
     report["processes"].append(entry)
     try:
         subprocess.run(args, check=True)
-        output = subprocess.check_output([str(binary), "-test.list=."], text=True, encoding="utf-8")
+        entry["compile_elapsed"] = time.monotonic() - started
+        listing = time.monotonic()
+        output = subprocess.check_output(list_args, cwd=cwd, env=env, text=True, encoding="utf-8")
+        entry["list_elapsed"] = time.monotonic() - listing
         names = discover_names(output)
         entry["names"] = names
         entry["success"] = True
-        return names
+        return names, binary, cwd
     finally:
         entry["elapsed"] = time.monotonic() - started
 
 
-def run_tests(packages, profile, names=None, *, report=None, log=None, concurrency=None):
+def kill_process_tree(proc):
+    if proc.poll() is None:
+        try:
+            if os.name == "posix":
+                os.killpg(proc.pid, signal.SIGKILL)
+            else:
+                proc.kill()
+        except ProcessLookupError:
+            pass
+
+
+def run_tests(packages, profile, names=None, *, report=None, log=None, concurrency=None,
+              binary=None, cwd=None, timeout="10m"):
+    profile = profile.resolve()
     args = ["go", "test", "-json", "-count=1", "-race", "-timeout=10m",
             "-covermode=atomic", f"-coverprofile={profile}"]
     if concurrency is not None:
@@ -88,21 +115,53 @@ def run_tests(packages, profile, names=None, *, report=None, log=None, concurren
     if names is not None:
         args += ["-run", "^(" + "|".join(re.escape(name) for name in names) + ")$"]
     args += packages
+    env = None
+    if binary is not None:
+        if len(packages) != 1 or names is None or cwd is None or concurrency is not None:
+            raise ValueError("a compiled group requires one package, inventory and cwd")
+        coverdir = profile.with_suffix(".gocoverdir")
+        coverdir.mkdir()
+        env = dict(os.environ, PWD=str(cwd), GOCOVERDIR=str(coverdir))
+        args = ["go", "tool", "test2json", "-p", packages[0], "-t", str(binary),
+                "-test.v=test2json", "-test.paniconexit0", "-test.count=1",
+                "-test.timeout=" + timeout, "-test.coverprofile=" + str(profile),
+                "-test.gocoverdir=" + str(coverdir),
+                "-test.run=^(" + "|".join(re.escape(name) for name in names) + ")$"]
     print("Running:", *args, flush=True)
     runs, completed, outcomes = [], [], []
-    entry = {"kind": "tests", "args": args, "packages": packages, "names": names, "tests": outcomes}
+    entry = {"kind": "tests", "args": args, "packages": packages, "names": names, "tests": outcomes, "cwd": str(cwd) if cwd else None}
     if report is not None:
         report["processes"].append(entry)
     started = time.monotonic()
+    watchdog = None
+    timed_out = threading.Event()
     stream = log.open("w", encoding="utf-8") if log else None
     try:
-        with subprocess.Popen(args, stdout=subprocess.PIPE, text=True, encoding="utf-8") as proc:
+        with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=cwd, env=env, start_new_session=(os.name == "posix"),
+                              text=True, encoding="utf-8") as proc:
+            if binary is not None:
+                # Match cmd/go's last-ditch deadline for a wedged TestMain or
+                # inherited output pipe. The test's own limit remains 10m.
+                match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)(ms|s|m)", timeout)
+                if not match:
+                    kill_process_tree(proc)
+                    raise ValueError("unsupported test timeout")
+                seconds = float(match[1]) * {"ms": .001, "s": 1, "m": 60}[match[2]]
+                def expire():
+                    timed_out.set()
+                    kill_process_tree(proc)
+                watchdog = threading.Timer(seconds + 60, expire)
+                watchdog.daemon = True
+                watchdog.start()
             try:
                 for line in proc.stdout:
                     if stream:
                         stream.write(line)
                     print(line, end="", flush=True)
                     event = json.loads(line)
+                    if binary is not None and event.get("Package") != packages[0]:
+                        raise ValueError("wrong package in test event")
                     name = event.get("Test", "")
                     if name and "/" not in name:
                         if event.get("Action") == "run":
@@ -112,10 +171,12 @@ def run_tests(packages, profile, names=None, *, report=None, log=None, concurren
                             outcomes.append({"package": event.get("Package"), "name": name,
                                              "action": event["Action"], "elapsed": event.get("Elapsed", 0)})
             except BaseException:
-                proc.kill()
+                kill_process_tree(proc)
                 proc.wait()
                 raise
             entry["exit"] = proc.wait()
+            if timed_out.is_set():
+                raise TimeoutError("compiled test process exceeded its hard deadline")
             if proc.returncode:
                 raise subprocess.CalledProcessError(proc.returncode, args)
         if names is not None:
@@ -124,6 +185,8 @@ def run_tests(packages, profile, names=None, *, report=None, log=None, concurren
         entry["success"] = True
         return runs
     finally:
+        if watchdog:
+            watchdog.cancel()
         entry["elapsed"] = time.monotonic() - started
         if stream:
             stream.close()
@@ -153,9 +216,12 @@ def main(destination=None, report_directory=None):
             raise ValueError("empty remaining package inventory")
         with tempfile.TemporaryDirectory(prefix="onebase-race-") as temporary:
             temporary = Path(temporary)
+            compiled = {}
             for index, suffix in enumerate(BATCHED_PACKAGES):
                 package = selected[suffix]
-                report["inventories"][package] = discover_package(package, temporary / f"tests-{index}", report)
+                names, binary, cwd = discover_package(package, temporary / f"tests-{index}", report)
+                report["inventories"][package] = names
+                compiled[package] = (binary, cwd)
             profiles = []
             # Interpreter runs alone: the XML budget checks must not compete with
             # another test process launched by this runner. Do not relax guards.
@@ -167,11 +233,12 @@ def main(destination=None, report_directory=None):
             for suffix in BATCHED_PACKAGES:
                 package = selected[suffix]
                 names, runs = report["inventories"][package], []
+                binary, cwd = compiled[package]
                 for start in range(0, len(names), BATCH_SIZE):
                     label = suffix.rsplit("/", 1)[-1] + f"-{start // BATCH_SIZE + 1}"
                     profile = temporary / f"{label}.out"
                     runs.extend(run_tests([package], profile, names[start:start + BATCH_SIZE],
-                                          report=report, log=directory / f"{label}.jsonl"))
+                                          report=report, log=directory / f"{label}.jsonl", binary=binary, cwd=cwd))
                     profiles.append(profile)
                 verify_inventory(names, runs)
             merge_profiles(profiles, destination)
