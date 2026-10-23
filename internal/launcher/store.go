@@ -247,6 +247,7 @@ func decodeBaseNode(node *yaml.Node) (*Base, error) {
 var managedBaseYAMLKeys = []string{
 	"id", "control_token", "name", "config_source", "path", "db", "port",
 	"created", "last_opened", "db_type", "db_path", "host", "server_url",
+	"companions",
 }
 
 // patchBaseNode updates only fields owned by the current Base schema. Unknown

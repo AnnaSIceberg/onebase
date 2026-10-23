@@ -82,4 +82,20 @@ func TestBaseFormCompanionsHTTP(t *testing.T) {
 	if err != nil || len(again.Companions) != 1 || again.Companions[0].Key != "callista" {
 		t.Fatalf("ошибочная форма изменила запись: %+v %v", again, err)
 	}
+
+	// Правильное изменение сохраняется, пустое поле убирает переопределение
+	// станции — тогда работает манифест комплекта.
+	send(http.MethodPost, "/bases/"+b.ID, url.Values{
+		"name": {"КЦ — рабочая"}, "base_kind": {baseKindClient}, "server_url": {"https://10.2.5.62:8443"},
+		"companions": {`callista | D:\Телефония\callista.exe`},
+	})
+	if again, err = store.Get(b.ID); err != nil || len(again.Companions) != 1 || again.Companions[0].Path != `D:\Телефония\callista.exe` {
+		t.Fatalf("изменение программ не сохранено: %+v %v", again, err)
+	}
+	send(http.MethodPost, "/bases/"+b.ID, url.Values{
+		"name": {"КЦ — рабочая"}, "base_kind": {baseKindClient}, "server_url": {"https://10.2.5.62:8443"}, "companions": {""},
+	})
+	if again, err = store.Get(b.ID); err != nil || len(again.Companions) != 0 {
+		t.Fatalf("пустое поле не убрало программы: %+v %v", again, err)
+	}
 }
