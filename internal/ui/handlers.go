@@ -402,11 +402,24 @@ func (s *Server) loadInitialTPRefOptions(ctx context.Context, entity *metadata.E
 			if err != nil {
 				continue
 			}
-			tpOpts[f.Name] = rows
+			tpOpts[f.Name] = compactRefOptionRows(rows)
 		}
 		result[tp.Name] = tpOpts
 	}
 	return result, nil
+}
+
+// compactRefOptionRows оставляет у варианта ссылки табличной части только то,
+// что читают шаблон и браузер: идентификатор и подпись. Вариант раньше уезжал
+// записью справочника целиком — у номенклатуры с ценами и описанием это
+// десятки полей на каждую из 50 строк каждой ссылочной колонки; страница
+// заявки с 17 табличными частями весила 2,8 МБ, ответ каждого события — 1,3 МБ.
+func compactRefOptionRows(rows []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, map[string]any{"id": row["id"], "_label": row["_label"]})
+	}
+	return out
 }
 
 func selectedTPRefIDs(rows []map[string]any, field string) []string {
@@ -474,7 +487,7 @@ func (s *Server) appendSelectedRefOptions(ctx context.Context, rows []map[string
 			if row == nil {
 				continue
 			}
-			// Mask before computing the label and serialising the complete option.
+			// Mask before computing the label; TP HTTP options project only id/_label.
 			s.maskRecord(ctx, refEntity, row)
 			row["_label"] = firstStringField(row, refEntity)
 			rows = append(rows, row)

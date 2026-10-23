@@ -20,7 +20,8 @@ import (
 )
 
 // Exercise the HTTP form-event path, including processor state decoding and
-// option serialisation. Complete options must retain GetByID's JSON contract.
+// option serialisation. HTTP TP options contain only id/_label; storage retains
+// the complete typed object (covered by TestGetByIDsFilteredMatrix).
 func selectedRefBatchServer(t *testing.T, db *storage.DB, target *metadata.Entity) (*Server, *processor.Processor) {
 	t.Helper()
 	form := processorExecutionForm(
@@ -70,7 +71,20 @@ func selectedRefBatchHTTP(t *testing.T, srv *Server, proc *processor.Processor, 
 	if !resp.OK || resp.Error != "" {
 		t.Fatalf("form-event: %s", rec.Body.String())
 	}
-	return resp.TPRefOptions["Строки"]["Ссылка"]
+	options := resp.TPRefOptions["Строки"]["Ссылка"]
+	seen := make(map[string]bool, len(options))
+	for i, row := range options {
+		id, idOK := row["id"].(string)
+		_, labelOK := row["_label"].(string)
+		if len(row) != 2 || !idOK || !labelOK || id == "" {
+			t.Fatalf("option %d must contain exactly string id/_label: %#v", i, row)
+		}
+		if seen[id] {
+			t.Fatalf("duplicate option UUID: %s", id)
+		}
+		seen[id] = true
+	}
+	return options
 }
 
 func TestProcessorSelectedRefBatchMatrix(t *testing.T) {
@@ -130,20 +144,18 @@ func TestProcessorSelectedRefBatchMatrix(t *testing.T) {
 				selected := []string{ids[0].String(), strings.ToUpper(ids[51].String()), ids[50].String(),
 					ids[51].String(), uuid.NewString(), "invalid", "", ids[52].String(), ids[52].String()}
 				got := selectedRefBatchHTTP(t, srv, proc, selected, user)
-				want := append([]map[string]any{}, initial...)
-				for _, id := range []uuid.UUID{ids[51], ids[50]} {
-					row, err := db.GetByID(t.Context(), target.Name, id, target)
-					if err != nil {
-						t.Fatal(err)
-					}
-					srv.maskRecord(auth.ContextWithUser(t.Context(), user), target, row)
-					row["_label"] = firstStringField(row, target)
-					want = append(want, row)
+				// Independent literal projection: neither the HTTP response nor a
+				// production label/mask/compact helper supplies expected values.
+				want := make([]map[string]any, 0, refPickerDefaultLimit+2)
+				for _, id := range append(append([]uuid.UUID{}, ids[:refPickerDefaultLimit]...), ids[51], ids[50]) {
+					want = append(want, map[string]any{"id": id.String(), "_label": "••••••"})
 				}
 				gotJSON, _ := json.Marshal(got)
 				wantJSON, _ := json.Marshal(want)
-				if string(gotJSON) != string(wantJSON) {
-					t.Fatalf("options JSON differs: got %d rows, want %d", len(got), len(want))
+				initialJSON, _ := json.Marshal(initial)
+				wantInitialJSON, _ := json.Marshal(want[:refPickerDefaultLimit])
+				if string(initialJSON) != string(wantInitialJSON) || string(gotJSON) != string(wantJSON) {
+					t.Fatalf("masked compact options differ: initial=%s got=%s want=%s", initialJSON, gotJSON, wantJSON)
 				}
 				for _, deny := range []string{"no-read", "invalid-policy"} {
 					t.Run(deny, func(t *testing.T) {
@@ -193,9 +205,11 @@ func TestProcessorSelectedRefBatchQueryGrowthMatrix(t *testing.T) {
 			if len(got) != refPickerDefaultLimit+n {
 				t.Fatalf("selected=%d options=%d", n, len(got))
 			}
-			for i, row := range got[refPickerDefaultLimit:] {
-				if row["id"] != selected[i] {
-					t.Fatalf("selected order at %d: %v", i, row["id"])
+			for i, row := range got {
+				wantID := fmt.Sprintf("abcdef00-0000-4000-8000-%012x", i+1)
+				wantLabel := fmt.Sprintf("Item-%04d", i)
+				if row["id"] != wantID || row["_label"] != wantLabel {
+					t.Fatalf("compact option/order at %d: got=%#v want id=%s label=%s", i, row, wantID, wantLabel)
 				}
 			}
 			if before != nil {
@@ -269,12 +283,17 @@ func TestProcessorSelectedRefBatchPolicyCorrelationMatrix(t *testing.T) {
 			}
 		}
 		got := selectedRefBatchHTTP(t, srv, proc, []string{denied.String(), allowed.String(), denied.String()}, user)
-		want, err := db.GetByID(t.Context(), target.Name, allowed, target)
-		if err != nil {
-			t.Fatal(err)
+		want := make([]map[string]any, 0, refPickerDefaultLimit+1)
+		for i := 0; i < refPickerDefaultLimit; i++ {
+			want = append(want, map[string]any{"id": idAt(i + 1).String(), "_label": fmt.Sprintf("A-item-%03d", i)})
 		}
-		want["_label"] = firstStringField(want, target)
-		wantJSON, _ := json.Marshal(append(initial, want))
+		want = append(want, map[string]any{"id": allowed.String(), "_label": "Z-selected-allowed"})
+		initialJSON, _ := json.Marshal(initial)
+		wantInitialJSON, _ := json.Marshal(want[:refPickerDefaultLimit])
+		if string(initialJSON) != string(wantInitialJSON) {
+			t.Fatalf("initial correlated options differ: got=%s want=%s", initialJSON, wantInitialJSON)
+		}
+		wantJSON, _ := json.Marshal(want)
 		gotJSON, _ := json.Marshal(got)
 		if string(gotJSON) != string(wantJSON) {
 			t.Fatalf("reference policy must admit only the selected object with anna's owner: got %d options, want %d", len(got), len(initial)+1)
