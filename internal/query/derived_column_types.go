@@ -81,13 +81,15 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		}
 	}
 	stars := projectionKeySet{counts: map[string]int{}, complete: true}
+	complete := true
 	add := func(from, to int) {
 		item := tokens[from:to]
 		column, _ := parseProjectionItem(item)
 		if column.Star {
 			stars.add(keys.starKeys(scopeID, item))
 		}
-		key := projectionOutputSQLKey(tokens, ctx, keys.opts, column, from, to)
+		key, known := keys.outputSQLKey(column, from, to)
+		complete = complete && (column.Star || known)
 		if key == "" || column.Star {
 			return
 		}
@@ -104,8 +106,8 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 				start, end := trimProjectionParentheses(tokens, from, to)
 				direct, _ := parseProjectionItem(tokens[start:end])
 				if len(direct.Path) == 0 {
-					// The newly known implicit aggregate name only reserves a
-					// collision; it does not extend scalar type inference.
+					// An implicit function name only reserves a collision;
+					// it does not extend scalar type inference.
 					typ = ""
 				}
 			}
@@ -130,31 +132,30 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		}
 	}
 	add(from, end)
-	// Only a proven absence from every wildcard preserves an explicit type.
+	// Only proven absence from every projection and wildcard preserves a type.
 	// This is independent of projection order and of the wildcard values.
 	for key := range output {
-		if !stars.complete || stars.counts[key] > 0 {
+		if !complete || !stars.complete || stars.counts[key] > 0 {
 			output[key] = ""
 		}
 	}
 	return output
 }
 
-// projectionOutputSQLKey reserves names independently of expression types.
-// Keep this separate from the masking projection parser, where a parenthesized
-// expression still requires fail-closed field access.
-func projectionOutputSQLKey(tokens []tok, ctx sourceContext, opts CompileOpts, column ProjectionColumn, from, to int) string {
+// outputSQLKey reserves names independently of expression types. The boolean
+// proves that no unaccounted identifier key can collide with a typed output.
+// Keep this separate from the masking parser, where an expression still
+// requires fail-closed field access.
+func (r *projectionKeyResolver) outputSQLKey(column ProjectionColumn, from, to int) (string, bool) {
+	tokens, ctx := r.tokens, r.ctx
 	if column.Output == "" {
 		start, end := trimProjectionParentheses(tokens, from, to)
 		column, _ = parseProjectionItem(tokens[start:end])
-		// PostgreSQL names an unaliased aggregate after its emitted SQL
-		// function, including translated DSL synonyms. SQLite instead uses
-		// the expression text (with parentheses), outside the identifier keys
-		// used by direct fields and aliases. Do not invent a scalar type for
-		// either expression merely because its output name is known.
-		if dialectOrDefault(opts.Dialect).Name() == "postgres" && end-start >= 4 &&
-			tokens[start].kind == tIdent && tokens[start+1].kind == tLParen && tokens[end-1].kind == tRParen {
-			if agg, ok := sqlAgg(tokens[start].val); ok {
+		if len(column.Path) == 0 || column.Alias != "" {
+			// Only a complete call can inherit a function's SQL output name.
+			// Arithmetic, casts and other unknown expressions cannot prove absence
+			// of a collision merely because their name was not resolved.
+			if end-start >= 4 && tokens[start].kind == tIdent && tokens[start+1].kind == tLParen && tokens[end-1].kind == tRParen {
 				depth := 0
 				for i := start + 1; i < end; i++ {
 					switch tokens[i].kind {
@@ -165,20 +166,35 @@ func projectionOutputSQLKey(tokens []tok, ctx sourceContext, opts CompileOpts, c
 					}
 					if depth == 0 {
 						if i == end-1 {
-							return lowerFast(agg)
+							fn, known := sqlAgg(tokens[start].val)
+							if !known {
+								if r.scalarRewrites == nil {
+									r.scalarRewrites = scalarFuncRewrites(dialectOrDefault(r.opts.Dialect).Name())
+								}
+								if rw, ok := r.scalarRewrites[lowerFast(tokens[start].val)]; ok &&
+									len(rw.prefix) == 2 && rw.prefix[0].kind == tIdent && rw.prefix[1].kind == tLParen &&
+									len(rw.suffix) == 1 && rw.suffix[0].kind == tRParen {
+									fn, known = rw.prefix[0].val, true
+								}
+							}
+							if known {
+								if dialectOrDefault(r.opts.Dialect).Name() == "postgres" {
+									return lowerFast(fn), true
+								}
+								// SQLite keeps the emitted call text (and wrapping parentheses),
+								// which cannot equal a direct identifier or an explicit DSL alias.
+								return "", true
+							}
 						}
-						break // arithmetic after the call has a different name
+						break
 					}
 				}
 			}
-		}
-		// Only a direct field proves the remaining unaliased output names.
-		if len(column.Path) == 0 || column.Alias != "" {
-			return ""
+			return "", false
 		}
 		from = start
 	}
-	return projectionSQLKey(tokens, ctx, column, from+2*len(column.Path)-1)
+	return projectionSQLKey(tokens, ctx, column, from+2*len(column.Path)-1), true
 }
 
 // projectionSQLKey uses the names emitted by the SQL translator. Reference

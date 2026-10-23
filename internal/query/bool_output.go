@@ -42,18 +42,19 @@ func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 	}
 	var candidates []string
 	counts := map[string]int{}
-	unknownStar := false
+	unknownOutput := false
 	add := func(from, to int) {
 		item := tokens[from:to]
 		col, _ := parseProjectionItem(item)
 		if col.Star {
 			star := keys.starKeys(scopeID, item)
-			unknownStar = unknownStar || !star.complete
+			unknownOutput = unknownOutput || !star.complete
 			for key, count := range star.counts {
 				counts[key] += count
 			}
 		}
-		output := projectionOutputSQLKey(tokens, ctx, opts, col, from, to)
+		output, known := keys.outputSQLKey(col, from, to)
+		unknownOutput = unknownOutput || (!col.Star && !known)
 		if output == "" {
 			return
 		}
@@ -86,7 +87,7 @@ func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 		}
 	}
 	add(from, end)
-	if unknownStar {
+	if unknownOutput {
 		return nil
 	}
 	var out []string

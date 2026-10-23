@@ -22,10 +22,11 @@ func (s *projectionKeySet) add(other projectionKeySet) {
 }
 
 type projectionKeyResolver struct {
-	tokens  []tok
-	opts    CompileOpts
-	ctx     sourceContext
-	outputs map[int]projectionKeySet
+	tokens         []tok
+	opts           CompileOpts
+	ctx            sourceContext
+	outputs        map[int]projectionKeySet
+	scalarRewrites map[string]funcRewrite
 }
 
 func newProjectionKeyResolver(tokens []tok, opts CompileOpts, ctx sourceContext) *projectionKeyResolver {
@@ -183,10 +184,12 @@ func (r *projectionKeyResolver) scopeKeys(scopeID int) projectionKeySet {
 		col, _ := parseProjectionItem(item)
 		if col.Star {
 			out.add(r.starKeys(scopeID, item))
-		} else if key := projectionOutputSQLKey(r.tokens, r.ctx, r.opts, col, from, from+len(item)); key != "" {
-			out.counts[key]++
 		} else {
-			out.complete = false
+			key, known := r.outputSQLKey(col, from, from+len(item))
+			out.complete = out.complete && known && key != ""
+			if key != "" {
+				out.counts[key]++
+			}
 		}
 		from += len(item) + 1
 	}
