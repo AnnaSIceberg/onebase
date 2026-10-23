@@ -24,7 +24,10 @@ func TestWSIntakeTestServer_ShutdownReleasesSession(t *testing.T) {
 		})
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		conn, _, err := websocket.Dial(ctx, wsTestURL(srv), nil)
+		conn, resp, err := websocket.Dial(ctx, wsTestURL(srv), nil)
+		if resp != nil && resp.Body != nil {
+			defer func() { _ = resp.Body.Close() }()
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
