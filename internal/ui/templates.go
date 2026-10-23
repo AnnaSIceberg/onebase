@@ -123,6 +123,9 @@ func newTemplate(bundle *i18n.Bundle) (*template.Template, error) {
 // показ даты нужен не только шаблонам, и каждая новая копия этой логики — новый
 // шанс забыть про `In(time.Local)`.
 func fmtDateValue(v any) string {
+	if v == nil {
+		return ""
+	}
 	fmtT := func(t time.Time) string {
 		lt := t.In(time.Local)
 		h, m, sec := lt.Clock()
