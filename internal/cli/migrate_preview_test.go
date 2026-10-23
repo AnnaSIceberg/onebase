@@ -298,6 +298,37 @@ func TestMigratePreview_PostgresRoleWithoutDDL(t *testing.T) {
 		return err
 	}), "writes must be rejected")
 
+	// The same unprivileged opener must diagnose signed legacy ownership,
+	// without trying to create _users or repair the registry first.
+	name := "ReaderLegacy" + strings.Repeat("a", 70)
+	old := metadata.LegacySQLIdents(metadata.TableLogical(name))[1]
+	_, err = admin.Exec(ctx, "CREATE TABLE "+schema+"."+old+" (id UUID PRIMARY KEY,value TEXT); CREATE UNIQUE INDEX reader_legacy_unique ON "+schema+"."+old+" (value); CREATE TABLE "+schema+"._managed_entity_indexes(table_name TEXT,index_name TEXT,format_version INTEGER,definition TEXT,signature TEXT,source TEXT)")
+	require.NoError(t, err)
+	index := storage.EntityIndexDefinition{Schema: schema, Table: old, Name: "reader_legacy_unique", Unique: true, Columns: []string{"value"}, Plain: true}
+	require.NoError(t, admin.QueryRow(ctx, "SELECT indexdef FROM pg_indexes WHERE schemaname=$1 AND indexname=$2", schema, index.Name).Scan(&index.Definition))
+	raw, err := json.Marshal(index)
+	require.NoError(t, err)
+	_, err = admin.Exec(ctx, "INSERT INTO "+schema+"._managed_entity_indexes VALUES ($1,$2,1,$3,$4,'created')", old, index.Name, string(raw), index.Fingerprint())
+	require.NoError(t, err)
+	_, err = admin.Exec(ctx, "GRANT SELECT ON ALL TABLES IN SCHEMA "+schema+" TO "+role)
+	require.NoError(t, err)
+	writeProcrunFixture(t, dir, "catalogs/Товар.yaml", "name: "+name+"\nfields:\n  - {name: Value, type: string}\n")
+	body, err := os.ReadFile(filepath.Join(dir, "catalogs/Товар.yaml"))
+	require.NoError(t, err)
+	_, err = admin.Exec(ctx, "UPDATE "+schema+"._onebase_config SET content=$1 WHERE path='catalogs/Товар.yaml'", body)
+	require.NoError(t, err)
+	for _, source := range []string{"file", "database"} {
+		out, err := executeMigration(t, dir, "", map[string]string{"db": readerDSN, "dry-run": "true", "config-source": source})
+		require.ErrorContains(t, err, "ownership transfer is unsupported")
+		require.Contains(t, err.Error(), index.Name)
+		require.Empty(t, out)
+	}
+	var definition, signature string
+	require.NoError(t, admin.QueryRow(ctx, "SELECT definition,signature FROM "+schema+"._managed_entity_indexes").Scan(&definition, &signature))
+	require.Equal(t, string(raw), definition)
+	require.Equal(t, index.Fingerprint(), signature)
+	require.NoError(t, admin.QueryRow(ctx, "SELECT COUNT(*) FROM pg_tables WHERE schemaname=$1", schema).Scan(&tables))
+	require.Equal(t, 3, tables)
 }
 
 func TestMigratePreview_MissingTargetAppears(t *testing.T) {
@@ -334,6 +365,63 @@ func TestMigratePreview_SQLiteRejectsWrites(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Equal(t, before, previewTree(t, filepath.Dir(path)))
+}
+
+// A prior binary's signed table identity must be rejected by the registered
+// preview command, without creating auth tables, recovery artifacts or a new DB.
+func TestMigratePreview_ManagedLegacyIdentityPreservesFiles(t *testing.T) {
+	for _, source := range []string{"file", "database"} {
+		t.Run(source, func(t *testing.T) {
+			dir, dbDir := t.TempDir(), t.TempDir()
+			path := filepath.Join(dbDir, "legacy.db")
+			name := "Legacy" + strings.Repeat("a", 70)
+			writeProcrunFixture(t, dir, "config/app.yaml", "name: legacy-managed\n")
+			writeProcrunFixture(t, dir, "catalogs/Legacy.yaml", "name: "+name+"\nfields:\n  - {id: value, name: Value, type: string}\nindexes:\n  - {fields: [Value], unique: true}\n")
+			_, err := executeMigration(t, dir, path, nil)
+			require.NoError(t, err)
+			db, err := openCLIStorage(t.Context(), "sqlite", path, "")
+			require.NoError(t, err)
+			proj, err := project.Load(dir)
+			require.NoError(t, err)
+			defer proj.Close()
+			current, old := metadata.TableName(name), metadata.TableLogical(name)
+			actions, _, err := db.PlanEntityIndexes(t.Context(), proj.Entities)
+			require.NoError(t, err)
+			var index storage.EntityIndexDefinition
+			for _, a := range actions {
+				if a.Ownership == "managed" {
+					index = a.Index
+				}
+			}
+			require.NotEmpty(t, index.Name)
+			_, err = db.Exec(t.Context(), "ALTER TABLE "+current+" RENAME TO "+old)
+			require.NoError(t, err)
+			index.Table = old
+			require.NoError(t, db.QueryRow(t.Context(), "SELECT sql FROM sqlite_schema WHERE type='index' AND name=?", index.Name).Scan(&index.Definition))
+			raw, err := json.Marshal(index)
+			require.NoError(t, err)
+			_, err = db.Exec(t.Context(), "UPDATE _managed_entity_indexes SET table_name=?,definition=?,signature=? WHERE index_name=?", old, string(raw), index.Fingerprint(), index.Name)
+			require.NoError(t, err)
+			_, err = db.Exec(t.Context(), "UPDATE _schema_fields SET table_name=? WHERE table_name=?", old, current)
+			require.NoError(t, err)
+			if source == "database" {
+				repo := configdb.New(db)
+				require.NoError(t, repo.EnsureSchema(t.Context()))
+				require.NoError(t, repo.ImportFromDir(t.Context(), dir))
+			}
+			db.Close()
+			before := previewTree(t, dbDir)
+			for range 2 {
+				out, err := executeMigration(t, dir, path, map[string]string{"dry-run": "true", "config-source": source})
+				require.ErrorContains(t, err, "ownership transfer is unsupported")
+				require.Contains(t, err.Error(), index.Name)
+				require.Contains(t, err.Error(), old)
+				require.Contains(t, err.Error(), current)
+				require.Empty(t, out, "no applicability/adoption report on failed preview")
+				require.Equal(t, before, previewTree(t, dbDir))
+			}
+		})
+	}
 }
 
 // Legacy CLI matrix fixtures hold an idle connection for post-preview reads.

@@ -121,6 +121,9 @@ type migrationPlanRefusal struct{ error }
 // migrationPlanText buffers output until preview verifies its stable read.
 func migrationPlanText(ctx context.Context, db *storage.DB, proj *project.Project) (string, error) {
 	var text strings.Builder
+	if err := db.CheckEntityIndexIdentity(ctx, proj.Entities); err != nil {
+		return "", err
+	}
 	if err := printLongIdentPlan(ctx, db, proj, &text); err != nil {
 		return "", err
 	}
@@ -205,6 +208,9 @@ func migrationPlanText(ctx context.Context, db *storage.DB, proj *project.Projec
 // свежей (в т.ч. :memory:) базе.
 func applyAllMigrations(ctx context.Context, db *storage.DB, proj *project.Project) error {
 	if err := db.CheckLongIdents(ctx, proj.Entities, proj.Registers, proj.InfoRegisters, proj.AccountRegisters); err != nil {
+		return err
+	}
+	if err := db.CheckEntityIndexIdentity(ctx, proj.Entities); err != nil {
 		return err
 	}
 	// Реквизиты reference:_users создают FK на auth-таблицу. Подготовить её

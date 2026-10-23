@@ -272,6 +272,9 @@ func (db *DB) PlanEntityIndexes(ctx context.Context, entities []*metadata.Entity
 }
 func (db *DB) planEntityIndexes(ctx context.Context, entities []*metadata.Entity, adoptions []IndexAdoption) ([]EntityIndexAction, IndexManifest, error) {
 	manifest := IndexManifest{Version: 1, Indexes: []IndexAdoption{}}
+	if err := db.CheckEntityIndexIdentity(ctx, entities); err != nil {
+		return nil, manifest, err
+	}
 	actions := []EntityIndexAction{}
 	used := map[string]bool{}
 	adopt := map[string]IndexAdoption{}
@@ -572,5 +575,8 @@ func (db *DB) guardEntityColumnChanges(ctx context.Context, e *metadata.Entity) 
 // CheckEntityColumnMigration is the same read-only dependency gate used by
 // Migrate. Preview reports its refusal alongside the proposed changes.
 func (db *DB) CheckEntityColumnMigration(ctx context.Context, e *metadata.Entity) error {
+	if err := db.CheckEntityIndexIdentity(ctx, []*metadata.Entity{e}); err != nil {
+		return err
+	}
 	return db.guardEntityColumnChanges(ctx, e)
 }

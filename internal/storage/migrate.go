@@ -559,6 +559,9 @@ func (db *DB) migrateEntities(ctx context.Context, entities []*metadata.Entity) 
 	if err := db.CheckLongIdents(ctx, entities, nil, nil, nil); err != nil {
 		return err
 	}
+	if err := db.CheckEntityIndexIdentity(ctx, entities); err != nil {
+		return err
+	}
 	for _, e := range entities {
 		if _, err := desiredEntityIndexes(e); err != nil {
 			return err
@@ -629,6 +632,9 @@ func (db *DB) migrateEntities(ctx context.Context, entities []*metadata.Entity) 
 			var before []EntityIndexDefinition
 			if exists {
 				if err := db.lockEntityTable(ctx, table); err != nil {
+					return err
+				}
+				if err := db.CheckEntityIndexIdentity(ctx, []*metadata.Entity{e}); err != nil {
 					return err
 				}
 				if err := db.guardEntityColumnChanges(ctx, e); err != nil {
