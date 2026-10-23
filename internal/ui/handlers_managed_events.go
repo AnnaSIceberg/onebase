@@ -1358,7 +1358,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// единственное соединение. Успешный выход с открытой транзакцией считается
 	// ошибкой процедуры, чтобы конфигурационная ошибка не оставалась незаметной.
 	runErr = finishDSLExecution(txState, runErr)
-	s.finishConcealEvent(r, form, entity, obj, thisObj.assigned, runErr == nil)
+	// Cancelled BeforeClose revokes disclosure just like a failed handler.
+	concealSuccess := runErr == nil && (closeInv == nil || !closeInv.cancelled)
+	s.finishConcealEvent(r, form, entity, obj, thisObj.assigned, concealSuccess)
 	liveCtx := txState.Ctx()
 	if closeInv != nil && thisObj.saved {
 		// BeforeClose itself may save in discard mode. Promote that durable
