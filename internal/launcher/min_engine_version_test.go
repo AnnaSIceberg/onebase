@@ -23,9 +23,8 @@ func TestStartMinimumEngineVersionWarning(t *testing.T) {
 	if versionOverrideSubprocess(t) {
 		return
 	}
-	previous := version.Build
+	// Set Build only in the isolated child, before any HTTP goroutines.
 	version.Build = "v9.0.0"
-	t.Cleanup(func() { version.Build = previous })
 	for _, source := range []string{"file", "database"} {
 		for _, requirement := range []string{"2.0.0", "1.2.3", "1.0.0", ""} {
 			t.Run(source+"/"+requirement, func(t *testing.T) {

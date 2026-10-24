@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -19,7 +20,10 @@ const versionOverrideChild = "ONEBASE_VERSION_OVERRIDE_CHILD"
 // writes (including their cleanup) in a process that never ran that watcher.
 func versionOverrideSubprocess(t *testing.T) bool {
 	t.Helper()
-	if os.Getenv(versionOverrideChild) == t.Name() {
+	if child := os.Getenv(versionOverrideChild); child != "" {
+		if child != t.Name() {
+			t.Fatalf("unexpected version override child sentinel: %q", child)
+		}
 		return false
 	}
 	ctx, cancel := versionOverrideContext(t, 30*time.Second)
@@ -39,7 +43,7 @@ func versionOverrideContext(t *testing.T, budget time.Duration) (context.Context
 	if outer, ok := t.Deadline(); ok && outer.Add(-5*time.Second).Before(deadline) {
 		deadline = outer.Add(-5 * time.Second)
 	}
-	return context.WithDeadline(context.Background(), deadline)
+	return context.WithDeadline(t.Context(), deadline)
 }
 
 func runVersionOverrideSubprocess(ctx context.Context, name string, env []string) ([]byte, error) {
@@ -47,7 +51,7 @@ func runVersionOverrideSubprocess(ctx context.Context, name string, env []string
 	if !ok || time.Until(deadline) <= 0 {
 		return nil, fmt.Errorf("version subprocess requires a future deadline")
 	}
-	args := []string{"-test.run=^" + regexp.QuoteMeta(name) + "$", "-test.v"}
+	args := []string{"-test.run=^" + regexp.QuoteMeta(name) + "$", "-test.v", "-test.timeout=" + time.Until(deadline).String()}
 	if testing.CoverMode() != "" {
 		// go test supplies this directory for -coverprofile. Each process emits
 		// its own counter file; the parent's coverage teardown merges them all
@@ -59,6 +63,7 @@ func runVersionOverrideSubprocess(ctx context.Context, name string, env []string
 		args = append(args, "-test.gocoverdir="+dir.Value.String())
 	}
 	cmd := exec.CommandContext(ctx, os.Args[0], args...) //nolint:gosec // Current test executable, anchored exact test name, no shell.
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Env = append(os.Environ(), versionOverrideChild+"="+name)
 	cmd.Env = append(cmd.Env, env...)
 	output, err := cmd.CombinedOutput()
@@ -109,5 +114,73 @@ func TestVersionOverrideSubprocessFailures(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A foreign nonempty sentinel must fail before version mutation or a recursive
+// subprocess launch. Exercise the guard through the same executable and runner.
+func TestVersionOverrideSubprocessSentinel(t *testing.T) {
+	const controlEnv = "ONEBASE_VERSION_OVERRIDE_SENTINEL_CONTROL"
+	if os.Getenv(controlEnv) == "foreign" {
+		versionOverrideSubprocess(t)
+		t.Fatal("foreign sentinel passed the guard")
+	}
+	ctx, cancel := versionOverrideContext(t, 5*time.Second)
+	defer cancel()
+	_, err := runVersionOverrideSubprocess(ctx, t.Name(), []string{
+		versionOverrideChild + "=foreign-test",
+		controlEnv + "=foreign",
+	})
+	if err == nil || !strings.Contains(err.Error(), "unexpected version override child sentinel") || ctx.Err() != nil {
+		t.Fatalf("foreign sentinel was not rejected by the child: %v", err)
+	}
+}
+
+func TestVersionOverrideSubprocessCancellation(t *testing.T) {
+	const readyEnv = "ONEBASE_VERSION_OVERRIDE_CANCEL_READY"
+	if os.Getenv(versionOverrideChild) == t.Name() {
+		fmt.Fprintln(os.Stdout, "version child ready for cancellation")
+		if err := os.WriteFile(os.Getenv(readyEnv), []byte("ready"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			time.Sleep(time.Hour)
+		}
+	}
+	ready := filepath.Join(t.TempDir(), "ready")
+	ctx, cancel := versionOverrideContext(t, 5*time.Second)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := runVersionOverrideSubprocess(ctx, t.Name(), []string{readyEnv + "=" + ready})
+		result <- err
+	}()
+	// Cancel only after the real child acknowledges startup. The deadline is
+	// the failure bound; elapsed time alone never proves child readiness.
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			cancel()
+			<-result
+			t.Fatal(err)
+		}
+		select {
+		case err := <-result:
+			t.Fatalf("child exited before cancellation: %v", err)
+		case <-ctx.Done():
+			<-result
+			t.Fatalf("child did not acknowledge startup: %v", ctx.Err())
+		case <-tick.C:
+		}
+	}
+	cancel()
+	err := <-result
+	if err == nil || !errors.Is(ctx.Err(), context.Canceled) ||
+		!strings.Contains(err.Error(), "context error: context canceled") ||
+		!strings.Contains(err.Error(), "version child ready for cancellation") {
+		t.Fatalf("child cancellation was not propagated: %v", err)
 	}
 }
