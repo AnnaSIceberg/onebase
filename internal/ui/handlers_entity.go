@@ -1575,7 +1575,7 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 	// поэтому RLS на чтение, объявленный в autogen-форме, тоже срабатывает.
 	if objForm := pickObjectFormWithReadHook(entity); objForm != nil {
 		if denied := s.runFormReadHook(r.Context(), entity, objForm, id); denied != nil {
-			s.renderForbidden(w, r)
+			s.renderReadHookDenied(w, r, denied)
 			return
 		}
 	}

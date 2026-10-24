@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -651,6 +652,26 @@ func regFmtDate(v any) string {
 func (s *Server) renderForbidden(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusForbidden)
 	s.render(w, r, "page-forbidden", map[string]any{})
+}
+
+// renderReadHookDenied — отказ серверного обработчика ПриЧтенииНаСервере. Текст
+// ВызватьИсключение — это сообщение конфигурации пользователю («Запрещён
+// просмотр карточки для должности…»), как Предупреждение в 1С, и страница
+// отказа показывает его вместо общего «нет прав». Технический сбой хука
+// (объект не загрузился, ошибка не из DSL) остаётся общей страницей: его
+// текст пользователю ни о чём не говорит и может раскрыть устройство базы.
+func (s *Server) renderReadHookDenied(w http.ResponseWriter, r *http.Request, denied error) {
+	var dslErr *interpreter.DSLError
+	if !errors.As(denied, &dslErr) || strings.TrimSpace(dslErr.UserMessage()) == "" {
+		s.renderForbidden(w, r)
+		return
+	}
+	// Keep the error chain for localization, but omit diagnostic source data
+	// from the copy passed to the HTTP renderer. Logs retain the original error.
+	userErr := *dslErr
+	userErr.File, userErr.Line = "", 0
+	w.WriteHeader(http.StatusForbidden)
+	s.render(w, r, "page-forbidden", map[string]any{"Reason": s.errText(r, &userErr)})
 }
 
 // can reports whether the current request may perform op on (kind, entity).

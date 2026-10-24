@@ -83,6 +83,14 @@ type formObjectThis struct {
 	writeBlocked bool
 }
 
+// runtimeObject exposes identity for Заполнить; unsaved fields stay in the form.
+func (f *formObjectThis) runtimeObject() *runtime.Object {
+	if f == nil {
+		return nil
+	}
+	return f.obj
+}
+
 // liveCtx — контекст с открытой DSL-транзакцией, если она есть.
 func (f *formObjectThis) liveCtx() context.Context {
 	if f.ctxSrc != nil {
