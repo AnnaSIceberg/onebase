@@ -5376,6 +5376,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	scopedColTypes, qualifiedColTypes := buildScalarColumnTypes(tokens, opts, scalarSourceCtx, projectionKeys)
 	boolColumns := scopedBoolOutputColumns(tokens, opts, scalarSourceCtx, scopedColTypes, qualifiedColTypes, projectionKeys)
 	dateOutputs := simpleProjectionDateOutputs(tokens, projectionPlan, scalarSourceCtx, scopedColTypes, qualifiedColTypes, projectionKeys)
+	dateColumns := mergeDateOutputColumns(tokens, projectionPlan, projectionKeys, dateOutputs)
 	tokens = rewriteGroupingReferenceAliases(tokens)
 	// расширяем НачалоДня/Год/Месяц/ОКР/АБС/ЦЕЛ/... в SQL-эквиваленты
 	// до основной трансляции, чтобы остальные шаги ничего не знали о них.
@@ -6032,8 +6033,17 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	longLabels, ambiguousLabels := longOutputLabels(tokens, sql, tr.sourceCtx)
 	if ambiguousLabels {
 		projectionPlan.Simple = false
+		dateOutputs = nil
+		dateColumns = nil
 	}
 	typedColumns, dslColumnAliases := typedProjectionColumns(projectionPlan, tokens, opts, tr.sourceCtx, tr.refCols)
+	// The descriptor path also normalizes dates. Do not let it restore a type
+	// rejected by the projection proof (duplicate or unknown SQL output names).
+	for key, desc := range typedColumns {
+		if desc.Type == metadata.FieldTypeDate && !dateOutputs[key] {
+			delete(typedColumns, key)
+		}
+	}
 	return Result{
 		SQL:               sql,
 		LongIdents:        longLabels,
@@ -6043,7 +6053,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		ProjectionFields:  expandReferenceProjection(projectionFields, tr.refDims),
 		Projection:        expandProjectionRefDims(projectionPlan, tr.refDims),
 		BoolColumns:       boolColumns,
-		DateColumns:       mergeDateOutputColumns(projectionPlan, typedOutputColumns(projectionPlan, tr.colTypes, metadata.FieldTypeDate), dateOutputs),
+		DateColumns:       dateColumns,
 		RefColumns:        refOutputColumns(projectionPlan, tr.refCols),
 		TypedColumns:      typedColumns,
 		DSLColumnAliases:  dslColumnAliases,
@@ -6236,10 +6246,6 @@ func addRegisterSystemFields(source *typedProjectionSource, period, movement boo
 	}
 }
 
-// typedOutputColumns — общий перебор колонок проекции, читающих поле заданного
-// типа. Кроме булевых так же приводятся даты: на SQLite они хранятся TEXT, и
-// без приведения путь запроса отдавал строку там, где объектный путь отдаёт
-// значение даты (#1013).
 // simpleProjectionDateOutputs — колонки простой проекции, доказанно несущие
 // дату: поле-дата любого источника по его псевдониму (`Зв.Дата` при
 // присоединённом `Документ.Звонок КАК Зв`) и МИНИМУМ/МАКСИМУМ такого поля.
@@ -6274,24 +6280,23 @@ func simpleProjectionDateOutputs(tokens []tok, p ProjectionPlan, ctx sourceConte
 // mergeDateOutputColumns сохраняет порядок доказанных колонок-дат по реальным
 // SQL-ключам. Прежний глобальный список не добавляется: он не знает источник
 // поля и может вернуть отвергнутый resolver тип после коллизии с соседним выходом.
-func mergeDateOutputColumns(p ProjectionPlan, legacy []string, proven map[string]bool) []string {
-	if len(proven) == 0 {
-		return legacy
+func mergeDateOutputColumns(tokens []tok, p ProjectionPlan, keys *projectionKeyResolver, proven map[string]bool) []string {
+	if !p.Simple || len(proven) == 0 {
+		return nil
 	}
-	have := map[string]bool{}
-	for _, c := range legacy {
-		have[c] = true
+	start, ok := singleSelectStart(tokens)
+	if !ok {
+		return nil
 	}
 	var out []string
-	for _, c := range p.Columns {
-		if c.Output == "" || c.Star {
-			continue
+	from := selectProjectionStart(tokens, start)
+	for _, item := range splitProjectionItems(tokens[from:topLevelFrom(tokens, start)]) {
+		column, _ := parseProjectionItem(item)
+		key, known := keys.outputSQLKey(column, from, from+len(item))
+		if !column.Star && known && proven[key] && !containsString(out, key) {
+			out = append(out, key)
 		}
-		if have[c.Output] || proven[c.Output] {
-			if !containsString(out, c.Output) {
-				out = append(out, c.Output)
-			}
-		}
+		from += len(item) + 1 // separator comma
 	}
 	return out
 }
@@ -6303,22 +6308,6 @@ func containsString(list []string, s string) bool {
 		}
 	}
 	return false
-}
-
-func typedOutputColumns(p ProjectionPlan, colTypes map[string]metadata.FieldType, want metadata.FieldType) []string {
-	if !p.Simple {
-		return nil
-	}
-	var cols []string
-	for _, c := range p.Columns {
-		if c.Star || c.Output == "" || len(c.Fields) != 1 {
-			continue
-		}
-		if colTypes[lowerFast(c.Fields[0])] == want {
-			cols = append(cols, c.Output)
-		}
-	}
-	return cols
 }
 
 // boolLiteralSQL переводит булев литерал текста запроса в литерал диалекта.

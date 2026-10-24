@@ -208,6 +208,9 @@ func projectionSQLKey(tokens []tok, ctx sourceContext, column ProjectionColumn, 
 		if physical, _, system := entitySystemColAlias(column.Output); system {
 			return physical
 		}
+		if physical, system := systemColAlias(column.Output); system {
+			return physical
+		}
 	}
 	return column.Output
 }
