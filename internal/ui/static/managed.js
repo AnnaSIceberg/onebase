@@ -4560,7 +4560,9 @@ function obManagedSetPageHidden(path, hide) {
   if (!btn) return;
   btn.style.display = hide ? 'none' : '';
   obManagedSyncPageRequired();
-  var siblings = btn.parentElement ? btn.parentElement.children : [];
+  var tabs = btn.closest ? btn.closest('.managed-tabs') : null;
+  if (!tabs) return;
+  var siblings = obManagedOwnTabParts(tabs, '.managed-tab-btn');
   if (!hide) {
     for (var i = 0; i < siblings.length; i++) {
       if (siblings[i].style.display !== 'none' && siblings[i].classList.contains('active')) return;
@@ -4576,8 +4578,7 @@ function obManagedSetPageHidden(path, hide) {
     }
   }
   btn.classList.remove('active');
-  var tabs = btn.closest ? btn.closest('.managed-tabs') : null;
-  var content = tabs ? tabs.querySelector('.managed-tab-content[data-tab-content="' + (btn.getAttribute('data-tab-idx') || '0') + '"]') : null;
+  var content = obManagedOwnTabParts(tabs, '.managed-tab-content[data-tab-content="' + (btn.getAttribute('data-tab-idx') || '0') + '"]')[0];
   if (content) content.style.display = 'none';
 }
 
@@ -4593,7 +4594,7 @@ function obManagedSyncPageRequired() {
     while (content) {
       var tabs = content.closest('.managed-tabs');
       var idx = content.getAttribute('data-tab-content');
-      var btn = tabs && tabs.querySelector('.managed-tab-btn[data-tab-idx="' + idx + '"]');
+      var btn = tabs && obManagedOwnTabParts(tabs, '.managed-tab-btn[data-tab-idx="' + idx + '"]')[0];
       if (btn && btn.style.display === 'none') {
         hidden = true;
         break;
@@ -4636,15 +4637,28 @@ obManagedReady(function () {
       var parent = content.parentElement;
       content = parent && parent.closest ? parent.closest('.managed-tab-content') : null;
     }
-    // For nested tab groups, select every ancestor page from outer to inner:
-    // each group switches only its own pages, the inner one is set after.
-    for (var i = pages.length - 1; i >= 0; i--) {
+    // Inspect every ancestor before switching anything. A hidden_when page
+    // cannot be opened and must not consume the first-invalid slot: the next
+    // invalid control on an available page still needs to become visible.
+    var buttons = [];
+    for (var i = 0; i < pages.length; i++) {
       var page = pages[i];
       var tabs = page.closest('.managed-tabs');
       if (!tabs) continue;
       var idx = page.getAttribute('data-tab-content');
       var btn = obManagedOwnTabParts(tabs, '.managed-tab-btn[data-tab-idx="' + idx + '"]')[0];
-      if (btn) obManagedSwitchTab(btn);
+      if (btn && btn.style.display === 'none') {
+        e.preventDefault();
+        return;
+      }
+      if (btn) buttons.push(btn);
+    }
+    validationPassStarted = true;
+    setTimeout(function () { validationPassStarted = false; }, 0);
+    // Open available ancestors outer-to-inner. Each button only changes its
+    // own group, preserving selections in all other nested tab groups.
+    for (var i = buttons.length - 1; i >= 0; i--) {
+      obManagedSwitchTab(buttons[i]);
     }
   }, true);
 

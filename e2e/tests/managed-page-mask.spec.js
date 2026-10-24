@@ -274,3 +274,92 @@ for (const scenario of ['before', 'after', 'nested']) {
     expect(result.values.Text ?? '').toBe('');
   });
 }
+
+// Combined regression: these are Server.Mount-rendered tabs and real DSL
+// form-events, with the entire production managed.js and native browser APIs.
+for (const reverse of [false, true]) {
+  test(`nested hidden pages preserve each group's selection, reverse=${reverse}`, async ({ page }) => {
+    await open(page, 'NestedHiddenTabs');
+    const outer = tab(page, 'Conditional');
+    const inner = tab(page, 'InnerConditional');
+    const innerHome = tab(page, 'InnerHome');
+    const input = masked(page);
+    const innerPage = page.locator('.managed-tabs[data-tabs="Inner"] > .managed-tab-content[data-tab-content="1"]');
+    await outer.click();
+    await inner.click();
+    await tab(page, 'Home').click();
+    await outer.click();
+    await expect(inner).toHaveClass(/active/);
+    await expect(innerPage).toBeVisible();
+    // The same pathname and data-tabs keys restore both groups independently.
+    await page.reload();
+    await expect(outer).toHaveClass(/active/);
+    await expect(inner).toHaveClass(/active/);
+    await expect(innerPage).toBeVisible();
+    for (let cycle = 0; cycle < 2; cycle++) {
+      await event(page, reverse ? 'HideInner' : 'Hide');
+      await event(page, reverse ? 'Hide' : 'HideInner');
+      await expect(outer).toBeHidden();
+      await expect(inner).not.toHaveClass(/active/);
+      await expect(innerHome).toHaveClass(/active/);
+      await expect(input).not.toHaveAttribute('required');
+      await expect(input).not.toHaveAttribute('pattern');
+      // Both groups have their own first visible page, with the same index 0.
+      await expect(tab(page, 'Home')).toHaveClass(/active/);
+      await event(page, reverse ? 'Show' : 'ShowInner');
+      await expect(input).not.toHaveAttribute('pattern');
+      await event(page, reverse ? 'ShowInner' : 'Show');
+      await expect(input).toHaveAttribute('required', '');
+      await expect(input).toHaveAttribute('pattern', '[0-9]+');
+      // Showing an available page preserves an already available active page.
+      await expect(tab(page, 'Home')).toHaveClass(/active/);
+      await outer.click();
+      await expect(innerHome).toHaveClass(/active/);
+      await inner.click();
+      await expect(innerPage).toBeVisible();
+    }
+    await event(page, 'Hide');
+    await event(page, 'HideInner');
+    await event(page, 'HideRemaining');
+    expect(await page.locator('.managed-tab-btn.active').count()).toBe(0);
+    expect(await page.locator('.managed-tab-content').evaluateAll((nodes) => nodes.every((node) => node.style.display === 'none'))).toBe(true);
+    await event(page, 'ShowInner');
+    await expect(input).not.toHaveAttribute('pattern');
+    await event(page, 'Show');
+    await expect(outer).toHaveClass(/active/);
+    await expect(inner).toHaveClass(/active/);
+    await expect(input).toHaveAttribute('pattern', '[0-9]+');
+    await event(page, 'ShowRemaining');
+    await expect(inner).toHaveClass(/active/);
+    await expect(innerPage).toBeVisible();
+  });
+}
+
+test('nested native validation skips hidden ancestors and reveals the next available invalid', async ({ page }) => {
+  await open(page, 'NestedHiddenTabs');
+  const input = masked(page);
+  const next = page.locator('input[name="Следующий"]');
+  await tab(page, 'Conditional').click();
+  await tab(page, 'InnerConditional').click();
+  await event(page, 'Hide');
+  await expect(input).not.toHaveAttribute('pattern');
+  // A separate native rule is deliberately outside form-local suspension.
+  await input.evaluate((el) => el.setCustomValidity('still invalid'));
+  expect(await page.locator('#main-form').evaluate((form) => form.reportValidity())).toBe(false);
+  await expect(tab(page, 'Conditional')).toBeHidden();
+  await expect(next).toBeFocused();
+  await expect(tab(page, 'Available')).toHaveClass(/active/);
+  await next.fill('ready');
+  await input.evaluate((el) => el.setCustomValidity(''));
+  await event(page, 'Show');
+  await tab(page, 'Home').click();
+  await page.locator('#main-form').evaluate((form) => form.requestSubmit());
+  await expect(input).toBeFocused();
+  await expect(tab(page, 'Conditional')).toHaveClass(/active/);
+  await expect(tab(page, 'InnerConditional')).toHaveClass(/active/);
+  await expect(input).toHaveAttribute('required', '');
+  await expect(input).toHaveAttribute('pattern', '[0-9]+');
+  expect(await page.evaluate(() => window.nativeSubmissions.length)).toBe(0);
+  await input.fill('123');
+  expect(await page.locator('#main-form').evaluate((form) => form.reportValidity())).toBe(true);
+});

@@ -178,6 +178,8 @@ const tabs = {
   querySelectorAll(selector) {
     if (selector === '.managed-tab-btn') return buttons;
     if (selector === '.managed-tab-content') return contents;
+    const m = selector.match(/^\.managed-tab-content\[data-tab-content="([^"]*)"\]$/);
+    if (m) return contents.filter((c) => c.idx === m[1]);
     throw new Error('unexpected selector ' + selector);
   },
   querySelector(selector) {
@@ -201,7 +203,10 @@ const buttons = payload.tabs.buttons.map((b) => ({
   closest(selector) { return selector === '.managed-tabs' ? tabs : null; },
 }));
 headers.children = buttons;
-const contents = payload.tabs.contents.map((c) => ({idx: c.idx, style: {display: c.display}}));
+const contents = payload.tabs.contents.map((c) => ({
+  idx: c.idx, style: {display: c.display},
+  closest(selector) { return selector === '.managed-tabs' ? tabs : null; },
+}));
 global.window = {CSS: null};
 global.location = {pathname: '/ui/catalog/x'};
 global.sessionStorage = {setItem() {}, getItem() { return null; }};
@@ -215,7 +220,7 @@ global.document = {
   },
 };
 const fns = new Function(
-  extract('obManagedTabKey') + extract('obManagedSwitchTab') +
+  extract('obManagedTabKey') + extract('obManagedOwnTabParts') + extract('obManagedSwitchTab') +
   extract('obManagedSetPageHidden') + extract('obManagedSyncPageRequired') + extract('applyElementStates') +
   '\nreturn {applyElementStates, obManagedSwitchTab};'
 )();

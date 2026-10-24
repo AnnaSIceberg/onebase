@@ -21,6 +21,26 @@ import (
 // Shared by the HTTP matrix and the real-browser fixture. All mutations go
 // through mounted public routes; the browser gets actual formEdit HTML and
 // successful form-event responses, rather than a hand-written hidden map.
+const managedPageMaskScript = `
+Процедура Hide()
+ Объект.Скрыть = Истина;
+ Объект.Текст = "invalid";
+КонецПроцедуры
+Процедура Show()
+ Объект.Скрыть = Ложь;
+КонецПроцедуры
+Процедура HideInner()
+ Объект.СкрытьВнутри = Истина;
+ Объект.Текст = "invalid";
+КонецПроцедуры
+Процедура ShowInner()
+ Объект.СкрытьВнутри = Ложь;
+КонецПроцедуры
+Процедура Save()
+ Объект.Записать();
+КонецПроцедуры
+`
+
 func managedPageMaskEntity(t *testing.T, required, nested, copyField bool) *metadata.Entity {
 	t.Helper()
 	field := fieldEl("Masked", "Объект.Текст")
@@ -48,25 +68,7 @@ func managedPageMaskEntity(t *testing.T, required, nested, copyField bool) *meta
 		form.Elements = append(form.Elements, &metadata.FormElement{Kind: metadata.FormElementButton, Name: name,
 			Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: name}})
 	}
-	form.ProgramAST = mustParse(t, `
-Процедура Hide()
- Объект.Скрыть = Истина;
- Объект.Текст = "invalid";
-КонецПроцедуры
-Процедура Show()
- Объект.Скрыть = Ложь;
-КонецПроцедуры
-Процедура HideInner()
- Объект.СкрытьВнутри = Истина;
- Объект.Текст = "invalid";
-КонецПроцедуры
-Процедура ShowInner()
- Объект.СкрытьВнутри = Ложь;
-КонецПроцедуры
-Процедура Save()
- Объект.Записать();
-КонецПроцедуры
-`)
+	form.ProgramAST = mustParse(t, managedPageMaskScript)
 	return &metadata.Entity{
 		Name: fmt.Sprintf("PageMask%v%v%v", required, nested, copyField), Kind: metadata.KindCatalog,
 		Fields: []metadata.Field{
@@ -187,6 +189,42 @@ func TestManagedPageMaskHTTPMatrix(t *testing.T) {
 	})
 }
 
+// NestedHiddenTabs deliberately uses indexes 0 and 1 in both tab groups.
+// It shares the public mounted fixture with mask/checkbox browser regressions.
+func managedNestedHiddenTabsEntity(t *testing.T) *metadata.Entity {
+	entity := managedPageMaskEntity(t, true, true, false)
+	entity.Name = "NestedHiddenTabs"
+	form := entity.Forms[0]
+	outer := form.Elements[2]
+	outer.Children[0].HiddenWhen = "СкрытьГлавную"
+	inner := outer.Children[1].Children[0]
+	inner.Children = append([]*metadata.FormElement{{Kind: metadata.FormElementPage, Name: "InnerHome", HiddenWhen: "СкрытьПервуюВнутри"}}, inner.Children...)
+	next := fieldEl("NextRequired", "Объект.Следующий")
+	next.Required = true
+	outer.Children = append(outer.Children, &metadata.FormElement{Kind: metadata.FormElementPage, Name: "Available", HiddenWhen: "СкрытьДругую", Children: []*metadata.FormElement{next}})
+	entity.Fields = append(entity.Fields, metadata.Field{Name: "Следующий", Type: metadata.FieldTypeString})
+	for _, name := range []string{"СкрытьГлавную", "СкрытьПервуюВнутри", "СкрытьДругую"} {
+		entity.Fields = append(entity.Fields, metadata.Field{Name: name, Type: metadata.FieldTypeBool})
+		form.Elements = append(form.Elements, &metadata.FormElement{Kind: metadata.FormElementCheckbox, Name: name, DataPath: "Объект." + name})
+	}
+	for _, name := range []string{"HideRemaining", "ShowRemaining"} {
+		form.Elements = append(form.Elements, &metadata.FormElement{Kind: metadata.FormElementButton, Name: name, Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: name}})
+	}
+	form.ProgramAST = mustParse(t, managedPageMaskScript+`
+Процедура HideRemaining()
+ Объект.СкрытьГлавную = Истина;
+ Объект.СкрытьПервуюВнутри = Истина;
+ Объект.СкрытьДругую = Истина;
+КонецПроцедуры
+Процедура ShowRemaining()
+ Объект.СкрытьГлавную = Ложь;
+ Объект.СкрытьПервуюВнутри = Ложь;
+ Объект.СкрытьДругую = Ложь;
+КонецПроцедуры
+`)
+	return entity
+}
+
 // Playwright starts this isolated, public HTTP fixture as a compiled Go test.
 // Closing its stdin stops it; normal Go runs skip it and never wait for input.
 // The record URLs go to stdout as one marked line: a file path taken from the
@@ -209,7 +247,7 @@ func TestManagedPageMaskBrowserFixture(t *testing.T) {
 			entities = append(entities, managedPageMaskEntity(t, required, nested, false))
 		}
 	}
-	entities = append(entities, managedPageMaskEntity(t, true, false, true))
+	entities = append(entities, managedPageMaskEntity(t, true, false, true), managedNestedHiddenTabsEntity(t))
 	for _, scenario := range []string{"unchecked", "nested", "local-required", "checked"} {
 		entities = append(entities, managedPageCheckboxEntity(t, scenario))
 	}
