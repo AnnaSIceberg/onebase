@@ -65,8 +65,8 @@ if package in [ui, launcher]:
         emit('run', package, Test=n)
         for sub in ['one', 'two']:
             emit('run', package, Test=n+'/'+sub)
-            emit('pass', package, Test=n+'/'+sub, Elapsed=0.001)
-        emit('pass', package, Test=n, Elapsed=0.002)
+            if mode != 'missing-subtest-result': emit('pass', package, Test=n+'/'+sub, Elapsed=0.001)
+        if mode != 'missing-test-result': emit('pass', package, Test=n, Elapsed=0.002)
 if mode in ['failed-test', 'race', 'timeout']:
     emit('output', package, Output={'failed-test':'FAIL test', 'race':'WARNING: DATA RACE',
                                   'timeout':'panic: test timed out after 10m0s'}[mode])
@@ -96,6 +96,11 @@ coverage.write_text(content)
 
 
 class CoverageCLI(unittest.TestCase):
+    runner = RUNNER
+
+    def cli_command(self, runner):
+        return [sys.executable, str(runner)]
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
@@ -108,10 +113,10 @@ class CoverageCLI(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_cli(self, scenario="", runner=RUNNER, new_test=False):
+    def run_cli(self, scenario="", runner=None, new_test=False):
         env = dict(os.environ, SCENARIO=scenario, NEW_TEST="1" if new_test else "")
         env["PATH"] = str(self.bin) + os.pathsep + env["PATH"]
-        result = subprocess.run([sys.executable, str(runner)], cwd=self.root, env=env,
+        result = subprocess.run(self.cli_command(runner or self.runner), cwd=self.root, env=env,
                                 capture_output=True, text=True, encoding="utf-8", timeout=60)
         return result
 
@@ -147,7 +152,7 @@ class CoverageCLI(unittest.TestCase):
         for mode in ["list-failure", "missing-ui-package", "missing-launcher-package",
                      "duplicate-package", "compile-failure", "empty-launcher-inventory",
                      "empty-inventory", "duplicate-inventory", "invalid-inventory",
-                     "missing-execution", "duplicate-execution", "failed-test", "race", "timeout",
+                     "missing-execution", "duplicate-execution", "missing-test-result", "missing-subtest-result", "failed-test", "race", "timeout",
                      "missing-package-result", "event-failure", "missing-profile", "corrupt-profile",
                      "incompatible-profile", "missing-block", "incompatible-launcher-profile",
                      "missing-launcher-block", "wrong-mode", "duplicate-block",
@@ -210,7 +215,7 @@ func TestOther(t *testing.T) { if Value()!=7 { t.Fatal("other") } }
         for name in ["value_test.go", "new_test.go"]:
             text = (ui / name).read_text().replace("package ui", "package launcher", 1)
             (launcher / name).write_text(text)
-        result = subprocess.run([sys.executable, str(RUNNER)], cwd=self.root,
+        result = subprocess.run(self.cli_command(self.runner), cwd=self.root,
                                 capture_output=True, text=True, encoding="utf-8", timeout=180)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         expected = Counter(["TestAlpha", "TestAlpha/a", "TestAlpha/b", "TestBravo",

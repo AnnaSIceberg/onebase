@@ -84,6 +84,12 @@ def partition(names, count):
 
 def execution(log, packages, names=None):
     journal = events(log, packages)
+    started = Counter((e["Package"], e["Test"]) for e in journal
+                      if e.get("Action") == "run" and e.get("Test"))
+    finished = Counter((e["Package"], e["Test"]) for e in journal
+                       if e.get("Action") in ("pass", "skip") and e.get("Test"))
+    require(started == finished and all(count == 1 for count in started.values()),
+            f"incomplete/duplicate test results in {log}")
     if names is not None:
         ran = Counter(e["Test"] for e in journal if e.get("Action") == "run"
                       and "/" not in e.get("Test", ""))
@@ -132,11 +138,11 @@ def merge(profiles, output):
     temporary.replace(output)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifacts", type=Path, default=Path("test-results"))
     parser.add_argument("--output", type=Path, default=Path("coverage.out"))
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     args.output.unlink(missing_ok=True)
     args.artifacts.mkdir(parents=True, exist_ok=False)
     require(shutil.which("node") is not None, "real Node.js is required")
