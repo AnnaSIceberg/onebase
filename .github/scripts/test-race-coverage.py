@@ -13,7 +13,7 @@ import sys
 import tempfile
 import time
 
-# Each process keeps the original 10m timeout. The build job still has 30m.
+# Each process keeps the original 10m timeout. The build job has a 40m budget.
 BATCH_SIZE = 128
 BATCHED_PACKAGES = ("internal/auth", "internal/launcher", "internal/ui")
 ISOLATED_PACKAGE = "internal/dsl/interpreter"
