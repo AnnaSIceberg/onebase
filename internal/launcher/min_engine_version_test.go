@@ -20,6 +20,9 @@ import (
 // Exercise the HTTP launch endpoint and its visible return page, including
 // database-backed manifests. A private comparison alone would miss a dead call.
 func TestStartMinimumEngineVersionWarning(t *testing.T) {
+	if versionOverrideSubprocess(t) {
+		return
+	}
 	previous := version.Build
 	version.Build = "v9.0.0"
 	t.Cleanup(func() { version.Build = previous })
