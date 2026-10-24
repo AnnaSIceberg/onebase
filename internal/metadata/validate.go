@@ -149,6 +149,9 @@ func Validate(entities []*Entity, enums []*Enum) error {
 		if err := validateFullText(e); err != nil {
 			return err
 		}
+		if err := validateListFilters(e); err != nil {
+			return err
+		}
 		if err := validateSearchFields(e); err != nil {
 			return err
 		}
@@ -233,15 +236,24 @@ func validateFieldIDs(e *Entity) error {
 }
 
 func validateIndexes(e *Entity) error {
+	names := map[string]string{}
 	for i, idx := range e.Indexes {
 		if len(idx.Fields) == 0 {
 			return fmt.Errorf("entity %s: indexes[%d].fields is required", e.Name, i)
 		}
+		cols := []string{}
 		for _, name := range idx.Fields {
 			if findEntityField(e, name) == nil {
 				return fmt.Errorf("entity %s: index references unknown field %s", e.Name, name)
 			}
+			cols = append(cols, ColumnName(*findEntityField(e, name)))
 		}
+		name := StableEntityIndexName(TableName(e.Name), cols, idx.Unique)
+		signature := fmt.Sprintf("%t:%q", idx.Unique, cols)
+		if old, ok := names[name]; ok && old != signature {
+			return fmt.Errorf("entity %s: incompatible declarations for index %s", e.Name, name)
+		}
+		names[name] = signature
 	}
 	return nil
 }
@@ -638,6 +650,22 @@ func findEntityField(e *Entity, name string) *Field {
 		if e.Fields[i].Name == name {
 			return &e.Fields[i]
 		}
+	}
+	return nil
+}
+
+// validateListFilters: поля list_filters — реквизиты сущности. Опечатка иначе
+// молча убрала бы поле из панели «Отбор».
+func validateListFilters(e *Entity) error {
+	seen := map[string]bool{}
+	for _, name := range e.ListFilters {
+		if findEntityField(e, name) == nil {
+			return fmt.Errorf("entity %s: list_filters references unknown field %s", e.Name, name)
+		}
+		if seen[name] {
+			return fmt.Errorf("entity %s: list_filters: поле %s указано дважды", e.Name, name)
+		}
+		seen[name] = true
 	}
 	return nil
 }

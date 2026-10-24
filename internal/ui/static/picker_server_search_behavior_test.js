@@ -13,6 +13,7 @@ const managedSource = fs.readFileSync('static/managed.js', 'utf8');
 const pickerSource = source.slice(source.indexOf('var obPickerSearch = {'), source.indexOf('\nfunction openRefPicker('));
 // После слияния с конвейером очереди событий (#1557/#1528) настоящий obFire
 // тянет за собой snapshot/dispatch и close-контроллер: вырезаем весь домен.
+const controlStateSource = managedSource.slice(managedSource.indexOf('  function controlSubmittable('), managedSource.indexOf('  function applyValues('));
 const fireSource = managedSource.slice(managedSource.indexOf('  // obFire(elementName'), managedSource.indexOf('\n  // Отслеживание'));
 
 // Узел ровно того объёма, который трогает openItemPicker: дерево, атрибуты,
@@ -161,7 +162,7 @@ function pickerContext(managed = false) {
       // close-контроллер читает конфигурацию на инициализации.
       cfg: {},
     };
-    new Function(...Object.keys(deps), fireSource)(...Object.values(deps));
+    new Function(...Object.keys(deps), controlStateSource + fireSource)(...Object.values(deps));
   }
   function modal() { return document.getElementById('_item-picker-modal'); }
   function box() { return modal() ? modal().children[0] : null; }
@@ -826,6 +827,43 @@ for (const close of ['cancel', 'escape', 'transfer', 'other-button']) {
     choose(filterSelect(ctx, '__proto__'), 'toString');
     assert.deepEqual(visibleIds(ctx), ['linked-1'], 'повторное открытие вернуло коллизии ключей');
   });
+}
+
+for (const serverSearch of [false, true]) {
+  for (const editable of [false, true]) {
+    test(`перенос сохраняет колонки Object.prototype, серверный поиск=${serverSearch}, редактирование=${editable}`, () => {
+      const ctx = pickerContext();
+      const names = ['__proto__', 'constructor', 'toString', 'Номер'];
+      const values = Object.fromEntries(names.map((name) => [name, 'value-' + name]));
+      ctx.open({
+        columns: names.map((name) => ({name, type: 'string', editable})),
+        rows: [{id: 'prototype-row', data: values}],
+        config: {serverSearch},
+      }, 'Подбор');
+      const tr = ctx.rowsOf()[0];
+      const cb = tr.querySelector('._ip-cb');
+      if (editable) {
+        names.forEach((name) => {
+          const input = tr.querySelector('._ip-val[data-col="' + name + '"]');
+          input.value = 'edited-' + name;
+          input.dispatch('input', {target: input});
+        });
+      }
+      cb.checked = true;
+      cb.onchange();
+      ctx.transfer();
+      const choices = ctx.fired.filter((event) => event.event === 'Выбор');
+      assert.equal(choices.length, 1, 'перенос должен отправить одно событие Выбор');
+      const result = JSON.parse(choices[0].params._pick_result);
+      assert.equal(result.length, 1);
+      assert.equal(result[0].id, 'prototype-row');
+      names.forEach((name) => {
+        assert.ok(Object.prototype.hasOwnProperty.call(result[0], name),
+          'результат потерял собственную колонку ' + name);
+        assert.equal(result[0][name], (editable ? 'edited-' : 'value-') + name);
+      });
+    });
+  }
 }
 
 test('Конфиг.Ширина задаёт ширину окна, без неё — прежние 720px', () => {
