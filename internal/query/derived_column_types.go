@@ -82,6 +82,7 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 	}
 	stars := projectionKeySet{counts: map[string]int{}, complete: true}
 	complete := true
+	physicalCounts := map[string]int{}
 	add := func(from, to int) {
 		item := tokens[from:to]
 		column, _ := parseProjectionItem(item)
@@ -93,6 +94,7 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		if key == "" || column.Star {
 			return
 		}
+		physicalCounts[metadata.SQLIdent(key)]++
 		typ := metadata.FieldType("")
 		if !union {
 			expr := item
@@ -135,9 +137,20 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 	// Only proven absence from every projection and wildcard preserves a type.
 	// This is independent of projection order and of the wildcard values.
 	for key := range output {
-		if !complete || !stars.complete || stars.counts[key] > 0 {
+		physical := metadata.SQLIdent(key)
+		if !complete || !stars.complete || physicalCounts[physical] != 1 || stars.counts[physical] > 0 {
 			output[key] = ""
 		}
+	}
+	// Derived consumers can spell a long output either logically or with its
+	// emitted SQLIdent. Export both only after every physical collision has
+	// invalidated the type; a third occurrence must not restore it.
+	physical := map[string]metadata.FieldType{}
+	for key, typ := range output {
+		physical[metadata.SQLIdent(key)] = typ
+	}
+	for key, typ := range physical {
+		output[key] = typ
 	}
 	return output
 }
@@ -199,7 +212,8 @@ func (r *projectionKeyResolver) outputSQLKey(column ProjectionColumn, from, to i
 
 // projectionSQLKey uses the names emitted by the SQL translator. Reference
 // names, including explicit aliases, emit id; other explicit aliases remain
-// literal. Derived projections must count collisions under these SQL keys.
+// logical here so result normalization can follow RestoreLongLabels. Uniqueness
+// checks must apply metadata.SQLIdent before comparing these names.
 func projectionSQLKey(tokens []tok, ctx sourceContext, column ProjectionColumn, fieldEnd int) string {
 	if isReferenceName(column.Output) {
 		return "id"

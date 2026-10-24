@@ -6,7 +6,7 @@ import (
 	"github.com/ivantit66/onebase/internal/metadata"
 )
 
-// projectionKeySet describes SQL output names, independently of their types.
+// projectionKeySet counts physical SQLIdent output names, independently of types.
 // Incomplete expansions cannot prove that an explicit alias is collision-free.
 // Counts retain separate source occurrences and repeated projection items.
 type projectionKeySet struct {
@@ -188,7 +188,7 @@ func (r *projectionKeyResolver) scopeKeys(scopeID int) projectionKeySet {
 			key, known := r.outputSQLKey(col, from, from+len(item))
 			out.complete = out.complete && known && key != ""
 			if key != "" {
-				out.counts[key]++
+				out.counts[metadata.SQLIdent(key)]++
 			}
 		}
 		from += len(item) + 1

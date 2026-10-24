@@ -59,7 +59,7 @@ func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 			return
 		}
 		fieldEnd := from + 2*len(col.Path) - 1
-		counts[output]++
+		counts[metadata.SQLIdent(output)]++
 		// Prove the expression independently: two logical names can emit
 		// distinct SQL keys and must not erase each other's source types.
 		if len(col.Path) > 0 {
@@ -93,8 +93,9 @@ func scopedBoolOutputColumns(tokens []tok, opts CompileOpts, ctx sourceContext,
 	var out []string
 	for _, output := range candidates {
 		// Different DSL names can emit the same SQL key (Проведен ->
-		// posted). A colliding string or expression must not become bool.
-		if counts[output] == 1 {
+		// posted, or a long alias -> SQLIdent). A colliding string or
+		// expression must not become bool.
+		if counts[metadata.SQLIdent(output)] == 1 {
 			out = append(out, output)
 		}
 	}
