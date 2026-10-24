@@ -51,7 +51,7 @@ jobs:
     needs: [classify]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Docs-only success
         if: ${{ needs.classify.result == 'success' && needs.classify.outputs.mode == 'docs' }}
@@ -275,6 +275,7 @@ jobs:
       - name: Unit tests (-race, coverage)
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
         run: |
+          python3 -m unittest discover -s .github/scripts -p 'test_coverage_test.py'
           python3 .github/scripts/test-race-coverage_test.py
           python3 .github/scripts/test-race-coverage.py coverage.out
 
