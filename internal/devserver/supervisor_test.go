@@ -25,11 +25,26 @@ func TestSupervisorHelperProcess(t *testing.T) {
 	if os.Getenv("ONEBASE_DEVSERVER_HELPER") != "1" {
 		t.Skip("вспомогательный процесс запускается супервизором, а не раннером")
 	}
-	conn, err := net.DialTimeout("tcp", os.Getenv("ONEBASE_DEVSERVER_HELPER_ADDR"), 5*time.Second)
+	// Only a decimal port crosses the process boundary; the peer is always
+	// our parent's IPv4 loopback listener, never an environment-supplied host.
+	portText := os.Getenv("ONEBASE_DEVSERVER_HELPER_PORT")
+	for _, digit := range portText {
+		if digit < '0' || digit > '9' {
+			t.Fatal("недопустимый порт helper-процесса")
+		}
+	}
+	port, err := strconv.ParseUint(portText, 10, 16)
+	if err != nil || port == 0 {
+		t.Fatal("недопустимый порт helper-процесса")
+	}
+	dialer := net.Dialer{Timeout: 5 * time.Second}
+	conn, err := dialer.DialContext(context.Background(), "tcp4", "127.0.0.1:"+strconv.FormatUint(port, 10))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close() // Best-effort cleanup; protocol I/O errors are checked below.
+	}()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		if scanner.Text() != "ping" {
@@ -44,6 +59,32 @@ func TestSupervisorHelperProcess(t *testing.T) {
 	}
 }
 
+func supervisorHelperCommand(ctx context.Context, port string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSupervisorHelperProcess$") //nolint:gosec // G204: тест запускает собственный бинарь
+	cmd.Env = append(os.Environ(), "ONEBASE_DEVSERVER_HELPER=1", "ONEBASE_DEVSERVER_HELPER_PORT="+port)
+	return cmd
+}
+
+// Exercise the actual subprocess entry point: invalid input must fail before
+// attempting a connection, including hosts/URLs that the former env accepted.
+func TestSupervisorHelperRejectsInvalidPort(t *testing.T) {
+	for _, port := range []string{"", "abc", "0", "65536", "-1", "+1", " 1", "1 ", "127.0.0.1:80", "localhost:80", "http://127.0.0.1:80"} {
+		t.Run(port, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer cancel()
+			cmd := supervisorHelperCommand(ctx, port)
+			out, err := cmd.CombinedOutput()
+			var exitErr *exec.ExitError
+			if ctx.Err() != nil || !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+				t.Fatalf("helper не отклонил порт: err=%v, output=%s", err, out)
+			}
+			if !strings.Contains(string(out), "недопустимый порт helper-процесса") {
+				t.Fatalf("helper не проверил порт перед подключением: %s", out)
+			}
+		})
+	}
+}
+
 // helperSupervisor собирает супервизор с подменёнными сборкой и запуском: обе
 // операции ходят наружу (go build, exec), и в тесте важна логика вокруг них.
 func helperSupervisor(t *testing.T, srcDir string) (*Supervisor, *recorder) {
@@ -54,14 +95,14 @@ func helperSupervisor(t *testing.T, srcDir string) (*Supervisor, *recorder) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		listener.Close()
+		_ = listener.Close() // Best-effort cleanup unblocks any pending Accept.
 		rec.mu.Lock()
 		defer rec.mu.Unlock()
 		for _, p := range rec.procs {
 			// Run owns the only Wait. Kill is also safe after it has reaped
 			// the child; this fallback covers failed assertions/startup.
 			_ = p.cmd.Process.Kill()
-			p.conn.Close()
+			_ = p.conn.Close() // Best-effort cleanup after terminating the child.
 		}
 	})
 	sup := &Supervisor{
@@ -81,9 +122,7 @@ func helperSupervisor(t *testing.T, srcDir string) (*Supervisor, *recorder) {
 			return nil, nil
 		},
 		start: func(_ string, _, _ []string, _ io.Writer) (*exec.Cmd, error) {
-			cmd := exec.Command(os.Args[0], "-test.run=TestSupervisorHelperProcess") //nolint:gosec // G204: тест запускает собственный бинарь
-			cmd.Env = append(os.Environ(), "ONEBASE_DEVSERVER_HELPER=1",
-				"ONEBASE_DEVSERVER_HELPER_ADDR="+listener.Addr().String())
+			cmd := supervisorHelperCommand(context.Background(), strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 			cmd.Stdout = io.Discard
 			cmd.Stderr = io.Discard
 			if err := cmd.Start(); err != nil {

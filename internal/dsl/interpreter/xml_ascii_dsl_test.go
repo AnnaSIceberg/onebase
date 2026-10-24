@@ -15,9 +15,9 @@ func TestDSL_XML_ASCIIAndUnicodeCharacters(t *testing.T) {
 	КонецПроцедуры`
 	// Exhaust the ASCII boundary after a multibyte prefix: the answer is a
 	// character position, including DEL, which XML 1.0 permits.
-	for b := 0; b < 128; b++ {
+	for b := rune(0); b < 128; b++ {
 		t.Run(fmt.Sprintf("byte-%02x", b), func(t *testing.T) {
-			text := "я🙂abc" + string(rune(b)) + "tail"
+			text := "я🙂abc" + string(b) + "tail"
 			want := int64(0)
 			if b < 0x20 && b != 9 && b != 10 && b != 13 {
 				want = 6
