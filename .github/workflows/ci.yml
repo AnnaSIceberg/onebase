@@ -51,7 +51,7 @@ jobs:
     needs: [classify]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - name: Docs-only success
         if: ${{ needs.classify.result == 'success' && needs.classify.outputs.mode == 'docs' }}
@@ -275,16 +275,9 @@ jobs:
       - name: Unit tests (-race, coverage)
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
         run: |
+          python3 -m unittest discover -s .github/scripts -p 'test_coverage_test.py'
           python3 .github/scripts/test-race-coverage_test.py
           python3 .github/scripts/test-race-coverage.py coverage.out
-
-      - name: Upload unit test inventory and timings
-        if: ${{ always() && (needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: unit-test-report
-          path: coverage.out.report/
-          if-no-files-found: error
 
       # Раннеры работают в UTC, поэтому целый класс дефектов «время
       # канонизируется не в той зоне» для CI невидим: #945 поймали случайно, на

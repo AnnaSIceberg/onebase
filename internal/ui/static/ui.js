@@ -5097,6 +5097,7 @@ function openRefPicker(selOrId) {
       fetchOptions.method = 'POST';
       fetchOptions.headers['Content-Type'] = 'application/json';
       var sourceElement = sel.getAttribute('data-ref-element') || '';
+      var sourceEntity = sel.getAttribute('data-ref-source-entity') || '';
       var contextValues = {};
       try {
         var bindings = JSON.parse(refContextRaw);
@@ -5107,7 +5108,7 @@ function openRefPicker(selOrId) {
       } catch (e) {}
       fetchOptions.body = JSON.stringify({
         q: q || '', limit: 50, offset: 0,
-        source: { entity: refEntity, element: sourceElement },
+        source: { entity: sourceEntity, element: sourceElement },
         context: contextValues,
         filters: obRefFilterValues(sel) || {}
       });
@@ -5614,17 +5615,39 @@ window.onebaseDevice = {
   /* Ступень B (план 87): клиентские команды ui.*. Рисует/исполняет только
      оболочка (как callToast) — событие ретранслируется во фреймы, но всплывашку и
      открытие вкладки делает верхнее окно, иначе дубли. */
+  // Адрес формы по ссылке команды ui.открытьФорму. Списку без id можно
+  // передать «отбор» — Структура «Поле → значение» становится отбором списка
+  // (f.<Поле>=…, как панель «Отбор»); отчёту — «параметры» (имена параметров
+  // отчёта) и «сформировать» = Истина, чтобы отчёт сразу построился, как
+  // СкомпоноватьРезультат в 1С. Ссылки приходят идентификатором.
   function formURL(link) {
     link = link || {};
     var kind = String(link['вид'] || link.kind || 'document').toLowerCase();
     var ent = link['сущность'] || link.entity || '';
     var id = link['id'] || link.id || '';
     if (!ent) return '';
+    function pairs(obj, prefix) {
+      var out = [];
+      if (!obj || typeof obj !== 'object') return out;
+      Object.keys(obj).forEach(function (k) {
+        var v = obj[k];
+        if (v === null || v === undefined) return;
+        out.push(encodeURIComponent(prefix + k) + '=' + encodeURIComponent(String(v)));
+      });
+      return out;
+    }
     if (kind === 'processor' || kind === 'report' || kind === 'page') {
-      return '/ui/' + kind + '/' + encodeURIComponent(String(ent));
+      var path = '/ui/' + kind + '/' + encodeURIComponent(String(ent));
+      if (kind !== 'report') return path;
+      var q = pairs(link['параметры'] || link.params, '');
+      var run = link['сформировать'] || link.run;
+      if (run === true || run === 'true') q.push('__run=1');
+      return q.length ? path + '?' + q.join('&') : path;
     }
     var base = '/ui/' + kind + '/' + encodeURIComponent(String(ent).toLowerCase());
-    return id ? base + '/' + encodeURIComponent(String(id)) : base;
+    if (id) return base + '/' + encodeURIComponent(String(id));
+    var f = pairs(link['отбор'] || link.filter, 'f.');
+    return f.length ? base + '?' + f.join('&') : base;
   }
   function openFormTab(link) {
     var url = formURL(link);
