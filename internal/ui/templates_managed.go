@@ -301,8 +301,8 @@ const tplManagedForm = `
        его запретил. Каскад от группы табличную часть достаёт, но на отрисовке:
        $ro уже содержит условие предка (#1184). */}}
   <div class="managed-tp" data-ob-tp="{{$el.Name}}">
-  <h3 style="margin:18px 0 8px;font-size:14px">{{fieldTitleRU $el.TitleMap (or (tablePartTitle $tpMeta) $tpName)}}</h3>
   {{if $tpMeta}}
+  <h3 style="margin:18px 0 8px;font-size:14px">{{fieldTitleRU $el.TitleMap (or (tablePartTitle $tpMeta) $tpName)}}</h3>
   {{$tpVirtualCols := managedTPVirtualColumns $tpMeta.Fields $el.VirtualColumns}}
   {{/* Состав и порядок колонок задают дети kind: Колонка (план 154). Реквизит,
        не попавший в выбор, остаётся в плане скрытым: убрать его из полезной
