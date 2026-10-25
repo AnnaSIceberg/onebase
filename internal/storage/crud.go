@@ -486,17 +486,8 @@ func (db *DB) GetByID(ctx context.Context, entityName string, id uuid.UUID, enti
 func (db *DB) getByID(ctx context.Context, entityName string, id uuid.UUID, entity *metadata.Entity, forUpdate bool) (map[string]any, error) {
 	d := db.dialect
 	table := metadata.TableName(entityName)
-	cols := []string{"id"}
-	for _, f := range entity.Fields {
-		cols = append(cols, metadata.ColumnName(f))
-	}
-	if entity.Kind == metadata.KindDocument {
-		cols = append(cols, "posted")
-	}
-	cols = append(cols, "deletion_mark", "_version")
-	if entity.Hierarchical {
-		cols = append(cols, "is_folder", "parent_id")
-	}
+	cols := objectReadColumns(entity)
+
 	sql := fmt.Sprintf("SELECT %s FROM %s WHERE id = %s", strings.Join(cols, ", "), table, d.Placeholder(1))
 	if forUpdate && db.IsPostgres() && HasTx(ctx) {
 		sql += " FOR UPDATE"
@@ -512,7 +503,28 @@ func (db *DB) getByID(ctx context.Context, entityName string, id uuid.UUID, enti
 		return nil, fmt.Errorf("getbyid %s: %w", entityName, err)
 	}
 
-	result := make(map[string]any, len(cols))
+	return objectReadValues(entity, dest), nil
+}
+
+// objectReadColumns and objectReadValues keep single and batched object reads
+// identical, including document, hierarchy and optimistic-lock fields.
+func objectReadColumns(entity *metadata.Entity) []string {
+	cols := []string{"id"}
+	for _, f := range entity.Fields {
+		cols = append(cols, metadata.ColumnName(f))
+	}
+	if entity.Kind == metadata.KindDocument {
+		cols = append(cols, "posted")
+	}
+	cols = append(cols, "deletion_mark", "_version")
+	if entity.Hierarchical {
+		cols = append(cols, "is_folder", "parent_id")
+	}
+	return cols
+}
+
+func objectReadValues(entity *metadata.Entity, dest []any) map[string]any {
+	result := make(map[string]any, len(dest))
 	result["id"] = normalizeValue(dest[0])
 	for i, f := range entity.Fields {
 		result[f.Name] = normalizeFieldValue(f, dest[i+1])
@@ -531,7 +543,7 @@ func (db *DB) getByID(ctx context.Context, entityName string, id uuid.UUID, enti
 		off++
 		result["parent_id"] = normalizeValue(dest[off])
 	}
-	return result, nil
+	return result
 }
 
 // normalizeValue converts pgx scan results to display-friendly Go types.
@@ -760,6 +772,26 @@ func (db *DB) listWhere(entityName string, entity *metadata.Entity, params ListP
 				whereParts = append(whereParts, fmt.Sprintf("%s %s %s", column, op, d.Placeholder(argIdx)))
 				args = append(args, bound)
 				argIdx++
+			}
+		case field.Type == metadata.FieldTypeBool:
+			// Булево — точное сравнение, а не подстрока: на SQLite значение
+			// хранится как 0/1, и «%Да%» не совпадал ни с одной записью. «Нет»
+			// включает незаполненное (NULL) — в карточке оно и показывается как
+			// «Нет». Непонятное значение не открывает весь список.
+			if filter.Value != "" {
+				b, ok := parseAnyBool(filter.Value)
+				switch {
+				case !ok:
+					whereParts = append(whereParts, "1 = 0")
+				case b:
+					whereParts = append(whereParts, fmt.Sprintf("%s = %s", column, d.Placeholder(argIdx)))
+					args = append(args, true)
+					argIdx++
+				default:
+					whereParts = append(whereParts, fmt.Sprintf("(%s = %s OR %s IS NULL)", column, d.Placeholder(argIdx), column))
+					args = append(args, false)
+					argIdx++
+				}
 			}
 		case field.RefEntity != "":
 			if filter.Value != "" {
