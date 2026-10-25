@@ -227,10 +227,12 @@ jobs:
   verify-ci:
     name: Require green CI for this commit
     runs-on: ubuntu-latest
-    # Свой дедлайн ожидания CI — 30 минут (см. шаг ниже); лимит job'а стоит
+    # CI build допускает 60 минут после classify; ждём до 75 минут, чтобы
+    # полный успешный прогон успел завершиться вместе с зависимыми jobs.
+    # Лимит job'а стоит
     # чуть выше, чтобы срабатывал внутренний с внятным сообщением, а этот
     # оставался страховкой на случай зависания самого раннера.
-    timeout-minutes: 40
+    timeout-minutes: 85
     permissions:
       # contents:read нужен появившемуся checkout: объявленные на джобе
       # permissions ЗАМЕЩАЮТ умолчание workflow, а не дополняют его.
@@ -273,7 +275,7 @@ jobs:
           # они проверяют другой ref. Не требуем успеха от ВСЕХ запусков этого
           # SHA: старый cancelled run (или отменённая первая попытка перед rerun)
           # не должен навсегда отравлять уже успешную проверку push@main.
-          deadline=$(( $(date +%s) + 1800 ))
+          deadline=$(( $(date +%s) + 4500 ))
           while :; do
             runs=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&branch=main&event=push&per_page=100" \
               --jq '[.workflow_runs[] | {status: .status, conclusion: .conclusion, event: .event, branch: .head_branch, attempt: .run_attempt}]')
@@ -290,7 +292,7 @@ jobs:
               exit 1
             fi
             if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::Не дождались успешного CI для $SHA за 30 минут. Публикация отменена."
+              echo "::error::Не дождались успешного CI для $SHA за 75 минут. Публикация отменена."
               echo "$runs" | jq .
               exit 1
             fi

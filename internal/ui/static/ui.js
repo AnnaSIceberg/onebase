@@ -2113,6 +2113,7 @@ function toggleTreeNode(btn) {
   var depth = (tr && tr.dataset.treeDepth) || '0';
   var url = '/ui/_tree-children/' + encodeURIComponent(cfg.treeEntity || '') + '?parent=' + encodeURIComponent(fid) + '&depth=' + encodeURIComponent(depth);
   if (cfg.subsystem) url += '&subsystem=' + encodeURIComponent(cfg.subsystem);
+  if (cfg.listFormOff) url += '&lf_off=' + encodeURIComponent(cfg.listFormOff);
   fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
     .then(function (resp) {
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -4557,8 +4558,10 @@ function refContextForRequest(sel) {
    пользователя уходит событием Ответ с _question_answer — сервер кладёт его
    в переменную ВопросОтвет и вызывает обработчик Ответ того же элемента.
    Диалог неблокирующий: клик мимо закрывает модал без ответа (обработчик фазы 1
-   сам решает, что делать без второй фазы). */
-function obOpenQuestion(payload, elementName) {
+   сам решает, что делать без второй фазы).
+   handlers (необязательно) — {onAnswer(variant), onDismiss()}: ответ уходит не
+   событием Ответ элемента, а вызывающему (вопрос ПередПроведением). */
+function obOpenQuestion(payload, elementName, handlers) {
   if (!payload || !payload.variants || !payload.variants.length) return;
   var old = document.getElementById('_question-modal');
   if (old) old.remove();
@@ -4586,6 +4589,7 @@ function obOpenQuestion(payload, elementName) {
     btn.style.cssText = 'padding:8px 16px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:14px';
     btn.addEventListener('click', function () {
       modal.remove();
+      if (handlers && typeof handlers.onAnswer === 'function') { handlers.onAnswer(variant); return; }
       if (typeof obFire === 'function') obFire(elementName, 'Ответ', { _question_answer: variant });
     });
     row.appendChild(btn);
@@ -4593,7 +4597,9 @@ function obOpenQuestion(payload, elementName) {
   box.appendChild(row);
   modal.appendChild(box);
   modal.addEventListener('click', function (ev) {
-    if (ev.target === modal) modal.remove();
+    if (ev.target !== modal) return;
+    modal.remove();
+    if (handlers && typeof handlers.onDismiss === 'function') handlers.onDismiss();
   });
   document.body.appendChild(modal);
 }
@@ -5096,6 +5102,7 @@ function openRefPicker(selOrId) {
       fetchOptions.method = 'POST';
       fetchOptions.headers['Content-Type'] = 'application/json';
       var sourceElement = sel.getAttribute('data-ref-element') || '';
+      var sourceEntity = sel.getAttribute('data-ref-source-entity') || '';
       var contextValues = {};
       try {
         var bindings = JSON.parse(refContextRaw);
@@ -5106,7 +5113,7 @@ function openRefPicker(selOrId) {
       } catch (e) {}
       fetchOptions.body = JSON.stringify({
         q: q || '', limit: 50, offset: 0,
-        source: { entity: refEntity, element: sourceElement },
+        source: { entity: sourceEntity, element: sourceElement },
         context: contextValues,
         filters: obRefFilterValues(sel) || {}
       });
@@ -5613,17 +5620,39 @@ window.onebaseDevice = {
   /* Ступень B (план 87): клиентские команды ui.*. Рисует/исполняет только
      оболочка (как callToast) — событие ретранслируется во фреймы, но всплывашку и
      открытие вкладки делает верхнее окно, иначе дубли. */
+  // Адрес формы по ссылке команды ui.открытьФорму. Списку без id можно
+  // передать «отбор» — Структура «Поле → значение» становится отбором списка
+  // (f.<Поле>=…, как панель «Отбор»); отчёту — «параметры» (имена параметров
+  // отчёта) и «сформировать» = Истина, чтобы отчёт сразу построился, как
+  // СкомпоноватьРезультат в 1С. Ссылки приходят идентификатором.
   function formURL(link) {
     link = link || {};
     var kind = String(link['вид'] || link.kind || 'document').toLowerCase();
     var ent = link['сущность'] || link.entity || '';
     var id = link['id'] || link.id || '';
     if (!ent) return '';
+    function pairs(obj, prefix) {
+      var out = [];
+      if (!obj || typeof obj !== 'object') return out;
+      Object.keys(obj).forEach(function (k) {
+        var v = obj[k];
+        if (v === null || v === undefined) return;
+        out.push(encodeURIComponent(prefix + k) + '=' + encodeURIComponent(String(v)));
+      });
+      return out;
+    }
     if (kind === 'processor' || kind === 'report' || kind === 'page') {
-      return '/ui/' + kind + '/' + encodeURIComponent(String(ent));
+      var path = '/ui/' + kind + '/' + encodeURIComponent(String(ent));
+      if (kind !== 'report') return path;
+      var q = pairs(link['параметры'] || link.params, '');
+      var run = link['сформировать'] || link.run;
+      if (run === true || run === 'true') q.push('__run=1');
+      return q.length ? path + '?' + q.join('&') : path;
     }
     var base = '/ui/' + kind + '/' + encodeURIComponent(String(ent).toLowerCase());
-    return id ? base + '/' + encodeURIComponent(String(id)) : base;
+    if (id) return base + '/' + encodeURIComponent(String(id));
+    var f = pairs(link['отбор'] || link.filter, 'f.');
+    return f.length ? base + '?' + f.join('&') : base;
   }
   function openFormTab(link) {
     var url = formURL(link);
