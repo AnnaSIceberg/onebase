@@ -1572,7 +1572,7 @@
       "assets": [
         {
           "path": "third_party/webview_go/libs/webview/include/webview.h",
-          "sha256": "f088e2aca7173b03030d321cc9998aff51ba4c0d1d5e1ecd4166d941c3e15873"
+          "sha256": "8ba86cb1ea217aa259883a5a4666e22e0df5c05b2a67233dc976ae03f0a4524f"
         },
         {
           "path": "third_party/webview_go/libs/webview/version.txt",
