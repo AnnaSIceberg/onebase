@@ -4667,10 +4667,21 @@ function obKeyboardControls(scope, tableFocus) {
   var selector = 'input, select, textarea';
   // SlickGrid uses div focus sinks; no_grid uses a roving tabindex on tr.
   // Keep those out of autofocus, which must still choose an input field.
-  if (tableFocus) selector += ', .ob-grid[tabindex], .ob-grid [tabindex], .tp-table [tabindex]';
+  if (tableFocus) {
+    // Native buttons/links may have no tabindex at all (e.g. reference cards
+    // in no_grid). Limit the extra candidates to tables: form commands keep
+    // their normal keyboard access and autofocus still considers inputs only.
+    var focusable = 'input, select, textarea, button, a[href], area[href], summary, iframe, object, embed, audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]';
+    selector += ', .ob-grid[tabindex], .tp-table[tabindex]';
+    ['.ob-grid ', '.tp-table '].forEach(function (prefix) {
+      selector += ', ' + prefix + focusable.split(', ').join(', ' + prefix);
+    });
+  }
   return Array.prototype.slice.call(scope.querySelectorAll(selector)).filter(function (el) {
     var t = String(el.type || '').toLowerCase();
-    return t !== 'hidden' && t !== 'button' && t !== 'submit';
+    if (t === 'hidden') return false;
+    if (tableFocus && el.closest && el.closest('.ob-grid, .tp-table')) return true;
+    return t !== 'button' && t !== 'submit';
   });
 }
 function obKeyboardReadonly(el) {
@@ -4680,12 +4691,12 @@ function obFormTabOrder(form) {
   if (form.getAttribute('data-ob-tab-skip-readonly') === '1') {
     obKeyboardControls(form, true).forEach(function (el) {
       if (obKeyboardReadonly(el)) {
-        if (!el.hasAttribute('data-ob-tab-orig')) el.setAttribute('data-ob-tab-orig', el.getAttribute('tabindex') || '');
+        if (!el.hasAttribute('data-ob-tab-orig')) el.setAttribute('data-ob-tab-orig', JSON.stringify(el.getAttribute('tabindex')));
         // Idempotence matters: the observer also sees our own tabindex writes.
         if (el.getAttribute('tabindex') !== '-1') el.setAttribute('tabindex', '-1');
       } else if (el.hasAttribute('data-ob-tab-orig')) {
-        var orig = el.getAttribute('data-ob-tab-orig');
-        if (orig) el.setAttribute('tabindex', orig); else el.removeAttribute('tabindex');
+        var orig = JSON.parse(el.getAttribute('data-ob-tab-orig'));
+        if (orig !== null) el.setAttribute('tabindex', orig); else el.removeAttribute('tabindex');
         el.removeAttribute('data-ob-tab-orig');
       }
     });
@@ -4728,7 +4739,7 @@ obManagedReady(function () {
     form._obTabObserver = new MutationObserver(function () { obFormTabOrder(form); });
     form._obTabObserver.observe(form, {
       childList: true, subtree: true, attributes: true,
-      attributeFilter: ['tabindex', 'readonly', 'disabled', 'data-sg-ro', 'data-ob-table-readonly']
+      attributeFilter: ['tabindex', 'readonly', 'disabled', 'type', 'href', 'contenteditable', 'controls', 'data-sg-ro', 'data-ob-table-readonly']
     });
   }
   document.addEventListener('focusin', function (e) {
