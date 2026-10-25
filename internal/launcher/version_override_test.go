@@ -5,10 +5,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"net"
+	"net/netip"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -136,48 +139,130 @@ func TestVersionOverrideSubprocessSentinel(t *testing.T) {
 	}
 }
 
+const versionOverrideReadyMessage = "version child ready for cancellation\n"
+
+// The child can notify only the parent's ephemeral IPv4 loopback listener.
+// Never turn an environment value into a writable filesystem path.
+func versionOverrideNotifyReady(ctx context.Context, address string) (err error) {
+	addr, err := netip.ParseAddrPort(address)
+	if err != nil || addr.Addr() != netip.MustParseAddr("127.0.0.1") || addr.Port() == 0 {
+		return fmt.Errorf("invalid version child readiness address: %q", address)
+	}
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(ctx, "tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(addr.Port()))))
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, conn.Close()) }()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return fmt.Errorf("version child readiness requires a deadline")
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		return err
+	}
+	_, err = io.WriteString(conn, versionOverrideReadyMessage)
+	return err
+}
+
+func versionOverrideReceiveReady(ctx context.Context, listener *net.TCPListener) (err error) {
+	conn, err := listener.AcceptTCP()
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, conn.Close()) }()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return fmt.Errorf("version child readiness requires a deadline")
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		return err
+	}
+	// Include one extra byte so a longer message fails instead of accepting a
+	// valid prefix. EOF proves the child completed and closed its notification.
+	message, err := io.ReadAll(io.LimitReader(conn, int64(len(versionOverrideReadyMessage)+1)))
+	if err != nil {
+		return err
+	}
+	if string(message) != versionOverrideReadyMessage {
+		return fmt.Errorf("unexpected version child readiness message: %q", message)
+	}
+	return nil
+}
+
 func TestVersionOverrideSubprocessCancellation(t *testing.T) {
 	const readyEnv = "ONEBASE_VERSION_OVERRIDE_CANCEL_READY"
 	if os.Getenv(versionOverrideChild) == t.Name() {
-		fmt.Fprintln(os.Stdout, "version child ready for cancellation")
-		if err := os.WriteFile(os.Getenv(readyEnv), []byte("ready"), 0o600); err != nil {
+		if _, err := fmt.Fprintln(os.Stdout, "version child ready for cancellation"); err != nil {
+			t.Fatal(err)
+		}
+		// The parent already reserved cleanup time before setting -test.timeout.
+		// Applying that reserve again would expire a five-second child at once.
+		deadline, ok := t.Deadline()
+		if !ok {
+			t.Fatal("version child readiness requires a test deadline")
+		}
+		ctx, cancel := context.WithDeadline(t.Context(), deadline)
+		defer cancel()
+		if err := versionOverrideNotifyReady(ctx, os.Getenv(readyEnv)); err != nil {
 			t.Fatal(err)
 		}
 		for {
 			time.Sleep(time.Hour)
 		}
 	}
-	ready := filepath.Join(t.TempDir(), "ready")
 	ctx, cancel := versionOverrideContext(t, 5*time.Second)
 	defer cancel()
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := listener.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	deadline, _ := ctx.Deadline()
+	if err := listener.SetDeadline(deadline); err != nil {
+		t.Fatal(err)
+	}
 	result := make(chan error, 1)
+	childDone := make(chan struct{})
 	go func() {
-		_, err := runVersionOverrideSubprocess(ctx, t.Name(), []string{readyEnv + "=" + ready})
+		defer close(childDone)
+		_, err := runVersionOverrideSubprocess(ctx, t.Name(), []string{readyEnv + "=" + listener.Addr().String()})
 		result <- err
+	}()
+	ready := make(chan error, 1)
+	readyDone := make(chan struct{})
+	go func() {
+		defer close(readyDone)
+		ready <- versionOverrideReceiveReady(ctx, listener)
+	}()
+	// Unblock the listener before joining its goroutine, even on early child exit.
+	// Accepted connections have the same deadline as the subprocess context.
+	defer func() {
+		cancel()
+		if err := listener.SetDeadline(time.Now()); err != nil {
+			t.Error(err)
+		}
+		<-readyDone
+		<-childDone
 	}()
 	// Cancel only after the real child acknowledges startup. The deadline is
 	// the failure bound; elapsed time alone never proves child readiness.
-	tick := time.NewTicker(10 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		if _, err := os.Stat(ready); err == nil {
-			break
-		} else if !os.IsNotExist(err) {
-			cancel()
-			<-result
-			t.Fatal(err)
-		}
-		select {
-		case err := <-result:
-			t.Fatalf("child exited before cancellation: %v", err)
-		case <-ctx.Done():
-			<-result
-			t.Fatalf("child did not acknowledge startup: %v", ctx.Err())
-		case <-tick.C:
+	select {
+	case err := <-result:
+		t.Fatalf("child exited before cancellation: %v", err)
+	case <-ctx.Done():
+		t.Fatalf("child did not acknowledge startup: %v", ctx.Err())
+	case err := <-ready:
+		if err != nil {
+			t.Fatalf("child did not acknowledge startup: %v", err)
 		}
 	}
 	cancel()
-	err := <-result
+	err = <-result
 	if err == nil || !errors.Is(ctx.Err(), context.Canceled) ||
 		!strings.Contains(err.Error(), "context error: context canceled") ||
 		!strings.Contains(err.Error(), "version child ready for cancellation") {
