@@ -3,39 +3,67 @@ package userdata
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestPortablePathsAndPreparation(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv(PortableRootEnv, root)
-	t.Chdir(t.TempDir())
-	profile, _ := os.UserHomeDir()
-	if err := Prepare([]string{"run"}); err != nil {
-		t.Fatal(err)
-	}
-	if cwd, _ := os.Getwd(); filepath.Clean(cwd) != filepath.Clean(root) {
-		t.Fatalf("cwd=%s want bundle root %s", cwd, root)
-	}
-	if got, _ := os.UserHomeDir(); got != profile {
-		t.Fatal("Operating system profile was changed")
-	}
-	if path, err := Path("logs"); err != nil || path != filepath.Join(root, ".onebase", "logs") {
-		t.Fatalf("Path=%s err=%v", path, err)
-	}
-	inside := filepath.Join(root, "data", "main.db")
-	if got := StorePath(inside); got != "data/main.db" {
-		t.Fatalf("stored inside path=%s", got)
-	}
-	if got := Resolve("data/main.db"); got != inside {
-		t.Fatalf("resolved path=%s", got)
-	}
-	outside := filepath.Join(t.TempDir(), "other.db")
-	if got := StorePath(outside); got != outside {
-		t.Fatalf("external path changed=%s", got)
-	}
-	if got := StorePath(""); got != "" {
-		t.Fatal("empty path changed")
+	for _, name := range []string{"directory", "symlink"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			if name == "symlink" {
+				link := filepath.Join(t.TempDir(), "bundle")
+				if err := os.Symlink(root, link); err != nil {
+					if runtime.GOOS == "windows" {
+						t.Skipf("directory symlinks unavailable: %v", err)
+					}
+					t.Fatal(err)
+				}
+				root = link
+			}
+			t.Setenv(PortableRootEnv, root)
+			t.Chdir(t.TempDir())
+			profile, _ := os.UserHomeDir()
+			if err := Prepare([]string{"run"}); err != nil {
+				t.Fatal(err)
+			}
+			cwd, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			cwdInfo, err := os.Stat(cwd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rootInfo, err := os.Stat(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Getwd may resolve aliases such as /var -> /private/var on macOS.
+			if !os.SameFile(cwdInfo, rootInfo) {
+				t.Fatalf("cwd=%s want bundle root %s", cwd, root)
+			}
+			if got, _ := os.UserHomeDir(); got != profile {
+				t.Fatal("Operating system profile was changed")
+			}
+			if path, err := Path("logs"); err != nil || path != filepath.Join(root, ".onebase", "logs") {
+				t.Fatalf("Path=%s err=%v", path, err)
+			}
+			inside := filepath.Join(root, "data", "main.db")
+			if got := StorePath(inside); got != "data/main.db" {
+				t.Fatalf("stored inside path=%s", got)
+			}
+			if got := Resolve("data/main.db"); got != inside {
+				t.Fatalf("resolved path=%s", got)
+			}
+			outside := filepath.Join(t.TempDir(), "other.db")
+			if got := StorePath(outside); got != outside {
+				t.Fatalf("external path changed=%s", got)
+			}
+			if got := StorePath(""); got != "" {
+				t.Fatal("empty path changed")
+			}
+		})
 	}
 }
 
