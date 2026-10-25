@@ -58,16 +58,6 @@ function runtime(fetchImpl, cfgOverride = {}, productionValues = false) {
 	let monotonicNow = 100;
   const idInput = {value: ''};
   const versionInput = {value: ''};
-  const controls = new Map();
-  function valueControl(name) {
-    if (!controls.has(name)) controls.set(name, {
-      name, form, tagName: 'INPUT', type: 'text', classList: {contains() { return false; }},
-      get value() { return form.values.get(name); },
-      set value(value) { form.values.set(name, value); },
-      closest(selector) { return selector === '#main-form' ? form : null; },
-    });
-    return controls.get(name);
-  }
   const form = {
     id: 'main-form',
     values: new Map([['Наименование', 'Черновик']]),
@@ -77,7 +67,7 @@ function runtime(fetchImpl, cfgOverride = {}, productionValues = false) {
     control(name) {
       if (!this.controls.has(name)) {
         this.controls.set(name, {
-          name, tagName: 'INPUT', type: 'text', classList: {contains() { return false; }},
+          name, form, tagName: 'INPUT', type: 'text', classList: {contains() { return false; }},
           get value() { return form.values.get(name); },
           set value(value) { form.values.set(name, value); },
           closest(selector) { return selector === '#main-form' ? form : null; },
