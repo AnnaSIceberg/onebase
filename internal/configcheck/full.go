@@ -31,6 +31,7 @@ func RunFull(dir string) Result {
 func RunFullWithOptions(dir string, opts Options) Result {
 	dirIssues, dirWarnings := CheckDir(dir)
 	issues := append(dirIssues, CheckFormChoiceFilterYAML(dir)...)
+	issues = append(issues, CheckNumericTypeYAML(dir)...)
 	warnings := dirWarnings
 	if opts.Lint {
 		warnings = append(warnings, CheckLintYAML(dir)...)
