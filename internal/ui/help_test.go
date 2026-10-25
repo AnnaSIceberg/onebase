@@ -28,9 +28,14 @@ func TestHelpAssetURLsDecodeOncePublicRoute(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(helpDir, "images"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	root, err := os.OpenRoot(helpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
 	write := func(name, data string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(helpDir, name), []byte(data), 0o644); err != nil {
+		if err := root.WriteFile(name, []byte(data), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
