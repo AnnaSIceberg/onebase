@@ -138,9 +138,10 @@ func TestConcealInputMaskHTTPMatrix(t *testing.T) {
 						if action != "hidden" {
 							assertConcealTTLResponse(t, c.event(t, key, "Показать", url.Values{"Причина": {"проверена"}}), initial, true)
 						}
-						if action == "revoke" {
+						switch action {
+						case "revoke":
 							assertConcealTTLResponse(t, c.event(t, key, "Отозвать", nil), initial, false)
-						} else if action == "expired" {
+						case "expired":
 							now = now.Add(10 * time.Minute)
 							assertConcealTTLResponse(t, c.event(t, key, "", nil), initial, false)
 						}

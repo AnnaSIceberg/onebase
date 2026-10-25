@@ -59,10 +59,11 @@ func TestConcealNewDefaultRevealAndSave(t *testing.T) {
 								// Submit exactly the disclosed value, as the browser does
 								// when the user leaves the newly enabled control unchanged.
 								body.Set("Секрет", anyString(valueCI(shown.Values, "Секрет")))
-								if action == "edit" {
+								switch action {
+								case "edit":
 									want = "изменено"
 									body.Set("Секрет", want)
-								} else if action == "clear" {
+								case "clear":
 									want = ""
 									body.Set("Секрет", want)
 								}
