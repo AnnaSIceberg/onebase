@@ -18,7 +18,7 @@ test('раскрытое включается, нераскрытое отклю
   other.disabled = false;
   const ctx = { document: { querySelectorAll: () => [opis, other] } };
   vm.runInNewContext(source.slice(start, end) + '\nthis.obApplyConcealed = obApplyConcealed;', ctx);
-  ctx.obApplyConcealed(['описание'], ctx.document);
+  ctx.obApplyConcealed(['описание'], ctx.document, {'Описание': opis.value});
   assert.equal(opis.disabled, false);
   assert.equal(opis.value, 'полный текст');
   assert.equal(other.disabled, true);
@@ -31,7 +31,7 @@ test('раскрытие ограничено своим экземпляром 
  const form={querySelectorAll:()=>[own]};
  const ctx={document:{querySelectorAll:()=>{throw Error('global DOM access');}}};
  vm.runInNewContext(source.slice(start,end)+'\nthis.apply=obApplyConcealed;',ctx);
- ctx.apply(['описание'],form);
+ ctx.apply(['описание'],form, {'Описание': own.value});
  assert.equal(own.readOnly,true);
  assert.equal(alien.disabled,true);
  ctx.apply([],form);
@@ -72,7 +72,7 @@ test('маска и её подсказка сохраняются при рас
 
   // The event response supplies the value before applying its revealed list.
   editable.value = readonly.value = '12-34';
-  ctx.apply(['секрет', 'толькочтение'], form);
+  ctx.apply(['секрет', 'толькочтение'], form, {'Секрет': editable.value, 'ТолькоЧтение': readonly.value});
   assert.equal(editable.disabled, false);
   assert.equal(readonly.disabled, false);
   assert.equal(readonly.readOnly, true);

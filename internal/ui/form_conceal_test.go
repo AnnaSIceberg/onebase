@@ -113,7 +113,9 @@ func (c concealTestClient) request(t *testing.T, method, id, element string, bod
 	}
 	if method == "EVENT" {
 		body.Set("_id", id)
-		body.Set("_event", string(metadata.FormEventOnClick))
+		if body.Get("_event") == "" {
+			body.Set("_event", string(metadata.FormEventOnClick))
+		}
 		body.Set("_element", element)
 		if element == "" {
 			body.Set("_event", string(metadata.FormEventOnOpen))
