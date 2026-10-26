@@ -735,6 +735,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		login := currentUserLogin(r)
 		data["FormOpenMode"] = s.store.EffectiveFormOpenMode(r.Context(), login)
 		data["FormOpenModePersonal"] = s.store.GetUserFormOpenMode(r.Context(), login)
+		data["FormOpenModeLocked"] = s.store.GetFormOpenModeLocked(r.Context())
 	}
 	// Default per-entity permission flags so partial render paths (e.g. validation
 	// errors) still show the right action buttons.
