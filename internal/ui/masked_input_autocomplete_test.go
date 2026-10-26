@@ -14,12 +14,11 @@ import (
 	"github.com/ivantit66/onebase/internal/processor"
 )
 
-// Поле с маской ввода — почти всегда телефон. Автозаполнение Яндекс Браузера
-// на autocomplete="off" (#595) не смотрит и подсказывает сохранённые номера из
-// своего профиля; на поле "one-time-code" (по стандарту — код подтверждения)
-// эти подсказки в Яндекс Браузере пропадают, проверено вручную. Поле без маски
-// остаётся "off". Тест проверяет выдаваемый атрибут в разметке формы, отданной
-// обычным GET (и у поля объекта, и у реквизита формы), а не поведение браузеров.
+// Поле с маской ввода — почти всегда телефон, и оно, как любое текстовое поле,
+// получает autocomplete="off": только при нём Chrome не ведёт историю ввода и
+// не подсказывает номер одного клиента в поле другого (проверено на Chromium
+// 109). Яндекс Браузеру one-time-code выставляет ui.js. Тест проверяет атрибут
+// в разметке формы, отданной обычным GET, а не поведение браузеров.
 func TestManagedForm_MaskedInputSuppressesBrowserAutofill(t *testing.T) {
 	srv, ent := setupManagedEventsServer(t, ``, nil, []*metadata.FormElement{
 		{Kind: metadata.FormElementField, Name: "ПолеНаименование", DataPath: "Объект.Наименование", InputMask: "(000)000-00-00"},
@@ -37,8 +36,8 @@ func TestManagedForm_MaskedInputSuppressesBrowserAutofill(t *testing.T) {
 	body := renderObjectFormGET(t, srv, ent, id)
 
 	for name, want := range map[string]string{
-		"Наименование": "one-time-code", // поле объекта с маской
-		"Телефон":      "one-time-code", // реквизит формы с маской
+		"Наименование": "off", // поле объекта с маской: без истории ввода Chrome
+		"Телефон":      "off", // реквизит формы с маской
 		"Комментарий":  "off",           // без маски — как прежде (#595)
 	} {
 		re := regexp.MustCompile(`<input type="text" autocomplete="([^"]*)" name="` + regexp.QuoteMeta(name) + `"`)
@@ -89,9 +88,9 @@ func TestManagedProcessorForm_MaskedInputAutocompleteThroughHTTP(t *testing.T) {
 	}
 
 	for _, tc := range []struct{ name, want string }{
-		{"Телефон", "one-time-code"},
+		{"Телефон", "off"},
 		{"Комментарий", "off"},
-		{"ЛокальныйТелефон", "one-time-code"},
+		{"ЛокальныйТелефон", "off"},
 		{"ЛокальныйКомментарий", "off"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
