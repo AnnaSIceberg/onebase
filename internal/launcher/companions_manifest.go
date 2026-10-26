@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -21,6 +23,8 @@ import (
 //	  callista:
 //	    exec: companions/callista-operator/callista-operator.exe
 //	    args: ["--minimized"]
+//	    env:
+//	      CALLISTA_OPERATOR_API_URL: https://cc.icecorp.ru:8445
 
 const companionManifestName = "companions.yaml"
 
@@ -34,6 +38,8 @@ type companionManifestSpec struct {
 	Exec string `yaml:"exec"`
 	// Args — аргументы запуска, только отсюда.
 	Args []string `yaml:"args"`
+	// Env — переменные окружения программы поверх окружения лаунчера.
+	Env map[string]string `yaml:"env"`
 }
 
 // launcherDir — каталог исполняемого файла лаунчера; тест подменяет.
@@ -70,8 +76,11 @@ func loadCompanionManifest(dir string) ([]Companion, error) {
 		if err := validateCompanionExec(spec.Exec); err != nil {
 			return nil, fmt.Errorf("%s: «%s»: %w", companionManifestName, name, err)
 		}
+		if err := validateCompanionEnv(spec.Env); err != nil {
+			return nil, fmt.Errorf("%s: «%s»: %w", companionManifestName, name, err)
+		}
 		path := filepath.Join(dir, filepath.Clean(filepath.FromSlash(strings.TrimSpace(spec.Exec))))
-		out = append(out, Companion{Key: key, Path: path, Args: spec.Args, Dir: filepath.Dir(path)})
+		out = append(out, Companion{Key: key, Path: path, Args: spec.Args, Dir: filepath.Dir(path), Env: spec.Env})
 	}
 	return out, nil
 }
@@ -108,11 +117,60 @@ func mergeCompanions(manifest, record []Companion) []Companion {
 	}
 	for _, c := range record {
 		if i, ok := byKey[c.Key]; ok {
+			// Станция задаёт свой путь, но переменные окружения комплекта
+			// (адрес сервера телефонии) остаются: форма записи их не задаёт.
+			if len(c.Env) == 0 {
+				c.Env = out[i].Env
+			}
 			out[i] = c
 			continue
 		}
 		byKey[c.Key] = len(out)
 		out = append(out, c)
+	}
+	return out
+}
+
+// companionEnvName — имя переменной окружения: латиница, цифры и «_», не с цифры.
+var companionEnvName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+
+// validateCompanionEnv проверяет имена и значения переменных манифеста.
+func validateCompanionEnv(env map[string]string) error {
+	for name, value := range env {
+		if !companionEnvName.MatchString(name) {
+			return fmt.Errorf("env: имя «%s» — латиница, цифры и «_», не с цифры", name)
+		}
+		if strings.ContainsAny(value, "\x00\r\n") {
+			return fmt.Errorf("env: значение %s содержит перевод строки или нулевой символ", name)
+		}
+	}
+	return nil
+}
+
+// companionEnv — окружение лаунчера, поверх которого переменные программы
+// (одноимённые заменяются без учёта регистра, как в Windows).
+func companionEnv(base []string, extra map[string]string) []string {
+	out := make([]string, 0, len(base)+len(extra))
+	for _, kv := range base {
+		name, _, _ := strings.Cut(kv, "=")
+		overridden := false
+		for k := range extra {
+			if strings.EqualFold(k, name) {
+				overridden = true
+				break
+			}
+		}
+		if !overridden {
+			out = append(out, kv)
+		}
+	}
+	names := make([]string, 0, len(extra))
+	for k := range extra {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, k := range names {
+		out = append(out, k+"="+extra[k])
 	}
 	return out
 }

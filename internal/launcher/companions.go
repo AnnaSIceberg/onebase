@@ -34,6 +34,10 @@ type Companion struct {
 	Args []string `yaml:"args,omitempty"`
 	// Dir — рабочий каталог; пусто — каталог программы.
 	Dir string `yaml:"dir,omitempty"`
+	// Env — переменные окружения поверх окружения лаунчера (только из
+	// манифеста комплекта): например CALLISTA_OPERATOR_API_URL закрепляет
+	// адрес сервера телефонии в клиенте.
+	Env map[string]string `yaml:"env,omitempty"`
 }
 
 // NormalizeCompanionKey приводит ключ к нижнему регистру и проверяет его.
@@ -165,6 +169,9 @@ var systemCompanionRuntime = companionRuntime{
 		cmd.Dir = c.Dir
 		if cmd.Dir == "" {
 			cmd.Dir = filepath.Dir(c.Path)
+		}
+		if len(c.Env) > 0 {
+			cmd.Env = companionEnv(os.Environ(), c.Env)
 		}
 		detachCompanion(cmd)
 		if err := cmd.Start(); err != nil {
