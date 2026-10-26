@@ -2,7 +2,6 @@ package ui
 
 import (
 	"reflect"
-	"strings"
 
 	"github.com/ivantit66/onebase/internal/metadata"
 )
@@ -55,8 +54,9 @@ func deferredRowsEqual(before, rows []map[string]any) bool {
 	}
 	for i, row := range rows {
 		for k, v := range row {
-			if strings.HasPrefix(k, "_") {
-				continue // служебное оформление не является изменением данных
+			if k == formRowClassKey || k == formCellClassKey {
+				// Пользовательские колонки тоже могут начинаться с подчёркивания.
+				continue // только служебное оформление не является изменением данных
 			}
 			if !reflect.DeepEqual(before[i][k], v) {
 				return false
