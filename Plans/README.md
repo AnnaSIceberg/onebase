@@ -485,6 +485,7 @@
 | № | Файл | Фича | Эстимейт | Статус |
 |---|---|---|---|---|
 | 185 | [185-query-empty-values-and-indexes.md](185-query-empty-values-and-indexes.md) | Общий план для #1534, #1535 и #1183: индексируемый положительный отбор, типы источников, явный контракт `В` | ~7–11 дней | 📋 Проектирование |
+| 208 | [208-existing-date-scalars-and-register-boundaries.md](208-existing-date-scalars-and-register-boundaries.md) | Существующий date: legacy-скаляры, моментные границы регистров и единая приёмка с PR #1833/#2188 (#2290) | ~5.5–11 дней + условный пересчёт итогов | 📋 Проектирование |
 | 204 | [204-stable-order-by-pagination-and-explicit-dir.md](204-stable-order-by-pagination-and-explicit-dir.md) | Полный порядок `order_by` с `id ASC` и восстановление явного `dir` без `sort`: общий контракт страниц SQLite/PostgreSQL (#1713, #1714) | ~2.25–3.75 дня | 📋 Проектирование |
 
 ### Направление Х — целостность ссылок на учётные записи
