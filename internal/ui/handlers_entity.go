@@ -2910,17 +2910,29 @@ func (s *Server) resolveListSort(r *http.Request, entity *metadata.Entity, param
 			dir = "desc"
 		}
 		_ = s.store.SaveListSortUserSettings(r.Context(), entity.Name, user.Login, params.Sort, dir)
+		// A header click supersedes this list's captured default state.
+		q := r.URL.Query()
+		q.Del("sort_default")
+		r.URL.RawQuery = q.Encode()
+		return
+	}
+	q := r.URL.Query()
+	if q.Get("sort_default") == "1" {
+		// Continue the order this list opened with, without reading or writing
+		// a preference that another tab may have changed. Keep Sort/Dir intact:
+		// storage owns metadata order_by, hierarchy and document defaults.
 		return
 	}
 	field, dir, err := s.store.GetListSortUserSettings(r.Context(), entity.Name, user.Login)
 	if err != nil || field == "" || !known(field) {
+		q.Set("sort_default", "1")
+		r.URL.RawQuery = q.Encode()
 		return
 	}
 	params.Sort = field
 	params.Dir = dir
 	// Pin the restored order in this list's links, forms and refresh URL.
 	// Another tab may change the saved preference before the next page loads.
-	q := r.URL.Query()
 	q.Set("sort", field)
 	q.Set("dir", dir)
 	r.URL.RawQuery = q.Encode()

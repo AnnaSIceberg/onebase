@@ -1393,7 +1393,7 @@ func cloneQuery(current any) url.Values {
 
 func isListStateQueryKey(key string) bool {
 	switch key {
-	case "q", "sort", "dir", "activity", "view", "lm", "parent", "subsystem", "limit", "page":
+	case "q", "sort", "dir", "sort_default", "activity", "view", "lm", "parent", "subsystem", "limit", "page":
 		return true
 	default:
 		return strings.HasPrefix(key, "f.")
