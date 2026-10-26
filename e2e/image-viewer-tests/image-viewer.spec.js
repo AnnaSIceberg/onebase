@@ -349,3 +349,63 @@ test('touch viewport, focus trap and zoom limit use real geometry', async ({brow
   await page.keyboard.press('Escape');
   await touchContext.close();
 });
+
+// Real form events change page buttons while keeping their content in the DOM.
+// Neither the gallery controller nor its presentation is injected by this test.
+for (const nested of [false, true]) {
+  for (const active of [false, true]) {
+    test(`dynamic page projection: nested=${nested}, active=${active}`, async ({page}) => {
+      await open(page, '/ui/catalog/GalleryPages/new');
+      await page.locator('input[name=Name]').fill('conditional gallery');
+      await page.locator('input[name=Owner]').fill('admin');
+      const refs = {};
+      for (const name of ['First', 'Second', 'Nested', 'Other']) refs[name] = await upload(page, name, small);
+      await Promise.all([
+        page.waitForURL((url) => /\/ui\/catalog\/GalleryPages\/[0-9a-f-]{36}$/.test(url.pathname)),
+        page.locator(SAVE).first().click(),
+      ]);
+      const tab = (name) => page.locator(`.managed-tab-btn[data-tab-page="${name}"]`);
+      async function captions() {
+        await page.locator(trigger('First')).click();
+        const labels = [];
+        do {
+          await ready(page);
+          labels.push(await page.locator('#ob-image-viewer-title').innerText());
+          if (await page.locator(action('imageNext')).isDisabled()) break;
+          await page.locator(action('imageNext')).click();
+        } while (labels.length < 6);
+        await page.keyboard.press('Escape');
+        return labels;
+      }
+      expect(await captions()).toEqual(['First', 'Second', 'Nested', 'Other']);
+      if (active || nested) await tab('PageTwo').click();
+      if (active && nested) await tab('InnerTwo').click();
+      const toggle = nested ? 'ToggleNested' : 'ToggleOuter';
+      const hiddenTab = tab(nested ? 'InnerTwo' : 'PageTwo');
+      const path = await hiddenTab.getAttribute('data-ob-tab-path');
+      async function togglePage(hidden) {
+        const response = page.waitForResponse((r) => r.url().endsWith('/form-event') && r.request().method() === 'POST');
+        await page.locator(`[data-ob-fire-click="${toggle}"]`).click();
+        const result = await (await response).json();
+        expect(result.ok, JSON.stringify(result)).toBe(true);
+        expect(result.elementStates.hidden[path]).toBe(hidden);
+        if (hidden) await expect(hiddenTab).toBeHidden();
+        else await expect(hiddenTab).toBeVisible();
+      }
+      await togglePage(true);
+      // Only requests made on reopening count: previews legitimately loaded
+      // before the server hid the page. Navigation must not fetch hidden refs.
+      const requests = [];
+      const observe = (request) => requests.push(new URL(request.url()).pathname);
+      page.on('request', observe);
+      expect(await captions()).toEqual(nested ? ['First', 'Second', 'Other'] : ['First', 'Other']);
+      page.off('request', observe);
+      expect(requests).not.toContain(`/ui/_image/${refs.Nested}`);
+      if (!nested) expect(requests).not.toContain(`/ui/_image/${refs.Second}`);
+      // The sibling set has the same indices as both outer and inner sets.
+      await expect(tab('OtherTwo')).toBeVisible();
+      await togglePage(false);
+      expect(await captions()).toEqual(['First', 'Second', 'Nested', 'Other']);
+    });
+  }
+}

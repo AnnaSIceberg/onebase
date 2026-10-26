@@ -41,12 +41,33 @@ window.obUIMessage = function (name, fallback) {
   // Inactive tabs are part of the same presentation; hidden_when containers
   // are not. Inspect ancestors without treating a tab's display:none as a
   // hidden field. No values are recovered from hidden inputs.
+  function pageAvailable(content) {
+    var tabs = content.closest('.managed-tabs');
+    if (!tabs) return false;
+    var buttons = tabs.querySelectorAll('.managed-tab-btn');
+    for (var i = 0; i < buttons.length; i++) {
+      var button = buttons[i];
+      if (button.closest('.managed-tabs') !== tabs ||
+          button.getAttribute('data-tab-idx') !== content.getAttribute('data-tab-content')) continue;
+      // hidden_when hides the button, leaving the inactive content in the
+      // DOM. Match within its own set: nested/sibling sets reuse indices.
+      for (var node = button; node && node !== tabs; node = node.parentElement) {
+        if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
+        var style = window.getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+      }
+      return true;
+    }
+    return false;
+  }
   function projected(field, owner) {
     for (var node = field; node && node !== owner; node = node.parentElement) {
       if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
       var style = window.getComputedStyle(node);
       if (style.visibility === 'hidden' || style.visibility === 'collapse') return false;
-      if (style.display === 'none' && !node.classList.contains('managed-tab-content')) return false;
+      if (node.classList.contains('managed-tab-content')) {
+        if (!pageAvailable(node)) return false;
+      } else if (style.display === 'none') return false;
     }
     return !!owner && owner.isConnected;
   }
