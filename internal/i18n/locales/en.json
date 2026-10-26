@@ -1598,5 +1598,7 @@
   "Загрузка изображения…": "Loading image\u2026",
   "Не удалось загрузить изображение": "Could not load image",
   "Область просмотра изображения": "Image viewport",
+  "Изменённая сборка": "Modified distribution",
+  "Поставщик сборки": "Distribution supplier",
   "Переводы поля «%s» для языка %s изменены по-разному в двух редакторах. Укажите одинаковое значение и сохраните снова": "The translation of field \"%s\" for language %s was changed differently in the two editors. Enter the same value and save again"
 }
