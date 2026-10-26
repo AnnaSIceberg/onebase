@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// audioBody — двоичное тело с нулевыми и старшими байтами: строковое чтение
-// исказило бы его (UTF-8 замена, обрезка на нуле).
+// audioBody проверяет побайтовое сохранение файла с нулевыми байтами
+// и последовательностями, невалидными в UTF-8.
 var audioBody = append([]byte("OggS\x00\x02"), bytes.Repeat([]byte{0x00, 0xff, 0x80, 0x0d, 0x0a}, 2000)...)
 
 type methodLog struct {
