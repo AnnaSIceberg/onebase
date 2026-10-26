@@ -86,7 +86,7 @@ async function persisted(page, id, name) {
   expect(await response.text()).toContain(name);
 }
 
-test('tab close: a visible form waits for its real managed runtime before saving', async ({ page }) => {
+test('tab close: a visible form waits for its real managed script before saving', async ({ page }) => {
   let releaseScript, scriptBlocked, visible;
   const scriptBarrier = new Promise(resolve => { releaseScript = resolve; });
   const blocked = new Promise(resolve => { scriptBlocked = resolve; });
