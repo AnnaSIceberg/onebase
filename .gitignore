@@ -86,6 +86,8 @@ docs/*
 !docs/reverse-proxy.md
 !docs/release-signing.md
 !docs/self-update.md
+!docs/commercial-use.md
+!docs/licensing-confirmation-template.md
 !docs/maintenance-pipeline.md
 !docs/long-identifiers.md
 # Каталоги, а не файлы по одному: `docs/*` исключает и сам каталог, а в
