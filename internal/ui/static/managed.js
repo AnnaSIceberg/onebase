@@ -3547,8 +3547,10 @@ function obGridColumnWidths(columns) {
       if (!refEntity || !window.fetch) return;
       var seq = ++searchSeq;
       var requestFilter = filterParam();
+      var refMarked = (args.column && args.column.refMarked) || '';
       var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) +
-                '?limit=50&q=' + encodeURIComponent(q || '') + requestFilter;
+                '?limit=50&q=' + encodeURIComponent(q || '') + requestFilter +
+                (refMarked ? '&marked=' + refMarked : '');
       fetch(url, {credentials: 'same-origin', headers: {'Accept': 'application/json'}})
         .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
         .then(function(data) {
@@ -4041,6 +4043,8 @@ function obGridColumnWidths(columns) {
         // подбора уходила в локальный фильтр вместо /ui/_ref-options.
         col.refEntity = c.ref;
         col.refFilter = c.refFilter || '';
+        // Ключ choice_show_deleted реквизита для выдачи /ui/_ref-options.
+        col.refMarked = c.refMarked || '';
         // allowCreate приходит из allow_inline_create поля ТЧ (сервер кладёт
         // его в data-sg-cols только когда создание разрешено).
         col.allowCreate = !!c.allowCreate;
