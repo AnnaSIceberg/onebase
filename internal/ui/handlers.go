@@ -365,6 +365,9 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	if !params.ExcludeMarked {
 		s.markRefOptionLabels(ctx, rows)
 	}
+	// choice_row_style: оформление строк выбора (по реквизитам строки и
+	// текущему пользователю) — до сжатия строк до id/_label.
+	s.applyChoiceRowStyles(ctx, refEntity, rows)
 	return rows, nil
 }
 
@@ -576,7 +579,14 @@ func (s *Server) loadInitialTPRefOptions(ctx context.Context, entity *metadata.E
 func compactRefOptionRows(rows []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, map[string]any{"id": row["id"], "_label": row["_label"]})
+		opt := map[string]any{"id": row["id"], "_label": row["_label"]}
+		// Оформление строки выбора (choice_row_style) едет вместе с вариантом.
+		for _, k := range []string{refOptionStyleKey, refOptionStyleBgKey} {
+			if v, ok := row[k]; ok {
+				opt[k] = v
+			}
+		}
+		out = append(out, opt)
 	}
 	return out
 }
