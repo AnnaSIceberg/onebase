@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -374,5 +375,150 @@ func TestProcessorFormCarry_OversizedStateReportsError(t *testing.T) {
 	}
 	if strings.Contains(page, "private-default-") {
 		t.Fatal("oversized unplaced default exposed in page")
+	}
+}
+
+// Full browser-encoded POSTs must include BOTH editable controls and the new
+// token. Each oversized example fits the inbound limit before adding carry.
+func TestProcessorFormCarry_CompletePostBudget(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		text      string
+		padding   string
+		grow      bool
+		wantError bool
+	}{
+		{name: "ASCII fits across events", text: strings.Repeat("x", 400<<10)},
+		{name: "ASCII 500 KiB plus token", text: strings.Repeat("x", 500<<10), wantError: true},
+		{name: "Cyrillic transport expansion", text: strings.Repeat("я", 140<<10), wantError: true},
+		{name: "browser escapes tilde", text: strings.Repeat("~", 250<<10), wantError: true},
+		{name: "other POST fields", text: strings.Repeat("x", 250<<10), padding: strings.Repeat("p", 500<<10), wantError: true},
+		{name: "handler enlarges text", text: strings.Repeat("x", 250<<10), grow: true, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			form := processorExecutionForm(
+				&metadata.FormElement{Kind: metadata.FormElementCodeField, Name: "TextInput", DataPath: "Объект.Text"},
+				&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Check", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Check"}},
+			)
+			program := `
+Процедура Check()
+	Если Ложь Тогда
+		Объект.Text = Объект.Text + Объект.Text;
+	КонецЕсли;
+	Объект.Flag = Истина;
+КонецПроцедуры`
+			if tc.grow {
+				program = strings.Replace(program, "Ложь", "Истина", 1)
+			}
+			form.ProgramAST = mustParse(t, program)
+			proc := &processor.Processor{Name: "CarryPostBudget", Forms: []*metadata.FormModule{form}, Params: []processor.Param{
+				{Name: "Text", Type: "string"}, {Name: "Flag", Type: "bool"},
+			}}
+			srv, _ := newProcessorFormEventExecutionServer(t, proc, nil)
+			body := processorClickBody("Check")
+			body.Set("Text", tc.text)
+			if tc.padding != "" {
+				body.Set("other", tc.padding)
+			}
+			for event := 0; event < 3; event++ {
+				// URLSearchParams escapes '~', unlike net/url.Values.Encode.
+				encoded := strings.ReplaceAll(body.Encode(), "~", "%7E")
+				if len(encoded) > 1<<20 {
+					t.Fatalf("event %d: complete POST exceeds 1 MiB: %d", event, len(encoded))
+				}
+				rec := postProcessorFormEventExecution(t, srv, proc.Name, "application/x-www-form-urlencoded", strings.NewReader(encoded))
+				if rec.Code != 200 {
+					t.Fatalf("event %d: HTTP %d", event, rec.Code)
+				}
+				resp := decodeFormEventResponse(t, rec.Body.Bytes())
+				token, _ := resp.Values["_ob_carry"].(string)
+				if tc.wantError {
+					if resp.OK || resp.Error == "" || token != "" {
+						t.Fatalf("unusable state issued: ok=%v error=%q tokenBytes=%d", resp.OK, resp.Error, len(token))
+					}
+					return
+				}
+				if !resp.OK || resp.Error != "" || token == "" || resp.Values["Text"] != tc.text {
+					t.Fatalf("event %d: carry failed: ok=%v error=%q", event, resp.OK, resp.Error)
+				}
+				if _, exposed := resp.Values["Flag"]; exposed {
+					t.Fatal("unplaced flag exposed")
+				}
+				body.Set("_ob_carry", token)
+			}
+			// The accepted token still restores the scalar if a later event has
+			// no editor (hidden/disabled); the fix must not omit editable state.
+			body.Del("Text")
+			form.ProgramAST = mustParse(t, `Процедура Check()
+	Сообщить(Строка(Объект.Flag) + "|" + Строка(СтрДлина(Объект.Text)));
+КонецПроцедуры`)
+			rec := postProcessorFormEventExecution(t, srv, proc.Name, "application/x-www-form-urlencoded", strings.NewReader(body.Encode()))
+			resp := decodeFormEventResponse(t, rec.Body.Bytes())
+			if !resp.OK || len(resp.Messages) != 1 || resp.Messages[0] != "true|409600" {
+				t.Fatalf("carried state lost: ok=%v messages=%v", resp.OK, resp.Messages)
+			}
+		})
+	}
+}
+
+func TestProcessorFormCarry_InitialPageIncludesEditablePostBudget(t *testing.T) {
+	for _, duplicate := range []bool{false, true} {
+		t.Run(fmt.Sprint("duplicate=", duplicate), func(t *testing.T) {
+			form := processorExecutionForm(
+				&metadata.FormElement{Kind: metadata.FormElementCodeField, Name: "TextInput", DataPath: "Объект.Text"},
+				&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Check", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Check"}},
+			)
+			form.ProgramAST = mustParse(t, "Процедура Check()\nКонецПроцедуры")
+			textBytes := 500 << 10
+			if duplicate {
+				textBytes = 310 << 10
+				form.Elements = append(form.Elements, &metadata.FormElement{Kind: metadata.FormElementCodeField, Name: "TextCopy", DataPath: "Объект.Text"})
+			}
+			proc := &processor.Processor{Name: "CarryInitialBudget", Forms: []*metadata.FormModule{form}, Params: []processor.Param{
+				{Name: "Text", Type: "string", Default: strings.Repeat("x", textBytes)},
+			}}
+			srv, _ := newProcessorFormEventExecutionServer(t, proc, nil)
+			req := httptest.NewRequest("GET", "/ui/processor/"+proc.Name, nil)
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add("name", proc.Name)
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+			rec := httptest.NewRecorder()
+			srv.processorForm(rec, req)
+			page := rec.Body.String()
+			if rec.Code != 200 || !strings.Contains(page, `class="error"`) || !strings.Contains(page, `"formAttrValues":{"_ob_carry":""}`) {
+				t.Fatalf("initial page issued state that cannot fit next POST: HTTP %d", rec.Code)
+			}
+		})
+	}
+}
+
+// File forms retain their existing separately configured POST allowance; the
+// carry budget must not silently replace it with the small-form body limit.
+func TestProcessorFormCarry_FileFormKeepsConfiguredBodyLimit(t *testing.T) {
+	form := processorExecutionForm(
+		&metadata.FormElement{Kind: metadata.FormElementField, Name: "FileInput", Type: "file", DataPath: "Объект.Data"},
+		&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Check", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Check"}},
+	)
+	form.ProgramAST = mustParse(t, `Процедура Check()
+	Объект.Flag = Истина;
+КонецПроцедуры`)
+	proc := &processor.Processor{Name: "CarryFileBudget", Forms: []*metadata.FormModule{form}, Params: []processor.Param{
+		{Name: "Data", Type: "file"}, {Name: "Flag", Type: "bool"},
+	}}
+	srv, _ := newProcessorFormEventExecutionServer(t, proc, nil)
+	srv.maxFileSizeBytes = 2 << 20
+	body := processorClickBody("Check")
+	body.Set("_fc_Data", strings.Repeat("x", 1200<<10))
+	for event := 0; event < 2; event++ {
+		rec := postProcessorFormEventExecution(t, srv, proc.Name, "application/x-www-form-urlencoded", strings.NewReader(body.Encode()))
+		if rec.Code != 200 {
+			t.Fatalf("event %d: HTTP %d", event, rec.Code)
+		}
+		resp := decodeFormEventResponse(t, rec.Body.Bytes())
+		token, _ := resp.Values["_ob_carry"].(string)
+		if !resp.OK || resp.Error != "" || token == "" {
+			t.Fatalf("file form budget rejected: ok=%v error=%q", resp.OK, resp.Error)
+		}
+		body.Set("_ob_carry", token)
 	}
 }

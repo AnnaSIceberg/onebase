@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -41,9 +42,9 @@ import (
 // processorCarryField — служебное поле с запечатанным состоянием.
 const processorCarryField = "_ob_carry"
 
-// Токен ограничен тем же пределом, что и тело обычной формы. Прежние 64 КиБ
-// отбрасывали собственный ответ сервера уже при 50 КиБ редактируемого текста.
-// Лимит тела запроса при этом не увеличивается.
+// Верхняя граница приёма токена. При выдаче дополнительно учитываются
+// остальные поля следующего события и URL-кодирование: токен не занимает
+// весь бюджет обычного POST. Лимит тела запроса не увеличивается.
 const processorCarryMaxBytes = int(defaultFormMemoryBytes)
 
 func (s *Server) processorCarryAEAD() cipher.AEAD {
@@ -74,7 +75,7 @@ func processorCarryFieldName(proc *processorpkg.Processor) string {
 
 // sealProcessorCarry запечатывает состояние формы; пустая строка — нечего
 // переносить или шифрование недоступно.
-func (s *Server) sealProcessorCarry(r *http.Request, proc *processorpkg.Processor, values map[string]string) (string, error) {
+func (s *Server) sealProcessorCarry(r *http.Request, proc *processorpkg.Processor, form *metadata.FormModule, values map[string]string) (string, error) {
 	aead := s.processorCarryAEAD()
 	if aead == nil || proc == nil || len(values) == 0 {
 		return "", nil
@@ -83,7 +84,9 @@ func (s *Server) sealProcessorCarry(r *http.Request, proc *processorpkg.Processo
 	if err != nil {
 		return "", nil
 	}
-	if base64.RawURLEncoding.EncodedLen(len(plain)+aead.NonceSize()+aead.Overhead()) > processorCarryMaxBytes {
+	tokenBytes := base64.RawURLEncoding.EncodedLen(len(plain) + aead.NonceSize() + aead.Overhead())
+	bodyLimit := processorFormBodyLimit(r, s.effectiveUploadLimit(), processorRequestControlsForForm(proc, form))
+	if tokenBytes > processorCarryMaxBytes || int64(processorCarryPostBytes(r, proc, form, values, tokenBytes)) > bodyLimit {
 		return "", i18nerr.New("Состояние формы обработки превышает допустимый размер. Сократите значения полей и повторите действие.")
 	}
 	nonce := make([]byte, aead.NonceSize())
@@ -92,6 +95,62 @@ func (s *Server) sealProcessorCarry(r *http.Request, proc *processorpkg.Processo
 	}
 	sealed := aead.Seal(nonce, nonce, plain, processorCarryAAD(r, proc))
 	return base64.RawURLEncoding.EncodeToString(sealed), nil
+}
+
+// processorCarryPostBytes оценивает повторную отправку неизменённой формы.
+// Старый токен заменяется новым; значения контролов берутся ПОСЛЕ обработчика.
+// Учитываем также служебные поля, имена и повторяющиеся поля исходного POST.
+// На начальной странице POST ещё нет: envelope строится из метаданных формы.
+// Скрытые/readonly скалярные контролы тоже считаются — это верхняя граница,
+// безопасная при изменении hidden_when/readonly_when в ответе обработчика.
+func processorCarryPostBytes(r *http.Request, proc *processorpkg.Processor, form *metadata.FormModule, values map[string]string, tokenBytes int) int {
+	body := make(url.Values)
+	for name, texts := range r.PostForm {
+		body[name] = append([]string(nil), texts...)
+	}
+	// RawURL base64 использует только безопасные символы URLSearchParams.
+	body.Set(processorCarryFieldName(proc), strings.Repeat("a", tokenBytes))
+	escapedBytes := func(text string) int {
+		return len(url.QueryEscape(text)) + 2*strings.Count(text, "~")
+	}
+	setLongest := func(name, text string) {
+		name = processorServiceFieldName(proc.Params, name)
+		if escapedBytes(text) > escapedBytes(body.Get(name)) {
+			body.Set(name, text)
+		}
+	}
+	setLongest("_kind", "object")
+	controlCounts := make(map[string]int)
+	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+		el := visit.element
+		setLongest("_element", el.Name)
+		for event := range el.Handlers {
+			setLongest("_event", string(event))
+		}
+		if visit.parentTablePart != nil || !processorElementPostsParam(el.Kind) || el.DataPath == "" || strings.Count(el.DataPath, ".") > 1 {
+			return
+		}
+		name := dpFieldName(el.DataPath)
+		controlCounts[name]++
+		for key, text := range values {
+			if strings.EqualFold(key, name) {
+				// Preserve duplicate successful controls in the original POST.
+				count := max(controlCounts[name], len(body[name]))
+				body[name] = make([]string, count)
+				for i := range body[name] {
+					body[name][i] = text
+				}
+				break
+			}
+		}
+		if el.Kind == metadata.FormElementCheckbox {
+			body.Set(processorParamPresenceName(proc.Params, name), "1")
+		}
+	})
+	// Go leaves '~' unescaped; browser URLSearchParams encodes it as %7E.
+	// Go's extra escaping of '*' is conservative for this size check.
+	encoded := body.Encode()
+	return len(encoded) + 2*strings.Count(encoded, "~")
 }
 
 // openProcessorCarry раскрывает присланное состояние. Подделка, чужая
@@ -277,7 +336,7 @@ func (s *Server) finishProcessorCarry(r *http.Request, proc *processorpkg.Proces
 			delete(resp.Values, key)
 		}
 	}
-	token, err := s.sealProcessorCarry(r, proc, processorCarryValues(proc, form, fields))
+	token, err := s.sealProcessorCarry(r, proc, form, processorCarryValues(proc, form, fields))
 	if err != nil {
 		resp.OK = false
 		if resp.Error != "" {
@@ -309,7 +368,7 @@ func (s *Server) setProcessorCarryContext(r *http.Request, data map[string]any, 
 	}
 	name := processorCarryFieldName(proc)
 	data["ProcessorCarryAttrs"] = []string{name}
-	token, err := s.sealProcessorCarry(r, proc, processorCarryValues(proc, proc.ManagedForm(), fields))
+	token, err := s.sealProcessorCarry(r, proc, proc.ManagedForm(), processorCarryValues(proc, proc.ManagedForm(), fields))
 	if err != nil {
 		message := s.errText(r, err)
 		if previous, ok := data["RunError"].(string); ok && previous != "" {
