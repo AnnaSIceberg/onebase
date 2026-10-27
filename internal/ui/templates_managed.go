@@ -176,7 +176,7 @@ const tplManagedForm = `
       {{else if $el.Multiline}}
         <textarea name="{{$fn}}" autocomplete="off" rows="5" style="width:100%"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>{{index $ctx.Values $fn}}</textarea>
       {{else}}
-        <input type="text" autocomplete="{{inputAutocomplete $el}}" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if $el.Mask}} pattern="{{$el.Mask}}" data-ob-form-mask{{end}}{{if $el.InputMask}} data-ob-input-mask="{{$el.InputMask}}" placeholder="{{inputMaskHint $el.InputMask}}"{{if inputMaskDigitsOnly $el.InputMask}} inputmode="numeric"{{end}}{{end}}{{if $el.Hint}} title="{{$el.Hint}}"{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+        <input type="text" autocomplete="{{inputAutocomplete $el}}" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if $el.Mask}} pattern="{{$el.Mask}}" data-ob-form-mask{{end}}{{if $el.InputMask}} data-ob-input-mask="{{$el.InputMask}}" placeholder="{{inputMaskHint $el.InputMask}}"{{if inputMaskDigitsOnly $el.InputMask}} inputmode="numeric"{{end}}{{end}}{{elHintAttrs $ctx $el ""}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{end}}
     {{else if eq (str $el.Type) "file"}}
       {{/* Поле не найдено в Entity, но элемент объявлен как file */}}
@@ -216,7 +216,7 @@ const tplManagedForm = `
              подсветка ниже адресована ОПЕЧАТКЕ в data_path; штатный реквизит
              формы работает полноценно (обработчик читает его голым именем и как
              Объект.<Реквизит>), и предупреждать о нём не о чем. */}}
-        <input type="text" autocomplete="{{inputAutocomplete $el}}" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if $el.Mask}} pattern="{{$el.Mask}}" data-ob-form-mask{{end}}{{if $el.InputMask}} data-ob-input-mask="{{$el.InputMask}}" placeholder="{{inputMaskHint $el.InputMask}}"{{if inputMaskDigitsOnly $el.InputMask}} inputmode="numeric"{{end}}{{end}}{{if $el.Hint}} title="{{$el.Hint}}"{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+        <input type="text" autocomplete="{{inputAutocomplete $el}}" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if $el.Mask}} pattern="{{$el.Mask}}" data-ob-form-mask{{end}}{{if $el.InputMask}} data-ob-input-mask="{{$el.InputMask}}" placeholder="{{inputMaskHint $el.InputMask}}"{{if inputMaskDigitsOnly $el.InputMask}} inputmode="numeric"{{end}}{{end}}{{elHintAttrs $ctx $el ""}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{else}}
         {{/* Ни поля сущности, ни реквизита формы с таким именем — почти всегда
              опечатка в data_path: подсвечиваем, чтобы это не осталось незамеченным. */}}
@@ -256,7 +256,7 @@ const tplManagedForm = `
     <label for="cb-{{$fn}}" style="margin-bottom:0;cursor:pointer">{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}</label>
   </div>
 {{else if eq (str $el.Kind) "Надпись"}}
-  <div class="form-decoration" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="padding:6px 0;color:#475569;font-size:13px;{{elLayout $el}}">
+  <div class="form-decoration" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{elHintAttrs $ctx $el ""}} style="padding:6px 0;color:#475569;font-size:13px;{{elLayout $el}}">
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </div>
 {{else if eq (str $el.Kind) "Кнопка"}}
@@ -265,7 +265,7 @@ const tplManagedForm = `
   {{$buttonLayout := elLayout $el}}
   {{$buttonHidden := elHidden $ctx $el}}
   {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{if $buttonHidden}}display:none;{{end}}{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground $el}}"{{else}}{{with elBackground $el}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{end}}>
+  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground $el}}"{{else}}{{with elBackground $el}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
   {{if $buttonLayout}}</div>{{end}}

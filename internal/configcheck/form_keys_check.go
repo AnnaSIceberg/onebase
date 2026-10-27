@@ -44,6 +44,40 @@ func CheckFormAdminOnly(proj *project.Project) []Issue {
 	return issues
 }
 
+// CheckFormHintFrom — hint_from называет реквизит формы или реквизит объекта
+// формы. Опечатка иначе молча оставляла бы статическую подсказку.
+func CheckFormHintFrom(proj *project.Project) []Issue {
+	if proj == nil {
+		return nil
+	}
+	var issues []Issue
+	forEachProjectForm(proj, func(owner *metadata.Entity, form *metadata.FormModule) {
+		known := map[string]bool{}
+		for _, a := range form.Attributes {
+			if a != nil {
+				known[a.Name] = true
+			}
+		}
+		if owner != nil {
+			for _, f := range owner.Fields {
+				known[f.Name] = true
+			}
+		}
+		walkFormElements(form.Elements, func(el *metadata.FormElement) {
+			if el == nil || strings.TrimSpace(el.HintFrom) == "" {
+				return
+			}
+			name := strings.TrimPrefix(strings.TrimSpace(el.HintFrom), "Форма.")
+			if !known[name] {
+				issues = append(issues, formKeyIssue(owner, form, el, "form.hint-from",
+					fmt.Sprintf("hint_from: реквизит %q не найден ни среди реквизитов формы, ни среди реквизитов объекта", el.HintFrom),
+					"Укажите имя реквизита формы (attributes) или объекта."))
+			}
+		})
+	})
+	return issues
+}
+
 // CheckFormChoiceFolders requires the stable element id used by the picker
 // context. Without it, applyManagedChoiceFilters skips the field entirely.
 func CheckFormChoiceFolders(proj *project.Project) []Issue {

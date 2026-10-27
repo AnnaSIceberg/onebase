@@ -180,6 +180,26 @@ function obManagedApplyTablePartRefOptions(next) {
 }
 window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
+// obManagedApplyHints — подсказки элементов с hint_from после события формы:
+// значение реквизита из ответа, пустое — статический hint; горячая клавиша
+// кнопки дописывается в скобках, как при отрисовке.
+function obManagedApplyHints(values) {
+  if (!values || !document.querySelectorAll) return;
+  var els = document.querySelectorAll('[data-ob-hint-from]');
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    var attr = el.getAttribute('data-ob-hint-from');
+    if (!Object.prototype.hasOwnProperty.call(values, attr)) continue;
+    var v = values[attr];
+    var text = v == null ? '' : String(v).trim();
+    if (!text) text = el.getAttribute('data-ob-hint') || '';
+    var key = el.getAttribute('data-ob-hint-key') || '';
+    if (key) text = text ? text + ' (' + key + ')' : key;
+    if (text) el.setAttribute('title', text); else el.removeAttribute('title');
+  }
+}
+window.obManagedApplyHints = obManagedApplyHints;
+
 // Отправляет текущие form-values + имя элемента/события в /ui/.../form-event,
 // получает JSON с новыми значениями и сообщениями от Сообщить(), применяет их.
 (function(){
@@ -1321,6 +1341,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
         window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
         window.applyTableParts(data.tableparts);
         applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
+      window.obManagedApplyHints(data.values);
         applyChoiceList(elementName, data.choiceList);
         applyFormTables(data.formTables);
       }
@@ -1760,6 +1781,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	window.obManagedApplyTablePartRefOptions(tpRefOptions);
 	window.applyTableParts(tableparts);
 	applyValues(values, refOptions);
+	window.obManagedApplyHints(values);
 	applyFormTables(formTables);
     (data.messages || []).forEach(function(message){ flash(message, 'ok'); });
     if (data.error) flash(data.error, 'err');
