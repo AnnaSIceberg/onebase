@@ -619,6 +619,10 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"firstBool":     firstBool,
 		// refOptionStyle — style строки выбора ссылки (choice_row_style).
 		"refOptionStyle": refOptionStyle,
+		// elHintAttrs — title (и data-ob-hint-*) элемента формы: hint_from из
+		// реквизита формы, иначе hint; у кнопки к подсказке добавляется
+		// горячая клавиша.
+		"elHintAttrs": elHintAttrs,
 		"itemFormVisible": func(entity *metadata.Entity) []itemFormField {
 			vis, _ := splitItemFormFields(entity)
 			return vis
