@@ -865,6 +865,18 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return out
 		},
+		// Header commands still consume row selection even though their buttons
+		// are rendered outside the local table toolbar.
+		"hasTPCommands": func(el *metadata.FormElement) bool {
+			if el != nil {
+				for _, child := range el.Children {
+					if child != nil && child.Kind == metadata.FormElementButton {
+						return true
+					}
+				}
+			}
+			return false
+		},
 		// hasGridTP checks if any TablePart element in the form has use_grid flag (plan 48).
 		// Used to conditionally include SlickGrid CSS/JS.
 		"hasGridTP": func(form *metadata.FormModule) bool {

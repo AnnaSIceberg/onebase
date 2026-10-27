@@ -296,6 +296,7 @@ const tplManagedForm = `
   {{$tpRef := index $ctx.TPRefOptions $tpName}}
   {{$tpEnum := index $ctx.TPEnumLabels $tpName}}
   {{$tpCmds := tpCommandButtons $el}}
+  {{$tpHasCommands := hasTPCommands $el}}
   {{$tpReadOnly := or $ro (not $ctx.CanWrite)}}
   {{/* data-ob-tp — граница табличной части для клиентского пересчёта условий:
        её содержимое (грид, кнопки строк, командные кнопки) applyElementStates
@@ -351,7 +352,7 @@ const tplManagedForm = `
        data-sg-choice-rows='{{jsJSON (tpChoiceRows $ctx $el)}}'
        data-sg-enum='{{jsJSON $tpEnum}}'
        data-sg-rows='{{managedTPRowsJSON $tpMeta.Fields $tpRows}}'
-       {{if $tpCmds}}data-sg-cmd="1"{{end}}
+       {{if $tpHasCommands}}data-sg-cmd="1"{{end}}
        {{if not $tpReadOnly}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}></div>
   {{if not $tpReadOnly}}<input type="hidden" name="tp_json.{{$tpName}}" id="tp-json-{{$tpName}}" value="">{{end}}
   <div style="display:flex;gap:6px;margin-top:4px">
@@ -374,16 +375,16 @@ const tplManagedForm = `
   {{if not $tpReadOnly}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}>
     <thead>
       <tr>
-        {{if $tpCmds}}<th style="width:30px"></th>{{end}}
+        {{if $tpHasCommands}}<th style="width:30px"></th>{{end}}
         {{range $c := $tpPlan}}<th{{if $c.Hidden}} style="display:none"{{end}}>{{$c.Field.DisplayName (str $ctx.Lang)}}</th>{{end}}
         {{range $tpVirtualCols}}<th>{{.ColumnTitle (str $ctx.Lang)}}</th>{{end}}
         <th style="width:40px"></th>
       </tr>
     </thead>
-    <tbody id="tp-body-{{$tpName}}" {{if $tpCmds}}data-tp-cmd="1" {{end}}{{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}data-tp-choice="{{jsJSON (tpChoiceContexts $ctx $el)}}" data-tp-fields="{{managedTPFieldsAttr $tpPlan}}" data-tp-hidden-cols="{{managedTPHiddenColsJSON $tpPlan}}" data-tp-virtual-cols="{{managedTPVirtualNamesJSON $tpVirtualCols}}">
+    <tbody id="tp-body-{{$tpName}}" {{if $tpHasCommands}}data-tp-cmd="1" {{end}}{{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}data-tp-choice="{{jsJSON (tpChoiceContexts $ctx $el)}}" data-tp-fields="{{managedTPFieldsAttr $tpPlan}}" data-tp-hidden-cols="{{managedTPHiddenColsJSON $tpPlan}}" data-tp-virtual-cols="{{managedTPVirtualNamesJSON $tpVirtualCols}}">
     {{range $i, $row := $tpRows}}
       <tr{{with formRowClass $row}} class="{{.}}"{{end}} tabindex="-1" aria-selected="false">
-        {{if $tpCmds}}<td style="text-align:center"><input type="checkbox" class="_tp-sel"{{if $tpReadOnly}} disabled{{end}}></td>{{end}}
+        {{if $tpHasCommands}}<td style="text-align:center"><input type="checkbox" class="_tp-sel"{{if $tpReadOnly}} disabled{{end}}></td>{{end}}
         {{range $c := $tpPlan}}
         {{$f := $c.Field}}
         <td{{with formCellClass $row $f.Name}} class="{{.}}"{{end}}{{if $c.Hidden}} style="display:none"{{end}}>
@@ -434,7 +435,7 @@ const tplManagedForm = `
     {{end}}
     </tbody>
     <tfoot id="tp-foot-{{$tpName}}" class="tp-footer" style="display:none"><tr>
-      {{if $tpCmds}}<td></td>{{end}}
+      {{if $tpHasCommands}}<td></td>{{end}}
       {{range $c := $tpPlan}}{{$f := $c.Field}}{{if $c.Hidden}}<td style="display:none"></td>{{else if eq (str $f.Type) "number"}}<td class="tp-total" data-tp-total="{{$tpName}}.{{$f.Name}}" style="text-align:right;font-variant-numeric:tabular-nums">0</td>{{else}}<td></td>{{end}}{{end}}{{range $tpVirtualCols}}<td></td>{{end}}<td></td>
     </tr></tfoot>
   </table>
