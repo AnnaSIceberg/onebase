@@ -1282,7 +1282,7 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 		if choice != nil {
 			mode = mode.withMarked(choice.ShowDeleted)
 		}
-		items, total, err = s.referenceOptionsPageWithParams(r.Context(), ent, mode, r.URL.Query().Get("q"), limit, offset, extra)
+		items, total, err = s.referenceOptionsPageWithParams(withLang(r.Context(), s.resolveLang(r)), ent, mode, r.URL.Query().Get("q"), limit, offset, extra)
 		if err != nil {
 			s.serverError(w, r, err)
 			return
