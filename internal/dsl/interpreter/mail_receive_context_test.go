@@ -58,7 +58,7 @@ func stalledMailServer(t *testing.T, proto, security string) (string, <-chan str
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_ = conn.SetDeadline(time.Now().Add(4 * time.Second))
 		if security == "starttls" {
 			greeting, command := "+OK ready\r\n", "STLS"

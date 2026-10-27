@@ -38,7 +38,7 @@ func TestCommonBuild_MailUsesCurrentContext(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer ln.Close()
+				defer func() { _ = ln.Close() }()
 				closed := make(chan struct{})
 				go func() {
 					defer close(closed)
@@ -46,7 +46,7 @@ func TestCommonBuild_MailUsesCurrentContext(t *testing.T) {
 					if err != nil {
 						return
 					}
-					defer conn.Close()
+					defer func() { _ = conn.Close() }()
 					_ = conn.SetDeadline(time.Now().Add(4 * time.Second))
 					cancel()
 					_, _ = io.Copy(io.Discard, conn)

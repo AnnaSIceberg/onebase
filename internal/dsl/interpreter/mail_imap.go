@@ -3,6 +3,7 @@ package interpreter
 import (
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"regexp"
@@ -156,7 +157,7 @@ func imapMailboxName(name string) string {
 		}
 		data := make([]byte, 0, 2*len(encoded))
 		for _, u := range encoded {
-			data = append(data, byte(u>>8), byte(u))
+			data = binary.BigEndian.AppendUint16(data, u)
 		}
 		out.WriteByte('&')
 		out.WriteString(strings.ReplaceAll(base64.RawStdEncoding.EncodeToString(data), "/", ","))
