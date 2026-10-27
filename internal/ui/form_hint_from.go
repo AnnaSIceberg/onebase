@@ -72,3 +72,55 @@ func elHintAttrs(ctx any, el *metadata.FormElement, hotKey string) template.HTML
 	}
 	return template.HTMLAttr(b.String()) //nolint:gosec // G203: значения экранированы html.EscapeString
 }
+
+// formHintFromValues — «реквизит → текст» для всех hint_from формы по
+// значениям после обработчика события. Пустое значение тоже отдаётся: клиент
+// по нему возвращает статический hint.
+func formHintFromValues(form *metadata.FormModule, entity *metadata.Entity, values map[string]any) map[string]string {
+	if form == nil {
+		return nil
+	}
+	var attrs []string
+	walkFormHintFrom(form.Elements, &attrs)
+	if len(attrs) == 0 {
+		return nil
+	}
+	header := managedFormHeaderValues(entity, values)
+	out := make(map[string]string, len(attrs))
+	for _, attr := range attrs {
+		v, ok := values[attr]
+		if !ok {
+			v, ok = lookupFold(header, attr)
+		}
+		if !ok || v == nil {
+			out[attr] = ""
+			continue
+		}
+		out[attr] = strings.TrimSpace(fmt.Sprint(v))
+	}
+	return out
+}
+
+func walkFormHintFrom(elements []*metadata.FormElement, out *[]string) {
+	for _, el := range elements {
+		if el == nil {
+			continue
+		}
+		if attr := hintFromAttr(el); attr != "" {
+			*out = append(*out, attr)
+		}
+		walkFormHintFrom(el.Children, out)
+	}
+}
+
+func lookupFold(m map[string]any, key string) (any, bool) {
+	if v, ok := m[key]; ok {
+		return v, true
+	}
+	for k, v := range m {
+		if strings.EqualFold(k, key) {
+			return v, true
+		}
+	}
+	return nil, false
+}

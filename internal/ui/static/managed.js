@@ -1589,6 +1589,8 @@ window.obManagedApplyHints = obManagedApplyHints;
         window.applyTableParts(data.tableparts);
         applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
       window.obManagedApplyHints(data.values);
+      // hint_from формы обработки: реквизита подсказки нет в values.
+      window.obManagedApplyHints(data.elementStates && data.elementStates.hints);
         applyChoiceList(elementName, data.choiceList);
         applyFormTables(data.formTables);
         if (window.obApplyConcealed) window.obApplyConcealed(data.revealed);
@@ -2046,6 +2048,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 	window.applyTableParts(tableparts);
 	applyValues(values, refOptions);
 	window.obManagedApplyHints(values);
+	if (!merging) window.obManagedApplyHints(data.elementStates && data.elementStates.hints);
 	applyFormTables(formTables);
     (data.messages || []).forEach(obFlashMessage);
     if (data.error) flash(data.error, 'err');
