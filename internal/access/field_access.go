@@ -430,7 +430,14 @@ func maskTail(s string, keep int) string {
 	if keep >= len(r) {
 		return strings.Repeat(maskBullet, len(r))
 	}
-	return strings.Repeat(maskBullet, len(r)-keep) + string(r[len(r)-keep:])
+	masked := strings.Repeat(maskBullet, len(r)-keep) + string(r[len(r)-keep:])
+	// A single bullet followed by whitespace is ordinary list text to the
+	// storage backstop. Ambiguous output must still be a recognizable mask,
+	// otherwise copying it through DSL could persist the placeholder as data.
+	if !storage.IsMaskPlaceholder(masked) {
+		return fixedMask
+	}
+	return masked
 }
 
 func maskAll(s string) string {
