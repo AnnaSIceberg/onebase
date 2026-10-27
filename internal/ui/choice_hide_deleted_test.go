@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ivantit66/onebase/internal/i18n"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/runtime"
@@ -108,6 +109,37 @@ func TestRefOptions_DeletedHiddenOnInputShownOnSearch(t *testing.T) {
 		}
 		if shown && !strings.Contains(label, "помечен на удаление") {
 			t.Errorf("%q: у помеченного нет отметки: %q", c.query, label)
+		}
+	}
+}
+
+// Отметка — на языке интерфейса, а не на языке отката словаря. С настоящим
+// словарём выдача подбора без языка в контексте отдавала «(marked for
+// deletion)» русскому интерфейсу (проверка cc2 на 1027b).
+func TestRefOptions_DeletedMarkUsesInterfaceLanguage(t *testing.T) {
+	bundle, err := i18n.Load(i18n.EmbeddedLocales, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		cfgLang, accept, want string
+	}{
+		{"", "", "Уволенный (помечен на удаление)"},
+		{"ru", "", "Уволенный (помечен на удаление)"},
+		{"", "en-US,en;q=0.9", "Уволенный (marked for deletion)"},
+	} {
+		f := newHideDeletedFixture(t, nil, nil)
+		f.s.cfg.Bundle = bundle
+		f.s.cfg.Lang = c.cfgLang
+		target := "/ui/_ref-options/" + f.ref.Name + "?search=1"
+		req := reqWithChi(http.MethodGet, target, nil, map[string]string{"entity": f.ref.Name})
+		if c.accept != "" {
+			req.Header.Set("Accept-Language", c.accept)
+		}
+		rec := httptest.NewRecorder()
+		f.s.refOptionsJSON(rec, req)
+		if !strings.Contains(rec.Body.String(), c.want) {
+			t.Errorf("язык базы %q, Accept-Language %q: ждали %q, ответ %s", c.cfgLang, c.accept, c.want, rec.Body.String())
 		}
 	}
 }

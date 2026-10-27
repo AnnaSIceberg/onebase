@@ -245,7 +245,15 @@ func (s *Server) markRefOptionLabels(ctx context.Context, rows []map[string]any)
 			continue
 		}
 		if note == "" {
-			note = " (" + s.tr(langFromCtx(ctx), "помечен на удаление") + ")"
+			// Язык запроса кладут в контекст не все пути (выдача подбора,
+			// отрисовка формы): без него словарь откатывался на en, и русский
+			// интерфейс получал «(marked for deletion)». Тогда — язык
+			// пользователя и базы, как у остального интерфейса.
+			lang := langFromCtx(ctx)
+			if lang == "" {
+				lang = s.resolveLangCtx(ctx)
+			}
+			note = " (" + s.tr(lang, "помечен на удаление") + ")"
 		}
 		label, _ := row["_label"].(string)
 		row["_label"] = label + note
