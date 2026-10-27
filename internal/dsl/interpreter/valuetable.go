@@ -245,7 +245,15 @@ func (t *ValueTable) collapse(groupSpec, sumSpec string) {
 	for _, r := range t.rows {
 		var kb strings.Builder
 		for _, gc := range groupCols {
-			fmt.Fprintf(&kb, "%v\x00", r[strings.ToLower(gc)])
+			value := r[strings.ToLower(gc)]
+			kind := byte('v')
+			if _, ok := unwrapReadOnly(value).(UUIDValue); ok {
+				kind = 'u'
+			}
+			// UUID и его строковое представление — разные ключи. Длина
+			// не даёт строке подделать тег или границу следующей колонки.
+			text := fmt.Sprint(value)
+			fmt.Fprintf(&kb, "%c%d:%s", kind, len(text), text)
 		}
 		gk := kb.String()
 		g, ok := groups[gk]
