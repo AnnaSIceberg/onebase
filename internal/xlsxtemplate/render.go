@@ -189,7 +189,11 @@ func setNumberCell(f *excelize.File, sheet, axis string, value any, format strin
 		return false, nil
 	}
 	if decimals < 0 {
-		return true, f.SetCellFloat(sheet, axis, number, -1, 64)
+		bitSize := 64
+		if _, ok := value.(float32); ok {
+			bitSize = 32
+		}
+		return true, f.SetCellFloat(sheet, axis, number, -1, bitSize)
 	}
 	// Как и DecimalPlaces в excelize, ограничиваем точность до 30 знаков.
 	// Проверяем до форматирования и strings.Repeat: тег может прийти из чужого шаблона.
