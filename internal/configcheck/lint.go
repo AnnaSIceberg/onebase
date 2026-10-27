@@ -413,11 +413,11 @@ func entityYAMLSchema() *yamlLintSchema {
 		"deadline_days": freeMap(),
 	})
 	return with(obj(
-		"name", "title", "description", "posting", "hierarchical", "hierarchy_kind",
+		"name", "title", "description", "posting", "post_caption", "post_and_close_hidden", "hierarchical", "hierarchy_kind",
 		// owner — справочник-владелец (подчинённый справочник, 1С «Владелец»).
 		"owner",
 		"presentation", "order_by", "choice_preview", "choice_preview_proc",
-		"list_form", "item_form", "based_on", "list_mode", "notify_changes", "list_refresh_on",
+		"list_form", "item_form", "based_on", "list_mode", "list_filters", "interactive_create", "notify_changes", "list_refresh_on",
 		"fulltext", "search_fields", "detail_panel",
 	), map[string]*yamlLintSchema{
 		"titles": freeMap(),
@@ -645,7 +645,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		// неизвестными, а гейт CI считает предупреждение ошибкой — то есть
 		// документированный «language» у kind: ПолеКода не давал примеру
 		// пройти собственную проверку (#1014).
-		"orientation", "background", "input_mask", "language", "virtual_columns",
+		"orientation", "equal_columns", "background", "input_mask", "language", "virtual_columns",
 	} {
 		element.keys[k] = nil
 	}
