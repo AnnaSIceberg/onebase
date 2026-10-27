@@ -60,7 +60,7 @@ const tplManagedForm = `
       {{end}}
     </div>
     {{range $i, $page := $pages}}
-      <div class="managed-tab-content" data-tab-content="{{$i}}" style="display:{{if eq $i 0}}block{{else}}none{{end}}{{with elLayout $page}};{{.}}{{end}}">
+      <div class="managed-tab-content" data-tab-content="{{$i}}" style="display:{{if eq $i 0}}{{if $el.EqualHeight}}flow-root{{else}}block{{end}}{{else}}none{{end}}{{with elLayout $page}};{{.}}{{end}}">
         {{range $page.Children}}{{template "managed-element" (dict "El" . "Ctx" $ctx)}}{{end}}
       </div>
     {{end}}

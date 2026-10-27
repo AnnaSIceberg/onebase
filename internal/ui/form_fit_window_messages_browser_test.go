@@ -144,10 +144,14 @@ window.addEventListener('load', async function () {
   var waitFor = async predicate => {
     var deadline = Date.now() + 5000;
     while (!predicate()) {
-      if (Date.now() > deadline) throw new Error('message panel did not change visibility');
+      if (Date.now() > deadline) throw new Error('message panel/layout did not settle: ' + JSON.stringify(geometry()));
       await sleep(20);
     }
-    await sleep(250); // let ResizeObserver and its deferred refit settle
+  };
+  var geometry = () => {
+    var main = document.querySelector('main');
+    var fitted = document.querySelector('.managed-tab-content') || document.querySelector('[data-ob-fit-group="1"]');
+    return {scroll:main.scrollHeight, client:main.clientHeight, height:fitted.offsetHeight};
   };
   var publish = (id, text) => {
     var pre = document.createElement('pre'); pre.id = id; pre.textContent = text;
@@ -160,17 +164,28 @@ window.addEventListener('load', async function () {
     window.addEventListener('resize', () => resizes++);
     var phases = [];
     var measure = name => {
-      var main = document.querySelector('main');
-      var fitted = document.querySelector('.managed-tab-content') || document.querySelector('[data-ob-fit-group="1"]');
-      phases.push({name:name, scroll:main.scrollHeight, client:main.clientHeight, height:fitted.offsetHeight});
+      phases.push(Object.assign({name:name}, geometry()));
     };
+    await waitFor(() => { var g=geometry(); return g.scroll<=g.client+1 && g.height>120; });
     measure('hidden');
+    var initial=phases[0];
     await fetch('/test/show-message', {method:'POST'});
     window.obReloadMessages();
-    await waitFor(() => !document.getElementById('ob-msg-bar').classList.contains('hidden'));
+    // Visibility changes before ResizeObserver and its queued refit run. A
+    // fixed sleep raced that asynchronous work, particularly on a busy host.
+    // Wait for the actual contract, without calling refit or resizing window.
+    await waitFor(() => {
+      var g=geometry();
+      return !document.getElementById('ob-msg-bar').classList.contains('hidden') &&
+        g.client===initial.client-32 && g.height===initial.height-32 && g.scroll<=g.client+1;
+    });
     measure('shown');
     document.getElementById('ob-msg-clear').click();
-    await waitFor(() => document.getElementById('ob-msg-bar').classList.contains('hidden'));
+    await waitFor(() => {
+      var g=geometry();
+      return document.getElementById('ob-msg-bar').classList.contains('hidden') &&
+        g.client===initial.client && g.height===initial.height && g.scroll<=g.client+1;
+    });
     measure('cleared');
     publish('list-mobile-measure', JSON.stringify({phases:phases, resizes:resizes}));
   } catch (error) { publish('list-mobile-error', String(error)); }

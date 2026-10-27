@@ -1,17 +1,15 @@
 package ui
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
-	"html"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -29,7 +27,7 @@ import (
 // отступ, которого подгонка не видит). Без сверки со scrollHeight форма
 // оказывалась выше окна ровно на эти пиксели.
 func TestFitWindowNoFormScroll_Browser(t *testing.T) {
-	browser := managedLayoutTestBrowser(t)
+	browser := newMobileLayoutBrowserSize(t, managedLayoutTestBrowser(t), 1440, 712)
 	type result struct {
 		After     string  `json:"after"`
 		Disp      string  `json:"disp"`
@@ -79,7 +77,7 @@ func TestFitWindowNoFormScroll_Browser(t *testing.T) {
 		page := rec.Body.String()
 		// Замер после подгонки (obManagedReady) и её отложенного повтора.
 		script := `<style>` + extraCSS + `</style><script>setTimeout(function(){if(window.__late){var d=document.createElement('div');d.style.height='60px';d.textContent='вторая строка шапки';var cd=document.querySelector('main>.card');cd.insertBefore(d,cd.firstChild);}},300);var t0=Date.now();var poll=function(){var m=document.querySelector('main');if(m.scrollHeight>m.clientHeight&&Date.now()-t0<5000){setTimeout(poll,200);return;}var c=document.querySelector('.managed-tab-content');` +
-			`var p=document.createElement('pre');p.id='fit-measure';p.textContent=JSON.stringify({tab:c.style.height,scroll:m.scrollHeight,client:m.clientHeight,tabHeight:c.offsetHeight,after:getComputedStyle(m,'::after').height,disp:getComputedStyle(m).display,ov:getComputedStyle(m).overflowY,mb:Math.round(m.getBoundingClientRect().bottom),cb:Math.round(document.querySelector('main>.card').getBoundingClientRect().bottom),wh:innerHeight});document.body.appendChild(p);};setTimeout(poll,1000);</script>`
+			`var p=document.createElement('pre');p.id='list-mobile-measure';p.textContent=JSON.stringify({tab:c.style.height,scroll:m.scrollHeight,client:m.clientHeight,tabHeight:c.offsetHeight,after:getComputedStyle(m,'::after').height,disp:getComputedStyle(m).display,ov:getComputedStyle(m).overflowY,mb:Math.round(m.getBoundingClientRect().bottom),cb:Math.round(document.querySelector('main>.card').getBoundingClientRect().bottom),wh:innerHeight});document.body.appendChild(p);};setTimeout(poll,1000);</script>`
 		end := strings.LastIndex(page, "</body>")
 		if late {
 			script = `<script>window.__late=true</script>` + script
@@ -99,29 +97,18 @@ func TestFitWindowNoFormScroll_Browser(t *testing.T) {
 			}
 		}))
 		defer server.Close()
-		args := []string{"--headless=new", "--disable-gpu", "--disable-background-networking", "--disable-extensions", "--no-first-run",
-			"--window-size=1440,712", "--virtual-time-budget=8000", "--user-data-dir=" + t.TempDir(), "--dump-dom", server.URL}
-		if runtime.GOOS == "linux" {
-			args = append([]string{"--no-sandbox"}, args...)
-		}
-		cmd := exec.CommandContext(t.Context(), browser, args...) //nolint:gosec // browser selected from existing test allow-list
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		dump, err := cmd.Output()
+		// Read the real measurement over CDP. --dump-dom could wait for browser
+		// exit indefinitely after the probe completed, stalling the UI suite.
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		data, err := browser.measure(ctx, server.URL)
 		srv.BeginShutdown()
 		db.Close()
 		if err != nil {
-			t.Fatalf("browser: %v: %s", err, stderr.String())
+			t.Fatalf("browser: %v: %s", err, browser.diagnostics())
 		}
-		marker := []byte(`<pre id="fit-measure">`)
-		start := bytes.Index(dump, marker)
-		if start < 0 {
-			t.Fatalf("browser did not measure: %s", stderr.String())
-		}
-		start += len(marker)
-		stop := bytes.Index(dump[start:], []byte("</pre>"))
 		var res result
-		if err := json.Unmarshal([]byte(html.UnescapeString(string(dump[start:start+stop]))), &res); err != nil {
+		if err := json.Unmarshal(data, &res); err != nil {
 			t.Fatal(err)
 		}
 		return res

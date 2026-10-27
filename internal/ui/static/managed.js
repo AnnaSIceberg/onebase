@@ -4529,7 +4529,7 @@ function obManagedSwitchTab(btn) {
   btn.classList.add('active');
   obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(function (c) { c.style.display = 'none'; });
   var content = obManagedOwnTabParts(tabs, '.managed-tab-content[data-tab-content="' + idx + '"]')[0];
-  if (content) content.style.display = 'block';
+  if (content) content.style.display = tabs.getAttribute('data-ob-equal-height') === '1' ? 'flow-root' : 'block';
   try { sessionStorage.setItem(obManagedTabKey(tabs), idx); } catch (_) {}
   if (window._obResizeGrids) setTimeout(window._obResizeGrids, 0);
   // Вложенный набор на только что открытой странице до этого был скрыт и не
@@ -4540,22 +4540,45 @@ function obManagedSwitchTab(btn) {
 // obEqualizeTabs — equal_height у СтраницыФормы: область страниц высотой с
 // самую высокую страницу, чтобы при переключении закладок форма не прыгала и
 // то, что ниже набора (панель кнопок), стояло на месте. Скрытые страницы
-// измеряются, на мгновение получив display:block в том же кадре — браузер их
-// не рисует. Набор с заданной height не трогаем: там высота уже постоянная,
+// измеряются в собственном formatting context: margin последнего поля должен
+// входить в offsetHeight, а не схлопываться за границу страницы. Набор с
+// заданной height не трогаем: там высота уже постоянная,
 // а длинная страница прокручивается внутри.
 function obEqualizeTabs(tabs) {
   if (!tabs || !tabs.hasAttribute || !tabs.hasAttribute('data-ob-equal-height')) return;
+  // Вложенный набор может лежать на неактивных страницах нескольких уровней.
+  // Открываем только эти страницы, не скрытые правилами группы/поля. Никаких
+  // кликов, событий формы и записи выбора вкладок при измерении нет.
+  var ancestors = [];
+  var parent = tabs.parentElement;
+  while (parent) {
+    if (parent.classList.contains('managed-tab-content') && parent.style.display === 'none') {
+      ancestors.push({el: parent, display: parent.style.display, visibility: parent.style.visibility});
+      parent.style.visibility = 'hidden';
+      var owner = parent.closest('.managed-tabs');
+      parent.style.display = owner && owner.hasAttribute('data-ob-equal-height') ? 'flow-root' : 'block';
+    }
+    parent = parent.parentElement;
+  }
   var contents = obManagedOwnTabParts(tabs, '.managed-tab-content');
   var max = 0;
-  contents.forEach(function (c) { c.style.minHeight = ''; });
-  contents.forEach(function (c) {
-    var shown = c.style.display;
-    if (shown === 'none') c.style.display = 'block';
-    var h = c.offsetHeight;
-    c.style.display = shown;
-    if (h > max) max = h;
-  });
-  if (max > 0) contents.forEach(function (c) { c.style.minHeight = max + 'px'; });
+  try {
+    contents.forEach(function (c) { c.style.minHeight = ''; });
+    contents.forEach(function (c) {
+      var shown = c.style.display;
+      try {
+        c.style.display = 'flow-root';
+        var h = c.offsetHeight;
+        if (h > max) max = h;
+      } finally { c.style.display = shown; }
+    });
+    if (max > 0) contents.forEach(function (c) { c.style.minHeight = max + 'px'; });
+  } finally {
+    ancestors.forEach(function (saved) {
+      saved.el.style.display = saved.display;
+      saved.el.style.visibility = saved.visibility;
+    });
+  }
 }
 // obFitTabsToWindow — fit_window у СтраницыФормы: рамка формы (шапка, панели,
 // кнопки) помещается в окно без прокрутки, а набор страниц получает остаток
@@ -4615,7 +4638,9 @@ function obFitGroupToWindow(group) {
 function obEqualizeAllTabs() {
   var groups = document.querySelectorAll('[data-ob-fit-group="1"]');
   groups.forEach(function (g) { g.style.height = '0px'; g.style.overflowY = 'hidden'; });
-  document.querySelectorAll('[data-ob-equal-height="1"]').forEach(obEqualizeTabs);
+  // Потомок получает min-height до измерения внешней страницы. Обратный
+  // порядок DOM гарантирует это на любой глубине, в том числе до открытия.
+  Array.from(document.querySelectorAll('[data-ob-equal-height="1"]')).reverse().forEach(obEqualizeTabs);
   document.querySelectorAll('[data-ob-fit-window="1"]').forEach(obFitTabsToWindow);
   groups.forEach(obFitGroupToWindow);
   if (window.obTrimFitOverflow) window.obTrimFitOverflow(groups);
@@ -4725,7 +4750,15 @@ obManagedReady(function () {
     // Вставка и удаление узлов (отложенная группа, строка шапки, перерисовка
     // таблицы) — отдельным сигналом: он не ждёт кадра отрисовки. Сама
     // подгонка меняет только стили, поэтому себя не перезапускает.
-    if (window.MutationObserver) new window.MutationObserver(queueRefit).observe(fitMain, {childList: true, subtree: true});
+    if (window.MutationObserver) {
+      new window.MutationObserver(queueRefit).observe(fitMain, {childList: true, subtree: true});
+      // Панель находится вне main. Её показ/очистка — самостоятельный сигнал:
+      // пересчёт не должен зависеть только от доставки ResizeObserver после
+      // смены доступной высоты. Стилевые записи самой подгонки сюда не входят.
+      new window.MutationObserver(function (records) {
+        if (records.some(function (record) { return record.target.id === 'ob-msg-bar'; })) queueRefit();
+      }).observe(document.body, {attributes: true, attributeFilter: ['class'], subtree: true});
+    }
   }
   var groups = document.querySelectorAll('.managed-tabs');
   for (var i = 0; i < groups.length; i++) {

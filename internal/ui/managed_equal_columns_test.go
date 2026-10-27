@@ -48,5 +48,8 @@ func TestEqualColumns_RuntimeHTTPAndBrowser(t *testing.T) {
 	if strings.Count(legacy, ` ob-equal-columns"`) != 1 {
 		t.Fatal("flag applied to unsupported group or changed default")
 	}
-	formtest.AssertEqualColumns(t, managedLayoutTestBrowser(t), page)
+	browser := newMobileLayoutBrowserSize(t, managedLayoutTestBrowser(t), 0, 0)
+	formtest.AssertEqualColumns(t, "", page, func(ctx context.Context, target string) ([]byte, error) {
+		return browser.measureElement(ctx, target, "equal-columns-measure")
+	})
 }
