@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
+	"github.com/ivantit66/onebase/internal/i18n/i18nerr"
 	"github.com/ivantit66/onebase/internal/metadata"
 	processorpkg "github.com/ivantit66/onebase/internal/processor"
 )
@@ -40,9 +41,10 @@ import (
 // processorCarryField — служебное поле с запечатанным состоянием.
 const processorCarryField = "_ob_carry"
 
-// processorCarryMaxBytes — предел токена: состояние формы — флаги и ссылки, а
-// не данные; больший токен отбрасывается, а не разбирается.
-const processorCarryMaxBytes = 64 << 10
+// Токен ограничен тем же пределом, что и тело обычной формы. Прежние 64 КиБ
+// отбрасывали собственный ответ сервера уже при 50 КиБ редактируемого текста.
+// Лимит тела запроса при этом не увеличивается.
+const processorCarryMaxBytes = int(defaultFormMemoryBytes)
 
 func (s *Server) processorCarryAEAD() cipher.AEAD {
 	s.carryOnce.Do(func() {
@@ -72,21 +74,24 @@ func processorCarryFieldName(proc *processorpkg.Processor) string {
 
 // sealProcessorCarry запечатывает состояние формы; пустая строка — нечего
 // переносить или шифрование недоступно.
-func (s *Server) sealProcessorCarry(r *http.Request, proc *processorpkg.Processor, values map[string]string) string {
+func (s *Server) sealProcessorCarry(r *http.Request, proc *processorpkg.Processor, values map[string]string) (string, error) {
 	aead := s.processorCarryAEAD()
 	if aead == nil || proc == nil || len(values) == 0 {
-		return ""
+		return "", nil
 	}
 	plain, err := json.Marshal(values)
 	if err != nil {
-		return ""
+		return "", nil
+	}
+	if base64.RawURLEncoding.EncodedLen(len(plain)+aead.NonceSize()+aead.Overhead()) > processorCarryMaxBytes {
+		return "", i18nerr.New("Состояние формы обработки превышает допустимый размер. Сократите значения полей и повторите действие.")
 	}
 	nonce := make([]byte, aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
-		return ""
+		return "", nil
 	}
 	sealed := aead.Seal(nonce, nonce, plain, processorCarryAAD(r, proc))
-	return base64.RawURLEncoding.EncodeToString(sealed)
+	return base64.RawURLEncoding.EncodeToString(sealed), nil
 }
 
 // openProcessorCarry раскрывает присланное состояние. Подделка, чужая
@@ -224,8 +229,25 @@ func (s *Server) applyProcessorCarryAttrs(r *http.Request, proc *processorpkg.Pr
 		return
 	}
 	submitted := submittedFormKeys(r)
+	unchecked := map[string]bool{}
+	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+		el := visit.element
+		if el.Kind != metadata.FormElementCheckbox || visit.parentTablePart != nil || visit.effectiveReadOnly || el.DataPath == "" || strings.Count(el.DataPath, ".") > 1 {
+			return
+		}
+		name := dpFieldName(el.DataPath)
+		// Только реальный POST-marker допустимого контрола. Query string,
+		// readonly-контрол и совпавший с helper обычный параметр не снимают флаг.
+		if _, present := processorPostFormText(r, processorParamPresenceName(proc.Params, name)); present {
+			unchecked[strings.ToLower(name)] = true
+		}
+	})
 	for _, a := range form.Attributes {
 		if !formAttrIsScalar(a) || a.MainAttribute || formKeySubmitted(submitted, a.Name) {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(a.TypeRef), "bool") && unchecked[strings.ToLower(a.Name)] {
+			fields[a.Name] = false
 			continue
 		}
 		text, ok := carry[a.Name]
@@ -255,7 +277,15 @@ func (s *Server) finishProcessorCarry(r *http.Request, proc *processorpkg.Proces
 			delete(resp.Values, key)
 		}
 	}
-	token := s.sealProcessorCarry(r, proc, processorCarryValues(proc, form, fields))
+	token, err := s.sealProcessorCarry(r, proc, processorCarryValues(proc, form, fields))
+	if err != nil {
+		resp.OK = false
+		if resp.Error != "" {
+			resp.Error += "\n"
+		}
+		resp.Error += s.errText(r, err)
+		return
+	}
 	if token == "" {
 		return
 	}
@@ -279,5 +309,13 @@ func (s *Server) setProcessorCarryContext(r *http.Request, data map[string]any, 
 	}
 	name := processorCarryFieldName(proc)
 	data["ProcessorCarryAttrs"] = []string{name}
-	data["ProcessorCarryValues"] = map[string]string{name: s.sealProcessorCarry(r, proc, processorCarryValues(proc, proc.ManagedForm(), fields))}
+	token, err := s.sealProcessorCarry(r, proc, processorCarryValues(proc, proc.ManagedForm(), fields))
+	if err != nil {
+		message := s.errText(r, err)
+		if previous, ok := data["RunError"].(string); ok && previous != "" {
+			message = previous + "\n" + message
+		}
+		data["RunError"] = message
+	}
+	data["ProcessorCarryValues"] = map[string]string{name: token}
 }

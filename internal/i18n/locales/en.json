@@ -1,4 +1,5 @@
 {
+  "Состояние формы обработки превышает допустимый размер. Сократите значения полей и повторите действие.": "Processor form state exceeds the size limit. Reduce the field values and try again.",
   "у локального источника %s нет ссылочного реквизита %s; внешняя ссылка затенена": "Local source %s has no reference field %s; the outer reference is shadowed",
   "временный каталог загрузок": "temporary upload directory",
   "временный файл параметра %s": "temporary file for parameter %s",

@@ -175,3 +175,204 @@ func TestProcessorFormCarry_InitialPageSealsUnplacedDefaults(t *testing.T) {
 		t.Fatalf("начальный токен не раскрылся в умолчания: %v", got)
 	}
 }
+
+// Browser POSTs distinguish an unchecked editable checkbox from a control that
+// was not rendered or was disabled. Exercise the carry round trip for both
+// form attributes and processor parameters, including helper-name collisions.
+func TestProcessorFormCarry_CheckboxPresence(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		attribute  bool
+		readOnly   bool
+		groupRO    bool
+		tableChild bool
+		unplaced   bool
+		marker     bool
+		queryOnly  bool
+		collision  bool
+		want       string
+	}{
+		{name: "attribute unchecked", attribute: true, marker: true, want: "false"},
+		{name: "parameter unchecked", marker: true, want: "false"},
+		{name: "attribute absent", attribute: true, want: "true"},
+		{name: "attribute query marker", attribute: true, marker: true, queryOnly: true, want: "true"},
+		{name: "attribute readonly", attribute: true, readOnly: true, marker: true, want: "true"},
+		{name: "attribute readonly group", attribute: true, groupRO: true, marker: true, want: "true"},
+		{name: "attribute scalar child in table", attribute: true, tableChild: true, marker: true, want: "true"},
+		{name: "attribute unplaced", attribute: true, unplaced: true, marker: true, want: "true"},
+		{name: "attribute helper collision", attribute: true, marker: true, collision: true, want: "false"},
+		{name: "parameter helper collision", marker: true, collision: true, want: "false"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkbox := &metadata.FormElement{Kind: metadata.FormElementCheckbox, Name: "FlagInput", DataPath: "Объект.Flag", ReadOnly: tc.readOnly}
+			form := processorExecutionForm(
+				&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Set", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "SetFlag"}},
+				&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Check", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "CheckFlag"}},
+			)
+			if !tc.unplaced {
+				if tc.tableChild {
+					form.Elements = append(form.Elements, &metadata.FormElement{Kind: metadata.FormElementTablePart, Name: "Rows", Children: []*metadata.FormElement{checkbox}})
+				} else if tc.groupRO {
+					form.Elements = append(form.Elements, &metadata.FormElement{Kind: metadata.FormElementGroupBox, ReadOnly: true, Children: []*metadata.FormElement{checkbox}})
+				} else {
+					form.Elements = append(form.Elements, checkbox)
+				}
+			}
+			form.ProgramAST = mustParse(t, `
+Процедура SetFlag()
+	Объект.Flag = Истина;
+КонецПроцедуры
+Процедура CheckFlag()
+	Сообщить(Строка(Объект.Flag));
+КонецПроцедуры
+`)
+			proc := &processor.Processor{Name: "CarryCheckbox", Forms: []*metadata.FormModule{form}}
+			if tc.attribute {
+				form.Attributes = []*metadata.FormAttribute{{Name: "Flag", TypeRef: "bool"}}
+			} else {
+				proc.Params = []processor.Param{{Name: "Flag", Type: "bool"}}
+			}
+			if tc.collision {
+				proc.Params = append(proc.Params, processor.Param{Name: "_ob_present_Flag", Type: "string"})
+			}
+			srv, _ := newProcessorFormEventExecutionServer(t, proc, nil)
+			post := func(body, query url.Values) formEventResponse {
+				t.Helper()
+				rec := postProcessorFormEventExecutionWithQuery(t, srv, proc.Name, query,
+					"application/x-www-form-urlencoded", strings.NewReader(body.Encode()))
+				if rec.Code != 200 {
+					t.Fatalf("status=%d: %s", rec.Code, rec.Body.String())
+				}
+				resp := decodeFormEventResponse(t, rec.Body.Bytes())
+				if !resp.OK || resp.Error != "" {
+					t.Fatalf("event failed: %+v", resp)
+				}
+				return resp
+			}
+			first := post(processorClickBody("Set"), nil)
+			token, _ := first.Values["_ob_carry"].(string)
+			if token == "" {
+				t.Fatal("missing carry token")
+			}
+			body := processorClickBody("Check")
+			body.Set("_ob_carry", token)
+			query := url.Values{}
+			if tc.marker {
+				marker := "_ob_present_Flag"
+				if tc.collision {
+					marker += "_"
+					body.Set("_ob_present_Flag", "ordinary parameter")
+				}
+				if tc.queryOnly {
+					query.Set(marker, "1")
+				} else {
+					body.Set(marker, "1")
+				}
+			}
+			second := post(body, query)
+			if len(second.Messages) != 1 || second.Messages[0] != tc.want {
+				t.Fatalf("checkbox state=%v, want %s", second.Messages, tc.want)
+			}
+			if !tc.unplaced && second.Values["Flag"] != (tc.want == "true") {
+				t.Fatalf("checkbox response=%v, want %s", second.Values["Flag"], tc.want)
+			}
+			// A third event with no control must restore the newly accepted value.
+			body = processorClickBody("Check")
+			body.Set("_ob_carry", second.Values["_ob_carry"].(string))
+			third := post(body, nil)
+			if len(third.Messages) != 1 || third.Messages[0] != tc.want {
+				t.Fatalf("new checkbox state lost: %v, want %s", third.Messages, tc.want)
+			}
+		})
+	}
+}
+
+func TestProcessorFormCarry_LargeEditableValueRoundTrip(t *testing.T) {
+	form := processorExecutionForm(
+		&metadata.FormElement{Kind: metadata.FormElementCodeField, Name: "TextInput", DataPath: "Объект.Text"},
+		&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Set", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "SetFlag"}},
+		&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Check", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "CheckFlag"}},
+	)
+	form.ProgramAST = mustParse(t, `
+Процедура SetFlag()
+	Объект.Flag = Истина;
+КонецПроцедуры
+Процедура CheckFlag()
+	Сообщить(Строка(Объект.Flag));
+КонецПроцедуры
+`)
+	proc := &processor.Processor{Name: "CarryLarge", Params: []processor.Param{{Name: "Text", Type: "string"}, {Name: "Flag", Type: "bool"}}, Forms: []*metadata.FormModule{form}}
+	srv, _ := newProcessorFormEventExecutionServer(t, proc, nil)
+	for _, text := range []string{strings.Repeat("x", 50<<10), strings.Repeat("русский текст\n", 8<<10)} {
+		body := processorClickBody("Set")
+		body.Set("Text", text)
+		var token string
+		for event := 0; event < 3; event++ {
+			if event > 0 {
+				body = processorClickBody("Check")
+				body.Set("Text", text)
+				body.Set("_ob_carry", token)
+			}
+			rec := postProcessorFormEventExecution(t, srv, proc.Name, "application/x-www-form-urlencoded", strings.NewReader(body.Encode()))
+			if rec.Code != 200 {
+				t.Fatalf("event %d: status=%d: %s", event, rec.Code, rec.Body.String())
+			}
+			resp := decodeFormEventResponse(t, rec.Body.Bytes())
+			if !resp.OK || resp.Error != "" || resp.Values["Text"] != text {
+				t.Fatalf("event %d: large value not preserved, ok=%v error=%s", event, resp.OK, resp.Error)
+			}
+			if event > 0 && (len(resp.Messages) != 1 || resp.Messages[0] != "true") {
+				t.Fatalf("unplaced flag lost after large editable text: %v", resp.Messages)
+			}
+			if _, exposed := resp.Values["Flag"]; exposed {
+				t.Fatal("unplaced flag exposed in values")
+			}
+			token, _ = resp.Values["_ob_carry"].(string)
+			if len(token) <= 64<<10 {
+				t.Fatalf("regression did not cross former 64 KiB token limit: %d", len(token))
+			}
+		}
+	}
+}
+
+func TestProcessorFormCarry_OversizedStateReportsError(t *testing.T) {
+	form := processorExecutionForm(
+		&metadata.FormElement{Kind: metadata.FormElementCodeField, Name: "TextInput", DataPath: "Объект.Text"},
+		&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Check", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Check"}},
+	)
+	form.ProgramAST = mustParse(t, "Процедура Check()\nКонецПроцедуры")
+	proc := &processor.Processor{Name: "CarryOversize", Params: []processor.Param{{Name: "Text", Type: "string"}}, Forms: []*metadata.FormModule{form}}
+	srv, _ := newProcessorFormEventExecutionServer(t, proc, nil)
+	body := processorClickBody("Check")
+	// The original POST fits the unchanged 1 MiB body limit; its base64 carry
+	// would exceed that limit. Return an explicit error and no unusable token.
+	body.Set("Text", strings.Repeat("x", 800<<10))
+	rec := postProcessorFormEventExecution(t, srv, proc.Name, "application/x-www-form-urlencoded", strings.NewReader(body.Encode()))
+	if rec.Code != 200 {
+		t.Fatalf("status=%d: request should fit body limit", rec.Code)
+	}
+	resp := decodeFormEventResponse(t, rec.Body.Bytes())
+	if resp.OK || resp.Error == "" {
+		t.Fatalf("oversized carry silently accepted: ok=%v, error=%q", resp.OK, resp.Error)
+	}
+	if token, _ := resp.Values["_ob_carry"].(string); token != "" {
+		t.Fatal("server issued an unusable token")
+	}
+
+	// The initial page must also show a visible error for an oversized default,
+	// without exposing that unplaced value or issuing a token it cannot read.
+	proc.Params = []processor.Param{{Name: "Secret", Type: "string", Default: strings.Repeat("private-default-", 60<<10)}}
+	req := httptest.NewRequest("GET", "/ui/processor/"+proc.Name, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("name", proc.Name)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rec = httptest.NewRecorder()
+	srv.processorForm(rec, req)
+	page := rec.Body.String()
+	if rec.Code != 200 || !strings.Contains(page, `class="error"`) {
+		t.Fatalf("initial page did not show state-size error: status=%d", rec.Code)
+	}
+	if strings.Contains(page, "private-default-") {
+		t.Fatal("oversized unplaced default exposed in page")
+	}
+}
