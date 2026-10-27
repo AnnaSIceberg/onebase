@@ -122,3 +122,116 @@ func TestUUIDValue_RefMethodStaysString(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+func TestUUIDValue_CollectionIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, want string
+	}{
+		{"map UUID first", `
+	С = Новый Соответствие;
+	С.Вставить(Ключ, "uuid"); С.Вставить(Текст, "string");
+	С.Вставить(Копия, "updated");
+	Возврат Строка(С.Количество()) + "|" + С.Получить(Ключ) + "|" + С.Получить(Текст);`, "2|updated|string"},
+		{"map string first", `
+	С = Новый Соответствие;
+	С.Вставить(Текст, "string"); С.Вставить(Ключ, "uuid");
+	С.Удалить(Копия);
+	Возврат Строка(С.Количество()) + "|" + С.Получить(Текст) + "|" + Строка(С.Получить(Ключ) = Неопределено);`, "1|string|true"},
+		{"array searches both types", `
+	А = Новый Массив;
+	А.Добавить(Ключ);
+	Б = Новый Массив;
+	Б.Добавить(Текст);
+	Возврат ТипЗнч(А.Найти(Текст)) + "|" + ТипЗнч(Б.Найти(Ключ)) + "|" + Строка(А.Найти(Копия));`, "Неопределено|Неопределено|0"},
+		{"value table lookup and sorting", `
+	Т = Новый ТаблицаЗначений;
+	Т.Колонки.Добавить("Ключ"); Т.Колонки.Добавить("Метка");
+	Р = Т.Добавить(); Р.Ключ = Ключ; Р.Метка = "uuid";
+	Р = Т.Добавить(); Р.Ключ = Текст; Р.Метка = "string";
+	Р = Т.Добавить(); Р.Ключ = Другой; Р.Метка = "other";
+	А = Т.НайтиСтроки(Новый Структура("Ключ", Копия));
+	Б = Т.НайтиСтроки(Новый Структура("Ключ", Текст));
+	Найден = Т.Найти(Текст, "Ключ");
+	Т.Сортировать("Ключ Возр");
+	Возврат Строка(А.Количество()) + "|" + А[0].Метка + "|" + Строка(Б.Количество()) + "|" + Б[0].Метка + "|" + Найден.Метка + "|" + Т.Получить(0).Метка + "|" + Т.Получить(1).Метка + "|" + Т.Получить(2).Метка;`, "1|uuid|1|string|string|string|uuid|other"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := runUUIDFunc(t, `Функция Тест()
+	Ключ = Новый УникальныйИдентификатор("1d2c3b4a-5e6f-4a1b-9c2d-3e4f5a6b7c8d");
+	Копия = Новый УникальныйИдентификатор("1D2C3B4A-5E6F-4A1B-9C2D-3E4F5A6B7C8D");
+	Другой = Новый УникальныйИдентификатор("2d2c3b4a-5e6f-4a1b-9c2d-3e4f5a6b7c8d");
+	Текст = Строка(Ключ);
+`+tc.body+`
+КонецФункции`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %v, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestUUIDValue_ReferenceCollectionCompatibility(t *testing.T) {
+	prog, err := parser.New(lexer.New(`Функция Тест()
+	С = Новый Соответствие;
+	С.Вставить(Ссылка, "ref");
+	Ключ = Новый УникальныйИдентификатор(Ссылка.УникальныйИдентификатор());
+	С.Вставить(Ключ, "uuid");
+	А = Новый Массив; А.Добавить(Ссылка);
+	Возврат Строка(С.Количество()) + "|" + С.Получить(Ссылка.УникальныйИдентификатор()) + "|" + С.Получить("Клиент") + "|" + С.Получить(Ключ) + "|" + ТипЗнч(А.Найти(Ключ));
+КонецФункции`, "uuid-ref.os")).ParseProgram()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := &interpreter.Ref{UUID: "1d2c3b4a-5e6f-4a1b-9c2d-3e4f5a6b7c8d", Name: "Клиент", Type: "Клиенты"}
+	var got any
+	if err := interpreter.New().RunWithResult(prog.Procedures[0], nil, &got, map[string]any{"Ссылка": ref}); err != nil {
+		t.Fatal(err)
+	}
+	if got != "2|ref|ref|uuid|Неопределено" {
+		t.Fatalf("reference/string compatibility changed: %v", got)
+	}
+}
+
+type uuidConditionHook struct{ *condHook }
+
+func (h *uuidConditionHook) HookCheckBreakpoint(file string, line int, cond func(string) (bool, error)) bool {
+	if line != 5 {
+		return false
+	}
+	return h.condHook.HookCheckBreakpoint(file, line, cond)
+}
+
+func TestUUIDValue_BreakpointConditions(t *testing.T) {
+	for _, tc := range []struct {
+		expr string
+		want bool
+	}{
+		{`ТипЗнч(Ключ) = Тип("УникальныйИдентификатор")`, true},
+		{`Строка(Ключ) = Текст`, true},
+		{`Ключ = Копия`, true},
+		{`Ключ = Текст`, false},
+		{`Ключ < Копия`, false},
+		{`ЗаписатьJSON(Ключ) = ЗаписатьJSON(Текст)`, true},
+	} {
+		t.Run(tc.expr, func(t *testing.T) {
+			hook := &uuidConditionHook{condHook: &condHook{expr: tc.expr}}
+			interp := interpreter.New()
+			interp.DebugSource = func() interpreter.DebugHook { return hook }
+			proc := parseProcFile(t, "uuid-cond.os", `Процедура Работа()
+	Ключ = Новый УникальныйИдентификатор("1d2c3b4a-5e6f-4a1b-9c2d-3e4f5a6b7c8d");
+	Копия = Новый УникальныйИдентификатор("1D2C3B4A-5E6F-4A1B-9C2D-3E4F5A6B7C8D");
+	Текст = Строка(Ключ);
+	Результат = 1;
+КонецПроцедуры`)
+			if err := interp.Run(proc, nil); err != nil {
+				t.Fatal(err)
+			}
+			if !hook.asked.Load() || hook.err != nil || hook.stopped != tc.want {
+				t.Fatalf("condition: asked=%v stopped=%v err=%v, want %v", hook.asked.Load(), hook.stopped, hook.err, tc.want)
+			}
+		})
+	}
+}

@@ -1497,6 +1497,9 @@ func compare(a, b any) int {
 }
 
 func compareSandboxed(a, b any, ec *execCtx, line int) int {
+	if order, handled := compareUUIDValues(a, b); handled {
+		return order
+	}
 	// Даты сравниваем хронологически, а не как строки.
 	if at, ok := a.(time.Time); ok {
 		if bt, ok2 := b.(time.Time); ok2 {

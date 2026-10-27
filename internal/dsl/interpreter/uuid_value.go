@@ -37,6 +37,24 @@ func (u UUIDValue) TypeName() string { return "УникальныйИденти�
 
 func (u UUIDValue) MarshalJSON() ([]byte, error) { return json.Marshal(u.id.String()) }
 
+// compareUUIDValues keeps UUID identity distinct from strings and references
+// in collection lookup and ordering, just as in the equality operator.
+// UUID values sort after other types; within the type they use canonical order.
+func compareUUIDValues(a, b any) (int, bool) {
+	au, aIsUUID := unwrapReadOnly(a).(UUIDValue)
+	bu, bIsUUID := unwrapReadOnly(b).(UUIDValue)
+	if !aIsUUID && !bIsUUID {
+		return 0, false
+	}
+	if !aIsUUID {
+		return -1, true
+	}
+	if !bIsUUID {
+		return 1, true
+	}
+	return strings.Compare(au.String(), bu.String()), true
+}
+
 // newUUIDValue — конструктор «Новый УникальныйИдентификатор([Строка])». Строка
 // принимается только в каноническом виде xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 // (регистр не важен): фигурные скобки и «urn:uuid:» uuid.Parse пропустил бы,
