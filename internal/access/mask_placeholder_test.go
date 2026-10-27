@@ -18,6 +18,8 @@ func TestMaskValueOutputIsRecognizedAsPlaceholder(t *testing.T) {
 		{FieldMaskTail, 4, "+79161234455"},
 		{FieldMaskTail, 0, "+79161234455"},
 		{FieldMaskTail, 20, "1234"},
+		{FieldMaskTail, 4, "51234"},
+		{FieldMaskTail, 0, "1"},
 		{FieldMaskCity, 0, "Москва, ул. Ленина, 1"},
 		{"неизвестная", 0, "секрет"},
 	} {
@@ -26,7 +28,7 @@ func TestMaskValueOutputIsRecognizedAsPlaceholder(t *testing.T) {
 			t.Errorf("%s/%d: %q не распознана как заглушка", tc.strategy, tc.keep, masked)
 		}
 	}
-	for _, plain := range []string{"+79161234455", "Москва", "текст • с точкой", ""} {
+	for _, plain := range []string{"+79161234455", "Москва", "текст • с точкой", "• Позвонить клиенту", "•\tОтправить письмо", ""} {
 		if storage.IsMaskPlaceholder(plain) {
 			t.Errorf("%q ошибочно принята за заглушку", plain)
 		}

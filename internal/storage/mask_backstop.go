@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -39,7 +40,7 @@ const (
 // IsMaskPlaceholder сообщает, что строка — ровно то, что платформа
 // подставляет вместо значения под маской: «••••••» (mask_all), точки с
 // открытым хвостом «•••••1122» (mask_tail) или «Город, ••••••» (mask_city).
-// Точка внутри обычного текста заглушкой не считается.
+// Точка внутри обычного текста и маркер списка «• » — не заглушка.
 func IsMaskPlaceholder(v any) bool {
 	s, ok := v.(string)
 	if !ok {
@@ -51,6 +52,11 @@ func IsMaskPlaceholder(v any) bool {
 	}
 	if strings.HasSuffix(s, ", "+MaskFixed) {
 		return true
+	}
+	// Один маркер с пробелом отделяет пункт обычного списка. Несколько
+	// точек маски и короткий mask_tail без пробела по-прежнему запрещены.
+	if after, ok := strings.CutPrefix(s, MaskBullet); ok && strings.TrimLeftFunc(after, unicode.IsSpace) != after {
+		return false
 	}
 	rest := strings.TrimLeft(s, MaskBullet)
 	return rest != s && !strings.Contains(rest, MaskBullet)
@@ -64,7 +70,11 @@ func (db *DB) maskBackstop(ctx context.Context, entity *metadata.Entity, id uuid
 	}
 	var suspects []metadata.Field
 	for _, f := range entity.Fields {
-		if maskableField(f) && IsMaskPlaceholder(valueByNameFold(fields, f.Name)) {
+		if !maskableField(f) {
+			continue
+		}
+		value, _ := canonicalFieldValue(fields, f.Name)
+		if IsMaskPlaceholder(value) {
 			suspects = append(suspects, f)
 		}
 	}
@@ -82,7 +92,8 @@ func (db *DB) maskBackstop(ctx context.Context, entity *metadata.Entity, id uuid
 		}
 	}
 	for _, f := range suspects {
-		if fmt.Sprint(valueByNameFold(fields, f.Name)) == fmt.Sprint(valueByNameFold(stored, f.Name)) {
+		value, _ := canonicalFieldValue(fields, f.Name)
+		if fmt.Sprint(value) == fmt.Sprint(valueByNameFold(stored, f.Name)) {
 			continue
 		}
 		return fmt.Errorf("%s.%s: %w", entity.Name, f.Name, ErrMaskedValueWrite)
@@ -103,7 +114,7 @@ func (db *DB) maskBackstopRows(ctx context.Context, entityName string, tp metada
 		}
 		var existing map[string]bool
 		for i, row := range rows {
-			value := valueByNameFold(row, f.Name)
+			value, _ := canonicalFieldValue(row, f.Name)
 			if !IsMaskPlaceholder(value) {
 				continue
 			}
