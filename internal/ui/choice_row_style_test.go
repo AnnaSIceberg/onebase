@@ -179,6 +179,14 @@ func TestChoiceRowStyle_ForUserFunc(t *testing.T) {
 	Возврат ИмяПользователя() = "Оператор_075";
 КонецФункции
 
+Функция ПоИмени() Экспорт
+	Возврат ТекущийПользователь().Имя = "Оператор_075";
+КонецФункции
+
+Функция ПоИД() Экспорт
+	Возврат СтрДлина(Строка(ТекущийПользователь().ИД)) = 36;
+КонецФункции
+
 Функция Сломана() Экспорт
 	ВызватьИсключение "нет данных";
 КонецФункции
@@ -186,6 +194,11 @@ func TestChoiceRowStyle_ForUserFunc(t *testing.T) {
 	f := newRowStyleFixture(t, &metadata.ChoiceRowStyle{ForUser: &metadata.ChoiceStyleUser{Func: "КЦ.ПользовательКоллЦентра"}, Rules: directionsStyle()}, module)
 	f.assertStyled(t, "функция вернула Истина", f.styles(t, f.operator), true)
 	f.assertStyled(t, "функция вернула Ложь", f.styles(t, f.storekeeper), false)
+	f.dirs.ChoiceRowStyle.ForUser.Func = "КЦ.ПоИмени"
+	f.assertStyled(t, "ТекущийПользователь().Имя — оператор", f.styles(t, f.operator), true)
+	f.assertStyled(t, "ТекущийПользователь().Имя — кладовщик", f.styles(t, f.storekeeper), false)
+	f.dirs.ChoiceRowStyle.ForUser.Func = "КЦ.ПоИД"
+	f.assertStyled(t, "ТекущийПользователь().ИД", f.styles(t, f.operator), true)
 	f.dirs.ChoiceRowStyle.ForUser.Func = "КЦ.Сломана"
 	f.assertStyled(t, "ошибка функции — без оформления", f.styles(t, f.operator), false)
 	f.dirs.ChoiceRowStyle.ForUser.Func = "КЦ.НетТакой"

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"html"
 	"html/template"
 	"strings"
@@ -140,7 +141,11 @@ func (s *Server) choiceStyleFuncMatches(ctx context.Context, refEntity *metadata
 		return false
 	}
 	b, isBool := result.(bool)
-	return isBool && b
+	if !isBool {
+		uiLog().Warn("choice_row_style: for_user.func вернула не Булево", "func", name, "entity", refEntity.Name, "result", fmt.Sprintf("%T", result))
+		return false
+	}
+	return b
 }
 
 // choiceStyleUserMatches — реквизит карточки текущего пользователя равен
