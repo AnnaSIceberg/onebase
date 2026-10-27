@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -217,6 +218,44 @@ func TestRefOptionsChoiceQueryBrokenIsClosed(t *testing.T) {
 		f.owner.Forms[0].Elements[1].ChoiceFilter[0].Query = "ВЫБРАТЬ Х.Объект ИЗ Справочник.НетТакого КАК Х"
 		if r := f.fetch(t, choiceQueryUser(), f.branchA.String(), nil); r.Total != 0 {
 			t.Fatalf("сломанный запрос открыл подбор: %v", choiceQueryLabels(r))
+		}
+	})
+}
+
+// Лимит относится к строкам результата до удаления повторов UUID.
+// После RLS у каждого из шести источников пять строк: 5^6 = 15625.
+func TestRefOptionsChoiceQueryRawRowLimit(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		f := newChoiceQueryFixture(t, db)
+		user := choiceQueryUser()
+		var sources strings.Builder
+		sources.WriteString(" ИЗ Справочник.Соответствие КАК С0")
+		for i := 1; i < 6; i++ {
+			fmt.Fprintf(&sources, " ВНУТРЕННЕЕ СОЕДИНЕНИЕ Справочник.Соответствие КАК С%d ПО ИСТИНА", i)
+		}
+		selected := f.groups["Холодильники"].String()
+		for _, tc := range []struct {
+			name, limit string
+			allowed     bool
+		}{
+			{"at_limit", "ПЕРВЫЕ 10000 ", true},
+			{"one_over_limit", "ПЕРВЫЕ 10001 ", false},
+			{"unbounded", "", false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				// Все исходные строки дают один и тот же допустимый UUID.
+				f.owner.Forms[0].Elements[1].ChoiceFilter[0].Query = "ВЫБРАТЬ " + tc.limit + "\"" + selected + "\" КАК ДопустимаяСсылка" + sources.String()
+				for _, q := range []string{"", "Холод"} {
+					r := f.fetch(t, user, f.branchA.String(), url.Values{"q": {q}, "selected_id": {selected}})
+					want := 0
+					if tc.allowed {
+						want = 1
+					}
+					if r.Total != want || len(r.Items) != want || r.SelectedAllowed == nil || *r.SelectedAllowed != tc.allowed {
+						t.Fatalf("q=%q: total=%d items=%v selected_allowed=%v; want %d, allowed=%v", q, r.Total, choiceQueryLabels(r), r.SelectedAllowed, want, tc.allowed)
+					}
+				}
+			})
 		}
 	})
 }

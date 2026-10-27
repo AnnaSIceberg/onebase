@@ -98,7 +98,7 @@ func (s *Server) applyListFormFilter(r *http.Request, entity *metadata.Entity, p
 // умолчанию: номера условий filter через запятую.
 const listFormFilterOffParam = "lf_off"
 
-// listFormFilterMaxRows — сколько ссылок условие-запрос может вернуть. Больше —
+// listFormFilterMaxRows — сколько исходных строк условие-запрос может вернуть. Больше —
 // отбор закрывается целиком: длинный список параметров упирается в предел СУБД,
 // а молча обрезанный выглядел бы как «потерянные» записи.
 const listFormFilterMaxRows = 10000
@@ -187,10 +187,6 @@ func (s *Server) listFilterQueryPredicate(ctx context.Context, entity *metadata.
 		slog.Warn("list form filter query failed", "error", err)
 		return closed, true
 	}
-	if len(ids) > listFormFilterMaxRows {
-		slog.Warn("list form filter query returned too many rows", "rows", len(ids))
-		return closed, true
-	}
 	values := make([]any, 0, len(ids))
 	for _, id := range ids {
 		values = append(values, id)
@@ -200,7 +196,8 @@ func (s *Server) listFilterQueryPredicate(ctx context.Context, entity *metadata.
 
 // listFilterQueryIDs исполняет запрос условия с правами смотрящего (RLS его
 // источников действует, как у виджета) и возвращает идентификаторы из первой
-// колонки. Пустые и не-UUID значения пропускаются. extra — параметры запроса
+// колонки. Лимит исходных строк проверяется до удаления повторов и пропуска
+// пустых и не-UUID значений. extra — параметры запроса
 // сверх служебных (choice_filter: значения из формы); служебные
 // &ТекущийПользователь и &ТекущийЛогин ими не перекрываются.
 func (s *Server) listFilterQueryIDs(ctx context.Context, text string, user *auth.User, extra map[string]any) ([]string, error) {
@@ -235,9 +232,12 @@ func (s *Server) listFilterQueryIDs(ctx context.Context, text string, user *auth
 	if maskPlan.Denied != "" {
 		return nil, errors.New("нет доступа к полю запроса отбора")
 	}
-	rows, cols, err := query.Run(ctx, s.store, &compiled)
+	rows, cols, truncated, err := query.RunLimit(ctx, s.store, &compiled, listFormFilterMaxRows)
 	if err != nil {
 		return nil, err
+	}
+	if truncated {
+		return nil, fmt.Errorf("запрос отбора вернул больше %d строк", listFormFilterMaxRows)
 	}
 	if err := maskPlan.Apply(rows); err != nil {
 		return nil, err

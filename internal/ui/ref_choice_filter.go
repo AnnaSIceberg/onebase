@@ -346,10 +346,6 @@ func (s *Server) choiceQueryPredicate(ctx context.Context, owner *metadata.Entit
 		slog.Warn("choice_filter query failed", "error", err)
 		return storage.ChoicePredicate{}, true, nil
 	}
-	if len(ids) > listFormFilterMaxRows {
-		slog.Warn("choice_filter query returned too many rows", "rows", len(ids))
-		return storage.ChoicePredicate{}, true, nil
-	}
 	predicate := storage.ChoicePredicate{ByIDs: true, IDs: make([]uuid.UUID, 0, len(ids))}
 	for _, raw := range ids {
 		if id, err := uuid.Parse(raw); err == nil {
