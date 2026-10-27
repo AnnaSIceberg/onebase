@@ -1940,6 +1940,11 @@ func (st formEventState) response(ok bool) formEventResponse {
 type elementStates struct {
 	ReadOnly map[string]bool `json:"readonly,omitempty"`
 	Hidden   map[string]bool `json:"hidden,omitempty"`
+	// Hints — значения реквизитов, на которые ссылается hint_from, ПОСЛЕ
+	// обработчика: «реквизит → текст». Отдельно от values: у формы обработки
+	// в values едут только реквизиты с элементами на форме, а реквизит
+	// подсказки элемента обычно не имеет.
+	Hints map[string]string `json:"hints,omitempty"`
 }
 
 // applyAdminOnlyDefaults возвращает новой записи объявленные умолчания ровно
@@ -1990,10 +1995,11 @@ func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.E
 			ro[path] = true
 		}
 	}
-	if len(ro) == 0 && len(hidden) == 0 {
+	hints := formHintFromValues(form, entity, values)
+	if len(ro) == 0 && len(hidden) == 0 && len(hints) == 0 {
 		return nil
 	}
-	return &elementStates{ReadOnly: ro, Hidden: hidden}
+	return &elementStates{ReadOnly: ro, Hidden: hidden, Hints: hints}
 }
 
 // adminOnlyElementPaths — размещения формы, запертые для неадминистратора.
