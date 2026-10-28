@@ -25,6 +25,7 @@ import (
 type hubNotifier struct {
 	hub   *realtime.Hub
 	shell string
+	forms *formNotifyStore // Оповестить: хранилище оповещений открытых форм
 	login string
 }
 
@@ -51,6 +52,9 @@ func shellScopedEvent(name string) bool {
 // нет, и уведомление уходит всем сеансам, как раньше.
 func (s *Server) notifier(ctx context.Context) interpreter.Notifier {
 	n := hubNotifier{hub: s.hub, shell: shellIDFrom(ctx)}
+	if s.hub != nil {
+		n.forms = s.formNotifies()
+	}
 	if u := auth.UserFromContext(ctx); u != nil {
 		n.login = u.Login
 	}

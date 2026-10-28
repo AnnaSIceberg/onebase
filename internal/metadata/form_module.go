@@ -78,6 +78,13 @@ const (
 	// переменная ТекущаяСтраница; сервер принимает только страницу этого же
 	// набора.
 	FormEventOnPageChange FormEventType = "ПриСменеСтраницы" // OnCurrentPageChange
+	// ОбработкаОповещения — открытая форма получила оповещение, отправленное
+	// серверной функцией Оповестить(ИмяСобытия, Параметр, Источник) (как
+	// Оповестить/ОбработкаОповещения 1С). Обработчик выполняется на ТЕКУЩЕМ
+	// состоянии формы, с несохранёнными правками, и получает переменные
+	// ИмяСобытия, Параметр, Источник; изменения применяются к форме как после
+	// любого события — без записи и без закрытия.
+	FormEventNotify FormEventType = "ОбработкаОповещения" // NotificationProcessing
 )
 
 var knownFormEventTypes = map[FormEventType]bool{
@@ -95,6 +102,7 @@ var knownFormEventTypes = map[FormEventType]bool{
 	FormEventOnAnswer:     true,
 	FormEventOnPageChange: true,
 	FormEventBeforePost:   true,
+	FormEventNotify:       true,
 }
 
 // formTablePartContextVars — имена, которые платформа инжектирует в обработчик
