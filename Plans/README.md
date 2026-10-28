@@ -488,6 +488,7 @@
 | 208 | [208-existing-date-scalars-and-register-boundaries.md](208-existing-date-scalars-and-register-boundaries.md) | Существующий date: legacy-скаляры, моментные границы регистров и единая приёмка с PR #1833/#2188 (#2290) | ~5.5–11 дней + условный пересчёт итогов | 📋 Проектирование |
 | 204 | [204-stable-order-by-pagination-and-explicit-dir.md](204-stable-order-by-pagination-and-explicit-dir.md) | Полный порядок `order_by` с `id ASC` и восстановление явного `dir` без `sort`: общий контракт страниц SQLite/PostgreSQL (#1713, #1714) | ~2.25–3.75 дня | 📋 Проектирование |
 | 209 | [209-derived-select-values-and-types.md](209-derived-select-values-and-types.md) | Значения ссылок во вложенных SELECT и доказанные типы производных колонок: числовые сравнения, пустой текст, ON и UNION, общая матрица (#2247, #2248) | ~9–14.5 дней | 📋 Проектирование |
+| 211 | [211-qualified-source-physical-columns.md](211-qualified-source-physical-columns.md) | Физическая колонка квалифицированного поля по владельцу: обе ориентации reference/bool, безопасный fallback и публичная SQLite/PostgreSQL-приёмка (#2143) | ~3–4,5 дня | 📋 Проектирование |
 
 ### Направление Х — целостность ссылок на учётные записи
 

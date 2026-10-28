@@ -991,6 +991,14 @@ func (i *Interpreter) evalCall(c *ast.CallExpr, e *env) any {
 				// mutating builtin such as ЗаполнитьЗначенияСвойств.
 				return protectReadOnly(e.ec, result)
 			}
+			if bf, ok2 := val.(*receiveMailBuiltin); ok2 {
+				refuseReadOnly(e.ec, "чтение почты")
+				result, err := bf.call(e, args, callee.Tok.File, callee.Tok.Line)
+				if err != nil {
+					panic(dslStop{err: err})
+				}
+				return result
+			}
 			if bf, ok2 := val.(BuiltinFunc); ok2 {
 				refuseReadOnly(e.ec, "вызов внешней функции «"+fnName+"»")
 				result, err := bf(args, callee.Tok.File, callee.Tok.Line)
