@@ -13,6 +13,7 @@ import (
 func TestCLISeparatesCorrectedPlanHistoryFromActiveProblems(t *testing.T) {
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "backlogsweep.exe")
+	//nolint:gosec // G204: fixed go build command; output path belongs to this test, not user input.
 	if output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build CLI: %v\n%s", err, output)
 	}
@@ -57,6 +58,7 @@ func TestCLISeparatesCorrectedPlanHistoryFromActiveProblems(t *testing.T) {
 			if err := os.WriteFile(file, data, 0600); err != nil {
 				t.Fatal(err)
 			}
+			//nolint:gosec // G204: execute the binary just built by this test, with test-owned fixture paths.
 			output, err := exec.Command(binary, "-issues", file, "-prs", prsFile,
 				"-plans", plansDir, "-now", now.Format("2006-01-02T15:04:05Z07:00")).CombinedOutput()
 			if err != nil {
