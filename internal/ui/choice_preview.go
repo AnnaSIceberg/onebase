@@ -265,6 +265,10 @@ func (s *Server) choicePreviewPage(w http.ResponseWriter, r *http.Request, ent *
 		mode := refOptionsModeFromRequest(r).withMarked(element.ChoiceShowDeleted)
 		items, total, err = s.referenceOptionsPageWithParams(withLang(r.Context(), s.resolveLang(r)), ent, mode, body.Q, limit, body.Offset, params)
 	}
+	if errors.Is(err, errChoiceSearch) {
+		s.choiceSearchUnavailable(w, r)
+		return
+	}
 	if err != nil {
 		s.serverError(w, r, err)
 		return
@@ -292,6 +296,7 @@ func (s *Server) choicePreviewPage(w http.ResponseWriter, r *http.Request, ent *
 		"offset":  body.Offset,
 		"preview": choicePreviewKey,
 		"canPick": true,
+		"matched": choiceSearchActive(ent, body.Q),
 	})
 }
 
