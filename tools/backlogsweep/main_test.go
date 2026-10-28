@@ -847,3 +847,38 @@ func TestRenamedPlanIsReportedAsMovedNotMissing(t *testing.T) {
 		t.Fatalf("ожидалось «номер переехал», получено %q", got[0].detail)
 	}
 }
+
+// A Markdown label and its destination are separate occurrences of the same
+// path. Delimiters must not become part of an invented, nonexistent filename.
+func TestPlanRefsMarkdownDelimiters(t *testing.T) {
+	for _, tc := range []struct{ name, text, file string }{
+		{"absolute", "[Plans/46-tablepart-commands-and-picker.md](https://github.com/ivanarama/onebase/blob/main/Plans/46-tablepart-commands-and-picker.md)", "46-tablepart-commands-and-picker.md"},
+		{"relative", "[Plans/46-tablepart-commands-and-picker.md](../Plans/46-tablepart-commands-and-picker.md)", "46-tablepart-commands-and-picker.md"},
+		{"reference-label", "[Plans/46-tablepart-commands-and-picker.md][plan]", "46-tablepart-commands-and-picker.md"},
+		{"inline-code", "[`Plans/46-tablepart-commands-and-picker.md`](https://example.test/Plans/46-tablepart-commands-and-picker.md#section)", "46-tablepart-commands-and-picker.md"},
+		{"ordinary-name", "Plans/46-draft.md-copy.md", "46-draft.md-copy.md"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := planRefs(withBody(mk(1, "ivanarama", ago(1), []string{"hold"}), tc.text))
+			if len(got) != 1 || got[0].Num != 46 || got[0].File != tc.file {
+				t.Fatalf("path: got %+v, want exactly %s", got, tc.file)
+			}
+		})
+	}
+}
+
+func TestMarkdownPlansKeepOnlyRealMissingFinding(t *testing.T) {
+	cfg := testConfig()
+	issues := []issue{
+		withBody(mk(1, "ivanarama", ago(1), []string{"hold"}), "[Plans/46-tablepart-commands-and-picker.md](https://example.test/Plans/46-tablepart-commands-and-picker.md)"),
+		withBody(mk(2, "ivanarama", ago(1), []string{"hold"}), "[Plans/901-missing.md](../Plans/901-missing.md)"),
+	}
+	got := bucketByTitle(analyze(issues, cfg), "ссылка на план, которого нет")
+	if len(got) != 1 || got[0].issue.Number != 2 {
+		t.Fatalf("only real missing plan #2 is expected, got %v", details(got))
+	}
+	refs := planRefs(issues[1])
+	if len(refs) != 1 || refs[0].File != "901-missing.md" {
+		t.Fatalf("missing filename must remain exact: %+v", refs)
+	}
+}
