@@ -83,9 +83,14 @@ func fmtBuiltinBounded(args []any, maxDecimalPlaces int32) (string, error) {
 		return fmt.Sprintf("%v", args[0]), nil
 	}
 	val := args[0]
-	if maxDecimalPlaces > 0 && isNumeric(val) {
-		d, _ := toDecimal(val)
-		if !decimalWithinExpansionBounds(d, maxDecimalPlaces) {
+	if maxDecimalPlaces > 0 {
+		// Numeric strings reach Decimal.String/StringFixed too. Bound their
+		// lexical size before parsing, then the coefficient and exponent before
+		// either formatting path can expand them (including float underflow).
+		if text, ok := val.(string); ok && len(text) > maxSandboxDecimalTextBytes {
+			return "", fmt.Errorf("формат: numeric text exceeds the sandbox decimal limit")
+		}
+		if d, ok := toDecimal(val); ok && !decimalWithinExpansionBounds(d, maxDecimalPlaces) {
 			return "", fmt.Errorf("формат: число вне безопасного диапазона")
 		}
 	}
@@ -108,7 +113,10 @@ func fmtBuiltinBounded(args []any, maxDecimalPlaces int32) (string, error) {
 
 	// Number formatting
 	if f, ok := toFloat(val); ok {
-		decimals := 2
+		// Без ЧДЦ — столько знаков, сколько есть в значении, как в 1С:
+		// Формат(21, "ЧГ=0") = «21». Раньше подставлялось два знака, и номер
+		// дня или года печатался «21.00» / «2 026.00».
+		decimals := -1
 		if d := extractFormatParam(fmtStr, "чдц="); d != "" {
 			if n, err := strconv.Atoi(d); err == nil {
 				if maxDecimalPlaces > 0 && (n < -int(maxDecimalPlaces) || n > int(maxDecimalPlaces)) {
@@ -123,6 +131,19 @@ func fmtBuiltinBounded(args []any, maxDecimalPlaces int32) (string, error) {
 				return "", fmt.Errorf("формат: разделитель разрядов слишком длинный")
 			}
 			sep = s
+		}
+		// ЧГ=0 — без группировки разрядов, как в 1С. Раньше ключ не читался
+		// вовсе, и год печатался «2 026».
+		if strings.TrimSpace(extractFormatParam(fmtStr, "чг=")) == "0" {
+			sep = ""
+		}
+		if decimals < 0 {
+			return formatNumberAsIs(val, f, sep), nil
+		}
+		// Округление — по правилам 1С, половина от нуля: Формат(1234.5,
+		// "ЧДЦ=0") = «1235». Через float половина уходила к чётному («1234»).
+		if d, ok := toDecimal(val); ok && decimals <= 64 {
+			return groupNumberDigits(d.StringFixed(int32(decimals)), sep), nil //nolint:gosec // G115: 0 ≤ decimals ≤ 64 проверено выше
 		}
 		return formatNumber(f, decimals, sep), nil
 	}
@@ -180,15 +201,18 @@ func extractFormatParam(fmtStr, key string) string {
 // СОВМЕСТИМОСТЬ. До этой правки строчное «mm» означало МЕСЯЦ (регистр не
 // различался), и конфигурации с «ДФ=dd.mm.yyyy» существуют. Прочитать его как
 // минуты значило бы молча заменить месяц минутами — ровно тот дефект, который
-// здесь и чинится. Поэтому строчное «mm»/«мм» читается минутами только там, где
-// в шаблоне ЕСТЬ часы: без часов минуты бессмысленны, а «дд.мм.гггг» продолжает
-// печатать месяц. Явное «MM» — всегда месяц, «HH:mm» — всегда часы и минуты.
+// здесь и чинится. Поэтому строчное «mm»/«мм» читается минутами, когда шаблон
+// говорит временем: ЕСТЬ часы, ЛИБО есть секунды и при этом нет ни года, ни
+// дня — «мм:сс» это минуты:секунды, а «месяц:секунды» не осмысленный шаблон
+// (#1541). БЕЗ ЧАСОВ шаблон с годом или днём («дд.мм.гггг») печатает месяц.
+// При наличии часов строчное «mm»/«мм» всегда означает минуты, даже рядом
+// с годом или днём. Для месяца нужно явное «MM»/«ММ»: «дд.ММ.гггг ЧЧ:мм:сс».
 func formatDate(t time.Time, pattern string) string {
 	// Замены не перекрываются и не перечитывают уже подставленное, а порядок
 	// аргументов задаёт приоритет: «yyyy» пробуется раньше «yy», иначе год
 	// превратился бы в «0606».
 	minute := goLayoutMonth
-	if hasHourToken(pattern) {
+	if hasHourToken(pattern) || isMinutesSecondsPattern(pattern) {
 		minute = goLayoutMinute
 	}
 	return t.Format(strings.NewReplacer(
@@ -227,9 +251,39 @@ func hasHourToken(pattern string) bool {
 	return false
 }
 
+// isMinutesSecondsPattern — шаблон вида «мм:сс»: есть секунды и нет ни года,
+// ни дня. «Месяц:секунды» не осмысленный шаблон, поэтому в этом контексте
+// строчное «mm»/«мм» читается минутами (#1541). Год или день возвращают
+// старое прочтение-совместимость только без часов: hasHourToken в formatDate
+// имеет приоритет. «дд.мм.гггг» без часов печатает месяц, как и раньше.
+func isMinutesSecondsPattern(pattern string) bool {
+	if !strings.Contains(pattern, "ss") && !strings.Contains(pattern, "сс") {
+		return false
+	}
+	if strings.Contains(pattern, "yy") || strings.Contains(pattern, "гг") {
+		return false
+	}
+	return !strings.Contains(pattern, "dd") && !strings.Contains(pattern, "дд")
+}
+
+// formatNumberAsIs — число без заданной точности: десятичная запись значения
+// без незначащих нулей (21 → «21», 21.50 → «21.5»). Десятичное значение берётся
+// как есть, а не через float: 0.1 + 0.2 не превращается в «0.30000000000000004».
+func formatNumberAsIs(val any, f float64, sep string) string {
+	s := strconv.FormatFloat(f, 'f', -1, 64)
+	if d, ok := toDecimal(val); ok {
+		s = d.String()
+	}
+	return groupNumberDigits(s, sep)
+}
+
 // formatNumber formats a float with given decimal places and thousands separator.
 func formatNumber(f float64, decimals int, sep string) string {
-	s := strconv.FormatFloat(f, 'f', decimals, 64)
+	return groupNumberDigits(strconv.FormatFloat(f, 'f', decimals, 64), sep)
+}
+
+// groupNumberDigits расставляет разделитель разрядов в целой части записи числа.
+func groupNumberDigits(s, sep string) string {
 	parts := strings.Split(s, ".")
 	intPart := parts[0]
 	if sep != "" && len(intPart) > 3 {

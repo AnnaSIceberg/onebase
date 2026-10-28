@@ -34,6 +34,7 @@ import (
 type queryRunner interface {
 	RunQuery(ctx context.Context, sql string, args []any) ([]map[string]any, []string, error)
 	RunQueryLimit(ctx context.Context, sql string, args []any, maxRows int) ([]map[string]any, []string, bool, error)
+	RunQueryPage(ctx context.Context, sql string, args []any, limit, offset int) ([]map[string]any, []string, error)
 }
 
 // Run исполняет скомпилированный запрос и приводит типизированные колонки.
@@ -42,6 +43,7 @@ func Run(ctx context.Context, db queryRunner, res *Result) ([]map[string]any, []
 	if err != nil {
 		return rows, cols, err
 	}
+	RestoreLongLabels(res, rows, cols)
 	NormalizeColumns(res, rows)
 	return rows, cols, nil
 }
@@ -53,8 +55,21 @@ func RunLimit(ctx context.Context, db queryRunner, res *Result, maxRows int) ([]
 	if err != nil {
 		return rows, cols, truncated, err
 	}
+	RestoreLongLabels(res, rows, cols)
 	NormalizeColumns(res, rows)
 	return rows, cols, truncated, nil
+}
+
+// RunPage executes one page in the database and applies the same typed-column
+// normalization as Run and RunLimit.
+func RunPage(ctx context.Context, db queryRunner, res *Result, limit, offset int) ([]map[string]any, []string, error) {
+	rows, cols, err := db.RunQueryPage(ctx, res.SQL, res.Args, limit, offset)
+	if err != nil {
+		return rows, cols, err
+	}
+	RestoreLongLabels(res, rows, cols)
+	NormalizeColumns(res, rows)
+	return rows, cols, nil
 }
 
 // NormalizeColumns приводит значения всех типизированных колонок результата.

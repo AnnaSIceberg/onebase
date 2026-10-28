@@ -238,6 +238,13 @@ const (
 	// ChangeDrop, и --allow-destructive сносит все номера документов.
 	StandardNumberField   = "Номер"
 	StandardNumberFieldID = "std_number"
+	// «Владелец» подчинённого справочника (owner: в YAML) синтезируется той же
+	// логикой и по той же причине нуждается в устойчивом ID: без него миграция
+	// приняла бы синтезированную колонку за новую и запланировала снос старой
+	// вместе со связями. Имя фиксировано — по нему подбор отбирает элементы
+	// владельца, а DSL пишет и читает Эл.Владелец.
+	StandardOwnerField   = "Владелец"
+	StandardOwnerFieldID = "std_owner"
 )
 
 // PredefinedItem describes a catalog record that is always present in the DB
@@ -298,8 +305,16 @@ type Entity struct {
 	Numerator          *Numerator        // nil if auto-numbering is disabled
 	Predefined         []*PredefinedItem // nil for most entities; populated from YAML
 	Hierarchical       bool              // catalog with parent_id / is_folder tree support
-	HierarchyKind      string            // "folders_and_items" (default) | "items_only"
-	ListForm           []string          // visible fields in list form (nil = all)
+	// Owner — имя справочника-ВЛАДЕЛЬЦА (1С: «подчинённый справочник»). Пусто —
+	// справочник самостоятельный. Непусто — у каждого элемента есть реквизит
+	// «Владелец» (синтезируется, если не объявлен явно), а подбор ссылки на этот
+	// справочник ОТБИРАЕТСЯ по владельцу, известному вызывающей форме: товарная
+	// группа выбирается из групп своего направления, а не из всех тринадцати
+	// сотен. Подчинение — свойство справочника, а не формы: отбор появляется сам
+	// везде, где выбирают этот справочник, и его нельзя забыть настроить.
+	Owner         string
+	HierarchyKind string   // "folders_and_items" (default) | "items_only"
+	ListForm      []string // visible fields in list form (nil = all)
 	// ItemForm — состав формы элемента: какие реквизиты видны и в каком
 	// порядке (nil = все). Запись может быть помечена «только просмотр»
 	// (#1011): служебный реквизит, который пересобирает модуль при записи,
@@ -323,14 +338,45 @@ type Entity struct {
 	// сегодня). Событие данные.<lower(имя)> публикуется автоматически при
 	// NotifyChanges; прочие имена шлёт конфигурация через ОтправитьУведомление.
 	ListRefreshOn []string
+	// ListFilters — основной набор полей панели «Отбор» списка. Пусто —
+	// панель показывает все реквизиты (как раньше); задано — только эти, а
+	// остальные пользователь добавляет себе кнопкой «+ Отбор» (выбор
+	// запоминается за ним). У документа на сотню реквизитов панель из всех
+	// полей нечитаема.
+	ListFilters []string
 	// NotifyChanges — opt-in автопубликации служебного события данные.<lower(имя)>
 	// после успешной записи/проведения/отмены/удаления (row-aware адресация по
 	// правам). Без него «живому списку» нечего слушать без ручного кода.
 	NotifyChanges bool
+	// NoInteractiveCreate — `interactive_create: false`: создать объект из
+	// интерфейса (кнопки «Создать», «Скопировать», ввод на основании, создание
+	// из поля ссылки, адрес /new) может только роль с явным правом `create` —
+	// как право «Интерактивное добавление» в 1С; одного `write` мало.
+	// Программно (Документы.X.Создать(), REST) создают по праву `write`: так
+	// документ, который рождается из другого (заявка из звонка), не появится в
+	// базе в обход своего основания у тех, кому ручное создание не положено.
+	NoInteractiveCreate bool
 	// TileView задаёт пользовательскую компоновку плитки списка. Nil означает
 	// старое автоправило: картинка из image-поля, заголовок из первого поля,
 	// остальные реквизиты ниже.
 	TileView *TileView
+	// OrderBy — порядок ПО УМОЛЧАНИЮ: реквизиты, по которым сортируются список,
+	// подбор и выдача REST, пока пользователь не выбрал колонку сам. Пусто —
+	// прежнее поведение (иерархия: папки, потом наименование; плоский справочник:
+	// порядок по UUID/id — UUIDv4 не кодирует время вставки, это визуально
+	// случайный порядок).
+	//
+	// Нужен там, где у значений есть СВОЙ порядок, не алфавитный: направления в
+	// отчётах идут не по алфавиту, а как их читает руководитель («порядок в
+	// отчётах» — отдельный реквизит в 1С). Без него такой справочник приходится
+	// сортировать в каждом отчёте и каждом списке заново, а подбор всё равно
+	// показывает алфавит.
+	//
+	// Направление задаётся суффиксом: «Поле desc». Первым всегда идёт is_folder
+	// DESC у иерархического справочника — папки не должны перемешиваться с
+	// элементами.
+	OrderBy []string
+
 	// Presentation — реквизиты, которыми объект представляется в списках,
 	// пикерах, поиске, REST и DSL, в порядке предпочтения. Пусто — правило по
 	// именам (LabelFields).
@@ -340,17 +386,39 @@ type Entity struct {
 	// справочнику помочь не может: если «Наименование» есть, оно и победит.
 	Presentation []string
 
+	// ChoicePreview — реквизит, текст которого форма выбора показывает в области
+	// просмотра для строки под курсором. Пусто — области просмотра нет, диалог
+	// остаётся списком представлений, каким был.
+	//
+	// Нужен там, где выбор из справочника требует ПРОЧИТАТЬ, а не узнать
+	// наименование: памятка по направлению обслуживания, условия по тарифу,
+	// ограничения по складу. Раньше такой текст можно было увидеть только после
+	// выбора — на карточке.
+	ChoicePreview string
+
+	// ChoicePreviewProc — «Модуль.Функция», которая СОБИРАЕТ тексты просмотра для
+	// показанной страницы подбора: Функция(Ссылки, Контекст) → Соответствие
+	// «идентификатор строки → текст». Нужна там, где текст зависит не только от
+	// самой строки: памятка по направлению разная у филиалов, и одним реквизитом
+	// её не выразить — филиал приходит из вызывающей формы контекстом подбора
+	// (FormElement.ChoiceContext).
+	//
+	// Задана вместе с ChoicePreview — побеждает процедура: она знает про контекст,
+	// а реквизит нет.
+	ChoicePreviewProc string
+
 	// DetailPanel — состав боковой панели деталей (план 118C). Nil = автокомпоновка.
 	DetailPanel *DetailPanel
 	// FullText — реквизиты шапки, попадающие в полнотекстовый индекс (план 82).
 	// Nil (блока нет в YAML) означает умолчание: все строковые реквизиты, см.
-	// FullTextFields. Явный пустой список — объект исключён из глобального поиска.
+	// HeaderFullTextFields. Явный пустой список — объект исключён из глобального поиска.
 	FullText []string
 	// FullTextSet отличает отсутствующий ключ fulltext от явного «fulltext: []».
 	FullTextSet bool
-	// Search — реквизиты, по которым ищет строка поиска списка и подбор ссылки
+	// Search — реквизиты шапки или пути ТабличнаяЧасть.Поле, по которым ищет
+	// строка поиска списка и подбор ссылки
 	// (ввод по строке в ячейке ТЧ, форма выбора). Nil означает умолчание: все
-	// строковые реквизиты, как было всегда, — см. SearchFields. Отдельно от
+	// строковые реквизиты, как было всегда, — см. SearchFieldPaths. Отдельно от
 	// FullText: тот управляет ГЛОБАЛЬНЫМ индексом, и `fulltext: []` (объект вне
 	// глобального поиска) не должен заодно ломать подбор в форме.
 	Search []string
@@ -391,66 +459,6 @@ func (e *Entity) ItemFormNames() []string {
 	return names
 }
 
-// SearchFields возвращает реквизиты, по которым идёт поиск подстроки в списке и
-// в подборе ссылки. Без блока `search_fields:` это все строковые реквизиты
-// шапки — историческое поведение, менять которое молча нельзя.
-//
-// Явный список снимает ограничение по типу: артикул или штрихкод часто хранят
-// числом, и по умолчанию такой реквизит в поиск не попадал — ровно этого и не
-// хватало, чтобы набирать позицию не по наименованию. Приведение к тексту берёт
-// на себя диалект (LowerLike), поэтому отдельный CAST не нужен.
-//
-// Ссылочные реквизиты не участвуют никогда: в колонке лежит UUID, искать по нему
-// подстроку бессмысленно (валидация такой список отклоняет).
-func SearchFields(e *Entity) []Field {
-	if e == nil {
-		return nil
-	}
-	if e.SearchSet {
-		out := make([]Field, 0, len(e.Search))
-		for _, name := range e.Search {
-			if f := findEntityFieldFold(e, name); f != nil && f.RefEntity == "" {
-				out = append(out, *f)
-			}
-		}
-		return out
-	}
-	var out []Field
-	for _, f := range e.Fields {
-		if f.Type == FieldTypeString && f.RefEntity == "" {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
-// FullTextFields возвращает реквизиты шапки, которые индексируются глобальным
-// поиском (план 82). Без блока `fulltext:` в YAML это все строковые реквизиты —
-// у документа сюда попадает и синтезированный Номер. Явный `fulltext: []`
-// выключает объект из индекса, поэтому пустой результат — валидное состояние,
-// а не «список не задан».
-func FullTextFields(e *Entity) []Field {
-	if e == nil {
-		return nil
-	}
-	if e.FullTextSet {
-		out := make([]Field, 0, len(e.FullText))
-		for _, name := range e.FullText {
-			if f := findEntityFieldFold(e, name); f != nil {
-				out = append(out, *f)
-			}
-		}
-		return out
-	}
-	var out []Field
-	for _, f := range e.Fields {
-		if f.Type == FieldTypeString {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
 // findEntityFieldFold ищет реквизит шапки по имени без учёта регистра: DSL и
 // метаданные регистронезависимы, поэтому `fulltext: [наименование]` должен
 // находить поле «Наименование».
@@ -464,6 +472,29 @@ func findEntityFieldFold(e *Entity, name string) *Field {
 		}
 	}
 	return nil
+}
+
+// SplitOrderSpec разбирает элемент order_by: «Поле» → («Поле», false),
+// «Поле desc» → («Поле», true). Регистр направления не важен, лишние пробелы
+// съедаются: список порядка пишут руками.
+func SplitOrderSpec(spec string) (field string, desc bool) {
+	return splitOrderSpec(spec)
+}
+
+func splitOrderSpec(spec string) (string, bool) {
+	s := strings.TrimSpace(spec)
+	lower := strings.ToLower(s)
+	for _, suffix := range []string{" desc", " убыв"} {
+		if strings.HasSuffix(lower, suffix) {
+			return strings.TrimSpace(s[:len(s)-len(suffix)]), true
+		}
+	}
+	for _, suffix := range []string{" asc", " возр"} {
+		if strings.HasSuffix(lower, suffix) {
+			return strings.TrimSpace(s[:len(s)-len(suffix)]), false
+		}
+	}
+	return s, false
 }
 
 // DetailPanel описывает состав боковой панели деталей списка (план 118C).
@@ -657,6 +688,37 @@ func (e *Entity) StageField() *Field {
 	return nil
 }
 
+// documentDateNames — имена реквизита «дата документа» в порядке
+// предпочтения; тот же набор ищет МоментВремени() (runtime.Object).
+var documentDateNames = []string{"Дата", "Date", "Период", "Period"}
+
+// DocumentDateField возвращает реквизит «дата документа»: реквизит-дату с
+// именем Дата (Date, Период, Period), а без такого — первый реквизит-дату в
+// порядке объявления; nil, если дат нет вовсе.
+//
+// По этой дате ложатся движения, работает дата запрета проведения и свёртка.
+// Раньше все они брали первый реквизит-дату, и документ, где СрокОплаты
+// объявлен раньше Дата, писал движения на срок оплаты, а проверку запрета
+// проходил по нему же — документ закрытого периода проводился.
+func (e *Entity) DocumentDateField() *Field {
+	if e == nil {
+		return nil
+	}
+	for _, name := range documentDateNames {
+		for i := range e.Fields {
+			if e.Fields[i].Type == FieldTypeDate && strings.EqualFold(e.Fields[i].Name, name) {
+				return &e.Fields[i]
+			}
+		}
+	}
+	for i := range e.Fields {
+		if e.Fields[i].Type == FieldTypeDate {
+			return &e.Fields[i]
+		}
+	}
+	return nil
+}
+
 // Виды регистра накопления (план 151). Балансовый (остатки) — по умолчанию;
 // оборотный нельзя сворачивать в остаток, поэтому свёртка его не предлагает.
 const (
@@ -734,6 +796,11 @@ type InfoRegister struct {
 	Recorder   bool
 	Dimensions []Field // key fields
 	Resources  []Field // value fields
+	// Indexes — дополнительные (неуникальные) индексы таблицы регистра.
+	// Первичный ключ начинается с period, поэтому отбор по измерению без
+	// периода («срез последних по адресу») без своего индекса читает всю
+	// таблицу. Поля — измерения, ресурсы или служебное period.
+	Indexes []IndexSpec
 }
 
 // DisplayName возвращает заголовок регистра сведений с учётом языка.
@@ -749,12 +816,22 @@ func (ir *InfoRegister) DisplayName(lang string) string {
 	return ir.Name
 }
 
-func RegisterTableName(regName string) string {
-	return "рег_" + strings.ToLower(regName)
-}
+// Функции имён таблиц и колонок. Каждая — SQLIdent от «логического» имени
+// (*Logical): логическое — то, что уходило в базу до #1946; оно нужно миграции,
+// чтобы найти и переименовать таблицу, созданную под длинным именем.
+
+func RegisterTableName(regName string) string { return SQLIdent(RegisterTableLogical(regName)) }
+
+// RegisterTableLogical — логическое имя таблицы регистра накопления.
+func RegisterTableLogical(regName string) string { return "рег_" + strings.ToLower(regName) }
 
 // RegisterTotalsTableName — таблица предрасчитанных итогов регистра (план 80).
 func RegisterTotalsTableName(regName string) string {
+	return SQLIdent(RegisterTotalsTableLogical(regName))
+}
+
+// RegisterTotalsTableLogical — логическое имя таблицы итогов регистра.
+func RegisterTotalsTableLogical(regName string) string {
 	return "итоги_" + strings.ToLower(regName)
 }
 
@@ -763,11 +840,17 @@ func RegisterTotalsTableName(regName string) string {
 // time.Format("2006-01"), чтобы границу момента можно было вычислить в Go.
 const RegisterTotalsMonthCol = "месяц"
 
-func InfoRegTableName(regName string) string {
-	return "инфо_" + strings.ToLower(regName)
-}
+func InfoRegTableName(regName string) string { return SQLIdent(InfoRegTableLogical(regName)) }
+
+// InfoRegTableLogical — логическое имя таблицы регистра сведений.
+func InfoRegTableLogical(regName string) string { return "инфо_" + strings.ToLower(regName) }
 
 func TablePartTableName(entityName, tpName string) string {
+	return SQLIdent(TablePartTableLogical(entityName, tpName))
+}
+
+// TablePartTableLogical — логическое имя таблицы табличной части.
+func TablePartTableLogical(entityName, tpName string) string {
 	return strings.ToLower(entityName) + "_" + strings.ToLower(tpName)
 }
 
@@ -785,6 +868,19 @@ func (e *Entity) DisplayName(lang string) string {
 		return e.Title
 	}
 	return e.Name
+}
+
+// SystemUsersEntity — системная таблица учётных записей (_users), разрешённая
+// как цель ссылки наравне с сущностями конфигурации: `type: reference:_users`
+// валидна в YAML, storage строит на неё настоящий внешний ключ, а формы
+// подставляют в выбор учётные записи с признаком show_in_list (issue #1646).
+const SystemUsersEntity = "_users"
+
+// IsSystemRefTarget сообщает, что имя цели ссылки — служебная системная
+// таблица, а не сущность конфигурации: валидатор и проверки целостности
+// обязаны пропускать её мимо реестра сущностей.
+func IsSystemRefTarget(name string) bool {
+	return strings.EqualFold(name, SystemUsersEntity)
 }
 
 func IsReference(ft FieldType) bool {
@@ -816,9 +912,10 @@ func EnumTypeName(ft FieldType) string {
 	return strings.TrimPrefix(string(ft), "enum:")
 }
 
-func TableName(entityName string) string {
-	return strings.ToLower(entityName)
-}
+func TableName(entityName string) string { return SQLIdent(TableLogical(entityName)) }
+
+// TableLogical — логическое имя таблицы справочника или документа.
+func TableLogical(entityName string) string { return strings.ToLower(entityName) }
 
 // FieldSignature — диалект-независимая подпись типа поля (план 81).
 //
@@ -839,7 +936,10 @@ func FieldSignature(f Field) string {
 	}
 }
 
-func ColumnName(f Field) string {
+func ColumnName(f Field) string { return SQLIdent(LogicalColumnName(f)) }
+
+// LogicalColumnName — логическое имя колонки поля: lower(имя), у ссылки — с _id.
+func LogicalColumnName(f Field) string {
 	col := strings.ToLower(f.Name)
 	if f.RefEntity != "" {
 		return col + "_id"

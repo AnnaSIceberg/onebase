@@ -43,6 +43,10 @@ type Common struct {
 	// email). Возвращает ошибку, если сеть заблокирована предохранителем
 	// (план 62). nil → сеть не ограничивается (для тестов/совместимости).
 	NetGuard func() error
+	// HTTPFileMaxBytes — предел тела ответа, которое HTTPСоединение пишет в
+	// ИмяВыходногоФайла. 0 → interpreter.DefaultDSLHTTPFileBytes. UI передаёт
+	// предел загрузки вложений: скачанный файл обычно тут же прикрепляется.
+	HTTPFileMaxBytes int64
 	// ExecGuard вызывается перед запуском команды ОС (ВыполнитьКоманду, план 67).
 	// nil → команды ЗАПРЕЩЕНЫ (secure by default, в отличие от NetGuard): exec —
 	// исполнение кода на сервере, разрешается только явной настройкой базы.
@@ -56,6 +60,18 @@ type Common struct {
 	// DSL (ЗагрузитьПакет). nil → hook на DSL-пути откатывается к by_time (как
 	// прежде); остальные DSL-переменные от Interp не зависят.
 	Interp *interpreter.Interpreter
+	// TxState — живое состояние транзакций исполнения (#1272). Фабрика запросов
+	// использует его только для обнаружения self-deadlock: запрос с контекстом,
+	// снятым до НачатьТранзакцию, возвращает управляемую ошибку вместо
+	// фатального ожидания. nil → прежнее поведение. Живое ЧТЕНИЕ через
+	// транзакцию даёт CtxSource/план 161, не это поле.
+	TxState *interpreter.TxState
+	// ConstantRefPresenter достаёт подпись ссылочной константы (entity, uuid).
+	// Хост решает правила чтения: права, маскирование, живой контекст транзакции.
+	// nil → ссылочная константа остаётся без подписи: UUID, выданный за
+	// наименование, молча уезжал в письма и печатные формы (#1536), и пустое
+	// представление честнее.
+	ConstantRefPresenter func(ctx context.Context, entityName, uuid string) string
 }
 
 // Build возвращает map с пересечением DSL-переменных, общих для UI и scheduler.
@@ -92,7 +108,20 @@ func (c Common) Build() map[string]any {
 		}
 		return ref
 	}
-	queryFactory := interpreter.NewQueryFactory(c.Ctx, c.Store, c.Reg)
+	constants := interpreter.NewTypedConstantsRoot(c.Ctx, c.Store, declaredConsts, constsMap, constantRef)
+	if c.ConstantRefPresenter != nil {
+		constants = constants.WithRefPresenter(c.ConstantRefPresenter).WithRefCtxSource(ctxSource)
+	}
+	// #1272: при известном живом состоянии транзакций фабрика запросов
+	// получает страховку от self-deadlock — контекст всё ещё снимается здесь,
+	// но Выполнить() с рассогласованным контекстом даёт управляемую ошибку,
+	// а не фатальное ожидание собственного соединения SQLite.
+	var queryFactory func(args []any) any
+	if c.TxState != nil {
+		queryFactory = interpreter.NewQueryFactoryWithTxState(c.Ctx, c.Store, c.Reg, c.TxState)
+	} else {
+		queryFactory = interpreter.NewQueryFactory(c.Ctx, c.Store, c.Reg)
+	}
 	predefined := interpreter.NewPredefinedRoot(c.Ctx, c.Store)
 
 	vars := map[string]any{
@@ -101,13 +130,13 @@ func (c Common) Build() map[string]any {
 		// Не MapThis: тот писал бы присвоенное значение только в память
 		// процесса, и `Константы.Имя = Значение` молча не доезжало до базы
 		// (#719). ConstantsRoot пишет сквозь.
-		"Константы":                interpreter.NewTypedConstantsRoot(c.Ctx, c.Store, declaredConsts, constsMap, constantRef),
+		"Константы":                constants,
 		"__factory_Запрос":         queryFactory,
 		"__factory_Query":          queryFactory,
 		"ПредопределённыеЗначения": predefined,
 		"PredefinedValues":         predefined,
 	}
-	for k, v := range interpreter.NewHTTPFunctions(c.NetGuard, ctxSource) {
+	for k, v := range interpreter.NewHTTPFunctionsWith(c.NetGuard, interpreter.HTTPOptions{Ctx: ctxSource, MaxFileBytes: c.HTTPFileMaxBytes}) {
 		vars[k] = v
 	}
 	for k, v := range interpreter.NewEmailFunctions(c.Mailer, c.NetGuard, c.EmailFileResolver) {
@@ -220,6 +249,15 @@ func (c Common) Build() map[string]any {
 		}
 		vars["ПланыОбмена"] = exchangeRoot
 		vars["ExchangePlans"] = exchangeRoot
+	}
+
+	// СериализаторXDTO: обмен с 1С в её формате. Нужен только реестр — метаданные
+	// задают порядок и типы реквизитов при записи, а при чтении без них не
+	// разобрать ссылку: её тип в XML не записан.
+	if c.Reg != nil {
+		serializer := interpreter.NewXDTOSerializer(c.Reg)
+		vars["СериализаторXDTO"] = serializer
+		vars["XDTOSerializer"] = serializer
 	}
 
 	// Нумераторы (issue #358): Нумераторы.СледующийНомер("Сущность"[, Дата]) —

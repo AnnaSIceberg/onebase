@@ -40,12 +40,26 @@ import (
 // комментарий начинает описывать несуществующую конструкцию.
 var coalesceEmptyWrap = regexp.MustCompile(`(?i)COALESCE\(([^,()]+),\s*''\)`)
 
+// castNumericWrap распознаёт вторую служебную обёртку того же компилятора —
+// CAST, которым на SQLite окружается number-колонка в сравнении (там число
+// хранится как TEXT):
+//
+//	CAST(поле AS NUMERIC)
+//	CAST(алиас.поле AS NUMERIC)
+//
+// Без разворота перед плейсхолдером оставался хвост «numeric)», и параметр
+// уходил в name-based fallback как строка (#1537). Внутреннее выражение
+// ограничено формой, которую генерирует компилятор, — одиночный идентификатор
+// с точками: произвольное выражение вида CAST(а+б AS NUMERIC) разворотом не
+// считается и ведёт себя как раньше.
+var castNumericWrap = regexp.MustCompile(`(?i)CAST\(([\p{L}\p{N}_.]+)\s+AS\s+NUMERIC\)`)
+
 func (s *Server) queryConsolePage(w http.ResponseWriter, r *http.Request) {
 	if !s.isAdmin(r) {
 		s.renderForbidden(w, r)
 		return
 	}
-	sources := s.buildQuerySources()
+	sources := s.buildQuerySources(s.resolveLang(r))
 	schemaJSON, _ := json.Marshal(sources)
 	s.render(w, r, "page-query-console", map[string]any{
 		"Schema": template.JS(schemaJSON), //nolint:gosec // G203: значение получено json.Marshal — он экранирует < > & в \u-последовательности, поэтому «</script>» из данных не разорвёт тег
@@ -96,6 +110,7 @@ func (s *Server) queryConsoleExec(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, 200, map[string]any{"error": "Ошибка выполнения: " + err.Error()})
 		return
 	}
+	query.RestoreLongLabels(&res, rows, nil)
 	if err := maskPlan.Apply(rows); err != nil {
 		jsonResp(w, http.StatusForbidden, map[string]any{"error": "Нет доступа к защищённому полю: " + err.Error()})
 		return
@@ -264,11 +279,13 @@ func (s *Server) queryConsoleAnalyze(w http.ResponseWriter, r *http.Request) {
 		}
 		before := strings.TrimSpace(parts[occ-1])
 		// Детект колонки текстовый — по последним словам перед плейсхолдером,
-		// поэтому служебную обёртку сравнения разворачиваем: компилятор пишет
-		// текстовое поле как COALESCE(поле, ''), чтобы незаполненное значение
-		// сравнивалось как пустая строка, и без разворота вместо имени колонки
-		// сюда попадал хвост обёртки.
+		// поэтому служебные обёртки сравнения разворачиваем: компилятор
+		// окружает текстовое поле как COALESCE(поле, ''), чтобы незаполненное
+		// значение сравнивалось как пустая строка, а number-колонку на SQLite —
+		// как CAST(поле AS NUMERIC), потому что число там хранится как TEXT.
+		// Без разворота вместо имени колонки сюда попадал хвост обёртки.
 		before = coalesceEmptyWrap.ReplaceAllString(before, "$1")
+		before = castNumericWrap.ReplaceAllString(before, "$1")
 		tokens := strings.Fields(before)
 		if len(tokens) < 2 {
 			dbg.Type = "too_few_tokens→fallback"
@@ -348,11 +365,11 @@ func (s *Server) devEntitySearch(w http.ResponseWriter, r *http.Request) {
 	for _, f := range found.Fields {
 		if f.Type == metadata.FieldTypeString {
 			if nameCol == "" {
-				nameCol = strings.ToLower(f.Name)
+				nameCol = metadata.ColumnName(f)
 			}
 		}
 		if strings.EqualFold(f.Name, "код") || strings.EqualFold(f.Name, "code") {
-			codeCol = strings.ToLower(f.Name)
+			codeCol = metadata.ColumnName(f)
 		}
 	}
 	if nameCol == "" {

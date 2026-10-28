@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ivantit66/onebase/internal/fsmode"
 	"github.com/ivantit66/onebase/internal/i18n/i18nerr"
+	"github.com/ivantit66/onebase/internal/userdata"
 	sqlite "modernc.org/sqlite"
 )
 
@@ -34,6 +36,52 @@ func init() {
 			return v, nil
 		}
 	})
+	// date хранится в SQLite как UTC с явным offset. Календарные функции
+	// прикладного запроса должны сначала увидеть те же локальные стенные часы,
+	// что DSL/UI. Функция намеренно не deterministic: time.Local — настройка
+	// процесса, и тесты проверяют несколько зон в одном запуске (#1243).
+	sqlite.MustRegisterScalarFunction("ob_local_datetime", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		if len(args) != 1 || args[0] == nil {
+			return nil, nil
+		}
+		var value string
+		switch v := args[0].(type) {
+		case string:
+			value = v
+		case []byte:
+			value = string(v)
+		case time.Time:
+			return v.In(time.Local).Format("2006-01-02 15:04:05.999999999"), nil
+		default:
+			return nil, nil
+		}
+		for _, layout := range []string{sqliteTimeLayout, time.RFC3339Nano, time.RFC3339} {
+			if parsed, err := time.Parse(layout, strings.TrimSpace(value)); err == nil {
+				return parsed.In(time.Local).Format("2006-01-02 15:04:05.999999999"), nil
+			}
+		}
+		return nil, nil
+	})
+}
+
+// ConnectSQLiteReadOnly opens an existing database without creation, write probes,
+// journal changes or filesystem setup. Foreign-key mode is local to the reader.
+func ConnectSQLiteReadOnly(ctx context.Context, path string) (*DB, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := sql.Open("sqlite", schemaRevisionSQLiteURI(abs, "mode=ro")+"&_pragma=foreign_keys(ON)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		return nil, err
+	}
+	conn.SetMaxOpenConns(1)
+	conn.SetMaxIdleConns(1)
+	if err := conn.PingContext(ctx); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("storage: SQLite read-only: %w", err)
+	}
+	return &DB{sqlDB: conn, dialect: SQLiteDialect{}, databaseFile: abs}, nil
 }
 
 // ConnectSQLite opens (or creates) a SQLite database file at the given path
@@ -203,6 +251,6 @@ func defaultFilesDirForSQLite(dbPath string) string {
 			break
 		}
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".onebase", "files", base)
+	dir, _ := userdata.Path("files", base)
+	return dir
 }

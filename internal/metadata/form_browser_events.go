@@ -25,26 +25,32 @@ type browserFormEventRule struct {
 var browserFormEventRules = []browserFormEventRule{
 	{
 		kinds:  []FormElementType{FormElementButton},
-		events: []FormEventType{FormEventOnClick, FormEventOnChoice},
+		events: []FormEventType{FormEventOnClick, FormEventOnSearch, FormEventOnChoice, FormEventOnAnswer},
 	},
 	{
 		kinds: []FormElementType{
 			FormElementField, FormElementCodeField, FormElementCheckbox,
 			FormElementDatePicker, FormElementSwitch,
 		},
-		events: []FormEventType{FormEventOnChange, FormEventOnChoice},
+		events: []FormEventType{FormEventOnChange, FormEventOnChoice, FormEventOnAnswer},
 	},
 	{
 		kinds:  []FormElementType{FormElementInputList},
-		events: []FormEventType{FormEventOnChange, FormEventStartChoice, FormEventOnChoice},
+		events: []FormEventType{FormEventOnChange, FormEventStartChoice, FormEventOnChoice, FormEventOnAnswer},
 	},
 	{
 		kinds: []FormElementType{FormElementTablePart},
 		events: []FormEventType{
 			FormEventOnChange, FormEventOnRowAdded, FormEventOnRowDeleted,
 			FormEventOnChoice, FormEventOnRowActivated, FormEventOnRowChanged,
-			FormEventAfterRowAdd,
+			FormEventAfterRowAdd, FormEventOnAnswer,
 		},
+	},
+	{
+		// Набор страниц шлёт смену открытой страницы; обработчик вправе
+		// показать вопрос или подбор — их вторые фазы приходят тому же набору.
+		kinds:  []FormElementType{FormElementPages},
+		events: []FormEventType{FormEventOnPageChange, FormEventOnChoice, FormEventOnAnswer},
 	},
 	{
 		// Колонка табличной части шлёт только правку своей ячейки (план 154).
@@ -57,12 +63,25 @@ var browserFormEventRules = []browserFormEventRule{
 
 // browserFormCommandEvents — события команды формы, не размещённой на ней
 // элементом: вида элемента у неё нет, поэтому в таблицу выше она не попадает.
-var browserFormCommandEvents = []FormEventType{FormEventOnClick, FormEventOnChoice}
+// Поиск здесь по той же причине, что и у кнопки: диалог подбора открывает
+// команда автопанели ровно так же, как кнопка, и строка серверного поиска
+// отправляет событие той же цели. Без него диалог, открытый командой, получал
+// fail-closed отказ «команда формы X не отправляет событие "Поиск"», хотя
+// руководство обещает все события выбора.
+var browserFormCommandEvents = []FormEventType{FormEventOnClick, FormEventOnSearch, FormEventOnChoice, FormEventOnAnswer}
 
 // browserFormLevelEvents — события, приходящие без имени элемента, на форму
 // целиком. Остальные события уровня формы серверные: их запускает сервер на
 // чтении и записи, из браузера они не вызываются.
-var browserFormLevelEvents = []FormEventType{FormEventOnOpen}
+// ПередПроведением браузер шлёт перед стандартным проведением: обработчику
+// нужен диалог с пользователем, а серверный хук записи спросить его не может.
+// Ответ на этот вопрос возвращается тем же событием ПередПроведением.
+//
+// Ответ — вторая фаза вопроса, заданного из ПриОткрытии («Принять задачу?»
+// при открытии, как в 1С): у вопроса формы нет элемента-источника, и клиент
+// отправляет ответ без имени элемента. Вызывается только объявленный в events
+// формы обработчик — иначе fail-closed отказ, как у любого события.
+var browserFormLevelEvents = []FormEventType{FormEventOnOpen, FormEventBeforePost, FormEventOnAnswer}
 
 // BrowserFormEventsFor возвращает копию перечня событий, которые браузер вправе
 // отправить элементу формы данного вида. Вид, ничего не отправляющий (надпись,

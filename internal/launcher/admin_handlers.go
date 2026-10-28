@@ -195,7 +195,12 @@ function cfgInfo(text,onClose){
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:10001;display:flex;align-items:center;justify-content:center';
   var box=document.createElement('div');
   box.style.cssText='background:#fff;padding:18px 22px;border-radius:8px;box-shadow:0 6px 28px rgba(0,0,0,.2);min-width:240px;font-size:13px';
-  box.innerHTML='<div style="margin-bottom:12px">'+text+'</div>';
+  // Текст сюда приходит ответом сервера (e.message) и контракта разметки не
+  // имеет: вставка через innerHTML интерпретировала <, >, & как HTML (#1570).
+  var msg=document.createElement('div');
+  msg.style.cssText='margin-bottom:12px';
+  msg.textContent=text;
+  box.appendChild(msg);
   var ok=document.createElement('button');ok.textContent='OK';ok.style.cssText='background:#1a4a80;color:#fff;border:none;padding:5px 14px;border-radius:4px;cursor:pointer;float:right';
   ok.onclick=function(){document.body.removeChild(ov);if(onClose){onClose()}};
   box.appendChild(ok);ov.appendChild(box);document.body.appendChild(ov);
@@ -452,12 +457,32 @@ func isPasswordPolicyError(err error) bool {
 // Сам текст ошибки говорит только «пароль не может быть пустым» — из
 // конфигуратора не видно, что пустые пароли вообще включаются, и на тестовом
 // стенде это тупик: админ упирается в запрет, о котором знает лишь исходный код.
+//
+// Пользовательское представление трёх отказов локализуется здесь, на границе
+// HTTP (#1571): auth отдаёт типизированные ошибки с фактическими пределами
+// (настройки базы уточняют глобальный минимум), разбор русского err.Error()
+// строковыми заменами не используется. Неизвестная ошибка возвращается как
+// есть — это не отказ политики.
 func passwordPolicyMessage(lang string, err error) string {
 	switch {
 	case errors.Is(err, auth.ErrPasswordRequired):
-		return err.Error() + ". " + tr(lang, "Пустые пароли включаются переменной окружения ONEBASE_ALLOW_EMPTY_PASSWORDS=true перед запуском лаунчера.")
+		return tr(lang, "Пароль не может быть пустым") + ". " +
+			tr(lang, "Пустые пароли включаются переменной окружения ONEBASE_ALLOW_EMPTY_PASSWORDS=true перед запуском лаунчера.")
 	case errors.Is(err, auth.ErrPasswordTooShort):
-		return err.Error() + ". " + tr(lang, "Минимальная длина задаётся переменной окружения ONEBASE_MIN_PASSWORD_LENGTH перед запуском лаунчера.")
+		minLen := auth.DefaultMinPasswordLength
+		var short *auth.PasswordTooShortError
+		if errors.As(err, &short) {
+			minLen = short.Min
+		}
+		return fmt.Sprintf(tr(lang, "пароль слишком короткий: минимум %d символов"), minLen) + ". " +
+			tr(lang, "ONEBASE_MIN_PASSWORD_LENGTH задаёт минимальную длину по умолчанию перед запуском лаунчера. Сохранённая политика паролей базы перекрывает это значение. Чтобы изменить минимум, откройте «Параметры базы» → «Пароли».")
+	case errors.Is(err, auth.ErrPasswordTooLong):
+		maxBytes := auth.MaxPasswordLength
+		var long *auth.PasswordTooLongError
+		if errors.As(err, &long) {
+			maxBytes = long.Max
+		}
+		return fmt.Sprintf(tr(lang, "пароль слишком длинный: максимум %d байта"), maxBytes)
 	}
 	return err.Error()
 }
@@ -950,9 +975,10 @@ function cfgSettingsSave(){
   var net=document.getElementById('st-net').checked;
   var exec=document.getElementById('st-exec').checked;
   var fm=document.getElementById('form_open_mode').value;
+  var fml=document.getElementById('st-formlock').checked;
   var pwlen=document.getElementById('st-pwlen').value;
   var pwempty=document.getElementById('st-pwempty').checked;
-  fetch('/bases/%s/configurator/admin/settings/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({list_page_size:n,collapsible_nav:c,network_enabled:net,exec_enabled:exec,form_open_mode:fm,password_min_length:pwlen,allow_empty_passwords:pwempty})})
+  fetch('/bases/%s/configurator/admin/settings/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({list_page_size:n,collapsible_nav:c,network_enabled:net,exec_enabled:exec,form_open_mode:fm,form_open_mode_locked:fml,password_min_length:pwlen,allow_empty_passwords:pwempty})})
     .then(function(r){return r.json()})
     .then(function(d){
       var m=document.getElementById('st-msg');
@@ -973,6 +999,10 @@ function cfgSettingsSave(){
 }
 </script>`, jsText(b.ID), jsText(tr(lang, "Сохранено")), jsText(tr(lang, "Ошибка")), jsText(tr(lang, "Ошибка сети")))
 	formMode := db.GetFormOpenMode(r.Context())
+	lockChecked := ""
+	if db.GetFormOpenModeLocked(r.Context()) {
+		lockChecked = "checked"
+	}
 	pagesSel, tabsSel := "", ""
 	if formMode == storage.FormModeTabs {
 		tabsSel = "selected"
@@ -1002,6 +1032,11 @@ function cfgSettingsSave(){
 	    </select>
 	  </label>
 	  <div style="font-size:11px;color:#666;margin-top:6px">Дефолт для пользователей без личной настройки. «Вкладки» открывают формы в оболочке <code>/ui/app</code>, «Отдельные страницы» — как обычные страницы <code>/ui</code>. Каждый пользователь может переопределить это в «Параметрах».</div>
+	  <label style="font-size:12px;display:flex;align-items:center;gap:8px;margin-top:10px">
+	    <input type="checkbox" id="st-formlock" %s>
+	    Закрепить режим: пользователи не меняют его
+	  </label>
+	  <div style="font-size:11px;color:#666;margin-top:6px">Личные настройки режима перестают действовать, переключатель «Вкладки/Страницы» у пользователей скрыт. Режим выше меняет только администратор.</div>
 	  <div style="font-size:13px;font-weight:600;margin:16px 0 8px">Безопасность</div>
 	  <label style="font-size:12px;display:flex;align-items:center;gap:8px">
 	    <input type="checkbox" id="st-net" %s>
@@ -1016,7 +1051,7 @@ function cfgSettingsSave(){
 	  %s
 	</div>
 </div>
-%s`, storage.MaxListPageSize, pageSize, storage.MaxListPageSize, navChecked, pagesSel, tabsSel, netChecked, execChecked,
+%s`, storage.MaxListPageSize, pageSize, storage.MaxListPageSize, navChecked, pagesSel, tabsSel, lockChecked, netChecked, execChecked,
 		passwordSection, settingsScript)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writeBody(w, []byte(html))
@@ -1037,6 +1072,7 @@ func (h *handler) cfgAdminSettingsSave(w http.ResponseWriter, r *http.Request) {
 		NetworkEnabled      *bool           `json:"network_enabled"`
 		ExecEnabled         *bool           `json:"exec_enabled"`
 		FormOpenMode        string          `json:"form_open_mode"`
+		FormOpenModeLocked  *bool           `json:"form_open_mode_locked"`
 		PasswordMinLength   json.RawMessage `json:"password_min_length"`
 		AllowEmptyPasswords *bool           `json:"allow_empty_passwords"`
 	}
@@ -1082,6 +1118,12 @@ func (h *handler) cfgAdminSettingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.FormOpenMode != "" {
 		if err := db.SaveFormOpenMode(r.Context(), req.FormOpenMode); err != nil {
+			writeJSON(w, 500, map[string]any{"error": err.Error()})
+			return
+		}
+	}
+	if req.FormOpenModeLocked != nil {
+		if err := db.SaveFormOpenModeLocked(r.Context(), *req.FormOpenModeLocked); err != nil {
 			writeJSON(w, 500, map[string]any{"error": err.Error()})
 			return
 		}
@@ -1255,6 +1297,14 @@ func (h *handler) cfgAdminAbout(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
+	distributionRows := ""
+	if d := version.DistributionInfo(); d.Present() {
+		distributionRows = fmt.Sprintf(`<tr><td style="padding:6px 0;color:#888">%s</td><td style="padding:6px 0">%s %s</td></tr>`, escHTML(tr(resolveLang(r), "Изменённая сборка")), escHTML(d.Name), escHTML(d.Version))
+		if d.Supplier != "" {
+			distributionRows += fmt.Sprintf(`<tr><td style="padding:6px 0;color:#888">%s</td><td style="padding:6px 0">%s</td></tr>`, escHTML(tr(resolveLang(r), "Поставщик сборки")), escHTML(d.Supplier))
+		}
+	}
+
 	dbLocation := baseDatabaseLocation(b)
 	configMode := "Файлы"
 	configLocation := b.Path
@@ -1278,6 +1328,7 @@ func (h *handler) cfgAdminAbout(w http.ResponseWriter, r *http.Request) {
 	%s
 	<tr><td style="padding:6px 0;color:#888;width:140px">Версия платформы</td><td style="padding:6px 0">%s</td></tr>
 	%s
+	%s
 	<tr><td style="padding:6px 0;color:#888">Режим конфигурации</td><td style="padding:6px 0">%s</td></tr>
 	<tr><td style="padding:6px 0;color:#888">Расположение конфигурации</td><td style="padding:6px 0;word-break:break-all">%s</td></tr>
 	<tr><td style="padding:6px 0;color:#888">База данных</td><td style="padding:6px 0;word-break:break-all">%s</td></tr>
@@ -1290,6 +1341,7 @@ func (h *handler) cfgAdminAbout(w http.ResponseWriter, r *http.Request) {
 		logoHTML,
 		userRow,
 		platVer,
+		distributionRows,
 		cfgRows,
 		escHTML(configMode),
 		escHTML(configLocation),

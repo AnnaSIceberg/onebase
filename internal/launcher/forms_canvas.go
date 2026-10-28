@@ -93,8 +93,11 @@ func renderCanvasElement(buf *bytes.Buffer, en *formdoc.ElementNode, selectedID 
 		if strings.EqualFold(el.Orientation, "horizontal") {
 			groupClass += " fc-group-horizontal"
 		}
+		if el.UsesEqualColumns() {
+			groupClass += " ob-equal-columns"
+		}
 		fmt.Fprintf(buf, `<fieldset class="%s" data-node-id="%s" data-kind="%s"%s><legend class="fc-pick">%s</legend>`,
-			elWrapClass(groupClass, id, selectedID), id, kind, layoutStyleAttr(el), title)
+			elWrapClass(groupClass, id, selectedID), id, kind, groupStyleAttr(el), title)
 		renderCanvasChildren(buf, id, en.Children, selectedID)
 		buf.WriteString(`</fieldset>`)
 
@@ -169,8 +172,8 @@ func renderCanvasElement(buf *bytes.Buffer, en *formdoc.ElementNode, selectedID 
 			elWrapClass("fc-label", id, selectedID), id, kind, layoutStyleAttr(el), title)
 
 	case metadata.FormElementButton:
-		fmt.Fprintf(buf, `<div class="%s fc-pick" data-node-id="%s" data-kind="%s"%s><button type="button" disabled>%s</button></div>`,
-			elWrapClass("fc-btn", id, selectedID), id, kind, layoutStyleAttr(el), title)
+		fmt.Fprintf(buf, `<div class="%s fc-pick" data-node-id="%s" data-kind="%s"%s><button type="button" disabled%s>%s</button></div>`,
+			elWrapClass("fc-btn", id, selectedID), id, kind, layoutStyleAttr(el), styleAttr(metadata.FormElementBackgroundCSS(el)), title)
 
 	case metadata.FormElementPicture:
 		fmt.Fprintf(buf, `<div class="%s fc-pick" data-node-id="%s" data-kind="%s"%s>`,
@@ -236,6 +239,7 @@ func hasColumnChild(en *formdoc.ElementNode) bool {
 // открывал панель без повторного парсинга YAML в браузере.
 type canvasElementInfo struct {
 	NodeID   string `json:"nodeId"`
+	ID       string `json:"id"`
 	Kind     string `json:"kind"`
 	Name     string `json:"name"`
 	TitleRU  string `json:"titleRu"`
@@ -265,18 +269,41 @@ type canvasElementInfo struct {
 	NoGrid  bool   `json:"noGrid"`  // ТабличнаяЧасть: простая таблица вместо SlickGrid
 	AutoSum bool   `json:"autoSum"` // ТабличнаяЧасть: Сумма = Количество × Цена по именам колонок
 	// Orientation — раскладка детей контейнера: ""/"vertical" или "horizontal".
-	Orientation string `json:"orientation"`
+	Orientation  string `json:"orientation"`
+	EqualColumns bool   `json:"equalColumns"`
+	// Background — безопасный CSS-цвет фона ГруппаФормы и Кнопка. В модель передаётся
+	// исходное значение: панель редактирует YAML, а canvas/preview применяют
+	// его только через FormElementBackgroundCSS.
+	Background string `json:"background"`
 	// События элемента (batch B1): имя события → имя процедуры в .form.os.
 	Events map[string]string `json:"events"`
 	// Набор значений Переключателя/ПолеСписка (batch C1).
 	Options []canvasOption `json:"options"`
 	View    string         `json:"view"` // radio|select
+	// ChoiceFilter сохраняет порядок условий и тип boolean-литерала для
+	// визуального редактора plan 170/C. Указатель отличает value:false от
+	// отсутствующего value (режим from).
+	ChoiceFilter []canvasChoiceCondition `json:"choiceFilter"`
 }
 
 // canvasOption — значение набора Переключателя для редактора опций (C1).
 type canvasOption struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
+}
+
+type canvasChoiceCondition struct {
+	Field string `json:"field"`
+	Op    string `json:"op"`
+	From  string `json:"from,omitempty"`
+	Value *bool  `json:"value,omitempty"`
+	// Ref — постоянная ссылка (UUID записи справочника), третий вид
+	// источника (#1820).
+	Ref string `json:"ref,omitempty"`
+	// Query/Params — условие запросом. Визуальный редактор его не правит, но
+	// обязан вернуть как есть: иначе правка соседнего условия стёрла бы его.
+	Query  string            `json:"query,omitempty"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 // canvasModel разворачивает дерево формы в плоскую карту node-id → редактируемые
@@ -292,27 +319,30 @@ func canvasModel(doc *formdoc.Doc) (map[string]canvasElementInfo, error) {
 		for _, en := range ens {
 			el := en.El
 			info := canvasElementInfo{
-				NodeID:      en.NodeID,
-				Kind:        string(el.Kind),
-				Name:        el.Name,
-				DataPath:    el.DataPath,
-				Field:       el.FieldName,
-				Required:    el.Required,
-				ReadOnly:    el.ReadOnly,
-				Hint:        el.Hint,
-				Container:   el.IsContainer(),
-				Mask:        el.Mask,
-				InputMask:   el.InputMask,
-				FileType:    el.Type == "file",
-				Picture:     el.Picture,
-				Width:       el.Width,
-				Height:      el.Height,
-				HAlign:      el.HorizontalAlign,
-				VAlign:      el.VerticalAlign,
-				NoGrid:      el.NoGrid,
-				AutoSum:     el.AutoSum,
-				Orientation: el.Orientation,
-				View:        el.View,
+				NodeID:       en.NodeID,
+				ID:           el.ID,
+				Kind:         string(el.Kind),
+				Name:         el.Name,
+				DataPath:     el.DataPath,
+				Field:        el.FieldName,
+				Required:     el.Required,
+				ReadOnly:     el.ReadOnly,
+				Hint:         el.Hint,
+				Container:    el.IsContainer(),
+				Mask:         el.Mask,
+				InputMask:    el.InputMask,
+				FileType:     el.Type == "file",
+				Picture:      el.Picture,
+				Width:        el.Width,
+				Height:       el.Height,
+				HAlign:       el.HorizontalAlign,
+				VAlign:       el.VerticalAlign,
+				NoGrid:       el.NoGrid,
+				AutoSum:      el.AutoSum,
+				Orientation:  el.Orientation,
+				EqualColumns: el.EqualColumns,
+				Background:   el.Background,
+				View:         el.View,
 			}
 			if el.TitleMap != nil {
 				info.TitleRU = el.TitleMap["ru"]
@@ -325,6 +355,17 @@ func canvasModel(doc *formdoc.Doc) (map[string]canvasElementInfo, error) {
 			}
 			for _, o := range el.Options {
 				info.Options = append(info.Options, canvasOption{Value: o.ValueStr(), Label: o.Label()})
+			}
+			for _, condition := range el.ChoiceFilter {
+				info.ChoiceFilter = append(info.ChoiceFilter, canvasChoiceCondition{
+					Field:  condition.Field,
+					Op:     string(condition.Op),
+					From:   condition.From,
+					Value:  condition.Value,
+					Ref:    condition.Ref,
+					Query:  condition.Query,
+					Params: condition.Params,
+				})
 			}
 			m[en.NodeID] = info
 			walk(en.Children)

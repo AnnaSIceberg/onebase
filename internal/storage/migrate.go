@@ -77,8 +77,14 @@ func (db *DB) renameSnakeCols(ctx context.Context, table string, fields []metada
 
 // MigrateRegisters creates register tables.
 func (db *DB) MigrateRegisters(ctx context.Context, registers []*metadata.Register) error {
+	if err := db.CheckLongIdents(ctx, nil, registers, nil, nil); err != nil {
+		return err
+	}
 	d := db.dialect
 	for _, reg := range registers {
+		if err := db.renameLegacyTable(ctx, metadata.RegisterTableLogical(reg.Name)); err != nil {
+			return fmt.Errorf("migrate register %s: %w", reg.Name, err)
+		}
 		if _, err := db.Exec(ctx, CreateRegisterSQL(d, reg)); err != nil {
 			return fmt.Errorf("migrate register %s: %w", reg.Name, err)
 		}
@@ -87,6 +93,9 @@ func (db *DB) MigrateRegisters(ctx context.Context, registers []*metadata.Regist
 			return fmt.Errorf("migrate register %s.period: %w", reg.Name, err)
 		}
 		allFields := append(append([]metadata.Field{}, reg.Dimensions...), append(reg.Resources, reg.Attributes...)...)
+		if err := db.renameLegacyColumns(ctx, table, logicalColumnNames(allFields)); err != nil {
+			return fmt.Errorf("migrate register %s: %w", reg.Name, err)
+		}
 		if err := db.renameSnakeCols(ctx, table, allFields); err != nil {
 			return fmt.Errorf("migrate register %s: %w", reg.Name, err)
 		}
@@ -117,6 +126,9 @@ func (db *DB) ensureRegisterIndexes(ctx context.Context, reg *metadata.Register)
 			return err
 		}
 	}
+	if _, err := db.Exec(ctx, CreateRegisterRecorderIndexSQL(reg.Name)); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -129,6 +141,9 @@ func (db *DB) ensureRegisterIndexes(ctx context.Context, reg *metadata.Register)
 // KEY, выполняются атомарно. SQLite пересоздаёт таблицу, PostgreSQL меняет
 // constraint; разрушительное сужение ключа требует AllowDestructive.
 func (db *DB) MigrateInfoRegisters(ctx context.Context, regs []*metadata.InfoRegister) error {
+	if err := db.CheckLongIdents(ctx, nil, nil, regs, nil); err != nil {
+		return err
+	}
 	for _, ir := range regs {
 		if err := db.WithTxScope(ctx, func(txCtx context.Context) error {
 			return db.migrateInfoRegister(txCtx, ir)
@@ -141,10 +156,16 @@ func (db *DB) MigrateInfoRegisters(ctx context.Context, regs []*metadata.InfoReg
 
 func (db *DB) migrateInfoRegister(ctx context.Context, ir *metadata.InfoRegister) error {
 	d := db.dialect
+	if err := db.renameLegacyTable(ctx, metadata.InfoRegTableLogical(ir.Name)); err != nil {
+		return fmt.Errorf("migrate info register %s: %w", ir.Name, err)
+	}
 	if _, err := db.Exec(ctx, CreateInfoRegisterSQL(d, ir)); err != nil {
 		return fmt.Errorf("migrate info register %s: %w", ir.Name, err)
 	}
 	table := metadata.InfoRegTableName(ir.Name)
+	if err := db.renameLegacyColumns(ctx, table, logicalColumnNames(append(append([]metadata.Field{}, ir.Dimensions...), ir.Resources...))); err != nil {
+		return fmt.Errorf("migrate info register %s: %w", ir.Name, err)
+	}
 	// period колонка для periodic-регистров — может отсутствовать,
 	// если в YAML только что добавили `periodic: true`. ALLOW NULL,
 	// потому что existing rows иначе не вставить.
@@ -193,6 +214,25 @@ func (db *DB) migrateInfoRegister(ctx context.Context, ir *metadata.InfoRegister
 	// CREATE + INSERT SELECT + DROP + RENAME.
 	if err := db.fixInfoRegPK(ctx, ir); err != nil {
 		return fmt.Errorf("migrate info register %s PK: %w", ir.Name, err)
+	}
+	// Индекс по регистратору — после fixInfoRegPK: на SQLite смена ключа
+	// пересоздаёт таблицу, и построенный раньше индекс ушёл бы вместе со старой.
+	if _, err := db.Exec(ctx, CreateInfoRegisterRecorderIndexSQL(ir.Name)); err != nil {
+		return fmt.Errorf("migrate info register %s recorder index: %w", ir.Name, err)
+	}
+	// Индексы из indexes — тоже после fixInfoRegPK, по той же причине.
+	for _, idx := range ir.Indexes {
+		cols := make([]string, 0, len(idx.Fields))
+		for _, name := range idx.Fields {
+			col, ok := metadata.InfoRegisterIndexColumn(ir, name)
+			if !ok {
+				return fmt.Errorf("migrate info register %s: index references unknown field %s", ir.Name, name)
+			}
+			cols = append(cols, col)
+		}
+		if _, err := db.Exec(ctx, CreateEntityIndexSQL(table, cols, false)); err != nil {
+			return fmt.Errorf("migrate info register %s index: %w", ir.Name, err)
+		}
 	}
 	return nil
 }
@@ -415,7 +455,7 @@ func (db *DB) fixInfoRegPKPostgres(ctx context.Context, ir *metadata.InfoRegiste
 			}
 		}
 		_, err = db.Exec(txCtx, "ALTER TABLE "+pgQuoteIdent(table)+" ADD CONSTRAINT "+
-			pgQuoteIdent(table+"_pkey")+" PRIMARY KEY ("+pgIdentList(expected)+")")
+			pgQuoteIdent(metadata.SQLIdent(table+"_pkey"))+" PRIMARY KEY ("+pgIdentList(expected)+")")
 		return err
 	})
 }
@@ -511,6 +551,35 @@ func stringSlicesEqual(a, b []string) bool {
 
 // Migrate applies CREATE TABLE and ADD COLUMN IF NOT EXISTS for all entities.
 func (db *DB) Migrate(ctx context.Context, entities []*metadata.Entity) error {
+	return db.withMigrationLock(ctx, func(ctx context.Context) error { return db.migrateEntities(ctx, entities) })
+}
+
+func (db *DB) migrateEntities(ctx context.Context, entities []*metadata.Entity) error {
+	// Read-only preflight precedes every service table, DDL and field-map write.
+	if err := db.CheckLongIdents(ctx, entities, nil, nil, nil); err != nil {
+		return err
+	}
+	if err := db.CheckEntityIndexIdentity(ctx, entities); err != nil {
+		return err
+	}
+	for _, e := range entities {
+		if _, err := desiredEntityIndexes(e); err != nil {
+			return err
+		}
+		if err := db.guardEntityColumnChanges(ctx, e); err != nil {
+			return err
+		}
+	}
+	// A malformed adoption must fail before any migration writes as well.
+	if len(db.schemaOpts.AdoptIndexes) > 0 {
+		if _, _, err := db.planEntityIndexes(ctx, entities, db.schemaOpts.AdoptIndexes); err != nil {
+			return err
+		}
+	}
+	// Repeat under writer/table locks, before any rename or setup DDL.
+	if err := db.prepareEntityLegacyIdents(ctx, entities); err != nil {
+		return err
+	}
 	d := db.dialect
 	if err := db.EnsureSeqTable(ctx); err != nil {
 		return fmt.Errorf("migrate: sequences table: %w", err)
@@ -530,7 +599,15 @@ func (db *DB) Migrate(ctx context.Context, entities []*metadata.Entity) error {
 	if err := db.EnsureStageHistorySchema(ctx); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	ordered := orderByDependency(entities)
+	ordered, cyclicFK := orderByDependency(entities)
+	// В SQLite ссылка на ещё не созданную таблицу в CREATE TABLE допустима:
+	// внешние ключи там проверяются при изменении данных, а к тому моменту
+	// созданы уже все таблицы. PostgreSQL требует цель немедленно — там ключ,
+	// замыкающий круг, объявляется отдельным ALTER-ом ниже.
+	if d.Name() == "sqlite" {
+		cyclicFK = nil
+	}
+	deferFK := deferredFKColumns(cyclicFK)
 	// Отказы преконтроля уникальности КОПЯТСЯ, а не прерывают цикл (#1080, #1105).
 	//
 	// Раньше первый же объект с пустыми кодами уносил всю миграцию: `Контрагент`
@@ -545,83 +622,110 @@ func (db *DB) Migrate(ctx context.Context, entities []*metadata.Entity) error {
 	// отказ возвращается один раз и сразу со всеми виновниками. Ошибкой миграция
 	// быть не перестаёт — база с невыполненным предусловием по-прежнему не
 	// стартует, но один прогон renumber теперь видит всё и лечит всё.
-	var notReady []error
 	for _, e := range ordered {
-		if _, err := db.Exec(ctx, CreateTableSQL(d, e)); err != nil {
-			return fmt.Errorf("migrate %s: %w", e.Name, err)
-		}
-		if err := db.EnsurePredefinedColumns(ctx, []*metadata.Entity{e}); err != nil {
-			return fmt.Errorf("migrate: predefined columns: %w", err)
-		}
-		table := metadata.TableName(e.Name)
-		if e.Kind == metadata.KindDocument {
-			if err := db.AddColumnIfMissing(ctx, table, "posted", d.TypeBool()+" NOT NULL DEFAULT "+boolFalseLit(d)); err != nil {
-				return fmt.Errorf("migrate %s.posted: %w", e.Name, err)
+		if err := db.WithTxScope(ctx, func(ctx context.Context) error {
+			table := metadata.TableName(e.Name)
+			exists, err := db.TableExists(ctx, table)
+			if err != nil {
+				return err
 			}
-		}
-		if err := db.renameSnakeCols(ctx, table, e.Fields); err != nil {
-			return fmt.Errorf("migrate %s: %w", e.Name, err)
-		}
-		// Реструктуризация (план 81) идёт ДО добавления колонок: иначе
-		// переименованное поле успело бы завести новую пустую колонку, и
-		// переименовывать было бы уже не во что.
-		if err := db.restructureTable(ctx, table, e.Fields); err != nil {
-			return fmt.Errorf("migrate %s: %w", e.Name, err)
-		}
-		for _, f := range e.Fields {
-			if err := db.AddColumnIfMissing(ctx, table, metadata.ColumnName(f), fieldType(d, f)); err != nil {
-				return fmt.Errorf("migrate %s.%s: %w", e.Name, f.Name, err)
-			}
-		}
-		if err := db.AddColumnIfMissing(ctx, table, "deletion_mark", d.TypeBool()+" NOT NULL DEFAULT "+boolFalseLit(d)); err != nil {
-			return fmt.Errorf("migrate %s.deletion_mark: %w", e.Name, err)
-		}
-		// _version — счётчик ревизий для оптимистических блокировок.
-		// Инкрементируется в Upsert при каждом UPDATE. UpsertVersioned
-		// сравнивает с ожидаемым значением и возвращает ErrVersionConflict,
-		// если кто-то опередил. BIGINT работает на обоих диалектах: в PG —
-		// нативный, в SQLite — через INTEGER affinity.
-		if err := db.AddColumnIfMissing(ctx, table, "_version", "BIGINT NOT NULL DEFAULT 1"); err != nil {
-			return fmt.Errorf("migrate %s._version: %w", e.Name, err)
-		}
-		if e.Hierarchical {
-			if err := db.AddHierarchyColumns(ctx, table); err != nil {
-				return fmt.Errorf("migrate %s hierarchy: %w", e.Name, err)
-			}
-		}
-		if err := db.ensureEntityIndexes(ctx, e); err != nil {
-			if !errors.Is(err, ErrCodeUniqueNotReady) {
-				return fmt.Errorf("migrate %s indexes: %w", e.Name, err)
-			}
-			// Префикса «migrate … indexes» здесь нет намеренно: этот текст
-			// читает не разработчик, а тот, кто нажал «Запустить», и объект в
-			// нём уже назван.
-			notReady = append(notReady, err)
-		}
-		for _, tp := range e.TableParts {
-			if _, err := db.Exec(ctx, CreateTablePartSQL(d, e, tp)); err != nil {
-				return fmt.Errorf("migrate %s.%s: %w", e.Name, tp.Name, err)
-			}
-			tpTable := metadata.TablePartTableName(e.Name, tp.Name)
-			if err := db.restructureTable(ctx, tpTable, tp.Fields); err != nil {
-				return fmt.Errorf("migrate %s.%s: %w", e.Name, tp.Name, err)
-			}
-			for _, f := range tp.Fields {
-				if err := db.AddColumnIfMissing(ctx, tpTable, metadata.ColumnName(f), fieldType(d, f)); err != nil {
-					return fmt.Errorf("migrate %s.%s.%s: %w", e.Name, tp.Name, f.Name, err)
+			var before []EntityIndexDefinition
+			if exists {
+				if err := db.lockEntityTable(ctx, table); err != nil {
+					return err
+				}
+				if err := db.CheckEntityIndexIdentity(ctx, []*metadata.Entity{e}); err != nil {
+					return err
+				}
+				if err := db.guardEntityColumnChanges(ctx, e); err != nil {
+					return err
+				}
+				before, err = db.readEntityIndexes(ctx, table)
+				if err != nil {
+					return err
 				}
 			}
-			if _, err := db.Exec(ctx, CreateTablePartParentIndexSQL(e.Name, tp.Name)); err != nil {
-				return fmt.Errorf("migrate %s.%s parent index: %w", e.Name, tp.Name, err)
+			ctx = context.WithValue(ctx, entityDDLKey{}, table)
+			if _, err := db.Exec(ctx, createTableSQL(d, e, deferFK[e.Name])); err != nil {
+				return fmt.Errorf("migrate %s: %w", e.Name, err)
 			}
+			if err := db.EnsurePredefinedColumns(ctx, []*metadata.Entity{e}); err != nil {
+				return fmt.Errorf("migrate: predefined columns: %w", err)
+			}
+			if e.Kind == metadata.KindDocument {
+				if err := db.AddColumnIfMissing(ctx, table, "posted", d.TypeBool()+" NOT NULL DEFAULT "+boolFalseLit(d)); err != nil {
+					return fmt.Errorf("migrate %s.posted: %w", e.Name, err)
+				}
+			}
+			if err := db.renameSnakeCols(ctx, table, e.Fields); err != nil {
+				return fmt.Errorf("migrate %s: %w", e.Name, err)
+			}
+			// Реструктуризация (план 81) идёт ДО добавления колонок: иначе
+			// переименованное поле успело бы завести новую пустую колонку, и
+			// переименовывать было бы уже не во что.
+			if err := db.restructureEntityTable(ctx, e); err != nil {
+				return fmt.Errorf("migrate %s: %w", e.Name, err)
+			}
+			for _, f := range e.Fields {
+				if err := db.AddColumnIfMissing(ctx, table, metadata.ColumnName(f), fieldType(d, f)); err != nil {
+					return fmt.Errorf("migrate %s.%s: %w", e.Name, f.Name, err)
+				}
+			}
+			if err := db.AddColumnIfMissing(ctx, table, "deletion_mark", d.TypeBool()+" NOT NULL DEFAULT "+boolFalseLit(d)); err != nil {
+				return fmt.Errorf("migrate %s.deletion_mark: %w", e.Name, err)
+			}
+			// _version — счётчик ревизий для оптимистических блокировок.
+			// Инкрементируется в Upsert при каждом UPDATE. UpsertVersioned
+			// сравнивает с ожидаемым значением и возвращает ErrVersionConflict,
+			// если кто-то опередил. BIGINT работает на обоих диалектах: в PG —
+			// нативный, в SQLite — через INTEGER affinity.
+			if err := db.AddColumnIfMissing(ctx, table, "_version", "BIGINT NOT NULL DEFAULT 1"); err != nil {
+				return fmt.Errorf("migrate %s._version: %w", e.Name, err)
+			}
+			if e.Hierarchical {
+				if err := db.AddHierarchyColumns(ctx, table, metadata.TableLogical(e.Name)); err != nil {
+					return fmt.Errorf("migrate %s hierarchy: %w", e.Name, err)
+				}
+			}
+			if err := db.checkPreservedEntityIndexes(ctx, table, before); err != nil {
+				return err
+			}
+			if err := db.ensureStageIndex(ctx, e); err != nil {
+				return err
+			}
+			for _, tp := range e.TableParts {
+				if _, err := db.Exec(ctx, CreateTablePartSQL(d, e, tp)); err != nil {
+					return fmt.Errorf("migrate %s.%s: %w", e.Name, tp.Name, err)
+				}
+				tpTable := metadata.TablePartTableName(e.Name, tp.Name)
+				if err := db.restructureTable(ctx, tpTable, tp.Fields); err != nil {
+					return fmt.Errorf("migrate %s.%s: %w", e.Name, tp.Name, err)
+				}
+				for _, f := range tp.Fields {
+					if err := db.AddColumnIfMissing(ctx, tpTable, metadata.ColumnName(f), fieldType(d, f)); err != nil {
+						return fmt.Errorf("migrate %s.%s.%s: %w", e.Name, tp.Name, f.Name, err)
+					}
+				}
+				if _, err := db.Exec(ctx, CreateTablePartParentIndexSQL(e.Name, tp.Name)); err != nil {
+					return fmt.Errorf("migrate %s.%s parent index: %w", e.Name, tp.Name, err)
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
 		}
 	}
+	// Ключи круга создаются только после всех таблиц.
+	if err := db.ensureCycleFKs(ctx, cyclicFK); err != nil {
+		return err
+	}
+
 	// Отказ возвращается здесь: схема уже приведена к конфигурации целиком —
 	// ровно то, что нужно renumber, — но данных мы больше не касаемся. Идти
 	// дальше и заводить предопределённые элементы на базе, которая всё равно не
 	// стартует, незачем: это сделает первая же удачная миграция.
-	if len(notReady) > 0 {
-		return errors.Join(notReady...)
+	if err := db.reconcileEntityIndexes(ctx, entities); err != nil {
+		return err
 	}
 	if err := db.SyncAllPredefined(ctx, entities); err != nil {
 		return fmt.Errorf("migrate: %w", err)
@@ -646,60 +750,6 @@ func (db *DB) Migrate(ctx context.Context, entities []*metadata.Entity) error {
 	return nil
 }
 
-func (db *DB) ensureEntityIndexes(ctx context.Context, e *metadata.Entity) error {
-	table := metadata.TableName(e.Name)
-	// Индекс по полю-этапу (план 121): отчёт «где застряло» группирует объекты
-	// по нему, и без индекса по самой бизнес-таблице сводка сканирует её целиком.
-	if err := db.ensureStageIndex(ctx, e); err != nil {
-		return err
-	}
-	indexes := e.Indexes
-	// numerator.unique выражается через тот же механизм indexes: отдельной
-	// реализации уникальности заводить незачем (план 117E). Проверка до DDL:
-	// пустые значения уникальный индекс не ловит (NULL не конфликтуют), и без
-	// неё «включили уникальность» проходило бы молча.
-	var notReady error
-	var keepUnique string
-	if spec, need := UniqueCodeIndexSpec(e); need {
-		cols, err := entityIndexColumns(e, spec)
-		if err != nil {
-			return err
-		}
-		switch err := db.CheckCodeUniquePrecondition(ctx, e); {
-		case err == nil:
-			indexes = append(append([]metadata.IndexSpec{}, indexes...), spec)
-		case errors.Is(err, ErrCodeUniqueNotReady):
-			// Индекса сейчас не будет — но и снимать уже стоящий нельзя.
-			// Уникальность могли включить на пустой базе, а пустые значения
-			// появиться позже (NULL уникальному индексу не мешают): без этой
-			// строки dropStaleUniqueCodeIndexes принял бы индекс за брошенный и
-			// молча отменил работающую гарантию — отказом миграции.
-			keepUnique = stableIndexName(table, cols, true)
-			notReady = err
-		default:
-			return err
-		}
-	}
-	keep := make(map[string]bool, len(indexes)+1)
-	if keepUnique != "" {
-		keep[keepUnique] = true
-	}
-	for _, idx := range indexes {
-		cols, err := entityIndexColumns(e, idx)
-		if err != nil {
-			return err
-		}
-		keep[stableIndexName(table, cols, idx.Unique)] = true
-		if _, err := db.Exec(ctx, CreateEntityIndexSQL(table, cols, idx.Unique)); err != nil {
-			return err
-		}
-	}
-	if err := db.dropStaleUniqueCodeIndexes(ctx, e, keep); err != nil {
-		return err
-	}
-	return notReady
-}
-
 func entityIndexColumns(e *metadata.Entity, idx metadata.IndexSpec) ([]string, error) {
 	cols := make([]string, 0, len(idx.Fields))
 	for _, name := range idx.Fields {
@@ -718,33 +768,140 @@ func entityIndexColumns(e *metadata.Entity, idx metadata.IndexSpec) ([]string, e
 	return cols, nil
 }
 
+// refCycleFK — ссылка, которую нельзя объявить прямо в CREATE TABLE: она
+// замыкает круг, и таблица-цель к моменту создания таблицы-источника ещё не
+// существует.
+type refCycleFK struct {
+	Entity string
+	Column string
+	Ref    string
+}
+
 // orderByDependency sorts entities so referenced entities come before referencing ones.
-func orderByDependency(entities []*metadata.Entity) []*metadata.Entity {
+//
+// Вторым значением возвращает ссылки, которые порядком закрыть НЕЛЬЗЯ. В круге
+// «Обращение ссылается на Заявку, Заявка на Обращение» какая-то из таблиц
+// создаётся первой, и её внешний ключ указывает на ещё не созданную. Прежний
+// обход помечал сущность посещённой ДО спуска в её ссылки, поэтому круг молча
+// давал неверный порядок: на PostgreSQL миграция падала на первой же таблице
+// круга («relation "заявка" does not exist»), на SQLite проходила — там ссылка
+// на несуществующую таблицу в CREATE TABLE допустима. Теперь круг не
+// скрывается, а называется: порядок верен для всего остального, а ключи круга
+// Migrate доводит отдельным ALTER-ом.
+func orderByDependency(entities []*metadata.Entity) ([]*metadata.Entity, []refCycleFK) {
 	byName := make(map[string]*metadata.Entity, len(entities))
 	for _, e := range entities {
 		byName[e.Name] = e
 	}
-	visited := make(map[string]bool)
+	// inProgress — сущности текущей ветки обхода: ссылка в такую и есть круг.
+	inProgress := make(map[string]bool, len(entities))
+	done := make(map[string]bool, len(entities))
 	var result []*metadata.Entity
-	var visit func(name string)
-	visit = func(name string) {
-		if visited[name] {
-			return
-		}
-		visited[name] = true
-		e := byName[name]
-		if e == nil {
-			return
-		}
+	var cycles []refCycleFK
+	var visit func(e *metadata.Entity)
+	visit = func(e *metadata.Entity) {
+		inProgress[e.Name] = true
 		for _, f := range e.Fields {
-			if f.RefEntity != "" {
-				visit(f.RefEntity)
+			if f.RefEntity == "" || f.RefEntity == e.Name {
+				// Ссылка на себя (иерархия, «родитель») допустима в CREATE TABLE
+				// на обоих диалектах — откладывать нечего.
+				continue
 			}
+			target := byName[f.RefEntity]
+			if target == nil {
+				// Цель мигрирует не здесь (служебные таблицы вроде _users):
+				// порядком сущностей она не управляется.
+				continue
+			}
+			if done[f.RefEntity] {
+				continue
+			}
+			if inProgress[f.RefEntity] {
+				// Ссылка в сущность текущей ветки обхода — круг.
+				cycles = append(cycles, refCycleFK{Entity: e.Name, Column: metadata.ColumnName(f), Ref: f.RefEntity})
+				continue
+			}
+			visit(target)
 		}
+		inProgress[e.Name] = false
+		done[e.Name] = true
 		result = append(result, e)
 	}
 	for _, e := range entities {
-		visit(e.Name)
+		if !done[e.Name] {
+			visit(e)
+		}
 	}
-	return result
+	return result, cycles
+}
+
+// deferredFKColumns группирует отложенные ключи по сущности: createTableSQL
+// спрашивает про колонки одной таблицы.
+func deferredFKColumns(fks []refCycleFK) map[string]map[string]bool {
+	if len(fks) == 0 {
+		return nil
+	}
+	byEntity := make(map[string]map[string]bool, len(fks))
+	for _, fk := range fks {
+		cols := byEntity[fk.Entity]
+		if cols == nil {
+			cols = make(map[string]bool, 1)
+			byEntity[fk.Entity] = cols
+		}
+		cols[fk.Column] = true
+	}
+	return byEntity
+}
+
+// ensureCycleFKs доводит отложенные ключи до базы. Идемпотентно: миграция идёт
+// при каждом запуске, а ADD CONSTRAINT IF NOT EXISTS в PostgreSQL нет.
+func (db *DB) ensureCycleFKs(ctx context.Context, fks []refCycleFK) error {
+	if len(fks) == 0 {
+		return nil
+	}
+	// Проверка и ALTER принадлежат одной транзакции и одной блокировке.
+	// Блокируем все участвующие таблицы в едином порядке (AdvisoryXactLock
+	// сортирует ключи), в том числе цели: другой обход того же круга может
+	// отложить противоположную ссылку. Блокировки освобождаются после commit.
+	return db.WithTxScope(ctx, func(txCtx context.Context) error {
+		var schema string
+		if err := db.QueryRow(txCtx, "SELECT current_schema()").Scan(&schema); err != nil {
+			return err
+		}
+		keys := make([]string, 0, 2*len(fks))
+		for _, fk := range fks {
+			for _, table := range []string{metadata.TableName(fk.Entity), metadata.TableName(fk.Ref)} {
+				keys = append(keys, fmt.Sprintf("migrate-cycle-fk:%q.%q", schema, table))
+			}
+		}
+		if err := db.AdvisoryXactLock(txCtx, keys); err != nil {
+			return err
+		}
+		for _, fk := range fks {
+			table := metadata.TableName(fk.Entity)
+			ref := metadata.TableName(fk.Ref)
+			exists, err := db.foreignKeyExists(txCtx, table, ForeignKeyName(table, fk.Column, ref))
+			if err != nil {
+				return fmt.Errorf("migrate %s.%s: %w", fk.Entity, fk.Column, err)
+			}
+			if exists {
+				continue
+			}
+			if _, err := db.Exec(txCtx, AddForeignKeySQL(table, fk.Column, ref)); err != nil {
+				return fmt.Errorf("migrate %s.%s: %w", fk.Entity, fk.Column, err)
+			}
+		}
+		return nil
+	})
+}
+
+// foreignKeyExists — запрос PostgreSQL: откладывать ключи приходится только
+// там (см. Migrate), на SQLite эта ветка не выполняется.
+func (db *DB) foreignKeyExists(ctx context.Context, table, name string) (bool, error) {
+	var exists bool
+	err := db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM information_schema.table_constraints
+		   WHERE constraint_schema = current_schema() AND table_name = $1 AND constraint_name = $2)`,
+		table, name).Scan(&exists)
+	return exists, err
 }

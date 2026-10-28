@@ -27,8 +27,13 @@ type User struct {
 	AIDataAccess     bool   // can use AI chat data tools without being admin
 	Lang             string // preferred UI language ("" = use base default)
 	CreatedAt        time.Time
-	Attrs            map[string]any // optional host-provided attributes for row-level access
-	Roles            []*Role        // loaded by middleware after session lookup
+	// Attrs — атрибуты пользователя для row_access `user_attr` сверх встроенных.
+	// Платформа их пока не заполняет: их не хранит база и не задают ни вход, ни
+	// конфигурация, а встраивающему коду пакет internal недоступен. Поле — точка
+	// расширения для назначения пользователю значений доступа; до неё политика с
+	// небазовым `user_attr` не разрешает ни одной строки.
+	Attrs map[string]any
+	Roles []*Role // loaded by middleware after session lookup
 }
 
 type Repo struct {
@@ -67,6 +72,9 @@ var (
 	ErrFirstUserMustBeAdmin = errors.New("первый пользователь должен быть администратором")
 	ErrLastAdmin            = errors.New("нельзя удалить или разжаловать последнего администратора")
 	ErrLastUser             = errors.New("нельзя удалить последнего пользователя; авторизация должна отключаться отдельным действием")
+	// ErrUserReferenced — на учётную запись ссылаются объекты базы через
+	// реквизиты типа reference:_users (#1646); удалению мешает внешний ключ.
+	ErrUserReferenced = errors.New("нельзя удалить учётную запись: на неё ссылаются объекты базы (реквизиты со ссылкой на _users) — сначала отвяжите или очистите эти ссылки")
 )
 
 // NewRepo wires the auth repository to the storage layer. Internally Exec/
@@ -385,6 +393,13 @@ func (r *Repo) Delete(ctx context.Context, id string) error {
 		}
 		q := fmt.Sprintf(`DELETE FROM _users WHERE id = %s`, d.Placeholder(1))
 		_, err := r.db.Exec(txCtx, q, id)
+		if err != nil && storage.IsForeignKeyViolation(err) {
+			// Реквизиты типа reference:_users ссылаются на учётку настоящим
+			// внешним ключом (issue #1646): удалять её нельзя, пока ссылки живы.
+			// Сырой текст драйвера («FOREIGN KEY constraint failed») не называет
+			// ни причины, ни лечения — объясняем сами.
+			return ErrUserReferenced
+		}
 		return err
 	})
 }

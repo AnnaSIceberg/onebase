@@ -187,3 +187,35 @@ func TestUndefinedDebuggerBoundary(t *testing.T) {
 	require.True(t, hook.seen)
 	require.Positive(t, hook.steps)
 }
+
+func TestUndefinedEntryBindingsHostBoundary(t *testing.T) {
+	for _, strict := range []bool{false, true} {
+		for _, body := range []string{"", "Пусто = Неопределено;", "Пусто = Неопределено; Возврат;", "Пусто = Неопределено; Возврат Неопределено;"} {
+			t.Run(strings.Join([]string{map[bool]string{false: "legacy", true: "strict"}[strict], body}, "/"), func(t *testing.T) {
+				in := interpreter.New()
+				in.StrictLexicalScope = strict
+				proc := parseProcFile(t, "entry-undefined.os", "Функция Т(Пусто, Флаг = Ложь, Число = 0)\n"+body+"\nКонецФункции")
+				got, err := in.CallEntrySandboxedWithBindings(proc, nil, []any{nil}, interpreter.SandboxProfile{})
+				require.NoError(t, err)
+				require.Nil(t, got.Value)
+				require.Contains(t, got.Bindings, "Пусто")
+				require.Nil(t, got.Bindings["Пусто"])
+				require.Equal(t, false, got.Bindings["Флаг"])
+				require.False(t, interpreter.IsUndefined(got.Bindings["Число"]))
+			})
+		}
+	}
+}
+
+func TestUndefinedObjectAccessCallbackHostBoundary(t *testing.T) {
+	in := interpreter.New()
+	seen := false
+	in.ValidateObjectAccess = func(value any) {
+		seen = true
+		require.Nil(t, value, "receiver guard must receive Go nil")
+	}
+	expr, err := parser.New(lexer.New("Неопределено", "guard-undefined.os")).ParseStandaloneExpr()
+	require.NoError(t, err)
+	require.Nil(t, in.EvalExpr(expr, nil))
+	require.True(t, seen)
+}

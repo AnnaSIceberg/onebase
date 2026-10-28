@@ -21,6 +21,7 @@ type Subsystem struct {
 	Roles    []string
 	Contents SubsystemContents
 	HomePage *HomePage
+	Menu     *Menu
 }
 
 // DisplayName возвращает заголовок подсистемы с учётом языка.
@@ -45,6 +46,35 @@ type SubsystemContents struct {
 	Processors []string
 	Journals   []string
 	Pages      []string // план 66: произвольные страницы на DSL
+}
+
+// merge добавляет объекты other, которых ещё нет (порядок — первого появления).
+func (c *SubsystemContents) merge(other *SubsystemContents) {
+	if other == nil {
+		return
+	}
+	add := func(dst *[]string, src []string) {
+		for _, n := range src {
+			dup := false
+			for _, have := range *dst {
+				if strings.EqualFold(have, n) {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				*dst = append(*dst, n)
+			}
+		}
+	}
+	add(&c.Documents, other.Documents)
+	add(&c.Catalogs, other.Catalogs)
+	add(&c.Reports, other.Reports)
+	add(&c.InfoRegs, other.InfoRegs)
+	add(&c.Registers, other.Registers)
+	add(&c.Processors, other.Processors)
+	add(&c.Journals, other.Journals)
+	add(&c.Pages, other.Pages)
 }
 
 // IsEmpty сообщает, что набор объектов пуст (ни одного объекта ни в одной
@@ -77,6 +107,7 @@ type rawSubsystem struct {
 		Pages      []string `yaml:"pages"`
 	} `yaml:"contents"`
 	HomePage *HomePage `yaml:"home_page"`
+	Menu     *Menu     `yaml:"menu"`
 }
 
 func LoadSubsystemFile(path string) (*Subsystem, error) {
@@ -101,6 +132,7 @@ func LoadSubsystemFile(path string) (*Subsystem, error) {
 		Icon:   raw.Icon,
 		Order:  raw.Order,
 		Roles:  raw.Roles,
+		Menu:   raw.Menu,
 		Contents: SubsystemContents{
 			Documents:  raw.Contents.Documents,
 			Catalogs:   raw.Contents.Catalogs,

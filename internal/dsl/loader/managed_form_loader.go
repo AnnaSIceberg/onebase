@@ -66,9 +66,30 @@ func (mfl *ManagedFormLoader) LoadEntityForms(projectRoot, entityName string) ([
 		if err != nil {
 			return nil, fmt.Errorf("load %s: %w", path, err)
 		}
+		form.SourcePath = projectRelPath(projectRoot, path)
 		out = append(out, form)
 	}
 	return out, nil
+}
+
+// projectRelPath переводит путь файла в локатор относительно корня проекта:
+// со слэшами и с фактическим регистром каталога, как он лежит на диске.
+// Именно этот вид печатает `onebase check`, и по нему файл обязан открываться
+// на case-sensitive файловой системе тоже (#1356).
+//
+// Если путь почему-то оказался вне корня проекта, возвращается пусто:
+// локатор, уводящий за пределы конфигурации, хуже отсутствующего — потребители
+// в этом случае честно откатятся на синтезированное имя.
+func projectRelPath(projectRoot, path string) string {
+	rel, err := filepath.Rel(projectRoot, path)
+	if err != nil {
+		return ""
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return ""
+	}
+	return rel
 }
 
 // entityFormsDir находит физический каталог форм по переносимому правилу
@@ -158,6 +179,12 @@ type formYAMLDoc struct {
 		// Указатель: отсутствие ключа (nil) значит «показывать», и от явного
 		// true его отличать не нужно, а от явного false — нужно.
 		RefCardButton *bool `yaml:"ref_card_button"`
+		// Постоянный отбор формы списка (metadata.FormListCondition).
+		ListFilter []metadata.FormListCondition `yaml:"filter"`
+		// «🔍 только администратору» (#1876).
+		RefCardButtonAdminOnly bool `yaml:"ref_card_button_admin_only"`
+		// EnterSubmitsForm — форма возвращает себе прежний Enter-submit (#1486).
+		EnterSubmitsForm bool `yaml:"enter_submits_form"`
 	} `yaml:"form"`
 	Attributes            []*metadata.FormAttribute       `yaml:"attributes"`
 	Commands              []*metadata.FormCommand         `yaml:"commands"`
@@ -208,6 +235,9 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		AutoSaveDataInSettings: doc.Form.AutoSaveDataInSettings,
 		VerticalScroll:         doc.Form.VerticalScroll,
 		RefCardButton:          doc.Form.RefCardButton,
+		ListFilter:             doc.Form.ListFilter,
+		RefCardButtonAdminOnly: doc.Form.RefCardButtonAdminOnly,
+		EnterSubmitsForm:       doc.Form.EnterSubmitsForm,
 		Attributes:             doc.Attributes,
 		Commands:               doc.Commands,
 		AutoCommandBar:         doc.CommandBar,

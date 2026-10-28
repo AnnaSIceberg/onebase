@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ import (
 	"github.com/ivantit66/onebase/internal/i18n/i18nerr"
 	oblog "github.com/ivantit66/onebase/internal/logging"
 	"github.com/ivantit66/onebase/internal/storage"
+	"github.com/ivantit66/onebase/internal/userdata"
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,8 +43,8 @@ func (h *handler) backupDir(b *Base) string {
 	if b.Path != "" {
 		return filepath.Join(b.Path, "backups")
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".onebase", "backups", b.ID)
+	dir, _ := userdata.Path("backups", b.ID)
+	return dir
 }
 
 // safeBackupPath joins dir and file, guaranteeing the result stays inside dir.
@@ -307,7 +309,12 @@ func resetBasePrefixAfterRestore(ctx context.Context, b *Base) (string, error) {
 // journal, so they must never overwrite the database that contains its marker.
 func checkRawRestoreAllowed(ctx context.Context, b *Base) error {
 	if err := checkNoPendingRestoreBeforeOpen(ctx, b); err != nil {
-		return fmt.Errorf("raw database restore refused while universal recovery is pending: %w", err)
+		// Формулировка нейтральная: проба маркера могла упасть на ошибке чтения
+		// или повреждённой базе, и тогда наличие pending recovery не доказано —
+		// внешнее сообщение не имеет права утверждать обратное (#1563).
+		// Вложенная ошибка различает «маркер найден» и «проба не прошла»;
+		// отказ в любом случае fail-closed.
+		return fmt.Errorf("raw database restore refused: %w", err)
 	}
 	return nil
 }
@@ -1278,6 +1285,17 @@ func (h *handler) backupFullImport(w http.ResponseWriter, r *http.Request) {
 				// их, чтобы владельцам перепривязать приложение-аутентификатор (#611).
 				msg += ". " + fmt.Sprintf(tr(lang, "Сброшен второй фактор (перепривяжите): %s"),
 					strings.Join(report.TOTPReset, ", "))
+			}
+			if len(report.SkippedTables) > 0 {
+				// Таблицы метаданных, которых в конфигурации архива уже нет:
+				// их строки не восстановлены — называем, чтобы потеря не была тихой.
+				names := make([]string, 0, len(report.SkippedTables))
+				for name, rows := range report.SkippedTables {
+					names = append(names, fmt.Sprintf("%s (%d)", name, rows))
+				}
+				sort.Strings(names)
+				msg += ". " + fmt.Sprintf(tr(lang, "Не восстановлены таблицы, которых нет в конфигурации: %s"),
+					strings.Join(names, ", "))
 			}
 			if wasRunning {
 				msg += ". " + tr(lang, "База остановлена — запустите её заново.")

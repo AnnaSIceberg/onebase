@@ -62,11 +62,7 @@ func CheckFormLayout(proj *project.Project) []Issue {
 			if form == nil {
 				continue
 			}
-			name := form.Name
-			if name == "" {
-				name = "объекта"
-			}
-			report("forms/"+strings.ToLower(proc.Name)+"/"+name+".form.yaml", proc.Name, form)
+			report(procFormFileLabel(proc.Name, form), proc.Name, form)
 		}
 	}
 	return warns
@@ -76,6 +72,13 @@ type layoutDiagnostic struct{ code, msg, fix string }
 
 func layoutDiagnostics(el *metadata.FormElement) []layoutDiagnostic {
 	var out []layoutDiagnostic
+	if el.EqualColumns && !el.UsesEqualColumns() {
+		out = append(out, layoutDiagnostic{
+			code: "form.equal-columns",
+			msg:  "equal_columns применяется только к горизонтальной ГруппаФормы без scroll_x",
+			fix:  "Задайте kind: ГруппаФормы, orientation: horizontal и уберите scroll_x либо equal_columns.",
+		})
+	}
 
 	if _, ok := metadata.NormalizeFormHAlign(el.HorizontalAlign); !ok {
 		out = append(out, layoutDiagnostic{
@@ -101,19 +104,27 @@ func layoutDiagnostics(el *metadata.FormElement) []layoutDiagnostic {
 	// формой. Раскладку к ним приложить некуда, и сказать об этом обязаны мы:
 	// иначе ключ снова «есть и молчит» — та самая ошибка, из-за которой заведена
 	// #1185, только одним видом элемента ниже.
-	if layoutKindWithoutBlock(el.Kind) && (el.Width != 0 || el.Height != 0 || el.HorizontalAlign != "" || el.VerticalAlign != "") {
+	// Исключение — width колонки: это ширина колонки таблицы, а не блока.
+	width := el.Width
+	if el.Kind == metadata.FormElementColumn {
+		width = 0
+	}
+	if layoutKindWithoutBlock(el.Kind) && (width != 0 || el.Height != 0 || el.HorizontalAlign != "" || el.VerticalAlign != "") {
 		out = append(out, layoutDiagnostic{
 			code: "form.layout-unsupported-kind",
-			msg: fmt.Sprintf("раскладка (width/height/halign/valign) на элементе вида %q не применяется: своего блока в форме у него нет",
-				el.Kind),
+			msg: fmt.Sprintf("раскладка (%s) на элементе вида %q не применяется: своего блока в форме у него нет",
+				layoutKindKeys(el.Kind), el.Kind),
 			fix: layoutKindFix(el.Kind),
 		})
 	}
 
 	// stretch и явная ширина противоречат друг другу: рантайм оставляет
 	// растяжение, а число молча пропадает. Сказать об этом дешевле, чем дать
-	// человеку гадать, почему «ширина 200» не сработала.
-	if h, ok := metadata.NormalizeFormHAlign(el.HorizontalAlign); ok && h == "stretch" && el.Width > 0 {
+	// человеку гадать, почему «ширина 200» не сработала. У колонки наоборот:
+	// width действует, а halign — нет, и об этом уже сказал
+	// form.layout-unsupported-kind выше.
+	if h, ok := metadata.NormalizeFormHAlign(el.HorizontalAlign); ok && h == "stretch" && el.Width > 0 &&
+		el.Kind != metadata.FormElementColumn {
 		out = append(out, layoutDiagnostic{
 			code: "form.layout-size",
 			msg:  fmt.Sprintf("width: %d задан вместе с halign: stretch — элемент растягивается на контейнер, ширина не действует", el.Width),
@@ -137,9 +148,16 @@ func layoutKindWithoutBlock(kind metadata.FormElementType) bool {
 	}
 }
 
+func layoutKindKeys(kind metadata.FormElementType) string {
+	if kind == metadata.FormElementColumn {
+		return "height/halign/valign"
+	}
+	return "width/height/halign/valign"
+}
+
 func layoutKindFix(kind metadata.FormElementType) string {
 	if kind == metadata.FormElementColumn {
-		return "Ширина колонки табличной части сеткой не настраивается; уберите ключ, чтобы он не выглядел рабочим."
+		return "У колонки таблицы действует только width — ширина колонки в пикселях; высоту и выравнивание уберите, чтобы они не выглядели рабочими."
 	}
 	return "Задайте раскладку самому элементу (полю, кнопке, группе), а не командной панели."
 }

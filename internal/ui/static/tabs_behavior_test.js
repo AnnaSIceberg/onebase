@@ -8,9 +8,16 @@ const vm = require('node:vm');
 const htmlPath = process.env.ONEBASE_TABS_HTML;
 assert.ok(htmlPath, 'ONEBASE_TABS_HTML must point to the rendered app shell');
 const html = fs.readFileSync(htmlPath, 'utf8');
-const source = Array.from(html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi), match => match[1])
-  .find(script => script.includes("var STORE='obTabs'"));
+function tabsSource(html) { return Array.from(html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi), match => match[1])
+  .find(script => script.includes("var STORE='obTabs'")); }
+const source = tabsSource(html);
 assert.ok(source, 'rendered app shell must contain the tabs runtime');
+const uiSource = fs.readFileSync('static/ui.js', 'utf8');
+const bridgeMarker = '// Same-origin request/decision protocol shared by shell tabs and reference';
+const bridgeStart = uiSource.indexOf(bridgeMarker);
+const bridgeEnd = uiSource.indexOf('if (window.__obEmbedded)', bridgeStart);
+assert.ok(bridgeStart >= 0 && bridgeEnd > bridgeStart, 'form-close bridge slice not found');
+const bridgeSource = uiSource.slice(bridgeStart, bridgeEnd);
 
 class ClassList {
   constructor(element) {
@@ -49,7 +56,22 @@ class Element {
     this.textContent = '';
     this.title = '';
     this.src = '';
-    if (this.tagName === 'IFRAME') this.contentWindow = {};
+    if (this.tagName === 'IFRAME') {
+      this._posted = [];
+      this.contentDocument = {
+        readyState: 'complete',
+        getElementById() { return null; },
+      };
+      // По умолчанию фрейм — обычная страница приложения: ui.js в ней
+      // отвечает на запрос закрытия (#1684). markPlainPage моделирует страницу
+      // вне протокола — текстовую ошибку 404.
+      this.contentWindow = {
+        document: this.contentDocument,
+        obFrameCloseDocumentToken: 'initial-document',
+        obAnswersFrameClose: true,
+        postMessage: (data, origin) => { this._posted.push({data, origin}); },
+      };
+    }
   }
 
   set className(value) {
@@ -124,7 +146,8 @@ class FakeStorage {
   }
 }
 
-function shell(storage, search = '', confirmClose = () => true) {
+function shell(storage, search = '', confirmClose = () => true, requestFrameClose = null, finalizeFrameClose = null,
+  actualBridge = false, runtimeSource = source) {
   const elements = {};
   for (const id of ['ob-tabstrip', 'ob-tabbody', 'ob-tabempty', 'ob-tabhome']) {
     elements[id] = new Element('div', id);
@@ -133,6 +156,7 @@ function shell(storage, search = '', confirmClose = () => true) {
   const windowListeners = new Map();
   const document = {
     body: new Element('body'),
+    readyState: 'complete',
     getElementById(id) { return elements[id] || null; },
     createElement(tagName) { return new Element(tagName); },
     addEventListener(type, listener) {
@@ -142,6 +166,7 @@ function shell(storage, search = '', confirmClose = () => true) {
   };
   let uuid = 0;
   let confirms = 0;
+  let alerts = 0;
   const context = {
     document,
     sessionStorage: storage,
@@ -155,14 +180,22 @@ function shell(storage, search = '', confirmClose = () => true) {
       }
     },
     setTimeout() { return 1; },
+    clearTimeout() {},
     confirm() { confirms++; return confirmClose(); },
+    alert() { alerts++; },
+    obUIMessage(name, fallback) { return fallback; },
     addEventListener(type, listener) {
       if (!windowListeners.has(type)) windowListeners.set(type, []);
       windowListeners.get(type).push(listener);
     }
   };
   context.window = context;
-  vm.runInNewContext(source, context, {filename: 'rendered-tabs-runtime.js'});
+  if (actualBridge) vm.runInNewContext(bridgeSource, context, {filename: 'form-close-bridge.js'});
+  else {
+    if (requestFrameClose) context.obRequestFrameClose = requestFrameClose;
+    if (finalizeFrameClose) context.obFinalizeFrameClose = finalizeFrameClose;
+  }
+  vm.runInNewContext(runtimeSource, context, {filename: 'rendered-tabs-runtime.js'});
 
   const strip = elements['ob-tabstrip'];
   const frames = () => elements['ob-tabbody'].children.filter(element => element.tagName === 'IFRAME');
@@ -170,6 +203,7 @@ function shell(storage, search = '', confirmClose = () => true) {
     open(url, title, options) { return context.obOpenTab(url, title, options); },
     closeByURL(url) { return context.obCloseTabByURL(url); },
     confirms() { return confirms; },
+    alerts() { return alerts; },
     post(data, frameIndex) {
       const source = frameIndex === undefined ? context : frames()[frameIndex].contentWindow;
       for (const listener of windowListeners.get('message') || []) {
@@ -182,6 +216,44 @@ function shell(storage, search = '', confirmClose = () => true) {
         listener({origin: context.location.origin, source: frame.contentWindow, data: {source: 'obDirty', dirty}});
       }
     },
+    markManaged(index) {
+      const frame = frames()[index];
+      frame.contentDocument = {
+        readyState: 'complete',
+        getElementById(id) { return id === 'ob-managed-config' ? {} : null; }
+      };
+      frame.contentWindow.document = frame.contentDocument;
+    },
+    markPlainPage(index) {
+      delete frames()[index].contentWindow.obAnswersFrameClose;
+    },
+    markLoading(index) {
+      const frame = frames()[index];
+      frame.contentDocument = {
+        readyState: 'loading',
+        getElementById() { return null; },
+      };
+      frame.contentWindow.document = frame.contentDocument;
+    },
+    installManagedDocument(index, token, onFinalize, dispatchLoad = false) {
+      const frame = frames()[index];
+      const child = frame.contentWindow;
+      frame.contentDocument = {
+        readyState: 'complete',
+        getElementById(id) { return id === 'ob-managed-config' ? {} : null; },
+      };
+      child.document = frame.contentDocument;
+      child.obFrameCloseDocumentToken = token;
+      child.obRequestFormClose = function () {};
+      child.obFinalizeFormClose = function () {
+        if (onFinalize) onFinalize();
+        return true;
+      };
+      if (dispatchLoad) frame.dispatch('load');
+      return child;
+    },
+    posted(index) { return frames()[index]._posted.slice(); },
+    frameWindow(index) { return frames()[index].contentWindow; },
     count() { return strip.children.length; },
     activeIndex() { return strip.children.findIndex(button => button.classList.contains('active')); },
     titles() { return strip.children.map(button => button.title); },
@@ -198,6 +270,14 @@ function shell(storage, search = '', confirmClose = () => true) {
       frame.contentWindow.location = {href};
       frame.dispatch('load');
     },
+    // Сообщение фрейма без смены его адреса: так доходит запоздавший
+    // obFrameURLChanged документа, который фрейм уже покинул.
+    postFromFrame(index, data) {
+      const frame = frames()[index];
+      for (const listener of windowListeners.get('message') || []) {
+        listener({origin: context.location.origin, source: frame.contentWindow, data});
+      }
+    },
     replaceWithoutLoad(index, href) {
       const frame = frames()[index];
       frame.contentWindow.location = {href};
@@ -205,7 +285,7 @@ function shell(storage, search = '', confirmClose = () => true) {
         listener({
           origin: context.location.origin,
           source: frame.contentWindow,
-          data: {source: 'obFrameURLChanged', url: href}
+          data: {source: 'obFrameURLChanged', url: href, documentToken: frame.contentWindow.obFrameCloseDocumentToken}
         });
       }
     },
@@ -351,6 +431,7 @@ test('home view preserves the previous active tab across navigation', () => {
 
 test('missing active ID falls back to the first tab', () => {
   const storage = new FakeStorage({
+    obTabsScope: scopeOf(source),
     obTabs: JSON.stringify([
       {id: 'tab:a', url: '/ui/a', title: 'A'},
       {id: 'tab:b', url: '/ui/b', title: 'B'},
@@ -366,27 +447,17 @@ test('missing active ID falls back to the first tab', () => {
   assert.deepEqual(savedActive(storage), {id: 'tab:a', url: '/ui/a'});
 });
 
-test('legacy URL-only state is upgraded and remains restorable', () => {
+test('legacy state without a proven session owner is discarded before reading titles', () => {
   const storage = new FakeStorage({
-    obTabs: JSON.stringify([
-      {url: '/ui/a', title: 'A'},
-      {url: '/ui/b', title: 'B'},
-      {url: '/ui/c', title: 'C'}
-    ]),
-    obTabsActive: '/ui/b'
+    obTabs: JSON.stringify([{url:'/ui/a',title:'Foreign secret'}]),
+    obTabsActive: '/ui/a', unrelated: 'keep'
   });
-
-  let app = shell(storage);
-  assert.equal(app.activeIndex(), 1);
-  const upgraded = savedTabs(storage);
-  assert.equal(upgraded.every(tab => typeof tab.id === 'string' && tab.id.length > 0), true);
-  assert.equal(new Set(upgraded.map(tab => tab.id)).size, 3);
-  assert.equal(savedActive(storage).id, upgraded[1].id);
-  assert.equal(savedActive(storage).url, '/ui/b');
-
-  app = shell(storage);
-  assert.equal(app.activeIndex(), 1);
-  assert.deepEqual(savedTabs(storage).map(tab => tab.id), upgraded.map(tab => tab.id));
+  const app = shell(storage);
+  assert.equal(app.count(), 0);
+  assert.equal(app.activeIndex(), -1);
+  assert.deepEqual(savedTabs(storage), []);
+  assert.equal(storage.getItem('obTabsActive'), null);
+  assert.equal(storage.getItem('unrelated'), 'keep');
 });
 
 test('closing the active tab persists its neighbor and closing the last clears active state', () => {
@@ -409,6 +480,7 @@ test('closing the active tab persists its neighbor and closing the last clears a
 
 test('duplicate or corrupt stored IDs cannot collapse tabs or crash startup', () => {
   const duplicateIDs = new FakeStorage({
+    obTabsScope: scopeOf(source),
     obTabs: JSON.stringify([
       {id: 'tab:same', url: '/ui/a', title: 'A'},
       {id: 'tab:same', url: '/ui/a', title: 'A copy'}
@@ -461,7 +533,7 @@ test('a form tab is closed by its address, not by whichever tab is active', () =
   assert.equal(app.count(), 1);
 });
 
-test('server-driven close and the cross both protect unsaved changes', () => {
+test('missing bridge keeps legacy dirty protection for non-managed forms', () => {
   const storage = new FakeStorage();
   const app = shell(storage);
   app.open('/ui/document/обращение/1', 'Обращение');
@@ -520,7 +592,7 @@ test('subsystem context does not prevent address-driven close', () => {
   assert.equal(app.count(), 0);
 });
 
-test('server-driven close keeps dirty protection for another duplicate tab', () => {
+test('missing bridge keeps dirty protection for another non-managed duplicate', () => {
   const storage = new FakeStorage();
   const app = shell(storage);
   app.open('/ui/document/обращение/1', 'Обращение');
@@ -531,7 +603,7 @@ test('server-driven close keeps dirty protection for another duplicate tab', () 
   assert.equal(app.confirms(), 1);
 });
 
-test('repeated server-driven close cannot bypass a rejected dirty confirmation', () => {
+test('repeated fallback close cannot bypass a rejected non-managed confirmation', () => {
   const storage = new FakeStorage();
   const app = shell(storage, '', () => false);
   app.open('/ui/document/обращение/1', 'Обращение');
@@ -545,4 +617,567 @@ test('repeated server-driven close cannot bypass a rejected dirty confirmation',
   assert.equal(app.closeByURL('/ui/document/обращение/1'), 0);
   assert.equal(app.count(), 1);
   assert.equal(app.confirms(), 2);
+});
+
+test('shell removes a form only after the correlated close decision allows it', async () => {
+  const storage = new FakeStorage();
+  const requests = [];
+  const finalizations = [];
+  let finish;
+  const app = shell(storage, '', () => true, (frame, reason) => {
+    requests.push({frame, reason});
+    return new Promise((resolve) => { finish = resolve; });
+  }, (frame, decision) => { finalizations.push({frame, decision}); return true; });
+  app.open('/ui/document/обращение/1', 'Обращение');
+  app.markDirty(0);
+
+  app.close(0);
+  app.close(0);
+  assert.equal(app.count(), 1, 'tab was destroyed before the server decision');
+  assert.equal(requests.length, 1, 'double click started a second close intent');
+  assert.equal(app.confirms(), 0, 'shell displayed a second, non-authoritative dirty confirmation');
+  assert.equal(requests[0].reason, 'cross');
+
+  finish({allowed: false, intentId: 'denied'});
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.count(), 1, 'denied close removed the tab');
+
+  app.post({source: 'obCloseTab', reason: 'escape'}, 0);
+  assert.equal(requests.length, 2);
+  assert.equal(app.confirms(), 0);
+  assert.equal(requests[1].reason, 'escape');
+  finish({allowed: true, intentId: 'allowed'});
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(finalizations.length, 1, 'allowed close was not finalized');
+  assert.equal(finalizations[0].decision.intentId, 'allowed');
+  assert.equal(app.count(), 0, 'allowed close kept the tab');
+});
+
+test('shell keeps a new Document when an old decision uses the same WindowProxy', async () => {
+  const app = shell(new FakeStorage(), '', () => true, null, null, true);
+  app.open('/ui/document/обращение/old', 'Обращение');
+  let finalizedNewDocument = 0;
+  app.installManagedDocument(0, 'shell-old-document');
+  const sourceWindowProxy = app.frameWindow(0);
+
+  app.close(0);
+  const request = app.posted(0)[0];
+  assert.ok(request);
+  const correlation = request.data.correlation;
+
+  app.installManagedDocument(0, 'shell-new-document', () => { finalizedNewDocument++; }, true);
+  assert.equal(app.frameWindow(0), sourceWindowProxy, 'test replaced WindowProxy');
+  app.post({
+    source: 'obFormCloseDecision', correlation, allowed: true, intentId: 'stale-shell',
+  }, 0);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(app.count(), 1, 'stale decision removed the new iframe document');
+  assert.equal(finalizedNewDocument, 0, 'stale decision finalized the new iframe document');
+});
+
+test('managed tab without a bridge or finalizer remains open', async () => {
+  const noBridge = shell(new FakeStorage());
+  noBridge.open('/ui/document/обращение/1', 'Обращение');
+  noBridge.markManaged(0);
+  noBridge.close(0);
+  assert.equal(noBridge.count(), 1, 'managed tab was removed without a server bridge');
+  assert.equal(noBridge.alerts(), 1);
+
+  const noFinalize = shell(new FakeStorage(), '', () => true,
+    async () => ({allowed: true, intentId: 'managed-intent'}),
+    () => false);
+  noFinalize.open('/ui/document/обращение/2', 'Обращение');
+  noFinalize.close(0);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(noFinalize.count(), 1, 'managed tab was removed without dirty finalization');
+  assert.equal(noFinalize.alerts(), 1);
+});
+
+// #1684: страница вне протокола закрытия (текстовая 404) не ответит никогда —
+// вкладка закрывается сразу, без запроса и без подтверждения. Несохранённое
+// по-прежнему спрашивается, а загружающаяся и managed-страница без маркера
+// идут обычным путём запроса к фрейму.
+test('a page outside the close protocol closes without a frame request', async () => {
+  const requests = [];
+  const request = (frame, reason) => { requests.push(reason); return new Promise(() => {}); };
+  const plain = shell(new FakeStorage(), '', () => true, request, () => true);
+  plain.open('/ui/catalog/_users/1', 'Ошибка');
+  plain.markPlainPage(0);
+  plain.close(0);
+  assert.equal(plain.count(), 0, 'silent page kept the tab');
+  assert.deepEqual(requests, [], 'shell waited for a page that cannot answer');
+  assert.equal(plain.confirms(), 0);
+  assert.equal(plain.alerts(), 0);
+
+  let answer = false;
+  const dirty = shell(new FakeStorage(), '', () => answer, request, () => true);
+  dirty.open('/ui/catalog/_users/2', 'Ошибка');
+  dirty.markDirty(0);
+  dirty.markPlainPage(0);
+  dirty.close(0);
+  assert.equal(dirty.count(), 1, 'declined confirmation still removed a dirty tab');
+  assert.equal(dirty.confirms(), 1);
+  answer = true;
+  dirty.close(0);
+  assert.equal(dirty.count(), 0);
+  assert.deepEqual(requests, []);
+
+  const loading = shell(new FakeStorage(), '', () => true, request, () => true);
+  loading.open('/ui/document/обращение/4', 'Обращение');
+  loading.markPlainPage(0);
+  loading.markLoading(0);
+  loading.close(0);
+  assert.equal(loading.count(), 1, 'loading page was closed as silent');
+
+  const managed = shell(new FakeStorage(), '', () => true, request, () => true);
+  managed.open('/ui/document/обращение/5', 'Обращение');
+  managed.markPlainPage(0);
+  managed.markManaged(0);
+  managed.close(0);
+  assert.equal(managed.count(), 1, 'managed page without the marker was closed as silent');
+  assert.deepEqual(requests, ['cross', 'cross'], 'loading and managed pages must still be asked');
+});
+
+test('loading tab without a bridge is treated as managed and remains open', () => {
+  const app = shell(new FakeStorage());
+  app.open('/ui/document/обращение/3', 'Обращение');
+  app.markLoading(0);
+  app.close(0);
+  assert.equal(app.count(), 1, 'loading tab was classified as legacy and removed');
+  assert.equal(app.alerts(), 1);
+});
+
+function scopeOf(script) {
+  const match = script.match(/var STORAGE_SCOPE=([^;]+);/);
+  assert.ok(match, 'public shell must supply a session scope');
+  return JSON.parse(match[1]);
+}
+
+const shellB = tabsSource(fs.readFileSync(process.env.ONEBASE_TABS_B_HTML, 'utf8'));
+const shellANew = tabsSource(fs.readFileSync(process.env.ONEBASE_TABS_A_NEW_HTML, 'utf8'));
+const shellAAgain = tabsSource(fs.readFileSync(process.env.ONEBASE_TABS_A_AGAIN_HTML, 'utf8'));
+const loginHTML = fs.readFileSync(process.env.ONEBASE_LOGIN_HTML, 'utf8');
+
+test('public login sessions isolate A to B, B to A and re-login of the same account', () => {
+  const scopes = [source,shellB,shellANew,shellAAgain].map(scopeOf);
+  assert.equal(new Set(scopes).size, 4);
+  const storage = new FakeStorage({unrelated:'keep'});
+  const stale = shell(storage);
+  stale.open('/ui/private/operator', 'Operator secret');
+  let app = shell(storage, '', undefined, null, null, false, shellB);
+  assert.equal(app.count(), 0);
+  assert.equal(storage.getItem('obTabsActive'), null);
+  app.open('/ui/private/admin', 'Admin secret');
+  const before = storage.getItem('obTabs');
+  stale.open('/ui/stale', 'Stale operator');
+  assert.equal(storage.getItem('obTabs'), before, 'stale shell overwrote the new session');
+  app = shell(storage, '', undefined, null, null, false, shellANew);
+  assert.equal(app.count(), 0);
+  app.open('/ui/private/operator-new', 'New operator');
+  app = shell(storage, '', undefined, null, null, false, shellAAgain);
+  assert.equal(app.count(), 0);
+  assert.equal(storage.getItem('unrelated'),'keep');
+});
+
+test('POST logout redirect to the public login page clears only shell state', () => {
+  const storage = new FakeStorage({unrelated:'keep'});
+  const app = shell(storage);
+  app.open('/ui/private/a', 'Private title');
+  const loginScripts = Array.from(loginHTML.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi), match=>match[1]);
+  assert.ok(loginScripts.length, 'login page must clear shell state');
+  for (const script of loginScripts) vm.runInNewContext(script, {sessionStorage:storage});
+  for (const key of ['obTabs','obTabsActive','obTabsScope']) assert.equal(storage.getItem(key),null);
+  assert.equal(storage.getItem('unrelated'),'keep');
+  assert.equal(shell(storage).count(),0);
+  for (const script of loginScripts) assert.doesNotThrow(()=>vm.runInNewContext(script,{sessionStorage:new FakeStorage({}, {remove:true})}));
+});
+
+test('failure to remove obsolete storage never restores another session snapshot', () => {
+  const storage = new FakeStorage({obTabsScope:scopeOf(shellB), obTabs:JSON.stringify([{url:'/ui/private',title:'Foreign'}]), obTabsActive:'/ui/private'}, {remove:true});
+  const app = shell(storage);
+  assert.equal(app.count(),0);
+  app.open('/ui/current','Current');
+  assert.equal(JSON.parse(storage.getItem('obTabs'))[0].title,'Foreign', 'failed storage initialization must disable persistence');
+});
+
+test('open-access deployment preserves F5 and is discarded on the first authenticated login', () => {
+  const openSource = tabsSource(fs.readFileSync(process.env.ONEBASE_TABS_OPEN_HTML,'utf8'));
+  const storage = new FakeStorage();
+  let app = shell(storage, '', undefined, null, null, false, openSource);
+  app.open('/ui/open','Anonymous');
+  app = shell(storage, '', undefined, null, null, false, openSource);
+  assert.equal(app.count(),1);
+  assert.equal(app.activeIndex(),0);
+  app = shell(storage);
+  assert.equal(app.count(),0);
+});
+
+// Смена раздела без перезагрузки оболочки: открытые вкладки — живые фреймы, и
+// перезагрузка теряла введённое в незаписанных формах (браузер спрашивал
+// «Уверены, что хотите закрыть страницу?»). Оболочка берёт страницу раздела
+// фоном и подменяет строку разделов, боковое меню и рабочий стол.
+function sectionShell({fetchImpl} = {}) {
+  const storage = new FakeStorage();
+  const elements = {};
+  for (const id of ['ob-tabstrip', 'ob-tabbody', 'ob-tabempty', 'ob-tabhome', 'ob-widget-charts']) {
+    elements[id] = new Element('div', id);
+  }
+  elements['ob-nav'] = new Element('aside', 'ob-nav');
+  let bar = new Element('nav');
+  bar.className = 'subsys-bar';
+  const home = elements['ob-tabhome'];
+  Object.defineProperty(home, 'firstChild', {get() { return this.children[0] || null; }});
+  home.removeChild = child => child.remove();
+  home.appendChild(new Element('h2'));
+  const replaceable = element => {
+    element.replaceWith = next => {
+      if (element === bar) bar = next;
+      else elements[element.id] = next;
+      replaceable(next);
+    };
+    return element;
+  };
+  replaceable(bar);
+  replaceable(elements['ob-nav']);
+
+  const next = {
+    shell: new Element('main', 'ob-shell-main'),
+    bar: Object.assign(new Element('nav'), {className: 'subsys-bar sklad'}),
+    nav: new Element('aside', 'ob-nav'),
+    homeNodes: [new Element('h2'), new Element('div')],
+  };
+  next.shell.setAttribute('data-ob-tab-scope', scopeOf(source));
+  const navigationPaths = ['/ui/settings/navigation', '/ui/admin/navigation'];
+  const navigation = navigationPaths.map(path => {
+    const link = new Element('a');
+    link.setAttribute('href', path + '?subsystem=');
+    return link;
+  });
+  const nextNavigation = navigationPaths.map(path => {
+    const link = new Element('a');
+    link.setAttribute('href', path + '?subsystem=' + encodeURIComponent('Склад'));
+    return link;
+  });
+  function navigationLink(selector, links) {
+    const index = navigationPaths.findIndex(path => selector === '.topbar a[href^="' + path + '?"]');
+    return index < 0 ? null : links[index];
+  }
+  class FakeDOMParser {
+    parseFromString(title) {
+      return {
+        title: title === 'Главная' ? title : 'Склад',
+        querySelector(sel) { return sel === '.subsys-bar' ? next.bar : navigationLink(sel, nextNavigation); },
+        getElementById(id) {
+          if (id === 'ob-shell-main') return next.shell;
+          if (id === 'ob-nav') return next.nav;
+          if (id === 'ob-tabhome') return {childNodes: next.homeNodes};
+          if (id === 'ob-widget-charts') return {textContent: '{"склад":1}'};
+          return null;
+        },
+      };
+    }
+  }
+  const fetched = [];
+  const documentListeners = new Map();
+  const windowListeners = new Map();
+  const pushed = [];
+  const location = {origin: 'http://127.0.0.1:8080', pathname: '/ui/app', search: '?home=1', href: '/ui/app?home=1'};
+  const setLocation = url => {
+    const u = new URL(url, location.origin);
+    location.pathname = u.pathname;
+    location.search = u.search;
+    location.href = u.pathname + u.search;
+  };
+  const calls = {nav: [], dashboard: 0};
+  const document = {
+    body: new Element('body'),
+    readyState: 'complete',
+    title: 'Главная',
+    getElementById(id) { return elements[id] || null; },
+    querySelector(sel) { return sel === '.subsys-bar' ? bar : navigationLink(sel, navigation); },
+    createElement(tagName) { return new Element(tagName); },
+    importNode(node) { return node; },
+    addEventListener(type, listener) {
+      if (!documentListeners.has(type)) documentListeners.set(type, []);
+      documentListeners.get(type).push(listener);
+    },
+  };
+  const context = {
+    document,
+    sessionStorage: storage,
+    location,
+    URL,
+    URLSearchParams,
+    DOMParser: FakeDOMParser,
+    history: {pushState(state, title, url) { pushed.push(url); setLocation(url); }},
+    fetch(url, options) {
+      fetched.push({url, options});
+      if (fetchImpl) return fetchImpl(url);
+      const target = new URL(url, location.origin);
+      return Promise.resolve({ok: true, url: target.href, text: () => Promise.resolve('<html></html>')});
+    },
+    crypto: {randomUUID() { return '00000000-0000-4000-8000-000000000001'; }},
+    setTimeout() { return 1; },
+    clearTimeout() {},
+    confirm() { return true; },
+    alert() {},
+    obUIMessage(name, fallback) { return fallback; },
+    obInitNavSections(scope) { calls.nav.push(scope); },
+    obInitDashboard() { calls.dashboard++; },
+    addEventListener(type, listener) {
+      if (!windowListeners.has(type)) windowListeners.set(type, []);
+      windowListeners.get(type).push(listener);
+    },
+  };
+  context.window = context;
+  vm.runInNewContext(source, context, {filename: 'rendered-tabs-runtime.js'});
+  const settle = async () => { for (let i = 0; i < 6; i++) await new Promise(resolve => setImmediate(resolve)); };
+  return {
+    context, elements, next, fetched, pushed, calls, location, settle, navigation, nextNavigation,
+    bar: () => bar,
+    clickSection(href) {
+      const anchor = {closest() { return anchor; }, getAttribute(name) { return name === 'href' ? href : null; }, textContent: ''};
+      const event = {target: anchor, button: 0, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }};
+      for (const listener of documentListeners.get('click') || []) listener(event);
+      return event;
+    },
+    popstate(url) {
+      setLocation(url);
+      for (const listener of windowListeners.get('popstate') || []) listener({});
+    },
+    tabCount() { return elements['ob-tabstrip'].children.length; },
+    markDirty(index) {
+      const frame = elements['ob-tabbody'].children.filter(element => element.tagName === 'IFRAME')[index];
+      for (const listener of windowListeners.get('message') || []) {
+        listener({origin: location.origin, source: frame.contentWindow, data: {source: 'obDirty', dirty: true}});
+      }
+    },
+  };
+}
+
+test('раздел меняется без перезагрузки: незаписанная вкладка остаётся', async () => {
+  const app = sectionShell();
+  app.context.obOpenTab('/ui/document/Ордер/new', 'Insert');
+  app.markDirty(0);
+  const event = app.clickSection('/ui/?subsystem=Склад');
+  assert.equal(event.defaultPrevented, true);
+  await app.settle();
+
+  assert.equal(app.fetched.length, 1);
+  assert.equal(decodeURIComponent(app.fetched[0].url), '/ui/app?home=1&subsystem=Склад');
+  assert.equal(app.fetched[0].options.credentials, 'same-origin');
+  assert.deepEqual(app.pushed.map(decodeURIComponent), ['/ui/app?home=1&subsystem=Склад'], 'адрес раздела — в историю');
+  assert.equal(app.bar(), app.next.bar, 'строка разделов подменена');
+  assert.equal(app.elements['ob-nav'], app.next.nav, 'меню подменено');
+  assert.deepEqual(app.elements['ob-tabhome'].children, app.next.homeNodes, 'рабочий стол раздела');
+  assert.equal(app.elements['ob-widget-charts'].textContent, '{"склад":1}');
+  assert.equal(app.context.document.title, 'Склад');
+  assert.deepEqual(app.calls.nav, [app.next.nav]);
+  assert.equal(app.calls.dashboard, 1);
+  assert.equal(app.tabCount(), 1, 'вкладка с незаписанной формой не закрыта');
+
+  // «Назад» — тем же путём, без записи в историю.
+  app.popstate('/ui/app?home=1');
+  await app.settle();
+  assert.equal(app.fetched.length, 2);
+  assert.equal(app.fetched[1].url, '/ui/app?home=1');
+  assert.equal(app.pushed.length, 1);
+  assert.equal(app.tabCount(), 1);
+
+  // Смена только отборов виджетов того же раздела — не смена раздела.
+  app.popstate('/ui/app?home=1&w.Ордера.Филиал=1');
+  await app.settle();
+  assert.equal(app.fetched.length, 2);
+});
+
+test('раздел не загрузился — прежний переход', async () => {
+  const app = sectionShell({fetchImpl: () => Promise.resolve({ok: false, status: 403, url: '', text: () => Promise.resolve('')})});
+  app.clickSection('/ui/?subsystem=Склад');
+  await app.settle();
+  assert.equal(decodeURIComponent(app.location.href), '/ui/app?home=1&subsystem=Склад');
+  assert.equal(app.pushed.length, 0);
+  assert.equal(app.calls.dashboard, 0);
+});
+
+for (const scope of ['different-scope', '', null, 'missing-shell']) {
+  test('partial navigation requires matching ownership: ' + String(scope), async () => {
+    const app = sectionShell();
+    const bar = app.bar(), nav = app.elements['ob-nav'];
+    const nodes = app.elements['ob-tabhome'].children.slice();
+    if (scope === 'missing-shell') app.next.shell = null;
+    else if (scope === null) app.next.shell.attributes.delete('data-ob-tab-scope');
+    else app.next.shell.setAttribute('data-ob-tab-scope', scope);
+    app.clickSection('/ui/?subsystem=Склад');
+    await app.settle();
+    assert.equal(decodeURIComponent(app.location.href), '/ui/app?home=1&subsystem=Склад');
+    assert.equal(app.bar(), bar);
+    assert.equal(app.elements['ob-nav'], nav);
+    assert.deepEqual(app.elements['ob-tabhome'].children, nodes);
+    assert.equal(app.context.document.title, 'Главная');
+    assert.equal(app.calls.dashboard, 0);
+    assert.equal(app.pushed.length, 0);
+  });
+}
+
+for (const failed of [false, true]) {
+  test('Back → Forward отменяет задержанный ' + (failed ? 'отказ' : 'ответ') + ' прошлого раздела', async () => {
+    let finishBack;
+    const app = sectionShell({fetchImpl(url) {
+      if (url === '/ui/app?home=1') return new Promise(resolve => { finishBack = resolve; });
+      return Promise.resolve({ok: true, url, text: () => Promise.resolve('Склад')});
+    }});
+    app.context.obOpenTab('/ui/document/Ордер/new', 'Insert');
+    app.markDirty(0);
+    app.clickSection('/ui/?subsystem=Склад');
+    await app.settle();
+    const bar = app.bar(), nav = app.elements['ob-nav'];
+    const nodes = app.elements['ob-tabhome'].children.slice();
+    const frame = app.elements['ob-tabbody'].children.find(el => el.tagName === 'IFRAME');
+    app.popstate('/ui/app?home=1');
+    app.popstate('/ui/app?home=1&subsystem=Склад');
+    finishBack({ok: !failed, status: 503, url: '/ui/app?home=1', text: () => Promise.resolve('Главная')});
+    await app.settle();
+    assert.equal(app.context.document.title, 'Склад');
+    assert.equal(decodeURIComponent(app.location.href), '/ui/app?home=1&subsystem=Склад');
+    assert.equal(app.bar(), bar);
+    assert.equal(app.elements['ob-nav'], nav);
+    assert.deepEqual(app.elements['ob-tabhome'].children, nodes);
+    assert.equal(app.calls.dashboard, 1);
+    assert.equal(app.pushed.length, 1);
+    assert.equal(app.elements['ob-tabbody'].children.find(el => el.tagName === 'IFRAME'), frame);
+    // currentSection тоже не должен остаться от устаревшего ответа.
+    app.popstate('/ui/app?home=1&subsystem=Склад&w.Ордера.Филиал=1');
+    assert.equal(app.fetched.length, 2);
+  });
+}
+
+test('команды настройки меню используют подсистему из ответа, включая Back', async () => {
+  const app = sectionShell({fetchImpl(url) {
+    // Сервер может перенаправить на другую фактическую подсистему.
+    const target = url.includes('subsystem=') ? '/ui/app?home=1&subsystem=Фактическая' : url;
+    return Promise.resolve({ok: true, url: target, text: () => Promise.resolve('Склад')});
+  }});
+  for (const link of app.nextNavigation) {
+    const url = new URL(link.getAttribute('href'), app.location.origin);
+    url.searchParams.set('subsystem', 'Фактическая');
+    link.setAttribute('href', url.pathname + url.search);
+  }
+  app.clickSection('/ui/?subsystem=Склад');
+  await app.settle();
+  for (let i = 0; i < app.navigation.length; i++) {
+    assert.equal(app.navigation[i].getAttribute('href'), app.nextNavigation[i].getAttribute('href'));
+    assert.equal(new URL(app.navigation[i].getAttribute('href'), app.location.origin).searchParams.get('subsystem'), 'Фактическая');
+  }
+  for (const link of app.nextNavigation) {
+    const url = new URL(link.getAttribute('href'), app.location.origin);
+    url.searchParams.set('subsystem', '');
+    link.setAttribute('href', url.pathname + url.search);
+  }
+  app.popstate('/ui/app?home=1');
+  await app.settle();
+  for (const link of app.navigation) assert.equal(new URL(link.getAttribute('href'), app.location.origin).searchParams.get('subsystem'), '');
+});
+
+test('отсутствующие по правам команды меню не мешают смене раздела', async () => {
+  const app = sectionShell();
+  app.navigation.fill(null);
+  app.nextNavigation.fill(null);
+  app.clickSection('/ui/?subsystem=Склад');
+  await app.settle();
+  assert.equal(app.context.document.title, 'Склад');
+  assert.equal(app.calls.dashboard, 1);
+  assert.equal(app.pushed.length, 1);
+});
+
+test('изменение доступных команд меню вызывает переход до подмены DOM', async () => {
+  const app = sectionShell();
+  const bar = app.bar(), nav = app.elements['ob-nav'];
+  const nodes = app.elements['ob-tabhome'].children.slice();
+  app.nextNavigation[1] = null;
+  app.clickSection('/ui/?subsystem=Склад');
+  await app.settle();
+  assert.equal(decodeURIComponent(app.location.href), '/ui/app?home=1&subsystem=Склад');
+  assert.equal(app.context.document.title, 'Главная');
+  assert.equal(app.bar(), bar);
+  assert.equal(app.elements['ob-nav'], nav);
+  assert.deepEqual(app.elements['ob-tabhome'].children, nodes);
+  assert.equal(app.calls.dashboard, 0);
+  assert.equal(app.pushed.length, 0);
+});
+
+test('a close command that outran the save of a new form closes it once the id arrives', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/document/звонок/new', 'Звонок');
+  app.open('/ui/document/заявка/7', 'Заявка');
+  // Обработчик формы записал новый звонок и сразу прислал ui.закрытьФорму
+  // по адресу с id — по SSE раньше, чем форма получила ответ с savedId.
+  assert.equal(app.closeByURL('/ui/document/звонок/42'), 0);
+  assert.equal(app.count(), 2);
+  // Ответ пришёл: форма сменила адрес через replaceState и сообщила оболочке.
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/звонок/42');
+  assert.deepEqual(app.titles(), ['Заявка']);
+});
+
+test('a waiting close command does not touch another document', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/document/звонок/new', 'Звонок');
+  assert.equal(app.closeByURL('/ui/document/звонок/42'), 0);
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/звонок/43');
+  assert.equal(app.count(), 1);
+  // Вкладка, открытая позже обычным переходом, команду тоже не подхватывает.
+  app.open('/ui/document/звонок/42', 'Звонок 42');
+  assert.equal(app.count(), 2);
+});
+
+test('a waiting close command is used once', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/document/звонок/new', 'Звонок');
+  app.duplicate(0);
+  assert.equal(app.closeByURL('/ui/document/звонок/42'), 0);
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/звонок/42');
+  assert.equal(app.count(), 1);
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/звонок/42');
+  assert.equal(app.count(), 1);
+});
+
+// Ревью #2151: форма /new записалась, получила ui.закрытьФорму по /42 и
+// отправила obFrameURLChanged, но фрейм успел перейти на другую форму.
+// WindowProxy тот же — сообщение старого документа не должно ни переписать
+// адрес вкладки, ни закрыть новую форму.
+test('a stale url message of a left document neither renames nor closes the tab', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/document/call/new', 'Звонок');
+  assert.equal(app.closeByURL('/ui/document/call/42'), 0);
+  app.navigate(0, 'http://127.0.0.1:8080/ui/document/other/7');
+  app.postFromFrame(0, {source: 'obFrameURLChanged', url: '/ui/document/call/42', documentToken: 'initial-document'});
+  assert.equal(app.count(), 1);
+  assert.equal(savedTabs(storage)[0].url, '/ui/document/other/7');
+  // Тот же документ, оставшийся во фрейме, своё закрытие получает как раньше.
+  app.navigate(0, 'http://127.0.0.1:8080/ui/document/call/new');
+  assert.equal(app.closeByURL('/ui/document/call/43'), 0);
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/call/43');
+  assert.equal(app.count(), 0);
+});
+
+test('a waiting close belongs to the original Document even when its replacement has the same URL', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/document/call/new', 'Call');
+  app.installManagedDocument(0, 'original');
+  assert.equal(app.closeByURL('/ui/document/call/42'), 0);
+  // Document changes before load; WindowProxy and the saved URL stay the same.
+  app.silentNavigate(0, 'http://127.0.0.1:8080/ui/document/call/42');
+  app.installManagedDocument(0, 'replacement');
+  app.postFromFrame(0, {source: 'obFrameURLChanged', url: '/ui/document/call/42', documentToken: 'original'});
+  assert.equal(savedTabs(storage)[0].url, '/ui/document/call/new');
+  // Even a genuine URL notification of the new Document cannot inherit the
+  // original Document's pending command.
+  app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/call/42');
+  assert.equal(app.count(), 1);
+  assert.equal(app.posted(0).length, 0);
 });

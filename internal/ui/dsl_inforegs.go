@@ -47,6 +47,31 @@ func (r *infoRegsRoot) Get(name string) any {
 
 func (r *infoRegsRoot) Set(_ string, _ any) {}
 
+// GetDynamicField / SetDynamicField — индексный доступ РегистрыСведений["Имя"] (#1434).
+//
+// Раньше такое выражение компилировалось, но возвращало Неопределено: корни
+// менеджеров не реализовывали DynamicFieldAccessor, и универсальный цикл по
+// списку типов приходилось заменять Соответствием из литералов.
+//
+// Только чтение. Имя сопоставляется без учёта регистра — этим занимается сам
+// поиск в реестре. Неизвестное имя даёт ошибку, а не Неопределено: опечатка
+// обязана падать там, где она написана.
+func (r *infoRegsRoot) GetDynamicField(name string) (any, bool) {
+	v := r.Get(name)
+	if v == nil {
+		return nil, false
+	}
+	return v, true
+}
+
+// Индексная запись корню менеджера не открывается: РегистрыСведений["Имя"] — способ
+// получить менеджер, а не ячейка. Отказ явный, потому что молчаливое false
+// дало бы сообщение «неизвестный реквизит» про существующий менеджер.
+func (r *infoRegsRoot) SetDynamicField(name string, _ any) bool {
+	interpreter.RaiseUserError("РегистрыСведений[\"" + name + "\"]: индексная запись не поддерживается, доступно только чтение")
+	return false
+}
+
 type infoRegProxy struct {
 	s      *Server
 	ctxSrc docsCtxSource
@@ -386,10 +411,34 @@ func (rs *infoRegRecordSet) IterateThis() []interpreter.This {
 	return items
 }
 
-func (rs *infoRegRecordSet) rowThis(row map[string]any) *declaredRowThis {
+func (rs *infoRegRecordSet) rowThis(row map[string]any) *infoRegRecordSetRow {
 	meta := storage.InfoRegisterPredicateEntity(rs.ir)
 	decisions := rs.s.fieldDecisionsFor(rs.ctx(), "inforeg", rs.ir.Name, meta)
-	return newDeclaredRowThis(row, appendInfoRegFields(rs.ir), rs.s.newDSLRefAttrResolver(rs.ctx()), decisions)
+	return &infoRegRecordSetRow{newDeclaredRowThis(row, appendInfoRegFields(rs.ir), rs.s.newDSLRefAttrResolver(rs.ctx()), decisions)}
+}
+
+// Only record-set rows opt into indexed field access. Other declaredRowThis
+// consumers retain their existing surfaces. Resolve membership from metadata,
+// not the raw map: declared NULLs are known, incidental keys are not fields.
+type infoRegRecordSetRow struct {
+	*declaredRowThis
+}
+
+var _ interpreter.DynamicFieldAccessor = (*infoRegRecordSetRow)(nil)
+
+func (r *infoRegRecordSetRow) GetDynamicField(name string) (any, bool) {
+	if _, ok := r.fields[strings.ToLower(name)]; !ok {
+		return nil, false
+	}
+	return r.Get(name), true
+}
+
+func (r *infoRegRecordSetRow) SetDynamicField(name string, value any) bool {
+	if _, ok := r.fields[strings.ToLower(name)]; !ok {
+		return false
+	}
+	r.Set(name, value)
+	return true
 }
 
 func appendInfoRegFields(ir *metadata.InfoRegister) []metadata.Field {

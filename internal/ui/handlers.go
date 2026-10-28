@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -115,6 +116,63 @@ func (s *Server) usersForSelection(ctx context.Context) []map[string]any {
 	return rows
 }
 
+// usersForSelectionIncluding — варианты выбора учётных записей для поля типа
+// reference:_users, дополненные выбранными значениями (issue #1646).
+//
+// usersForSelection отдаёт только show_in_list: флаг прячет служебные учётки
+// из подбора. Но ссылка на скрытого пользователя может уже стоять в объекте —
+// например, автор документа. Без догрузки такой <option> в <select> нет, и
+// клиентский applyValues ставит selectedIndex=-1: поле выглядит пустым, а
+// следующая запись молча затирает ссылку (тот же механизм, что #615).
+func (s *Server) usersForSelectionIncluding(ctx context.Context, selected []string) []map[string]any {
+	rows := s.usersForSelection(ctx)
+	if s.authRepo == nil {
+		return rows
+	}
+	seen := make(map[string]bool, len(rows)+len(selected))
+	for _, row := range rows {
+		if id := refValueString(row["id"]); id != "" {
+			seen[id] = true
+		}
+	}
+	for _, idStr := range selected {
+		idStr = strings.TrimSpace(idStr)
+		if idStr == "" || seen[idStr] {
+			continue
+		}
+		if row := s.userSelectionRow(ctx, idStr); row != nil {
+			rows = append(rows, row)
+			seen[refValueString(row["id"])] = true
+		}
+	}
+	return rows
+}
+
+// userSelectionRow — один <option> учётной записи по идентификатору: нужен,
+// когда выбранная учётка скрыта флагом show_in_list и в общем списке подбора
+// её нет (см. usersForSelectionIncluding). Неизвестный идентификатор → nil.
+func (s *Server) userSelectionRow(ctx context.Context, idStr string) map[string]any {
+	if s.authRepo == nil {
+		return nil
+	}
+	idStr = strings.TrimSpace(idStr)
+	if idStr == "" {
+		return nil
+	}
+	if _, err := uuid.Parse(idStr); err != nil {
+		return nil
+	}
+	u, err := s.authRepo.GetByID(ctx, idStr)
+	if err != nil || u == nil {
+		return nil
+	}
+	label := u.Login
+	if u.FullName != "" {
+		label = u.FullName
+	}
+	return map[string]any{"id": u.ID, "_label": label}
+}
+
 type refOptionsMode int
 
 const (
@@ -150,6 +208,13 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	params.Dir = extra.Dir
 	params.Limit = extra.Limit
 	params.Offset = extra.Offset
+	params.ChoicePredicates = extra.ChoicePredicates
+	// choice_folders: элемент формы разрешил выбирать группы — снимаем неявный
+	// запрет подбора, но оставляем остальные его правила (активность, права).
+	if extra.IncludeFolders {
+		params.IncludeFolders = true
+		params.ExcludeFolders = false
+	}
 	var err error
 	params, err = s.rowFilterFor(ctx, refEntity, "read", params)
 	if err != nil {
@@ -159,7 +224,12 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	if err != nil {
 		return nil, err
 	}
-	rows = filterOutFolders(rows)
+	// The legacy picker never offered catalog groups. An explicit is_folder
+	// choice condition is the opt-in exception from plan 170; storage already
+	// applies its true/false value and replaces the implicit folder scope.
+	if !hasChoiceFolderScope(params.ChoicePredicates) && !params.IncludeFolders {
+		rows = filterOutFolders(rows)
+	}
 	// План 88: picker маскирует чувствительные поля до вычисления подписи и до
 	// сериализации строк — иначе замаскированное поле утекло бы в JSON выбора.
 	s.maskRecords(ctx, refEntity, rows)
@@ -169,21 +239,26 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	return rows, nil
 }
 
-func (s *Server) referenceOptionsPage(ctx context.Context, refEntity *metadata.Entity, search string, limit, offset int) ([]map[string]any, int, error) {
+func (s *Server) referenceOptionsPageWithParams(ctx context.Context, refEntity *metadata.Entity, search string, limit, offset int, extra storage.ListParams) ([]map[string]any, int, error) {
 	if refEntity == nil {
 		return nil, 0, nil
 	}
-	params := storage.ListParams{
-		Search: strings.TrimSpace(search),
-		Limit:  limit,
-		Offset: offset,
-	}
+	params := extra
+	params.Search = strings.TrimSpace(search)
+	params.Limit = limit
+	params.Offset = offset
 	rows, err := s.referenceOptionsWithParams(ctx, refEntity, refOptionsChoice, params)
 	if err != nil {
 		return nil, 0, err
 	}
 	countParams := s.refListParamsForMode(refEntity, refOptionsChoice)
+	countParams.Filters = extra.Filters
 	countParams.Search = strings.TrimSpace(search)
+	countParams.ChoicePredicates = extra.ChoicePredicates
+	if extra.IncludeFolders {
+		countParams.IncludeFolders = true
+		countParams.ExcludeFolders = false
+	}
 	countParams, err = s.rowFilterFor(ctx, refEntity, "read", countParams)
 	if err != nil {
 		return nil, 0, err
@@ -193,6 +268,15 @@ func (s *Server) referenceOptionsPage(ctx context.Context, refEntity *metadata.E
 		return nil, 0, err
 	}
 	return rows, total, nil
+}
+
+func hasChoiceFolderScope(predicates []storage.ChoicePredicate) bool {
+	for _, predicate := range predicates {
+		if strings.EqualFold(strings.TrimSpace(predicate.Field), "is_folder") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) initialReferenceOptions(ctx context.Context, refEntity *metadata.Entity, mode refOptionsMode, selected []string) ([]map[string]any, error) {
@@ -233,19 +317,33 @@ func (s *Server) loadRefOptionsWithMode(ctx context.Context, entity *metadata.En
 
 func (s *Server) loadInitialRefOptions(ctx context.Context, entity *metadata.Entity, values map[string]string) (map[string][]map[string]any, error) {
 	opts := make(map[string][]map[string]any)
+	dropdown := refDropdownFields(entity)
 	for _, f := range entity.Fields {
 		if f.RefEntity == "" {
 			continue
 		}
 		if f.RefEntity == "_users" {
-			opts[f.Name] = s.usersForSelection(ctx)
+			opts[f.Name] = s.usersForSelectionIncluding(ctx, []string{values[f.Name]})
 			continue
 		}
 		refEntity := s.reg.GetEntity(f.RefEntity)
 		if refEntity == nil {
 			continue
 		}
-		rows, err := s.initialReferenceOptions(ctx, refEntity, refOptionsChoice, []string{values[f.Name]})
+		// Список не нужен — нужна только подпись текущего значения (поиск по id).
+		if dropdown != nil && !dropdown[strings.ToLower(f.Name)] {
+			opts[f.Name] = s.appendSelectedRefOptions(ctx, nil, refEntity, []string{values[f.Name]})
+			continue
+		}
+		// Подчинённый справочник (owner:) показывает только элементы своего
+		// владельца — значение владельца берём из этих же значений формы.
+		owner, asked := "", false
+		if strings.TrimSpace(refEntity.Owner) != "" {
+			if hf, ok := ownerHolderField(entity, refEntity.Owner); ok {
+				owner, asked = strings.TrimSpace(values[hf.Name]), true
+			}
+		}
+		rows, err := s.initialReferenceOptionsOwned(ctx, refEntity, refOptionsChoice, []string{values[f.Name]}, owner, asked)
 		if err != nil {
 			return nil, err
 		}
@@ -254,10 +352,64 @@ func (s *Server) loadInitialRefOptions(ctx context.Context, entity *metadata.Ent
 	return opts, nil
 }
 
-func (s *Server) loadInitialRefFilterOptions(ctx context.Context, entity *metadata.Entity, params storage.ListParams) (map[string][]map[string]any, error) {
+// refDropdownFields — реквизиты сущности (в нижнем регистре), которые
+// управляемая форма объекта рисует выпадающим списком. nil — управляемой формы
+// нет: авто-форма рисует списком каждое ссылочное поле, предзагрузка нужна всем.
+//
+// Остальным ссылочным реквизитам первая страница справочника не нужна: элемент
+// с choice_dropdown: false шаблон всё равно сводит к текущему значению
+// (selectedRefOptionsOnly), а реквизит без элемента на форме не рисуется вовсе.
+// При этом первая страница большого справочника — полный проход таблицы с
+// сортировкой: сортировка order_by строится через CASE и индекс не использует.
+// У заявки колл-центра поле «Дом» смотрит в адресный классификатор на 2 млн
+// строк, и каждое открытие формы сортировало его ради списка, который тут же
+// выбрасывался, — десятки секунд на холодном кэше.
+//
+// Не нужна она и элементу с id и choice_filter/choice_folders: его варианты
+// считает initialChoiceOptions по id элемента (ManagedChoiceOptions), и шаблон
+// намеренно не откатывается на нефильтрованный справочник. Адрес заявки —
+// ровно такой случай: дом отбирается по улице, улица и город — по филиалу.
+//
+// Поле считается нарисованным общим списком, если хоть один элемент с таким
+// последним сегментом data_path рисует выпадающий список без своего отбора.
+// Сравнение по последнему сегменту, как у шаблона (dpField), — заведомо с
+// запасом: колонка ТЧ с тем же именем лишь сохранит прежнюю предзагрузку.
+func refDropdownFields(entity *metadata.Entity) map[string]bool {
+	form := pickManagedForm(entity, "object")
+	if form == nil {
+		return nil
+	}
+	fields := make(map[string]bool)
+	var walk func([]*metadata.FormElement)
+	walk = func(elements []*metadata.FormElement) {
+		for _, el := range elements {
+			if el == nil {
+				continue
+			}
+			dropdown := el.ChoiceDropdown == nil || *el.ChoiceDropdown
+			// Условие — то же, что у applyChoiceFilters.
+			scoped := strings.TrimSpace(el.ID) != "" && (len(el.ChoiceFilter) > 0 || el.ChoiceFolders)
+			if el.DataPath != "" && dropdown && !scoped {
+				fields[strings.ToLower(formDataPathFieldName(el.DataPath))] = true
+			}
+			walk(el.Children)
+		}
+	}
+	walk(form.Elements)
+	return fields
+}
+
+// loadInitialRefFilterOptions — варианты ссылочных полей панели «Отбор». fields —
+// поля, которые панель покажет (listFilterPanelFields); остальным варианты не
+// нужны.
+func (s *Server) loadInitialRefFilterOptions(ctx context.Context, entity *metadata.Entity, params storage.ListParams, fields []metadata.Field) (map[string][]map[string]any, error) {
 	opts := make(map[string][]map[string]any)
-	for _, f := range entity.Fields {
+	for _, f := range fields {
 		if f.RefEntity == "" {
+			continue
+		}
+		if f.RefEntity == "_users" {
+			opts[f.Name] = s.usersForSelectionIncluding(ctx, []string{params.Filters[f.Name].Value})
 			continue
 		}
 		refEntity := s.reg.GetEntity(f.RefEntity)
@@ -273,7 +425,11 @@ func (s *Server) loadInitialRefFilterOptions(ctx context.Context, entity *metada
 	return opts, nil
 }
 
-func (s *Server) loadInitialTPRefOptions(ctx context.Context, entity *metadata.Entity, tpRows map[string][]map[string]any) (map[string]map[string][]map[string]any, error) {
+func (s *Server) loadInitialTPRefOptions(ctx context.Context, entity *metadata.Entity, tpRows map[string][]map[string]any, formValues ...any) (map[string]map[string][]map[string]any, error) {
+	var values any
+	if len(formValues) > 0 {
+		values = formValues[0]
+	}
 	result := make(map[string]map[string][]map[string]any)
 	for _, tp := range entity.TableParts {
 		tpOpts := make(map[string][]map[string]any)
@@ -282,19 +438,42 @@ func (s *Server) loadInitialTPRefOptions(ctx context.Context, entity *metadata.E
 				continue
 			}
 			tpOpts[f.Name] = []map[string]any{}
+			if f.RefEntity == "_users" {
+				tpOpts[f.Name] = s.usersForSelectionIncluding(ctx, selectedTPRefIDs(tpRows[tp.Name], f.Name))
+				continue
+			}
 			refEntity := s.reg.GetEntity(f.RefEntity)
 			if refEntity == nil {
 				continue
 			}
-			rows, err := s.initialReferenceOptions(ctx, refEntity, refOptionsChoice, selectedTPRefIDs(tpRows[tp.Name], f.Name))
+			ownerID, asked := "", false
+			if len(formValues) > 0 {
+				if hf, ok := ownerHolderField(entity, refEntity.Owner); ok {
+					ownerID, asked = formValueForPath(values, "Объект."+hf.Name), true
+				}
+			}
+			rows, err := s.initialReferenceOptionsOwned(ctx, refEntity, refOptionsChoice, selectedTPRefIDs(tpRows[tp.Name], f.Name), ownerID, asked)
 			if err != nil {
 				continue
 			}
-			tpOpts[f.Name] = rows
+			tpOpts[f.Name] = compactRefOptionRows(rows)
 		}
 		result[tp.Name] = tpOpts
 	}
 	return result, nil
+}
+
+// compactRefOptionRows оставляет у варианта ссылки табличной части только то,
+// что читают шаблон и браузер: идентификатор и подпись. Вариант раньше уезжал
+// записью справочника целиком — у номенклатуры с ценами и описанием это
+// десятки полей на каждую из 50 строк каждой ссылочной колонки; страница
+// заявки с 17 табличными частями весила 2,8 МБ, ответ каждого события — 1,3 МБ.
+func compactRefOptionRows(rows []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, map[string]any{"id": row["id"], "_label": row["_label"]})
+	}
+	return out
 }
 
 func selectedTPRefIDs(rows []map[string]any, field string) []string {
@@ -322,35 +501,51 @@ func refValueString(v any) string {
 }
 
 func (s *Server) appendSelectedRefOptions(ctx context.Context, rows []map[string]any, refEntity *metadata.Entity, selected []string) []map[string]any {
-	seen := make(map[string]bool, len(rows)+len(selected))
+	seen := make(map[uuid.UUID]bool, len(rows)+len(selected))
 	for _, row := range rows {
-		if id := refValueString(row["id"]); id != "" {
+		if id, err := uuid.Parse(refValueString(row["id"])); err == nil {
 			seen[id] = true
 		}
 	}
+	ids := make([]uuid.UUID, 0, len(selected))
 	for _, idStr := range selected {
-		idStr = strings.TrimSpace(idStr)
-		if idStr == "" || seen[idStr] {
+		id, err := uuid.Parse(strings.TrimSpace(idStr))
+		if err != nil || seen[id] {
 			continue
 		}
-		id, err := uuid.Parse(idStr)
+		// Deduplicate before reading, including missing and inaccessible IDs.
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return rows
+	}
+	decision, err := s.rowDecision(ctx, refEntity, "read")
+	if err != nil || !decision.Allowed {
+		return rows
+	}
+	var predicate *storage.Predicate
+	if !decision.Unrestricted {
+		predicate = decision.Predicate
+	}
+	for start := 0; start < len(ids); start += refLabelBatchSize {
+		end := min(start+refLabelBatchSize, len(ids))
+		batch := ids[start:end]
+		selectedRows, err := s.store.GetByIDsFiltered(ctx, refEntity, batch, predicate)
 		if err != nil {
 			continue
 		}
-		row, err := s.store.GetByID(ctx, refEntity.Name, id, refEntity)
-		if err != nil || row == nil {
-			continue
+		// SQL result order is unspecified; keep the first selected occurrence.
+		for _, id := range batch {
+			row := selectedRows[id.String()]
+			if row == nil {
+				continue
+			}
+			// Mask before computing the label; TP HTTP options project only id/_label.
+			s.maskRecord(ctx, refEntity, row)
+			row["_label"] = firstStringField(row, refEntity)
+			rows = append(rows, row)
 		}
-		if !s.rowAllowsSelected(ctx, refEntity, row) {
-			continue
-		}
-		// План 88: замаскировать догруженную (вне первой страницы) выбранную
-		// запись до вычисления подписи и сериализации — иначе ПДн из ссылки
-		// утекли бы в JSON опций (HTML/DevTools) в обход маски списка.
-		s.maskRecord(ctx, refEntity, row)
-		row["_label"] = firstStringField(row, refEntity)
-		rows = append(rows, row)
-		seen[idStr] = true
 	}
 	return rows
 }
@@ -460,11 +655,11 @@ func asString(v any) string {
 
 func regFmtDate(v any) string {
 	if t, ok := v.(time.Time); ok {
-		return t.Format("02.01.2006")
+		return storage.FormatDisplayDate(t)
 	}
 	if s, ok := v.(string); ok {
 		if t, err := time.Parse(time.RFC3339, s); err == nil {
-			return t.Format("02.01.2006")
+			return storage.FormatDisplayDate(t)
 		}
 	}
 	return fmt.Sprintf("%v", v)
@@ -473,6 +668,26 @@ func regFmtDate(v any) string {
 func (s *Server) renderForbidden(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusForbidden)
 	s.render(w, r, "page-forbidden", map[string]any{})
+}
+
+// renderReadHookDenied — отказ серверного обработчика ПриЧтенииНаСервере. Текст
+// ВызватьИсключение — это сообщение конфигурации пользователю («Запрещён
+// просмотр карточки для должности…»), как Предупреждение в 1С, и страница
+// отказа показывает его вместо общего «нет прав». Технический сбой хука
+// (объект не загрузился, ошибка не из DSL) остаётся общей страницей: его
+// текст пользователю ни о чём не говорит и может раскрыть устройство базы.
+func (s *Server) renderReadHookDenied(w http.ResponseWriter, r *http.Request, denied error) {
+	var dslErr *interpreter.DSLError
+	if !errors.As(denied, &dslErr) || strings.TrimSpace(dslErr.UserMessage()) == "" {
+		s.renderForbidden(w, r)
+		return
+	}
+	// Keep the error chain for localization, but omit diagnostic source data
+	// from the copy passed to the HTTP renderer. Logs retain the original error.
+	userErr := *dslErr
+	userErr.File, userErr.Line = "", 0
+	w.WriteHeader(http.StatusForbidden)
+	s.render(w, r, "page-forbidden", map[string]any{"Reason": s.errText(r, &userErr)})
 }
 
 // can reports whether the current request may perform op on (kind, entity).
@@ -511,6 +726,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	if _, ok := data["Cfg"]; !ok {
 		data["Cfg"] = s.cfg
 	}
+	s.addHelpContext(r, data)
 	// Параметры текущего запроса — из них шаблоны строят ссылки «то же самое,
 	// но с другим X» (listURL/listHidden), не собирая строку запроса по кускам
 	// и не теряя при этом чужие параметры вроде q.
@@ -563,6 +779,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		login := currentUserLogin(r)
 		data["FormOpenMode"] = s.store.EffectiveFormOpenMode(r.Context(), login)
 		data["FormOpenModePersonal"] = s.store.GetUserFormOpenMode(r.Context(), login)
+		data["FormOpenModeLocked"] = s.store.GetFormOpenModeLocked(r.Context())
 	}
 	// Default per-entity permission flags so partial render paths (e.g. validation
 	// errors) still show the right action buttons.
@@ -570,6 +787,12 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		kind := string(ent.Kind)
 		if _, ok := data["CanWrite"]; !ok {
 			data["CanWrite"] = s.can(r, kind, ent.Name, "write")
+		}
+		// CanCreate — создание из интерфейса (кнопки «Создать», «Скопировать»):
+		// право записи, а при `interactive_create: false` — ещё и `create`.
+		if _, ok := data["CanCreate"]; !ok {
+			canWrite, _ := data["CanWrite"].(bool)
+			data["CanCreate"] = canWrite && (!ent.NoInteractiveCreate || s.can(r, kind, ent.Name, "create"))
 		}
 		if _, ok := data["CanDelete"]; !ok {
 			data["CanDelete"] = s.can(r, kind, ent.Name, "delete")
@@ -588,7 +811,17 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		// TPRefMeta feeds rows added by JavaScript. Rebuild it at the final
 		// render boundary so an earlier metadata-only value cannot re-enable
 		// inline creation for a user without write permission on the target.
-		data["TPRefMeta"] = tpRefMeta(ent, refWriteAccess)
+		// Подчинённые справочники: «реквизит → справочник-владелец». Считаем
+		// здесь, в единственной точке отрисовки форм, а не в каждом обработчике:
+		// подчинение — свойство метаданных, и оно обязано доезжать до шаблона
+		// одинаково на карточке, на копии и на форме с ошибкой валидации.
+		if _, ok := data["RefFilter"]; !ok {
+			values, _ := data["Values"].(map[string]string)
+			form, _ := data["Form"].(*metadata.FormModule)
+			data["RefFilter"] = s.refFilterMap(ent, form, values)
+		}
+		filters, _ := data["RefFilter"].(map[string]string)
+		data["TPRefMeta"] = tpRefMetaWithFilters(ent, refWriteAccess, filters)
 	}
 	// Same for info-register views, which key off "InfoReg" instead of "Entity".
 	if ir, ok := data["InfoReg"].(*metadata.InfoRegister); ok {
@@ -599,6 +832,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 			data["CanDelete"] = s.can(r, "inforeg", ir.Name, "delete")
 		}
 	}
+	data["HasPersonalNavigation"] = s.store != nil && currentUserLogin(r) != ""
 	if _, ok := data["HasAuth"]; !ok {
 		u := auth.UserFromContext(r.Context())
 		data["HasAuth"] = s.authRepo != nil && u != nil
@@ -653,7 +887,7 @@ func (s *Server) refWriteAccess(r *http.Request, entity *metadata.Entity) map[st
 			return
 		}
 		refEntity := s.reg.GetEntity(name)
-		out[name] = refEntity != nil && s.can(r, string(refEntity.Kind), refEntity.Name, "write")
+		out[name] = s.canInteractiveCreate(r, refEntity)
 	}
 	for _, field := range entity.Fields {
 		add(field.RefEntity)
@@ -674,6 +908,10 @@ func tpRefMeta(entity *metadata.Entity, refWriteAccess ...map[string]bool) map[s
 	if len(refWriteAccess) > 0 && refWriteAccess[0] != nil {
 		writable = refWriteAccess[0]
 	}
+	return tpRefMetaWithFilters(entity, writable, nil)
+}
+
+func tpRefMetaWithFilters(entity *metadata.Entity, writable map[string]bool, filters map[string]string) map[string]map[string]any {
 	out := make(map[string]map[string]any, len(entity.TableParts))
 	for _, tp := range entity.TableParts {
 		m := map[string]any{}
@@ -682,6 +920,7 @@ func tpRefMeta(entity *metadata.Entity, refWriteAccess ...map[string]bool) map[s
 				m[f.Name] = map[string]any{
 					"entity":      f.RefEntity,
 					"allowCreate": f.InlineCreateEnabled(true) && writable[f.RefEntity],
+					"filter":      filters[tp.Name+"."+f.Name],
 				}
 			}
 		}

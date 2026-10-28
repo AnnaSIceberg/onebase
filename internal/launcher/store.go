@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/fsmode"
+	"github.com/ivantit66/onebase/internal/userdata"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,6 +40,11 @@ type Base struct {
 	// Пусто/"127.0.0.1" — только этот компьютер (умолчание, secure-by-default);
 	// "0.0.0.0" — все интерфейсы, база доступна из локальной сети.
 	Host string `yaml:"host,omitempty"`
+	// ServerURL — адрес уже работающего сервера onebase. Непусто = запись
+	// клиентского подключения: лаунчер процессом не владеет, только открывает на
+	// этом адресе окно Предприятия, а поля запуска выше не используются.
+	// Подробности и границы — в client_base.go.
+	ServerURL string `yaml:"server_url,omitempty"`
 }
 
 // LauncherSettings — настройки самого лаунчера (не базы), лежат в том же
@@ -78,11 +84,10 @@ func (e *BasePortConflictError) Error() string {
 }
 
 func NewStore() (*Store, error) {
-	home, err := os.UserHomeDir()
+	dir, err := userdata.Path()
 	if err != nil {
 		return nil, fmt.Errorf("launcher: home dir: %w", err)
 	}
-	dir := filepath.Join(home, ".onebase")
 	// 0700, а не 0755: каталог принадлежит одному пользователю — сервис,
 	// установленный через `onebase service install --user`, работает со своим
 	// HOME и сюда не заглядывает. Существующему каталогу MkdirAll права не
@@ -231,12 +236,28 @@ func decodeBaseNode(node *yaml.Node) (*Base, error) {
 	if err := node.Decode(&base); err != nil {
 		return nil, err
 	}
+	resolveBasePaths(&base)
 	return &base, nil
+}
+
+func resolveBasePaths(base *Base) {
+	base.Path = userdata.Resolve(base.Path)
+	base.DBPath = userdata.Resolve(base.DBPath)
+}
+
+func baseForStorePersistence(base *Base) *Base {
+	if base == nil {
+		return nil
+	}
+	copy := *base
+	copy.Path = userdata.StorePath(base.Path)
+	copy.DBPath = userdata.StorePath(base.DBPath)
+	return &copy
 }
 
 var managedBaseYAMLKeys = []string{
 	"id", "control_token", "name", "config_source", "path", "db", "port",
-	"created", "last_opened", "db_type", "db_path", "host",
+	"created", "last_opened", "db_type", "db_path", "host", "server_url",
 }
 
 // patchBaseNode updates only fields owned by the current Base schema. Unknown
@@ -244,7 +265,7 @@ var managedBaseYAMLKeys = []string{
 // mapping instead of disappearing on an ordinary open/reorder/edit.
 func patchBaseNode(target *yaml.Node, base *Base) error {
 	var encoded yaml.Node
-	if err := encoded.Encode(base); err != nil {
+	if err := encoded.Encode(baseForStorePersistence(base)); err != nil {
 		return err
 	}
 	if encoded.Kind != yaml.MappingNode {
@@ -302,6 +323,11 @@ func decodeStoreBases(doc *yaml.Node) ([]*Base, error) {
 	if bases == nil {
 		bases = []*Base{}
 	}
+	for _, base := range bases {
+		if base != nil {
+			resolveBasePaths(base)
+		}
+	}
 	if err := validateStoreBases(bases); err != nil {
 		return nil, err
 	}
@@ -334,7 +360,11 @@ func setStoreBases(doc *yaml.Node, bases []*Base) error {
 		bases = []*Base{}
 	}
 	var value yaml.Node
-	if err := value.Encode(bases); err != nil {
+	portableBases := make([]*Base, 0, len(bases))
+	for _, base := range bases {
+		portableBases = append(portableBases, baseForStorePersistence(base))
+	}
+	if err := value.Encode(portableBases); err != nil {
 		return err
 	}
 	return setStoreMappingValue(root, "bases", &value)
@@ -703,7 +733,9 @@ func (s *Store) Add(b *Base) error {
 	if b.Created.IsZero() {
 		b.Created = time.Now()
 	}
-	if b.ConfigSource == "" {
+	// Источник конфигурации — свойство базы, которую лаунчер поднимает сам.
+	// Клиентскому подключению он не нужен: конфигурацию читает сервер.
+	if b.ConfigSource == "" && !b.Client() {
 		b.ConfigSource = "database"
 	}
 	return s.mutateDocument(func(doc *yaml.Node) (bool, error) {
@@ -722,19 +754,24 @@ func (s *Store) Add(b *Base) error {
 			}
 			registered = append(registered, existing)
 		}
-		// An omitted port is an allocation request, not an implicit request for a
-		// duplicate 8080. Choose it while holding the same cross-process lock.
-		if b.Port == 0 {
-			b.Port = freeRegistryPort(registered)
-		}
-		if owner := portOwner(registered, b.ID, b.Port); owner != nil {
-			return false, &BasePortConflictError{
-				Port: b.Port, OwnerID: owner.ID, OwnerName: owner.Name,
-				SuggestedPort: freeRegistryPort(registered),
+		// Клиентское подключение порта не занимает: лаунчер на этой машине ничего
+		// не слушает. Выделить ему порт означало бы отнять его у базы, которую
+		// лаунчер действительно поднимает, и выдумать конфликт на пустом месте.
+		if !b.Client() {
+			// An omitted port is an allocation request, not an implicit request for a
+			// duplicate 8080. Choose it while holding the same cross-process lock.
+			if b.Port == 0 {
+				b.Port = freeRegistryPort(registered)
+			}
+			if owner := portOwner(registered, b.ID, b.Port); owner != nil {
+				return false, &BasePortConflictError{
+					Port: b.Port, OwnerID: owner.ID, OwnerName: owner.Name,
+					SuggestedPort: freeRegistryPort(registered),
+				}
 			}
 		}
 		var value yaml.Node
-		if err := value.Encode(b); err != nil {
+		if err := value.Encode(baseForStorePersistence(b)); err != nil {
 			return false, err
 		}
 		bases.Content = append(bases.Content, &value)
@@ -773,7 +810,9 @@ func (s *Store) Update(b *Base) error {
 		}
 		// Preserve the ability to repair or rename a legacy registry that already
 		// contains duplicates, but reject every newly introduced collision.
-		if b.Port != existing.Port {
+		// Клиентское подключение порта не занимает — ни проверять, ни освобождать
+		// нечего, в том числе когда обычную запись переключают в клиентскую.
+		if !b.Client() && b.Port != existing.Port {
 			if owner := portOwner(registered, b.ID, b.Port); owner != nil {
 				return false, &BasePortConflictError{
 					Port: b.Port, OwnerID: owner.ID, OwnerName: owner.Name,
@@ -891,10 +930,9 @@ func (s *Store) Remove(id string) error {
 
 // OnebasePath returns the ~/.onebase directory path.
 func OnebasePath(sub ...string) (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := userdata.Path()
 	if err != nil {
 		return "", err
 	}
-	parts := append([]string{home, ".onebase"}, sub...)
-	return filepath.Join(parts...), nil
+	return filepath.Join(append([]string{dir}, sub...)...), nil
 }

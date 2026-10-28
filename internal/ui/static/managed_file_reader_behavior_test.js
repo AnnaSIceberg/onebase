@@ -42,6 +42,7 @@ function domNode(tagName) {
 }
 
 function resetDOM() {
+  window._tpRefMeta = {};
   banner = domNode('div');
   fetchBodies = [];
   submittedBodies = [];
@@ -56,11 +57,12 @@ function resetDOM() {
     value: '',
     disabled: false,
     dataset: {},
-    getAttribute(name) { return name === 'data-ob-file-content-for' ? 'Upload' : null; }
+    getAttribute(name) { return name === 'data-ob-file-content-for' ? 'Upload' : name === 'data-ob-file-path' ? 'upload-path' : null; }
   };
   const form = Object.assign(Object.create(global.HTMLFormElement.prototype), {
     id: 'main-form',
     controls: [pathInput, content],
+    get elements() { return this.controls; },
     getAttribute() { return null; },
     hasAttribute() { return false; },
     querySelectorAll(selector) {
@@ -106,7 +108,7 @@ function addFileControl(name, helperName) {
     disabled: false,
     dataset: {},
     form: current.form,
-    getAttribute(attr) { return attr === 'data-ob-file-content-for' ? name : null; }
+    getAttribute(attr) { return attr === 'data-ob-file-content-for' ? name : attr === 'data-ob-file-path' ? slug + '-path' : null; }
   };
   current.form.controls.push(pathInput, content);
   current.nodes[slug + '-path'] = pathInput;
@@ -124,6 +126,7 @@ function installTableBody(id, attributes) {
 }
 
 global.window = global;
+global.obFrameCloseDocumentToken = 'managed-test-document';
 global.location = {pathname: '/ui/processor/Test'};
 global.history = {replaceState() {}};
 global.navigator = {clipboard: null};
@@ -208,7 +211,7 @@ global.HTMLFormElement = FakeHTMLFormElement;
 class FakeFormData {
   constructor(form) {
     this.values = [];
-    for (const control of form.controls || []) {
+    for (const control of (form && form.controls) || []) {
       if (!control.disabled && control.name) this.append(control.name, control.value || '');
     }
   }
@@ -244,7 +247,7 @@ global.FileReader = FakeFileReader;
 
 global.fetch = async (_url, options) => {
   fetchBodies.push(options.body.toString());
-  return {json: async () => ({messages: []})};
+  return {ok: true, json: async () => ({ok: true, messages: []})};
 };
 
 resetDOM();
@@ -307,13 +310,13 @@ test('saving a new managed form notifies the tab shell after history replacement
   };
   global.fetch = async (_url, options) => {
     fetchBodies.push(options.body.toString());
-    return {json: async () => ({savedId: '42', messages: []})};
+    return {ok: true, json: async () => ({ok: true, savedId: '42', messages: []})};
   };
   try {
     await window.obFire('Save', 'Нажатие');
     assert.deepEqual(replacements, ['/ui/document/purchase/42']);
     assert.deepEqual(messages, [{
-      data: {source: 'obFrameURLChanged', url: '/ui/document/purchase/42'},
+      data: {source: 'obFrameURLChanged', url: '/ui/document/purchase/42', documentToken: 'managed-test-document'},
       targetOrigin: 'http://127.0.0.1:8080'
     }]);
   } finally {
@@ -350,6 +353,29 @@ test('obFire re-syncs grid state after waiting for FileReader', async () => {
     assert.equal(new URLSearchParams(fetchBodies[0]).get('tp_json.Товары'), '[{"Цена":2}]');
   } finally {
     window.obGridSync = originalGridSync;
+  }
+});
+
+test('server command dirty state follows unsaved mutations and confirmed writes', async () => {
+  resetDOM();
+  const originalFetch = global.fetch;
+  const originalApplyTableParts = window.applyTableParts;
+  try {
+    global.fetch = async () => ({ok: true, json: async () => ({ok: true, dirty: true, values: {Наименование: 'changed'}})});
+    await window.obFire('Command', 'Нажатие');
+    assert.equal(window._obFormDirty, true, 'unsaved command mutation did not mark the managed form dirty');
+
+    global.fetch = async () => ({ok: true, json: async () => ({ok: true, dirty: false, version: 2, values: {Наименование: 'saved'}})});
+    await window.obFire('Command', 'Нажатие');
+    assert.equal(window._obFormDirty, false, 'confirmed existing-object write did not clear dirty');
+
+    window.applyTableParts = () => { throw new Error('renderer failed'); };
+    global.fetch = async () => ({ok: true, json: async () => ({ok: false, dirty: true, tableparts: {Rows: []}})});
+    await window.obFire('Command', 'Click');
+    assert.equal(window._obFormDirty, true, 'renderer exception erased authoritative command dirty state');
+  } finally {
+    global.fetch = originalFetch;
+    window.applyTableParts = originalApplyTableParts;
   }
 });
 
@@ -593,6 +619,38 @@ for (const order of ['readonly-first', 'writable-first']) {
   });
 }
 
+test('ValueTable add and remove mark the managed form dirty', () => {
+  resetDOM();
+  const reports = [];
+  const previousSetter = window.obSetManagedFormDirty;
+  window.obSetManagedFormDirty = value => reports.push(value);
+  try {
+    const writable = installTableBody('vt-body-Подбор', {
+      'data-vt-fields': 'Значение|string'
+    });
+    obManagedAddVtRow({getAttribute(name) { return name === 'data-ob-add-vt' ? 'Подбор' : null; }});
+    assert.equal(writable.children.length, 1);
+    assert.deepEqual(reports, [true], 'ValueTable add did not report dirty');
+
+    const row = writable.children[0];
+    assert.equal(obManagedRemoveRow({closest(selector) { return selector === 'tr' ? row : null; }}), true);
+    assert.equal(writable.children.length, 0);
+    assert.deepEqual(reports, [true, true], 'ValueTable remove did not report dirty');
+
+    window.applyFormTables({Подбор: [{Значение: 'server row'}]});
+    const repaintedRow = writable.children[0];
+    const repaintedDelete = repaintedRow.children[1].children[0];
+    assert.equal(repaintedDelete.hasAttribute('data-ob-remove-row'), true,
+      'server repaint bypassed delegated ValueTable delete');
+    repaintedDelete.closest = selector => selector === 'tr' ? repaintedRow : null;
+    assert.equal(obManagedRemoveRow(repaintedDelete), true);
+    assert.equal(writable.children.length, 0);
+    assert.deepEqual(reports, [true, true, true], 'repainted ValueTable remove did not report dirty');
+  } finally {
+    window.obSetManagedFormDirty = previousSetter;
+  }
+});
+
 test('NoGrid repaint restores virtual cells for each view', () => {
   resetDOM();
   window._obGrids = {};
@@ -639,6 +697,37 @@ test('NoGrid add inserts empty virtual cells before delete', () => {
   assert.equal(row.children[2].getAttribute('data-ob-virtual-col'), 'Дата');
   assert.equal(row.children[1].children.length, 0);
   assert.equal(row.children[3].children[0].className, 'del-btn');
+});
+
+test('NoGrid add keeps dependent reference context and an empty date in the same row', () => {
+  resetDOM();
+  const context = JSON.stringify({form_entity: 'Заявка', form: 'Объекта',
+    element: 'Строки.Выбор', table_part: 'Строки', sources: {'Строки.Направление': 'Направление'}});
+  window._tpRefOpts = {Строки: {Выбор: [{id: 'unfiltered', _label: 'Чужой'}]}};
+  window._tpRefMeta = {};
+  window._tpEnumLabels = {};
+  window._tpEnumOrder = {};
+  const body = installTableBody('tp-body-Строки', {
+    'data-tp-fields': 'Выбор|reference:Цель,Дата|date,Направление|string',
+    'data-tp-choice': JSON.stringify({Выбор: context})
+  });
+
+  obManagedAddTpRow({getAttribute(name) {
+    return name === 'data-ob-add-tp' ? 'Строки' : null;
+  }});
+
+  const row = body.children[0];
+  const picker = row.children[0].children[0].children[0];
+  assert.equal(picker.name, 'tp.Строки.0.Выбор');
+  assert.equal(picker.getAttribute('data-ref-choice-context'), context);
+  assert.equal(picker.getAttribute('data-ref-row-id'), '0');
+  assert.equal(picker.children.length, 1, 'dependent picker must not offer unfiltered options');
+  const date = row.children[1].children[0];
+  assert.equal(date.name, 'tp.Строки.0.Дата');
+  assert.equal(date.type, 'datetime-local');
+  assert.equal(date.step, '1');
+  assert.equal(date.value || '', '', 'new date must stay empty');
+  assert.equal(row.children[2].children[0].type, 'text');
 });
 
 test('NoGrid add uses the clicked duplicate view schema', () => {
