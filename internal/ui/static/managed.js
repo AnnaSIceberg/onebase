@@ -2905,7 +2905,9 @@ function obManagedInitDelegates() {
     if (btn.hasAttribute('data-ob-ref-picker')) {
       e.preventDefault();
       var pickSel = obManagedClosestSelect(btn);
-      if (pickSel && typeof openRefPicker === 'function') openRefPicker(pickSel);
+      // Тот же щелчок ловит и делегат формы в ui.js: окно — один раз.
+      if (pickSel && typeof window.obOpenRefPickerOnce === 'function') window.obOpenRefPickerOnce(e, pickSel);
+      else if (pickSel && typeof openRefPicker === 'function') openRefPicker(pickSel);
       return;
     }
     if (btn.hasAttribute('data-ob-ref-clear')) {
