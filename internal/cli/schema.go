@@ -558,6 +558,21 @@ func managedFormSchema() map[string]any {
 			map[string]any{"required": []string{"ref"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"from"}}, map[string]any{"required": []string{"value"}}}}},
 		},
 	}
+	// Условие запросом (как filter[].query формы списка): допустимы записи из
+	// первой колонки результата; params — значения из формы.
+	queryCondition := map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"query"},
+		"properties": map[string]any{
+			"query": map[string]any{"type": "string", "minLength": 1, "description": "Запрос: первая колонка — ссылки (или строки с UUID) допустимых записей; исполняется с правами пользователя, ошибка или больше 10000 строк — пустой подбор"},
+			"params": map[string]any{
+				"type":                 "object",
+				"additionalProperties": map[string]any{"type": "string"},
+				"description":          "Параметры запроса: Имя → Объект.<Ссылка>, Форма.<Ссылка> или Объект.<Ссылка>.<Реквизит> (ссылка или строка); пустое значение — пустой подбор",
+			},
+		},
+	}
 	element := map[string]any{
 		"$dynamicAnchor":       "formElement",
 		"type":                 "object",
@@ -576,12 +591,13 @@ func managedFormSchema() map[string]any {
 				"type":  "array",
 				"items": map[string]any{"$dynamicRef": "#formElement"},
 			},
+			"ref_card_button": boolSchema("Кнопка «Открыть карточку» у этого ссылочного поля: явное значение сильнее ключей формы ref_card_button и ref_card_button_admin_only"),
 			"choice_filter": map[string]any{
 				"type":        "array",
 				"minItems":    1,
 				"maxItems":    8,
 				"uniqueItems": false,
-				"items":       condition,
+				"items":       map[string]any{"oneOf": []any{condition, queryCondition}},
 				"description": "Условия зависимого подбора; соединяются через AND",
 			},
 		},
@@ -592,8 +608,15 @@ func managedFormSchema() map[string]any {
 		"type":                 "object",
 		"additionalProperties": true,
 		"properties": map[string]any{
-			"schema":   stringSchema("Версия схемы, сейчас onebase.form/v1"),
-			"form":     map[string]any{"type": "object", "additionalProperties": true},
+			"schema": stringSchema("Версия схемы, сейчас onebase.form/v1"),
+			"form": map[string]any{
+				"type":                 "object",
+				"additionalProperties": true,
+				"properties": map[string]any{
+					"ref_card_button":            boolSchema("false — убрать кнопку «Открыть карточку» у всех ссылочных полей формы"),
+					"ref_card_button_admin_only": boolSchema("true — кнопку «Открыть карточку» видит только администратор; настройка интерфейса, не защита"),
+				},
+			},
 			"elements": arrayOf(element),
 		},
 	}
