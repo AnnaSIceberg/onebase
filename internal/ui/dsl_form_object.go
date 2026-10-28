@@ -199,10 +199,10 @@ func (f *formObjectThis) CallMethod(method string, args []any) any {
 			if f.entity != nil {
 				name = f.entity.Name
 			}
-			interpreter.RaiseUserError("Провести(" + name + "): объект не проводится")
+			interpreter.RaiseUserError(fmt.Sprintf(f.srv.tr(f.srv.resolveLangCtx(f.liveCtx()), "Провести(%s): объект не проводится"), name))
 		}
 		if f.writeBlocked {
-			interpreter.RaiseUserError("Провести недоступно внутри обработчика записи формы")
+			interpreter.RaiseUserError(f.srv.tr(f.srv.resolveLangCtx(f.liveCtx()), "Провести недоступно внутри обработчика записи формы"))
 		}
 		if err := f.save(saveActionPost); err != nil {
 			message := err.Error()
