@@ -28,6 +28,17 @@ type CompileOpts struct {
 	RowFilters map[SourceRef]*storage.Predicate
 	// Dialect selects the SQL flavour. nil = PgDialect (default).
 	Dialect storage.Dialect
+
+	// tablePartSources — табличные части, встреченные в запросе как
+	// источники, по синтетическому имени источника (rewriteTablePartSources).
+	tablePartSources map[string]tablePartSource
+}
+
+// tablePartSource — табличная часть объекта как источник запроса
+// («ИЗ Справочник.Мастера.СписокНаправлений КАК С», как в 1С).
+type tablePartSource struct {
+	owner *metadata.Entity
+	tp    *metadata.TablePart
 }
 
 func dialectOrDefault(d storage.Dialect) storage.Dialect {
@@ -91,6 +102,10 @@ type Result struct {
 	// actual key returned by the SQL driver when the compiler rewrites a system
 	// register field (Период -> period, ВидДвижения -> вид_движения).
 	DSLColumnAliases map[string]string
+	// LongIdents — выбранные выходные колонки с длинными логическими именами:
+	// физическая метка → полная логическая метка (#1946). По ней RestoreLongLabels
+	// возвращает меткам результата полные имена. Пусто почти всегда.
+	LongIdents map[string]string
 	// Projection — поэлементный разбор списка выборки (план 88E). Позволяет
 	// маскировать защищённые поля в колонках результата вместо отказа во всём
 	// запросе; при Projection.Simple == false действует прежний отказ по
@@ -115,6 +130,10 @@ type SourceOccurrence struct {
 type SourceRef struct {
 	Kind string
 	Name string
+	// TablePart — табличная часть объекта Name, если источник —
+	// «Справочник.Name.ТЧ». Право чтения и строковая политика — владельца,
+	// полевые политики — полей табличной части.
+	TablePart string
 }
 
 // sourcePermKind переводит ключевое слово типа источника в секцию прав User.Has.
@@ -144,9 +163,14 @@ func Compile(src string, opts CompileOpts) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	tokens, opts = rewriteTablePartSources(tokens, opts)
 	res, err := translate(tokens, opts)
-	if err != nil || !hasLimit {
+	if err != nil {
 		return res, err
+	}
+	res.SQL, _ = shortenLongIdents(res.SQL)
+	if !hasLimit {
+		return res, nil
 	}
 	// Для простого внешнего SELECT LIMIT можно безопасно дописать к готовому SQL:
 	// он окажется после WHERE/GROUP/HAVING/ORDER BY. Составные запросы выше
@@ -154,6 +178,98 @@ func Compile(src string, opts CompileOpts) (Result, error) {
 	// LIMIT молча изменил бы результат.
 	res.SQL += " LIMIT " + strconv.FormatInt(limit, 10)
 	return res, nil
+}
+
+// rewriteTablePartSources превращает «Справочник.Владелец.ТЧ» (и документ) в
+// источник с синтетическим именем — физическим именем таблицы табличной части.
+// Её метаданные (номер строки и реквизиты ТЧ) добавляются к сущностям
+// компиляции, поэтому разбор полей, типов и авто-JOIN ссылок работает как у
+// обычного источника; SQL источника — подзапрос tablePartSourceSQL.
+//
+// Тип.Имя.Имя(…) — виртуальная таблица регистра, не трогаем; ЗНАЧЕНИЕ(…) —
+// предопределённое значение, тоже не источник.
+func rewriteTablePartSources(tokens []tok, opts CompileOpts) ([]tok, CompileOpts) {
+	var out []tok
+	var found map[string]tablePartSource
+	for i := 0; i < len(tokens); i++ {
+		if tablePartPathAt(tokens, i) {
+			if typeUpper := upperFast(tokens[i].val); isEntitySourceType(typeUpper) {
+				if owner, tp := findTablePart(opts.Entities, tokens[i+2].val, tokens[i+4].val); tp != nil {
+					name := metadata.TablePartTableName(owner.Name, tp.Name)
+					if found == nil {
+						found = map[string]tablePartSource{}
+					}
+					found[lowerFast(name)] = tablePartSource{owner: owner, tp: tp}
+					if out == nil {
+						out = append(out, tokens[:i]...)
+					}
+					out = append(out, tokens[i], tokens[i+1], tok{kind: tIdent, val: name})
+					i += 4
+					continue
+				}
+			}
+		}
+		if out != nil {
+			out = append(out, tokens[i])
+		}
+	}
+	if found == nil {
+		return tokens, opts
+	}
+	entities := make([]*metadata.Entity, 0, len(opts.Entities)+len(found))
+	entities = append(entities, opts.Entities...)
+	for name, tps := range found {
+		entities = append(entities, metadata.TablePartQueryEntity(tps.owner, tps.tp, name))
+	}
+	opts.Entities = entities
+	opts.tablePartSources = found
+	return out, opts
+}
+
+// tablePartPathAt — «Тип.Имя.Имя» с позиции i без продолжения «(» (виртуальная
+// таблица), не после точки (поле через точку) и не аргумент ЗНАЧЕНИЕ(…).
+func tablePartPathAt(tokens []tok, i int) bool {
+	if i+4 >= len(tokens) {
+		return false
+	}
+	for k, kind := range []tokKind{tIdent, tDot, tIdent, tDot, tIdent} {
+		if tokens[i+k].kind != kind {
+			return false
+		}
+	}
+	switch {
+	case i+5 < len(tokens) && tokens[i+5].kind == tLParen:
+		return false
+	case i > 0 && tokens[i-1].kind == tDot:
+		return false
+	case i > 1 && tokens[i-1].kind == tLParen && tokens[i-2].kind == tIdent && isValueKeyword(tokens[i-2].val):
+		return false
+	}
+	return true
+}
+
+func isEntitySourceType(upper string) bool {
+	return upper == "СПРАВОЧНИК" || upper == "CATALOG" || upper == "ДОКУМЕНТ" || upper == "DOCUMENT"
+}
+
+func isValueKeyword(val string) bool {
+	u := upperFast(val)
+	return u == "ЗНАЧЕНИЕ" || u == "VALUE"
+}
+
+func findTablePart(entities []*metadata.Entity, ownerName, tpName string) (*metadata.Entity, *metadata.TablePart) {
+	for _, e := range entities {
+		if e == nil || !strings.EqualFold(e.Name, ownerName) {
+			continue
+		}
+		for i := range e.TableParts {
+			if strings.EqualFold(e.TableParts[i].Name, tpName) {
+				return e, &e.TableParts[i]
+			}
+		}
+		return nil, nil
+	}
+	return nil, nil
 }
 
 // extractFirstN вырезает «ВЫБРАТЬ ПЕРВЫЕ N» (1С) / «SELECT TOP N» и возвращает N.
@@ -1299,11 +1415,63 @@ func (tr *translator) addSource(typeUpper, name string) {
 	kind := sourcePermKind(typeUpper)
 	tr.sourceRefs = append(tr.sourceRefs, SourceOccurrence{SourceRef: SourceRef{Kind: kind, Name: name}, Qualifier: sourceToTable(typeUpper, name)})
 	for _, s := range tr.sources {
-		if s.Kind == kind && s.Name == name {
+		if s.Kind == kind && s.Name == name && s.TablePart == "" {
 			return // уже зафиксирован (напр. та же сущность и в FROM, и через ссылку)
 		}
 	}
 	tr.sources = append(tr.sources, SourceRef{Kind: kind, Name: name})
+}
+
+// addTablePartSource фиксирует табличную часть как источник: RBAC проверяет
+// чтение владельца, полевые маски — поля табличной части.
+func (tr *translator) addTablePartSource(typeUpper, name string, tps tablePartSource) {
+	kind := sourcePermKind(typeUpper)
+	ref := SourceRef{Kind: kind, Name: tps.owner.Name, TablePart: tps.tp.Name}
+	tr.sourceRefs = append(tr.sourceRefs, SourceOccurrence{
+		SourceRef: ref, Qualifier: sourceToTable(typeUpper, name),
+		Virtual: true, OutputColumns: tablePartSourceColumns(tps),
+	})
+	for _, s := range tr.sources {
+		if s == ref {
+			return
+		}
+	}
+	tr.sources = append(tr.sources, ref)
+}
+
+// tablePartSourceColumns — колонки подзапроса табличной части.
+func tablePartSourceColumns(tps tablePartSource) []string {
+	cols := []string{"id", metadata.ColumnName(metadata.Field{Name: metadata.TablePartRowNumberField})}
+	for _, f := range tps.tp.Fields {
+		cols = append(cols, metadata.ColumnName(f))
+	}
+	return cols
+}
+
+// tablePartSourceSQL — подзапрос табличной части: id строки — ссылка на
+// владельца (parent_id), как «ТЧ.Ссылка» в 1С; «строка» — НомерСтроки. Строковая
+// политика владельца отбирает строки ТЧ через родителя — в том числе у
+// присоединяемой и вложенной табличной части.
+func (tr *translator) tablePartSourceSQL(typeUpper string, tps tablePartSource, alias string) (string, error) {
+	cols := []string{"parent_id AS id", "строка AS " + metadata.ColumnName(metadata.Field{Name: metadata.TablePartRowNumberField})}
+	for _, f := range tps.tp.Fields {
+		cols = append(cols, metadata.ColumnName(f))
+	}
+	where := ""
+	kind := sourcePermKind(typeUpper)
+	if pred := tr.sourceRowFilter(kind, tps.owner.Name); pred != nil {
+		cond, args, _, err := storage.PredicateSQLQualified(dialectOrDefault(tr.opts.Dialect), tps.owner, pred, len(tr.args)+1, "")
+		if err != nil {
+			return "", fmt.Errorf("row filter %s.%s: %w", kind, tps.owner.Name, err)
+		}
+		tr.args = append(tr.args, args...)
+		tr.markRowApplied(kind, tps.owner.Name)
+		if cond != "" {
+			where = " WHERE parent_id IN (SELECT id FROM " + metadata.TableName(tps.owner.Name) + " WHERE " + cond + ")"
+		}
+	}
+	return fmt.Sprintf("(SELECT %s FROM %s%s) AS %s", strings.Join(cols, ", "),
+		metadata.TablePartTableName(tps.owner.Name, tps.tp.Name), where, alias), nil
 }
 
 // addRefSource регистрирует связанную сущность авто-JOIN ссылочного поля как
@@ -2108,7 +2276,7 @@ func (tr *translator) genAccountBalancesFromTotals(ar *metadata.AccountRegister)
 	totals := metadata.AccountRegTotalsTableName(ar.Name)
 	var resCols []string
 	for _, r := range ar.Resources {
-		col := metadata.ColumnName(r)
+		col := metadata.LogicalColumnName(r)
 		dc, cc := col+"_дт", col+"_кт"
 		resCols = append(resCols,
 			"COALESCE(SUM(t."+dc+"),0) AS "+dc,
@@ -2173,7 +2341,7 @@ func (tr *translator) genAccountBalancesFromTotalsAtMoment(ar *metadata.AccountR
 	mkPH := d.Placeholder(len(tr.args))
 	priorSel := append([]string{"счёт"}, subCols...)
 	for _, res := range ar.Resources {
-		col := metadata.ColumnName(res)
+		col := metadata.LogicalColumnName(res)
 		priorSel = append(priorSel, col+"_дт", col+"_кт")
 	}
 	prior := "SELECT " + strings.Join(priorSel, ", ") + " FROM " + metadata.AccountRegTotalsTableName(ar.Name) +
@@ -2189,7 +2357,7 @@ func (tr *translator) genAccountBalancesFromTotalsAtMoment(ar *metadata.AccountR
 			sel = append(sel, "r."+c+" AS "+c)
 		}
 		for _, res := range ar.Resources {
-			col := metadata.ColumnName(res)
+			col := metadata.LogicalColumnName(res)
 			if debit {
 				sel = append(sel, "r."+col+" AS "+col+"_дт", "0 AS "+col+"_кт")
 			} else {
@@ -2211,7 +2379,7 @@ func (tr *translator) genAccountBalancesFromTotalsAtMoment(ar *metadata.AccountR
 		groupSub = append(groupSub, "u."+c)
 	}
 	for _, res := range ar.Resources {
-		col := metadata.ColumnName(res)
+		col := metadata.LogicalColumnName(res)
 		dc, cc := col+"_дт", col+"_кт"
 		outer += ", COALESCE(SUM(u." + dc + "),0) AS " + dc +
 			", COALESCE(SUM(u." + cc + "),0) AS " + cc +
@@ -2235,7 +2403,7 @@ func accountTurnoversHasFilterArg(args [][]tok) bool {
 func turnoverTotalsSel(ar *metadata.AccountRegister, subCols []string) []string {
 	sel := append([]string{"счёт"}, subCols...)
 	for _, res := range ar.Resources {
-		col := metadata.ColumnName(res)
+		col := metadata.LogicalColumnName(res)
 		sel = append(sel, col+"_дт", col+"_кт")
 	}
 	return sel
@@ -2288,7 +2456,7 @@ func (tr *translator) genAccountTurnoversFromTotals(ar *metadata.AccountRegister
 			sel = append(sel, "r."+c+" AS "+c)
 		}
 		for _, res := range ar.Resources {
-			col := metadata.ColumnName(res)
+			col := metadata.LogicalColumnName(res)
 			if debit {
 				sel = append(sel, "r."+col+" AS "+col+"_дт", "0 AS "+col+"_кт")
 			} else {
@@ -2336,7 +2504,7 @@ func (tr *translator) accountTurnoversOuter(ar *metadata.AccountRegister, subCol
 		groupSub = append(groupSub, "u."+c)
 	}
 	for _, res := range ar.Resources {
-		col := metadata.ColumnName(res)
+		col := metadata.LogicalColumnName(res)
 		out += ", COALESCE(SUM(u." + col + "_дт),0) AS " + col + "_дт" +
 			", COALESCE(SUM(u." + col + "_кт),0) AS " + col + "_кт"
 	}
@@ -3688,8 +3856,12 @@ func preScanMainRefSource(tokens []tok, opts CompileOpts) mainRefSource {
 			if !strings.EqualFold(ent.Name, name) {
 				continue
 			}
+			refEntity := ent.Name
+			if tps, ok := opts.tablePartSources[lowerFast(name)]; ok {
+				refEntity = tps.owner.Name
+			}
 			src := mainRefSource{
-				Entity:     ent.Name,
+				Entity:     refEntity,
 				Qualifiers: map[string]bool{lowerFast(name): true, lowerFast(sourceToTable(upper, name)): true},
 			}
 			if i+4 < len(tokens) && tokens[i+3].kind == tIdent && tokens[i+4].kind == tIdent {
@@ -4071,6 +4243,14 @@ func sourceColTypes(typeUpper, name string, opts CompileOpts) map[string]metadat
 	default:
 		for _, entity := range opts.Entities {
 			if strings.EqualFold(entity.Name, name) {
+				// Physical system flags and their DSL aliases share one type.
+				// An explicitly declared field still owns its logical name.
+				fields["deletion_mark"] = metadata.FieldTypeBool
+				fields["пометкаудаления"] = metadata.FieldTypeBool
+				if entity.Kind == metadata.KindDocument {
+					fields["posted"] = metadata.FieldTypeBool
+					fields["проведен"] = metadata.FieldTypeBool
+				}
 				add(entity.Fields)
 				return fields
 			}
@@ -4385,7 +4565,9 @@ func (tr *translator) emitQualifiedColumn(col, lower string) {
 // Прозрачные скобки получают AS после всего выражения. Явные алиасы,
 // составные выражения и проекции вне FROM/JOIN-подзапросов не меняются.
 func (tr *translator) emitDerivedReferenceAlias(col, lower string) {
-	if col == lower || !strings.HasSuffix(col, "_id") {
+	// Hashed reference columns no longer carry a literal _id suffix. Match
+	// the same physical name as metadata.ColumnName before exporting the alias.
+	if col == lower || (!strings.HasSuffix(col, "_id") && col != metadata.SQLIdent(lower+"_id")) {
 		return
 	}
 	pos := tr.pos - 1
@@ -5353,8 +5535,12 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	// исходная граница аргумента теряется, а локализовать можно только date-момент,
 	// не произвольную строку и не будущий localdate (#1243).
 	colTypes := buildColTypes(tokens, opts)
-	scalarSourceCtx := preScanSourceContext(tokens)
-	scopedColTypes, qualifiedColTypes := buildScalarColumnTypes(tokens, opts, scalarSourceCtx)
+	scalarSourceCtx := preScanSourceContextWithOpts(tokens, opts)
+	projectionKeys := newProjectionKeyResolver(tokens, opts, scalarSourceCtx)
+	scopedColTypes, qualifiedColTypes := buildScalarColumnTypes(tokens, opts, scalarSourceCtx, projectionKeys)
+	boolColumns := scopedBoolOutputColumns(tokens, opts, scalarSourceCtx, scopedColTypes, qualifiedColTypes, projectionKeys)
+	dateOutputs := simpleProjectionDateOutputs(tokens, projectionPlan, scalarSourceCtx, scopedColTypes, qualifiedColTypes, projectionKeys)
+	dateColumns := mergeDateOutputColumns(tokens, projectionPlan, projectionKeys, dateOutputs)
 	tokens = rewriteGroupingReferenceAliases(tokens)
 	// расширяем НачалоДня/Год/Месяц/ОКР/АБС/ЦЕЛ/... в SQL-эквиваленты
 	// до основной трансляции, чтобы остальные шаги ничего не знали о них.
@@ -5481,7 +5667,12 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			tr.advance()
 			tr.advance()
 			entity := tr.advance()
-			tr.addSource(upper, entity.val)
+			tps, isTablePart := tr.opts.tablePartSources[lowerFast(entity.val)]
+			if isTablePart {
+				tr.addTablePartSource(upper, entity.val, tps)
+			} else {
+				tr.addSource(upper, entity.val)
+			}
 			tableName := sourceToTable(upper, entity.val)
 			// Главная таблица — первый источник FROM. Присоединяемые через явный
 			// JOIN (ЛЕВОЕ СОЕДИНЕНИЕ ... ПО ...) не должны перезаписывать mainTable
@@ -5522,7 +5713,13 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				}
 			}
 			tr.sourceRefs[len(tr.sourceRefs)-1].Qualifier = sourceAlias
-			if !isMain || tr.parenDepth > 0 {
+			if isTablePart {
+				sql, err := tr.tablePartSourceSQL(upper, tps, sourceAlias)
+				if err != nil {
+					return Result{}, err
+				}
+				tr.emit(sql)
+			} else if !isMain || tr.parenDepth > 0 {
 				filtered, ok, err := tr.rowFilteredSourceSQL(upper, entity.val, tableName, sourceAlias)
 				if err != nil {
 					return Result{}, err
@@ -6007,16 +6204,31 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 	if len(tr.selectStates) > 0 {
 		tr.activateSelect(0)
 	}
+	sql := tr.build()
+	longLabels, ambiguousLabels := longOutputLabels(tokens, sql, tr.sourceCtx)
+	if ambiguousLabels {
+		projectionPlan.Simple = false
+		dateOutputs = nil
+		dateColumns = nil
+	}
 	typedColumns, dslColumnAliases := typedProjectionColumns(projectionPlan, tokens, opts, tr.sourceCtx, tr.refCols)
+	// The descriptor path also normalizes dates. Do not let it restore a type
+	// rejected by the projection proof (duplicate or unknown SQL output names).
+	for key, desc := range typedColumns {
+		if desc.Type == metadata.FieldTypeDate && !dateOutputs[key] {
+			delete(typedColumns, key)
+		}
+	}
 	return Result{
-		SQL:               tr.build(),
+		SQL:               sql,
+		LongIdents:        longLabels,
 		Args:              tr.args,
 		Sources:           tr.sources,
 		SourceOccurrences: tr.sourceRefs,
 		ProjectionFields:  expandReferenceProjection(projectionFields, tr.refDims),
 		Projection:        expandProjectionRefDims(projectionPlan, tr.refDims),
-		BoolColumns:       boolOutputColumns(projectionPlan, tr.colTypes),
-		DateColumns:       typedOutputColumns(projectionPlan, tr.colTypes, metadata.FieldTypeDate),
+		BoolColumns:       boolColumns,
+		DateColumns:       dateColumns,
 		RefColumns:        refOutputColumns(projectionPlan, tr.refCols),
 		TypedColumns:      typedColumns,
 		DSLColumnAliases:  dslColumnAliases,
@@ -6209,36 +6421,68 @@ func addRegisterSystemFields(source *typedProjectionSource, period, movement boo
 	}
 }
 
-// boolOutputColumns перечисляет колонки результата, читающие булево поле. Нужны
-// потребителю: булево доезжает из БД в разных Go-типах (PostgreSQL — bool,
-// SQLite — int64 из INTEGER), и без приведения одно и то же поле ведёт себя в
-// прикладном коде по-разному (issue #704).
-//
-// Разбираются только простые ссылки на поле в одном SELECT: у выражений,
-// агрегатов и ОБЪЕДИНИТЬ соответствие «колонка ↔ поле» неоднозначно, и молча
-// приводить их значения нельзя.
-func boolOutputColumns(p ProjectionPlan, colTypes map[string]metadata.FieldType) []string {
-	return typedOutputColumns(p, colTypes, metadata.FieldTypeBool)
-}
-
-// typedOutputColumns — общий перебор колонок проекции, читающих поле заданного
-// типа. Кроме булевых так же приводятся даты: на SQLite они хранятся TEXT, и
-// без приведения путь запроса отдавал строку там, где объектный путь отдаёт
-// значение даты (#1013).
-func typedOutputColumns(p ProjectionPlan, colTypes map[string]metadata.FieldType, want metadata.FieldType) []string {
+// simpleProjectionDateOutputs — колонки простой проекции, доказанно несущие
+// дату: поле-дата любого источника по его псевдониму (`Зв.Дата` при
+// присоединённом `Документ.Звонок КАК Зв`) и МИНИМУМ/МАКСИМУМ такого поля.
+// Типы — те же, что выводятся для колонок подзапроса (scalarProjectionTypes),
+// до раскрытия скалярных функций. Без этого дата из присоединённого источника
+// и из агрегата приходила в DSL строкой «2026-10-18T14:30:13Z», и разность
+// дат молча давала Неопределено.
+func simpleProjectionDateOutputs(tokens []tok, p ProjectionPlan, ctx sourceContext,
+	scoped map[int]map[string]metadata.FieldType, qualified map[int]map[string]map[string]metadata.FieldType,
+	keys *projectionKeyResolver,
+) map[string]bool {
 	if !p.Simple {
 		return nil
 	}
-	var cols []string
-	for _, c := range p.Columns {
-		if c.Star || c.Output == "" || len(c.Fields) != 1 {
-			continue
-		}
-		if colTypes[lowerFast(c.Fields[0])] == want {
-			cols = append(cols, c.Output)
+	start, ok := singleSelectStart(tokens)
+	if !ok {
+		return nil
+	}
+	scopeID, ok := ctx.scopeIDAt(start)
+	if !ok {
+		return nil
+	}
+	out := map[string]bool{}
+	for name, typ := range scalarProjectionTypes(tokens, ctx, scopeID, scoped[scopeID], qualified[scopeID], keys) {
+		if typ == metadata.FieldTypeDate {
+			out[name] = true
 		}
 	}
-	return cols
+	return out
+}
+
+// mergeDateOutputColumns сохраняет порядок доказанных колонок-дат по реальным
+// SQL-ключам. Прежний глобальный список не добавляется: он не знает источник
+// поля и может вернуть отвергнутый resolver тип после коллизии с соседним выходом.
+func mergeDateOutputColumns(tokens []tok, p ProjectionPlan, keys *projectionKeyResolver, proven map[string]bool) []string {
+	if !p.Simple || len(proven) == 0 {
+		return nil
+	}
+	start, ok := singleSelectStart(tokens)
+	if !ok {
+		return nil
+	}
+	var out []string
+	from := selectProjectionStart(tokens, start)
+	for _, item := range splitProjectionItems(tokens[from:topLevelFrom(tokens, start)]) {
+		column, _ := parseProjectionItem(item)
+		key, known := keys.outputSQLKey(column, from, from+len(item))
+		if !column.Star && known && proven[key] && !containsString(out, key) {
+			out = append(out, key)
+		}
+		from += len(item) + 1 // separator comma
+	}
+	return out
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // boolLiteralSQL переводит булев литерал текста запроса в литерал диалекта.
@@ -6374,7 +6618,14 @@ func rewriteScalarFuncs(tokens []tok, dialect string, scopedColTypes map[int]map
 		t := tokens[i]
 		if t.kind == tIdent && i+1 < len(tokens) && tokens[i+1].kind == tLParen {
 			key := lowerFast(t.val)
-			if rw, ok := rewrites[key]; ok {
+			rw, ok := rewrites[key]
+			agg, isAgg := sqlAgg(t.val)
+			numberAggregate := dialect == "sqlite" && isAgg && (agg == "MIN" || agg == "MAX")
+			if numberAggregate {
+				rw = funcRewrite{prefix: tokenizeFragment(agg + "("), suffix: tokenizeFragment(")")}
+				ok = true
+			}
+			if ok {
 				// поиск парной закрывающей )
 				depth := 0
 				end := -1
@@ -6411,6 +6662,22 @@ func rewriteScalarFuncs(tokens []tok, dialect string, scopedColTypes map[int]map
 				if scopeID, ok := sourceCtx.scopeIDAt(tokenOffset + i); ok {
 					scopeColTypes = scopedColTypes[scopeID]
 					scopeQualified = qualifiedColTypes[scopeID]
+				}
+				argument := rawInner
+				modifier := 0
+				if len(argument) > 0 && argument[0].kind == tIdent {
+					if kw, ok := sqlKW(argument[0].val); ok && (kw == "DISTINCT" || kw == "ALL") {
+						argument = argument[1:]
+						modifier = 1
+					}
+				}
+				if numberAggregate && scalarProjectionExpressionType(argument, scopeColTypes, scopeQualified) == metadata.FieldTypeNumber {
+					// Preserve DISTINCT/ALL outside CAST; wrapping an unproven string
+					// or expression would silently change its SQL semantics.
+					wrapped := append([]tok(nil), inner[:modifier]...)
+					wrapped = append(wrapped, tokenizeFragment("CAST(")...)
+					wrapped = append(wrapped, inner[modifier:]...)
+					inner = append(wrapped, tokenizeFragment(" AS NUMERIC)")...)
 				}
 				if dialect == "sqlite" && isCalendarDateFunc(key) && dateArgumentIsMoment(rawInner, scopeColTypes, scopeQualified, params) {
 					wrapped := tokenizeFragment("ob_local_datetime(")
@@ -6453,7 +6720,7 @@ func dateArgumentIsMoment(tokens []tok, colTypes map[string]metadata.FieldType, 
 	if len(tokens) == 1 {
 		switch tokens[0].kind {
 		case tIdent:
-			name := lowerFast(tokens[0].val)
+			name := projectionInputSQLKey(tokens[0].val)
 			if typ, ok := colTypes[name]; ok {
 				return typ == metadata.FieldTypeDate
 			}
@@ -6471,7 +6738,7 @@ func dateArgumentIsMoment(tokens []tok, colTypes map[string]metadata.FieldType, 
 		if !ok {
 			return false
 		}
-		if typ, ok := fields[lowerFast(tokens[2].val)]; ok {
+		if typ, ok := fields[projectionInputSQLKey(tokens[2].val)]; ok {
 			return typ == metadata.FieldTypeDate
 		}
 		return false
