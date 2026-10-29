@@ -3072,7 +3072,9 @@ function obGridColumnIds(columns) {
         var lbl = String(o._label == null ? '' : o._label);
         if (f && lbl.toLowerCase().indexOf(f) < 0) return;
         seen[key] = true;
-        out.push({id: o.id, _label: lbl});
+        // choice_row_style: оформление варианта доезжает до списка ячейки и до
+        // окна подбора — проекция не должна его терять.
+        out.push({id: o.id, _label: lbl, _style: o._style || '', _style_bg: o._style_bg || ''});
       }
       var currentFilter = requestParam();
       if(choiceContext && args.column.choiceSeeds) {
