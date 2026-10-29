@@ -1283,6 +1283,14 @@ var methodDescriptors = []Descriptor{
 		Doc:       "Добавляет горизонтальный разделитель.",
 	},
 	{
+		Name: "встроитьсервис", Display: "ВстроитьСервис", Aliases: []string{"EmbedService"},
+		Kind: KindMethod, Object: "Страница",
+		Signature: "Страница.ВстроитьСервис(Путь, Заголовок)",
+		Params:    []Param{{Name: "Путь", Type: "строка"}, {Name: "Заголовок", Type: "строка"}},
+		Doc:       "Открывает интерфейс локального HTTP-сервиса /hs/ внутри страницы OneBase. Если это единственный блок, он занимает рабочую область. Внешние адреса и переходы между каталогами запрещены; права сервиса проверяются отдельно при загрузке.",
+	},
+
+	{
 		Name: "добавитьсыройhtml", Display: "ДобавитьСыройHTML", Aliases: []string{"СыройHTML", "AddRawHTML", "RawHTML"},
 		Kind: KindMethod, Object: "Страница",
 		Signature: "Страница.ДобавитьСыройHTML(HTML)",
