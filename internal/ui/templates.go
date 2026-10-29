@@ -1407,7 +1407,7 @@ func cloneQuery(current any) url.Values {
 
 func isListStateQueryKey(key string) bool {
 	switch key {
-	case "q", "sort", "dir", "activity", "view", "lm", "parent", "subsystem", "limit", "page":
+	case "q", "sort", "dir", "sort_default", "activity", "view", "lm", "parent", "subsystem", "limit", "page":
 		return true
 	// Снятый отбор по умолчанию формы списка переносится, как поиск и отбор:
 	// иначе «Применить» отбора, поиск, сортировка и страницы молча включали
@@ -2269,7 +2269,7 @@ const tplList = `
 
 {{$obRefresh := liveListRefreshOn .Entity}}
 <div class="ob-list-wrap">
-<div class="ob-list-content" data-ob-live="{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}"{{if $obRefresh}} data-ob-refresh-on="{{$obRefresh}}"{{end}}>
+<div class="ob-list-content" data-ob-live="{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}" data-ob-refresh-src="{{.RequestURI}}"{{if $obRefresh}} data-ob-refresh-on="{{$obRefresh}}"{{end}}>
 <div class="card">
 {{if .TreeView}}
 {{/* ===== TREE VIEW ===== */}}
