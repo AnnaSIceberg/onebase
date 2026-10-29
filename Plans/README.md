@@ -513,6 +513,7 @@
 | № | Файл | Фича | Эстимейт | Статус |
 |---|---|---|---|---|
 | 210 | [210-catalog-first-page-performance.md](210-catalog-first-page-performance.md) | Ленивая панель «Отбор» и opt-in индексы точного порядка order_by после замеров, с сохранением RLS и пагинации (#2255) | ~10–16 дней | 📋 Проектирование |
+| 213 | [213-tail-durable-discovery-and-backlog.md](213-tail-durable-discovery-and-backlog.md) | Долговечные cursor/backlog TAIL, восстановление после простоя и сохранение существующего trust (#1248) | ~8–12 дней | 📋 Проектирование |
 
 ## Граф зависимостей (архив)
 
