@@ -85,11 +85,11 @@ func NewNotifyFunctions(n Notifier) map[string]any {
 	// своего клиента).
 	notifyForms := BuiltinFunc(func(args []any, _ string, _ int) (any, error) {
 		if len(args) < 1 || len(args) > 3 {
-			return nil, fmt.Errorf("Оповестить: ожидаются аргументы (ИмяСобытия[, Параметр[, Источник]])")
+			return nil, fmt.Errorf("ожидаются аргументы Оповестить(ИмяСобытия[, Параметр[, Источник]])")
 		}
 		name := strings.TrimSpace(notifyArgString(args[0]))
 		if name == "" {
-			return nil, fmt.Errorf("Оповестить: не задано ИмяСобытия")
+			return nil, fmt.Errorf("не задано ИмяСобытия у Оповестить")
 		}
 		fn, ok := n.(FormNotifier)
 		if !ok || fn == nil {
