@@ -2672,15 +2672,26 @@ function obGridParseWidths(raw) {
 function obGridApplyWidths(columns, widths) {
   if (!widths) return;
   for (var i = 0; i < columns.length; i++) {
+    // Только собственные ключи: колонка «constructor» не должна получить
+    // функцию из Object.prototype вместо ширины.
+    if (!Object.prototype.hasOwnProperty.call(widths, columns[i].id)) continue;
     var px = Math.round(Number(widths[columns[i].id]));
     if (px >= OB_GRID_WIDTH_MIN && px <= OB_GRID_WIDTH_MAX) { columns[i].width = px; columns[i].obWidth = px; }
   }
 }
+// obGridClampWidth — ширина в допустимом диапазоне: видимая ширина колонки
+// совпадает с той, что сохранится, без молчаливой обрезки только в POST.
+function obGridClampWidth(px) {
+  px = Math.round(Number(px));
+  return Math.min(OB_GRID_WIDTH_MAX, Math.max(OB_GRID_WIDTH_MIN, px || OB_GRID_WIDTH_MIN));
+}
 function obGridColumnWidths(columns) {
-  var out = {};
+  // Без прототипа: запись в «__proto__» создаёт собственное свойство и
+  // доезжает до JSON, а не теряется в сеттере Object.prototype.
+  var out = Object.create(null);
   for (var i = 0; i < columns.length; i++) {
     var px = Math.round(Number(columns[i].width));
-    out[columns[i].id] = Math.min(OB_GRID_WIDTH_MAX, Math.max(OB_GRID_WIDTH_MIN, px || OB_GRID_WIDTH_MIN));
+    out[columns[i].id] = obGridClampWidth(px);
   }
   return out;
 }
@@ -2773,8 +2784,14 @@ function obGridColumnWidths(columns) {
     if (grid.onColumnsResized) grid.onColumnsResized.subscribe(function() {
       // Ширина из мыши становится объявленной: следующий resizeGrid её не
       // сбрасывает и автоподбор её не трогает.
-      var cols = grid.getColumns();
-      for (var i = 0; i < cols.length; i++) cols[i].obWidth = cols[i].width;
+      var cols = grid.getColumns(), clamped = false;
+      for (var i = 0; i < cols.length; i++) {
+        var w = obGridClampWidth(cols[i].width);
+        if (w !== cols[i].width) { cols[i].width = w; clamped = true; }
+        cols[i].obWidth = w;
+      }
+      // Шире предела не бывает: показываем ту ширину, что сохранится.
+      if (clamped) grid.setColumns(cols);
       widthsSaved = true;
       showReset(false);
       saveWidths(JSON.stringify(obGridColumnWidths(cols)));
@@ -2817,8 +2834,9 @@ function obGridColumnWidths(columns) {
         obGridApplyOrder(state.columns, defaultIds);
         if (widthsSaved) {
           for (var i = 0; i < state.columns.length; i++) {
-            var c = state.columns[i], px = defaultWidths[c.id];
-            if (px) { c.width = px; c.obWidth = px; } else { c.width = 120; delete c.obWidth; }
+            var c = state.columns[i];
+            var px = Object.prototype.hasOwnProperty.call(defaultWidths, c.id) ? Number(defaultWidths[c.id]) : 0;
+            if (px > 0) { c.width = px; c.obWidth = px; } else { c.width = 120; delete c.obWidth; }
           }
           widthsSaved = false;
           saveWidths("");
@@ -4210,8 +4228,14 @@ function obGridColumnWidths(columns) {
     var enumOrder = (window._tpEnumOrder && window._tpEnumOrder[tpName]) || {};
     var columns = buildColumns(colsRaw, refOpts, enumLabels, enumOrder);
     var defaultColumnIds = obGridColumnIds(columns);
-    var defaultColumnWidths = {};
+    // Предел ширины — сразу у колонок: SlickGrid не даёт растянуть шире
+    // maxWidth, а объявленная в форме ширина больше предела показывается той,
+    // что сохранится.
+    var defaultColumnWidths = Object.create(null);
     for (var dw = 0; dw < columns.length; dw++) {
+      columns[dw].maxWidth = OB_GRID_WIDTH_MAX;
+      if (columns[dw].width > OB_GRID_WIDTH_MAX) columns[dw].width = OB_GRID_WIDTH_MAX;
+      if (columns[dw].obWidth > OB_GRID_WIDTH_MAX) columns[dw].obWidth = OB_GRID_WIDTH_MAX;
       if (columns[dw].obWidth) defaultColumnWidths[columns[dw].id] = columns[dw].obWidth;
     }
     obGridApplyOrder(columns, obGridParseOrder(div.getAttribute("data-sg-order")));
