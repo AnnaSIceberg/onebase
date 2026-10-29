@@ -77,7 +77,7 @@ func (s *Server) navigationEditorLayerState(r *http.Request, sub string, persona
 		raw = []byte(state.Setting.Raw)
 	}
 	state.adminBase = state.Base
-	state.Desired, state.Diagnostics = navigation.Compose(state.Base, raw, nil)
+	state.Desired, state.Diagnostics = navigation.ComposeWithAdminBase(state.Base, s.adminNavigationValidationBase(state.Base), raw, nil)
 	return state, nil
 }
 
