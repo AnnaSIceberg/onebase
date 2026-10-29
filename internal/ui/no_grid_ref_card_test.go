@@ -42,10 +42,10 @@ func TestNoGridRefCardPolicyThroughHTTPAndJS(t *testing.T) {
 				write := func(name, value string) {
 					t.Helper()
 					path := filepath.Join(dir, filepath.FromSlash(name))
-					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { //nolint:gosec // G703: fixed fixture name under t.TempDir, no request-supplied paths
 						t.Fatal(err)
 					}
-					if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+					if err := os.WriteFile(path, []byte(value), 0o600); err != nil { //nolint:gosec // G703: fixed fixture name under t.TempDir, no request-supplied paths
 						t.Fatal(err)
 					}
 				}
