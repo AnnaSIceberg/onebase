@@ -646,6 +646,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		// документированный «language» у kind: ПолеКода не давал примеру
 		// пройти собственную проверку (#1014).
 		"orientation", "equal_columns", "background", "input_mask", "language", "virtual_columns",
+		"conceal", "reveal_when",
 	} {
 		element.keys[k] = nil
 	}
@@ -665,7 +666,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 	element.keys["children"] = seq(element)
 	element.keys["choices"] = seq(with(obj("value"), map[string]*yamlLintSchema{"title": freeMap()}))
 	element.keys["options"] = seq(with(obj("value"), map[string]*yamlLintSchema{"label": freeMap()}))
-	element.keys["choice_filter"] = seq(obj("field", "op", "from", "value", "ref"))
+	element.keys["choice_filter"] = seq(with(obj("field", "op", "from", "value", "ref", "query"), map[string]*yamlLintSchema{"params": freeMap()}))
 
 	attrColumn := with(obj("id", "original_id", "name", "type", "length", "precision"), map[string]*yamlLintSchema{
 		"title": freeMap(),

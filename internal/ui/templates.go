@@ -1780,7 +1780,7 @@ const tplNav = `
   <form class="topbar-search" method="get" action="/ui/search" role="search">
     <input type="search" name="q" value="{{.SearchQuery}}" placeholder="{{t $.Lang "Поиск по базе"}}" aria-label="{{t $.Lang "Поиск по базе"}}">
   </form>
-  <form method="post" action="/ui/form-mode" style="display:inline;margin:0">
+  {{if not .FormOpenModeLocked}}<form method="post" action="/ui/form-mode" style="display:inline;margin:0">
     {{if eq (printf "%v" .FormOpenMode) "tabs"}}
       <input type="hidden" name="mode" value="pages">
       <button type="submit" class="sys-btn" title="{{t $.Lang "Открывать формы отдельными страницами"}}">&#9645; {{t $.Lang "Страницы"}}</button>
@@ -1788,7 +1788,7 @@ const tplNav = `
       <input type="hidden" name="mode" value="tabs">
       <button type="submit" class="sys-btn" title="{{t $.Lang "Открывать формы во вкладках"}}">&#10697; {{t $.Lang "Вкладки"}}</button>
     {{end}}
-  </form>
+  </form>{{end}}
   <div class="sys-menu">
     <button class="sys-btn" type="button" data-ob-toggle-target="sysd">&#9881; {{t $.Lang "Система"}} &#9660;</button>
     <div class="sys-drop" id="sysd">
@@ -1798,7 +1798,7 @@ const tplNav = `
       <details class="sys-group">
         <summary>{{t $.Lang "Профиль и интерфейс"}}</summary>
         <div class="sys-group-body">
-          <div class="sys-mode-block">
+          {{if not .FormOpenModeLocked}}<div class="sys-mode-block">
             <div class="sys-mode-title">{{t $.Lang "Режим открытия форм"}}</div>
             <form method="post" action="/ui/form-mode" style="margin:0;padding:0">
               <label><input type="radio" name="mode" value="pages" {{if eq (printf "%v" .FormOpenModePersonal) "pages"}}checked{{end}}> {{t $.Lang "Отдельные страницы"}}</label>
@@ -1806,7 +1806,7 @@ const tplNav = `
               <label><input type="radio" name="mode" value="default" {{if eq (printf "%v" .FormOpenModePersonal) ""}}checked{{end}}> {{t $.Lang "По умолчанию (глобально)"}}</label>
               <button type="submit" class="sys-btn">{{t $.Lang "Применить"}}</button>
             </form>
-          </div>
+          </div>{{end}}
           {{if .HasAuth}}{{if not .DenyPasswdChange}}<a href="/ui/profile/passwd">{{t $.Lang "Сменить пароль"}}</a>{{end}}
           <a href="/ui/profile/2fa">{{t $.Lang "Второй фактор"}}</a>{{end}}
           {{if .HasPersonalNavigation}}<a href="/ui/settings/navigation?subsystem={{.CurrentSubsystem}}">{{t $.Lang "Настроить меню"}}</a>{{end}}
@@ -2188,6 +2188,7 @@ const tplList = `
   {{range .Breadcrumbs}}<span>›</span><a href="{{listURL $.Query "parent" .ID}}">{{.Label}}</a>{{end}}
 </nav>
 {{end}}
+{{if .SearchAll}}<p class="list-search-scope" style="margin:6px 0 10px;color:#64748b;font-size:13px">{{t $.Lang "Результаты поиска по всему справочнику"}}</p>{{end}}
 
 {{$entity := .Entity}}{{$params := .Params}}{{$refOpts := .RefFilterOptions}}
 <details{{if hasFilter $params}} open{{end}}>
@@ -2388,6 +2389,7 @@ const tplList = `
     </a>
   </th>
   {{end}}
+  {{if $.SearchAll}}<th>{{t $.Lang "Группа"}}</th>{{end}}
   <th style="width:90px"></th>
 </tr></thead><tbody id="list-body"
   data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
@@ -2420,6 +2422,7 @@ const tplList = `
     {{else if isEnum (str .Type)}}<td style="white-space:nowrap">{{enumLabel $.EnumLabels .Name (str (index $row .Name))}}</td>
     {{else}}<td style="white-space:nowrap">{{if and (eq .Name "Наименование") $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{fmtCell (index $row .Name)}}{{if and (eq .Name "Наименование") (index $row "_is_predefined")}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}</td>{{end}}
   {{end}}
+  {{if $.SearchAll}}<td style="white-space:nowrap" data-ob-list-group>{{with index $row "_group_id"}}<a href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}?parent={{.}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}">📁 {{index $row "_group_label"}}</a>{{else}}<span style="color:#94a3b8">{{t $.Lang "Корень"}}</span>{{end}}</td>{{end}}
   <td>
     {{if and $isFolder $.Entity.Hierarchical}}
       <a class="btn btn-sm btn-secondary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}">{{t $.Lang "▶ Войти"}}</a>
