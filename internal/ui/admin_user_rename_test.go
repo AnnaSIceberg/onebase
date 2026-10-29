@@ -91,3 +91,50 @@ func TestAdminUserCard_RenameLogin(t *testing.T) {
 		t.Fatalf("не-администратор переименовал учётку: %+v", got)
 	}
 }
+
+// Смена логина и остальных полей карточки — одной транзакцией (замечание ревью
+// #2364): единственный администратор меняет себе логин и снимает флаг
+// администратора — отказ «последний администратор», и логин не меняется,
+// сессия не завершается. Раньше логин успевал смениться до отказа.
+func TestAdminUserCard_RenameRolledBackWhenCardRejected(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.ConnectSQLite(ctx, filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.Migrate(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	repo := auth.NewRepo(db)
+	if err := repo.EnsureSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	admin, err := repo.Create(ctx, "admin", "password1", "Администратор", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := repo.CreateSession(ctx, admin.ID, auth.SessionMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{store: db, reg: runtime.NewRegistry(), authRepo: repo, messages: NewMessageStore()}
+	router := chi.NewRouter()
+	s.Mount(router)
+	form := url.Values{"action": {"update"}, "login": {"admin2"}, "full_name": {"Новое имя"}}
+	req := httptest.NewRequest(http.MethodPost, "/ui/admin/users/"+admin.ID, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(auth.ContextWithUser(req.Context(), admin))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), auth.ErrLastAdmin.Error()) {
+		t.Fatalf("нет отказа «последний администратор»:\n%s", rec.Body.String())
+	}
+	got, err := repo.GetByID(ctx, admin.ID)
+	if err != nil || got.Login != "admin" || got.FullName != "Администратор" || !got.IsAdmin {
+		t.Fatalf("отказ сохранения применил часть изменений: %+v %v", got, err)
+	}
+	if u, _ := repo.LookupSession(ctx, token); u == nil {
+		t.Fatal("отказ сохранения завершил сессию администратора")
+	}
+}

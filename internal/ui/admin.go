@@ -283,30 +283,28 @@ func (s *Server) adminUserCard(w http.ResponseWriter, r *http.Request) {
 		}
 		switch r.FormValue("action") {
 		case "update":
-			// Смена логина — первой: если новый логин недопустим или занят,
-			// остальные поля не сохраняются, а форма показывает ошибку.
-			if newLogin := strings.TrimSpace(r.FormValue("login")); newLogin != "" && newLogin != u.Login {
-				oldLogin := u.Login
-				renamed, err := s.authRepo.RenameUser(r.Context(), oldLogin, newLogin)
-				if err != nil {
-					data["Error"] = s.errText(r, err)
-					break
-				}
-				s.logSessionAudit(r, "user_rename", oldLogin+" → "+newLogin, userID)
-				u.Login = renamed.Login
-				data["Renamed"] = true
-				if me := auth.UserFromContext(r.Context()); me != nil && me.ID == userID {
-					data["RenamedSelf"] = true
-				}
-			}
+			// Смена логина и остальные поля — одной транзакцией: если логин
+			// недопустим или занят либо карточку нельзя сохранить (последний
+			// администратор), не применяется ничего — ни логин, ни сессии.
+			oldLogin := u.Login
+			newLogin := strings.TrimSpace(r.FormValue("login"))
 			fullName := r.FormValue("full_name")
 			isAdmin := r.FormValue("is_admin") == "1"
 			denyPasswd := r.FormValue("deny_passwd_change") == "1"
 			showInList := r.FormValue("show_in_list") == "1"
 			aiData := r.FormValue("ai_data_access") == "1"
-			if err := s.authRepo.Update(r.Context(), userID, fullName, isAdmin, denyPasswd, showInList, aiData); err != nil {
+			renamed, err := s.authRepo.UpdateAndRename(r.Context(), userID, oldLogin, newLogin, fullName, isAdmin, denyPasswd, showInList, aiData)
+			if err != nil {
 				data["Error"] = s.errText(r, err)
 			} else {
+				if renamed != nil {
+					s.logSessionAudit(r, "user_rename", oldLogin+" → "+renamed.Login, userID)
+					u.Login = renamed.Login
+					data["Renamed"] = true
+					if me := auth.UserFromContext(r.Context()); me != nil && me.ID == userID {
+						data["RenamedSelf"] = true
+					}
+				}
 				u.FullName = fullName
 				u.IsAdmin = isAdmin
 				u.DenyPasswdChange = denyPasswd
