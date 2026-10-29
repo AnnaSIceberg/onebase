@@ -59,16 +59,64 @@ func (r *Repo) RenameUser(ctx context.Context, oldLogin, newLogin string) (*User
 	if oldLogin == newLogin {
 		return nil, ErrSameLogin
 	}
-	d := r.db.Dialect()
 	var u *User
 	err := r.withUserInvariantLock(ctx, func(txCtx context.Context) error {
+		got, err := r.renameInTx(txCtx, oldLogin, newLogin)
+		u = got
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// UpdateAndRename — сохранение карточки учётки одним действием: смена логина
+// (если newLogin задан и отличается) и остальные поля — под одной блокировкой
+// и в одной транзакции. Отказ любой части (логин занят, последний
+// администратор) не применяет ничего: раньше логин успевал смениться, сессии —
+// завершиться, а сохранение карточки отказывало.
+func (r *Repo) UpdateAndRename(ctx context.Context, userID, oldLogin, newLogin, fullName string, isAdmin, denyPasswdChange, showInList, aiDataAccess bool) (renamed *User, err error) {
+	rename := newLogin != "" && newLogin != oldLogin
+	if rename {
+		if err := ValidateLogin(newLogin); err != nil {
+			return nil, err
+		}
+	}
+	err = r.withUserInvariantLock(ctx, func(txCtx context.Context) error {
+		if rename {
+			u, err := r.renameInTx(txCtx, oldLogin, newLogin)
+			if err != nil {
+				return err
+			}
+			if u.ID != userID {
+				return fmt.Errorf("пользователь %q не найден", oldLogin)
+			}
+			renamed = u
+		}
+		return r.updateInTx(txCtx, userID, fullName, isAdmin, denyPasswdChange, showInList, aiDataAccess)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return renamed, nil
+}
+
+// renameInTx — тело переименования; вызывать под withUserInvariantLock.
+func (r *Repo) renameInTx(txCtx context.Context, oldLogin, newLogin string) (*User, error) {
+	d := r.db.Dialect()
+	var u *User
+	err := func() error {
 		var id string
 		q := fmt.Sprintf(`SELECT id FROM _users WHERE login = %s`, d.Placeholder(1))
 		if err := r.db.QueryRow(txCtx, q, oldLogin).Scan(&id); err != nil {
 			return fmt.Errorf("пользователь %q не найден", oldLogin)
 		}
+		// Занятость — без учёта регистра и для не-ASCII (кириллица): встроенная
+		// lower() SQLite меняет только ASCII, и «оператор» проходил мимо
+		// «Оператор». LowerLike даёт ob_lower на SQLite и LOWER на PostgreSQL.
 		var taken int
-		q = fmt.Sprintf(`SELECT count(*) FROM _users WHERE lower(login) = lower(%s) AND id <> %s`, d.Placeholder(1), d.Placeholder(2))
+		q = fmt.Sprintf(`SELECT count(*) FROM _users WHERE %s = %s AND id <> %s`, d.LowerLike("login"), d.LowerLike(d.Placeholder(1)), d.Placeholder(2))
 		if err := r.db.QueryRow(txCtx, q, newLogin, id).Scan(&taken); err != nil {
 			return err
 		}
@@ -91,7 +139,7 @@ func (r *Repo) RenameUser(ctx context.Context, oldLogin, newLogin string) (*User
 		}
 		u = got
 		return nil
-	})
+	}()
 	if err != nil {
 		return nil, err
 	}
