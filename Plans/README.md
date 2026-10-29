@@ -513,6 +513,7 @@
 | № | Файл | Фича | Эстимейт | Статус |
 |---|---|---|---|---|
 | 210 | [210-catalog-first-page-performance.md](210-catalog-first-page-performance.md) | Ленивая панель «Отбор» и opt-in индексы точного порядка order_by после замеров, с сохранением RLS и пагинации (#2255) | ~10–16 дней | 📋 Проектирование |
+| 214 | [214-persistent-list-filter-contract.md](214-persistent-list-filter-contract.md) | Постоянные отборы списка: ошибки, false/NULL, группы без обхода RLS и lf_off (#2375, #2376) | ~6–9 дней | 📋 Проектирование |
 
 ## Граф зависимостей (архив)
 
