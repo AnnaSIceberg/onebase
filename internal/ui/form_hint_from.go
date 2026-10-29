@@ -20,6 +20,13 @@ func hintFromAttr(el *metadata.FormElement) string {
 // elHintText — подсказка элемента: значение реквизита hint_from, а если оно
 // пусто (или ключа нет) — статический hint; hotKey дописывается в скобках.
 func elHintText(values map[string]any, el *metadata.FormElement, hotKey string) string {
+	return elHintTextOr(values, el, hotKey, "")
+}
+
+// elHintTextOr — то же, но без значения реквизита и без статического hint
+// подставляется def: штатная подсказка вида поля (формат числа) не пропадает
+// из-за того, что у поля объявлен hint_from.
+func elHintTextOr(values map[string]any, el *metadata.FormElement, hotKey, def string) string {
 	text := ""
 	if attr := hintFromAttr(el); attr != "" && values != nil {
 		if v, ok := values[attr]; ok && v != nil {
@@ -28,6 +35,9 @@ func elHintText(values map[string]any, el *metadata.FormElement, hotKey string) 
 	}
 	if text == "" && el != nil {
 		text = el.Hint
+	}
+	if text == "" {
+		text = def
 	}
 	switch {
 	case hotKey == "":
@@ -44,6 +54,23 @@ func elHintText(values map[string]any, el *metadata.FormElement, hotKey string) 
 // data-ob-hint-key (горячая клавиша): клиент обновляет title после события
 // формы, ничего не пересылая отдельно — значения реквизитов уже в ответе.
 func elHintAttrs(ctx any, el *metadata.FormElement, hotKey string) template.HTMLAttr {
+	return elHintAttrsWith(ctx, el, hotKey, "")
+}
+
+// elHintAttrsOr — атрибуты подсказки поля со штатным текстом по умолчанию
+// (числовое поле: «Введите число…»): он показывается, пока нет ни значения
+// hint_from, ни статического hint, и возвращается, когда значение опустело.
+func elHintAttrsOr(ctx any, el *metadata.FormElement, def string) template.HTMLAttr {
+	if el == nil {
+		if def == "" {
+			return ""
+		}
+		return template.HTMLAttr(` title="` + html.EscapeString(def) + `"`) //nolint:gosec // G203: экранировано
+	}
+	return elHintAttrsWith(ctx, el, "", def)
+}
+
+func elHintAttrsWith(ctx any, el *metadata.FormElement, hotKey, def string) template.HTMLAttr {
 	if el == nil {
 		return ""
 	}
@@ -58,13 +85,13 @@ func elHintAttrs(ctx any, el *metadata.FormElement, hotKey string) template.HTML
 		}
 	}
 	var b strings.Builder
-	if text := elHintText(values, el, hotKey); text != "" {
+	if text := elHintTextOr(values, el, hotKey, def); text != "" {
 		b.WriteString(` title="` + html.EscapeString(text) + `"`)
 	}
 	if attr := hintFromAttr(el); attr != "" {
 		b.WriteString(` data-ob-hint-from="` + html.EscapeString(attr) + `"`)
-		if el.Hint != "" {
-			b.WriteString(` data-ob-hint="` + html.EscapeString(el.Hint) + `"`)
+		if static := firstNonEmpty(el.Hint, def); static != "" {
+			b.WriteString(` data-ob-hint="` + html.EscapeString(static) + `"`)
 		}
 		if hotKey != "" {
 			b.WriteString(` data-ob-hint-key="` + html.EscapeString(hotKey) + `"`)

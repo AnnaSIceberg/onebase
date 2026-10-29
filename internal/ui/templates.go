@@ -563,6 +563,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// реквизита формы, иначе hint; у кнопки к подсказке добавляется
 		// горячая клавиша.
 		"elHintAttrs": elHintAttrs,
+		"elHintAttrsOr": elHintAttrsOr,
 		"itemFormVisible": func(entity *metadata.Entity) []itemFormField {
 			vis, _ := splitItemFormFields(entity)
 			return vis
