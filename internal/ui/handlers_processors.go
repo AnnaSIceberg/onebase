@@ -583,6 +583,8 @@ var processorServiceFields = []string{
 	"_tp_col_index",
 	"_page",
 	"_notify_id",
+	"_idle_proc",
+	"_idle_token",
 }
 
 func processorParamPresenceName(params []processorpkg.Param, name string) string {

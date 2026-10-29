@@ -124,6 +124,7 @@ type Server struct {
 	hub                  *realtime.Hub // real-time-шина уведомлений сервер→браузер (план 74)
 	formNotifyOnce       sync.Once
 	formNotifyStore      *formNotifyStore // оповещения открытых форм (Оповестить), см. form_notify.go
+	formIdleState                         // подпись обработчиков ожидания форм (form_idle.go)
 	devGeneration        string           // метка запуска процесса для dev-режима (см. eventsStream)
 	ops                  *operationLimiter
 	exportJobsMu         sync.Mutex
