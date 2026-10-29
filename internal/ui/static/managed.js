@@ -764,7 +764,30 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
               sel.appendChild(o);
             });
             sel.disabled = readOnly;
-            td.appendChild(sel);
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'display:flex;gap:4px;align-items:center';
+            sel.setAttribute('data-ref-entity', f.ref.split(':').pop());
+            if (meta && meta.allowCreate) sel.setAttribute('data-ref-allow-create', '1');
+            wrapper.appendChild(sel);
+            const pickBtn = document.createElement('button');
+            pickBtn.type = 'button';
+            pickBtn.textContent = '...';
+            pickBtn.title = 'Выбрать из списка';
+            pickBtn.disabled = readOnly;
+            pickBtn.setAttribute('data-ob-ref-picker', 'closest');
+            pickBtn.style.cssText = 'padding:4px 8px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;cursor:pointer;font-size:12px;flex-shrink:0';
+            wrapper.appendChild(pickBtn);
+            if (tbody.getAttribute('data-tp-hide-ref-card') !== '1') {
+              const openBtn = document.createElement('button');
+              openBtn.type = 'button';
+              openBtn.textContent = '🔍';
+              openBtn.title = 'Открыть карточку';
+              openBtn.setAttribute('data-ob-ref-current', 'closest');
+              openBtn.setAttribute('data-ob-readonly-navigation', '1');
+              openBtn.style.cssText = 'padding:4px 7px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;cursor:pointer;font-size:12px;flex-shrink:0';
+              wrapper.appendChild(openBtn);
+            }
+            td.appendChild(wrapper);
           } else if (isEnum && tpEnumLabels[f.name]) {
             const enumLabMap = tpEnumLabels[f.name];
             const sel = document.createElement('select');
