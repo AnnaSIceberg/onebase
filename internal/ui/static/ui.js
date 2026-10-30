@@ -3843,7 +3843,7 @@ function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, 
       pickBtn.setAttribute('data-ob-ref-picker-self', '');
       wrapper.appendChild(sel);
       wrapper.appendChild(pickBtn);
-      if (meta && meta.entity) {
+      if (meta && meta.entity && tbody.getAttribute('data-tp-hide-ref-card') !== '1') {
         var openBtn = document.createElement('button');
         openBtn.type = 'button';
         openBtn.textContent = '🔍';
