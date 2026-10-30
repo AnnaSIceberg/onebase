@@ -1024,11 +1024,11 @@ func (tr *translator) emitGroupingPresentation(rd *refDimInfo) {
 	if tr.section != sectionGroupBy || from < 1 || !tr.standaloneGroupItem(from, to) {
 		return
 	}
-	// Только в той области SELECT, где выпущены авто-JOIN, и только для её
-	// основного источника: бегущий tr.mainTable к этому месту может указывать
-	// на источник подзапроса из ЛЕВОЕ СОЕДИНЕНИЕ (…).
+	// Только авто-JOIN основного источника этой SELECT-области. Состояние
+	// владельца сохраняется при входе во вложенный SELECT и не переносится
+	// между соседними ветвями UNION.
 	scopeID, ok := tr.sourceCtx.scopeIDAt(from)
-	if !ok || !tr.refJoinScopeSet || scopeID != tr.refJoinScope {
+	if !ok || scopeID != tr.activeSelect || !tr.selectStates[scopeID].refJoinsEmitted {
 		return
 	}
 	if scope, ok := tr.sourceCtx.scopeAt(from); !ok || lowerFast(tr.tokens[from].val) != scope.mainTable {
@@ -1131,8 +1131,6 @@ type translator struct {
 	sourceCtx           sourceContext                 // scoped-типы/классы источников для SELECT-кадров
 	paramColTypes       map[int]map[string]metadata.FieldType
 	paramQualifiedTypes map[int]map[string]map[string]metadata.FieldType
-	refJoinScope        int
-	refJoinScopeSet     bool
 	selectStates        []selectTranslationState
 	activeSelect        int
 	textEqIndex         map[int]bool      // положительные сравнения ГДЕ с непустым литералом
@@ -6077,11 +6075,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					return Result{}, err
 				}
 			}
-			if tr.section == sectionFrom && isMain && len(tr.refDims) > 0 {
-				if id, ok := tr.sourceCtx.scopeIDAt(tr.pos - 1); ok {
-					tr.refJoinScope, tr.refJoinScopeSet = id, true
-				}
-			}
+
 			if tr.sourceCtx.sectionAt(sourcePos) == sectionFrom && !isMain {
 				// Присоединённый источник: его авто-JOIN'ы ждут конца ПО (#1385).
 				if scopeID, ok := tr.sourceCtx.scopeIDAt(sourcePos); ok {
@@ -6107,6 +6101,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 					// иначе чтение через ссылку обходит проверку прав.
 					tr.addRefSource(rd)
 				}
+				tr.selectStates[tr.activeSelect].refJoinsEmitted = len(tr.refDims) > 0
 			}
 			tr.mainEmitted = true
 			continue
@@ -6521,12 +6516,14 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 						} else {
 							tr.emit(rd.idCol)
 							tr.emitDerivedReferenceAlias(rd.idCol, lower)
-							tr.emitGroupingPresentation(rd)
 						}
 					} else if c, ok2 := tr.colMap[lower]; ok2 {
 						tr.emitQualifiedColumn(c, lower)
 					} else {
 						tr.emitQualifiedColumn(lower, lower)
+					}
+					if rd := tr.findRefDim(lower); rd != nil && !nextIsDot {
+						tr.emitGroupingPresentation(rd)
 					}
 				} else {
 					tr.emitOwnColumn(lower, lower)
