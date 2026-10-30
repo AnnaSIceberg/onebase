@@ -67,7 +67,7 @@ func TestPageEmbeddedServiceLayoutBrowserAcceptance(t *testing.T) {
 		r.Use(repo.Middleware)
 		r.Get("/hs/layout/", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprint(w, `<html><body style="margin:0;height:100dvh;display:flex;flex-direction:column"><div style="flex:1;overflow:auto">Service content</div><input id="composer" placeholder="Message" style="flex:none;height:40px"></body></html>`)
+			_, _ = fmt.Fprint(w, `<html><body style="margin:0;height:100dvh;display:flex;flex-direction:column"><div style="flex:1;overflow:auto">Service content</div><input id="composer" placeholder="Message" style="flex:none;height:40px"></body></html>`)
 		})
 		s.Mount(r)
 	})
