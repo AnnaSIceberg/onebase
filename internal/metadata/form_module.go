@@ -257,11 +257,16 @@ type FormElement struct {
 	// собственным ReadOnly.
 	ReadOnlyWhen string `yaml:"readonly_when,omitempty"`
 	HiddenWhen   string `yaml:"hidden_when,omitempty"`
-	UseGrid      bool   `yaml:"use_grid,omitempty"` // (устар.) SlickGrid теперь включён по умолчанию
-	NoGrid       bool   `yaml:"no_grid,omitempty"`  // отключить SlickGrid у ТЧ (вернуть простую таблицу)
-	AutoSum      bool   `yaml:"auto_sum,omitempty"` // ТЧ: авто Сумма = Количество × Цена по именам колонок — opt-in (#215.1)
-	Hint         string `yaml:"hint,omitempty"`     // всплывающая подсказка
-	Mask         string `yaml:"mask,omitempty"`     // регулярное выражение проверки (HTML pattern), НЕ шаблон ввода
+	// TitleFrom — у колонки табличной части (kind: Колонка): имя реквизита
+	// формы или шапки объекта, строковое значение которого заменяет заголовок
+	// колонки, пока оно не пусто. Обновляется и после событий формы — аналог
+	// Колонка.ТекстШапки 1С: шапка «1 пн … 31 ср» под выбранный месяц.
+	TitleFrom string `yaml:"title_from,omitempty"`
+	UseGrid   bool   `yaml:"use_grid,omitempty"` // (устар.) SlickGrid теперь включён по умолчанию
+	NoGrid    bool   `yaml:"no_grid,omitempty"`  // отключить SlickGrid у ТЧ (вернуть простую таблицу)
+	AutoSum   bool   `yaml:"auto_sum,omitempty"` // ТЧ: авто Сумма = Количество × Цена по именам колонок — opt-in (#215.1)
+	Hint      string `yaml:"hint,omitempty"`     // всплывающая подсказка
+	Mask      string `yaml:"mask,omitempty"`     // регулярное выражение проверки (HTML pattern), НЕ шаблон ввода
 	// InputMask — настоящая маска ввода: заполнители подставляются по мере
 	// набора, разделители ставятся сами (#763, п. 3). Отдельный ключ, потому что
 	// `mask` — это regexp, и переиспользовать его под шаблон значило бы сломать
@@ -340,6 +345,15 @@ type FormElement struct {
 	// (FormAttributeColumn). Дочерний элемент kind: ПолеВвода тоже не подошёл —
 	// такая колонка выглядела бы редактируемой, а редактировать нечего.
 	VirtualColumns []FormVirtualColumn `yaml:"virtual_columns,omitempty"`
+
+	// HintInline — hint печатается текстом под полем, как раньше; по умолчанию
+	// подсказка всплывающая: значок ⓘ у подписи и title.
+	HintInline bool `yaml:"hint_inline,omitempty"`
+	// Conceal hides a string object field until a successful trusted event
+	// explicitly assigns its boolean form controller (optionally НЕ/NOT).
+	// Disclosure is session/form/object-bound server state, never browser input.
+	Conceal    bool   `yaml:"conceal,omitempty"`
+	RevealWhen string `yaml:"reveal_when,omitempty"`
 }
 
 // FormChoiceOperator — закрытый набор операторов choice_filter v1.
@@ -1082,4 +1096,16 @@ func (el *FormElement) IsContainer() bool {
 		return true
 	}
 	return false
+}
+
+// FormTitleSourceName — имя реквизита из title_from колонки: префикс «Форма.»
+// или «Объект.» (как в data_path) отбрасывается.
+func FormTitleSourceName(source string) string {
+	name := strings.TrimSpace(source)
+	for _, prefix := range []string{"Форма.", "Объект.", "Form.", "Object."} {
+		if len(name) > len(prefix) && strings.EqualFold(name[:len(prefix)], prefix) {
+			return strings.TrimSpace(name[len(prefix):])
+		}
+	}
+	return name
 }
