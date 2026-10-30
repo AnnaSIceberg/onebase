@@ -24,7 +24,7 @@ func TestPageEmbeddedServiceHTTP(t *testing.T) {
 		{"https://example.com/", false}, {"//example.com/hs/", false},
 		{"javascript:alert(1)", false}, {"/ui/app", false},
 		{"/hs/../ui/app", false}, {"/hs/%2e%2e/ui/app", false},
-		{"/hs/\\evil", false}, {"/hs//other", false},
+		{"/hs/", false}, {"/hs", false}, {"/hs/\\evil", false}, {"/hs//other", false},
 	} {
 		t.Run(tc.url, func(t *testing.T) {
 			db, err := storage.ConnectSQLite(context.Background(), filepath.Join(t.TempDir(), "test.db"))

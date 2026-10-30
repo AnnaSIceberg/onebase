@@ -135,7 +135,7 @@ func (b *DSLPageBuilder) CallMethod(name string, args []any) any {
 		src := argStr(args, 0)
 		u, err := url.ParseRequestURI(src)
 		if err != nil || u.IsAbs() || u.Host != "" || u.RawPath != "" ||
-			!strings.HasPrefix(u.Path, "/hs/") || strings.ContainsAny(src, "\\\r\n") ||
+			!strings.HasPrefix(u.Path, "/hs/") || u.Path == "/hs/" || strings.ContainsAny(src, "\\\r\n") ||
 			path.Clean(u.Path) != strings.TrimSuffix(u.Path, "/") {
 			panic(userError{Msg: "Страница.ВстроитьСервис: требуется локальный путь /hs/ без переходов между каталогами"})
 		}
