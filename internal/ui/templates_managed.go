@@ -310,7 +310,7 @@ const tplManagedForm = `
   {{/* Состав и порядок колонок задают дети kind: Колонка (план 154). Реквизит,
        не попавший в выбор, остаётся в плане скрытым: убрать его из полезной
        нагрузки значит затереть его в базе при следующей же записи. */}}
-  {{$tpPlan := managedTPColumnPlan $el $tpMeta.Fields}}
+  {{$tpPlan := managedTPColumnsTitled (managedTPColumnPlan $el $tpMeta.Fields) $ctx.Values}}
   {{$tpColEvents := managedTPColumnEventsJSON $tpPlan $tpReadOnly}}
   {{if $tpCmds}}
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
@@ -331,6 +331,7 @@ const tplManagedForm = `
   <div id="sg-{{$tpName}}" class="ob-grid" style="{{tpGridCSS $el (len $tpRows)}}"
        data-sg-tp="{{$tpName}}"
        data-sg-el="{{$el.Name}}"
+       data-sg-path="{{elPath $ctx $el}}"
        {{with gridLayoutAttr $ctx $el.Name}}data-sg-layout="{{.}}"{{end}}
        {{with gridOrderAttr $ctx $el.Name}}data-sg-order="{{.}}"{{end}}
        {{if $tpReadOnly}}data-sg-ro="1"{{end}}
@@ -379,7 +380,7 @@ const tplManagedForm = `
         <th style="width:40px"></th>
       </tr>
     </thead>
-    <tbody id="tp-body-{{$tpName}}" {{if $tpCmds}}data-tp-cmd="1" {{end}}{{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}data-tp-choice="{{jsJSON (tpChoiceContexts $ctx $el)}}" data-tp-fields="{{managedTPFieldsAttr $tpPlan}}" data-tp-hidden-cols="{{managedTPHiddenColsJSON $tpPlan}}" data-tp-virtual-cols="{{managedTPVirtualNamesJSON $tpVirtualCols}}">
+    <tbody id="tp-body-{{$tpName}}" {{if $ctx.HideRefCard}}data-tp-hide-ref-card="1" {{end}}{{if $tpCmds}}data-tp-cmd="1" {{end}}{{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}data-tp-choice="{{jsJSON (tpChoiceContexts $ctx $el)}}" data-tp-fields="{{managedTPFieldsAttr $tpPlan}}" data-tp-hidden-cols="{{managedTPHiddenColsJSON $tpPlan}}" data-tp-virtual-cols="{{managedTPVirtualNamesJSON $tpVirtualCols}}">
     {{range $i, $row := $tpRows}}
       <tr{{with formRowClass $row}} class="{{.}}"{{end}} tabindex="-1" aria-selected="false">
         {{if $tpCmds}}<td style="text-align:center"><input type="checkbox" class="_tp-sel"{{if $tpReadOnly}} disabled{{end}}></td>{{end}}
@@ -396,7 +397,7 @@ const tplManagedForm = `
                 {{end}}
               </select>
               <button type="button" data-ob-ref-picker="closest"{{if $tpReadOnly}} disabled{{end}} style="padding:4px 8px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;cursor:pointer;font-size:12px;flex-shrink:0" title="Выбрать из списка">...</button>
-              <button type="button" data-ob-ref-current="closest" data-ob-readonly-navigation="1" style="padding:4px 7px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;cursor:pointer;font-size:12px;flex-shrink:0" title="Открыть карточку">🔍</button>
+              {{if not $ctx.HideRefCard}}<button type="button" data-ob-ref-current="closest" data-ob-readonly-navigation="1" style="padding:4px 7px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;cursor:pointer;font-size:12px;flex-shrink:0" title="Открыть карточку">🔍</button>{{end}}
             </div>
           {{else if eq (str $f.Type) "number"}}
             <input type="number" step="any" name="tp.{{$tpName}}.{{$i}}.{{$f.Name}}" value="{{$v}}" data-tp-num="{{$f.Name}}"{{if $tpReadOnly}} disabled{{else}} data-ob-recalc-tp-row{{end}}>
