@@ -1393,7 +1393,7 @@ func cloneQuery(current any) url.Values {
 
 func isListStateQueryKey(key string) bool {
 	switch key {
-	case "q", "sort", "dir", "sort_default", "activity", "view", "lm", "parent", "subsystem", "limit", "page":
+	case "q", "sort", "dir", "sort_default", "sort_snapshot", "activity", "view", "lm", "parent", "subsystem", "limit", "page":
 		return true
 	default:
 		return strings.HasPrefix(key, "f.")
@@ -2326,7 +2326,7 @@ const tplList = `
   {{if eq (str .Entity.Kind) "document"}}<th style="width:36px">✓</th>{{end}}
   {{range listColumns .Entity}}
   <th>
-    <a href="{{listURL $.Query "sort" .Name "dir" (nextDir $params .Name)}}">
+    <a href="{{listURL $.Query "sort" .Name "dir" (nextDir $params .Name) "sort_snapshot" "" "sort_default" ""}}">
       {{.DisplayName $.Lang}} {{sortIcon $params .Name}}
     </a>
   </th>

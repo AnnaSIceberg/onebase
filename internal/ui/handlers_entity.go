@@ -2886,8 +2886,9 @@ func parseLegacyTablePartRows(r *http.Request, entity *metadata.Entity) (map[str
 // Без этого порядок жил только в адресе страницы: ушёл в другой список,
 // вернулся — и строки снова в порядке по умолчанию, хотя человек его менял.
 // Хранится как вид списка (#1485) — по пользователю и сущности. Явный ?sort
-// перекрывает и обновляет сохранённое; сохраняется и восстанавливается только
-// поле, которое есть у сущности: исчезнувшее из метаданных молча забывается.
+// без sort_snapshot перекрывает и обновляет сохранённое. Сохраняется и
+// восстанавливается только поле, которое есть у сущности: исчезнувшее из
+// метаданных молча забывается.
 func (s *Server) resolveListSort(r *http.Request, entity *metadata.Entity, params *storage.ListParams) {
 	user := auth.UserFromContext(r.Context())
 	if user == nil || user.Login == "" || s.store == nil {
@@ -2901,6 +2902,14 @@ func (s *Server) resolveListSort(r *http.Request, entity *metadata.Entity, param
 		}
 		return false
 	}
+	q := r.URL.Query()
+	if q.Has("sort_snapshot") {
+		// This is a continuation of an already rendered list, not a new
+		// preference. Apply its parsed Sort/Dir through the usual storage
+		// validation, without reading or writing another tab's choice.
+		// Malformed/incomplete snapshot state must not write settings either.
+		return
+	}
 	if params.Sort != "" {
 		if !known(params.Sort) {
 			return
@@ -2911,12 +2920,11 @@ func (s *Server) resolveListSort(r *http.Request, entity *metadata.Entity, param
 		}
 		_ = s.store.SaveListSortUserSettings(r.Context(), entity.Name, user.Login, params.Sort, dir)
 		// A header click supersedes this list's captured default state.
-		q := r.URL.Query()
 		q.Del("sort_default")
+		q.Set("sort_snapshot", "1")
 		r.URL.RawQuery = q.Encode()
 		return
 	}
-	q := r.URL.Query()
 	if q.Get("sort_default") == "1" {
 		// Continue the order this list opened with, without reading or writing
 		// a preference that another tab may have changed. Keep Sort/Dir intact:
@@ -2935,6 +2943,7 @@ func (s *Server) resolveListSort(r *http.Request, entity *metadata.Entity, param
 	// Another tab may change the saved preference before the next page loads.
 	q.Set("sort", field)
 	q.Set("dir", dir)
+	q.Set("sort_snapshot", "1")
 	r.URL.RawQuery = q.Encode()
 }
 
