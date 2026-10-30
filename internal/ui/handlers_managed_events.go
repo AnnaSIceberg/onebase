@@ -57,8 +57,12 @@ type formEventResponse struct {
 	// страницы: команда «Принять» замораживает реквизиты сразу, а форма
 	// продолжала показывать их редактируемыми.
 	ElementStates *elementStates `json:"elementStates,omitempty"`
-	Messages      []string       `json:"messages,omitempty"`
-	Error         string         `json:"error,omitempty"`
+	// ColumnTitles — заголовки колонок с title_from после обработчика:
+	// «путь размещения ТЧ → реквизит → заголовок». Шапка SlickGrid иначе
+	// оставалась бы прежней до перезагрузки страницы.
+	ColumnTitles map[string]map[string]string `json:"columnTitles,omitempty"`
+	Messages     []string                     `json:"messages,omitempty"`
+	Error        string                       `json:"error,omitempty"`
 	// Question != nil — обработчик фазы 1 вызвал ПоказатьВопрос: клиент
 	// рисует модал вопроса, ответ возвращается событием Ответ (#1528).
 	Question *questionPayload `json:"question,omitempty"`
@@ -1931,6 +1935,7 @@ type formEventState struct {
 	ConditionalCSS string
 	Messages       []string
 	ElementStates  *elementStates
+	ColumnTitles   map[string]map[string]string
 }
 
 // response — единственное место, где состояние переносится в ответ.
@@ -1946,6 +1951,7 @@ func (st formEventState) response(ok bool) formEventResponse {
 		ConditionalCSS: st.ConditionalCSS,
 		Messages:       st.Messages,
 		ElementStates:  st.ElementStates,
+		ColumnTitles:   st.ColumnTitles,
 	}
 }
 
@@ -2087,6 +2093,7 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 		// значения ПОСЛЕ обработчика: команда, изменившая состояние объекта,
 		// сразу меняет доступность полей.
 		ElementStates: s.formElementStates(form, entity, values, s.isAdminCtx(ctx)),
+		ColumnTitles:  managedTPColumnTitles(form, entity, values, langFromCtx(ctx)),
 	}
 }
 
