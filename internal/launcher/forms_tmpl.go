@@ -344,6 +344,7 @@ body.ob-dragging .fc-group-horizontal>.fc-children>.fc-drop{width:8px}
 #cfg-code-theme-toggle .cth-to-dark{display:none}
 html.cfg-code-light #cfg-code-theme-toggle .cth-to-dark{display:inline}
 html.cfg-code-light #cfg-code-theme-toggle .cth-to-light{display:none}
+` + metadata.FormEqualColumnsCSS + `
 </style>
 <script>
 // Тема редактора кода общая с конфигуратором (один origin — один localStorage),
@@ -1148,10 +1149,12 @@ function renderProps() {
       addTextProp(panel, {{jsString (t $.Lang "Устойчивый id элемента")}}, 'id', info.id || '');
       addChoiceFilterEditor(panel, info);
     }
-    addChoiceFilterEditor(panel, info);
+  }
+  if (info.kind === 'ГруппаФормы' || info.kind === 'Кнопка') {
+    addTextProp(panel, {{jsString (t $.Lang "Фон (CSS-цвет)")}}, 'background', info.background || '');
   }
   if (info.kind === 'ГруппаФормы') {
-    addTextProp(panel, {{jsString (t $.Lang "Фон (CSS-цвет)")}}, 'background', info.background || '');
+    addCheckProp(panel, {{jsString (t $.Lang "Равные колонки")}}, 'equal_columns', info.equalColumns);
     addSelectRaw(panel, 'Расположение реквизитов', info.orientation === 'horizontal' ? 'horizontal' : 'vertical', [
       { value: 'vertical', label: 'Вертикально' },
       { value: 'horizontal', label: 'Горизонтально' }
@@ -1232,6 +1235,23 @@ function renderFormProps(panel) {
   // События формы и штатные действия.
   addEventsRows(panel, formEvents(), f.events || {}, 'Форма');
   addFormActionsSection(panel, f);
+  addFormRefCardSection(panel, f);
+}
+// Кнопка «Открыть карточку» (🔍) у ссылочных полей (#1876). Ключ, совпадающий
+// с умолчанием, удаляется, а не пишется: «показывать» = нет ref_card_button,
+// «всем» = нет ref_card_button_admin_only. Явный ref_card_button у отдельного
+// поля сильнее обоих и правится в YAML.
+function addFormRefCardSection(panel, f) {
+  var hd = document.createElement('div'); hd.className = 'prop-row prop-section'; hd.textContent = {{jsString (t $.Lang "Кнопка «Открыть карточку»")}};
+  panel.appendChild(hd);
+  addCheckRaw(panel, {{jsString (t $.Lang "Показывать у ссылочных полей")}}, f.refCardButton !== false, function (ch) {
+    if (ch) editOp({ op: 'delProp', node: 'form', key: 'ref_card_button' }, true);
+    else setProp('ref_card_button', 'false');
+  });
+  addCheckRaw(panel, {{jsString (t $.Lang "Только администратору")}}, !!f.refCardAdminOnly, function (ch) {
+    if (ch) setProp('ref_card_button_admin_only', 'true');
+    else editOp({ op: 'delProp', node: 'form', key: 'ref_card_button_admin_only' }, true);
+  });
 }
 // Штатные действия формы (B3). Рантайм читает только actions.delete.visible —
 // показываем галочку для кнопки «Удалить»; снятие пишет visible:false.
@@ -1261,6 +1281,7 @@ function applicableEvents(kind) {
     // Колонка ТЧ: обработчик срабатывает на правку ячейки именно этой колонки
     // (план 154, Р4). Обработчик самой ТЧ при этом не отключается.
     case 'Колонка': return ['ПриИзменении'];
+    case 'СтраницыФормы': return ['ПриСменеСтраницы'];
     default: return [];
   }
 }
@@ -1357,6 +1378,11 @@ function addChoiceFilterEditor(panel, info) {
   note.textContent = {{jsString (t $.Lang "Условия идут по порядку и соединяются через И. Для подбора обязателен уникальный id выше.")}};
   panel.appendChild(note);
   var conditions = (info.choiceFilter || []).map(function (condition) {
+    // Условие запросом здесь не правится — только показывается и
+    // сохраняется как есть (текст и параметры — в YAML формы).
+    if (typeof condition.query === 'string' && condition.query !== '') {
+      return { mode: 'query', query: condition.query, params: condition.params || {} };
+    }
     var hasValue = Object.prototype.hasOwnProperty.call(condition, 'value') && typeof condition.value === 'boolean';
     var hasRef = typeof condition.ref === 'string' && condition.ref !== '';
     return {
@@ -1371,6 +1397,7 @@ function addChoiceFilterEditor(panel, info) {
   var nodeAtEdit = _selected;
   function payload() {
     return conditions.map(function (condition) {
+      if (condition.mode === 'query') return { query: condition.query, params: condition.params };
       var out = { field: condition.field, op: condition.op };
       if (condition.mode === 'value') out.value = !!condition.value;
       else if (condition.mode === 'ref') out.ref = condition.ref;
@@ -1387,6 +1414,13 @@ function addChoiceFilterEditor(panel, info) {
     wrap.innerHTML = '';
     conditions.forEach(function (condition, index) {
       var card = document.createElement('div'); card.className = 'prop-choice-card';
+      if (condition.mode === 'query') {
+        var queryRow = document.createElement('div'); queryRow.className = 'prop-hint';
+        queryRow.textContent = {{jsString (t $.Lang "Условие запросом — правится в YAML формы:")}} + ' ' + condition.query;
+        card.appendChild(queryRow);
+        wrap.appendChild(card);
+        return;
+      }
 
       var fieldRow = document.createElement('div'); fieldRow.className = 'prop-row';
       var fieldLabel = document.createElement('label'); fieldLabel.textContent = 'field';
@@ -1783,6 +1817,7 @@ legend{font-weight:600;color:#475569;padding:0 6px;font-size:12px}
 .tp-prev-tbl th{background:#f8fafc;color:#475569;font-weight:600}
 .tp-prev-tbl td{height:24px}
 .unknown{background:#fef2f2;padding:8px;border-radius:6px;font-size:11px;color:#991b1b;margin:6px 0}
+` + metadata.FormEqualColumnsCSS + `
 </style></head><body>`)
 
 	title := "Карточка"
@@ -1835,6 +1870,9 @@ func renderPreviewElement(buf *bytes.Buffer, el *metadata.FormElement, tabsCount
 		cls := ""
 		if el.Orientation == "horizontal" {
 			cls = ` class="group-horizontal"`
+			if el.UsesEqualColumns() {
+				cls = ` class="group-horizontal ob-equal-columns"`
+			}
 		}
 		fmt.Fprintf(buf, `<fieldset%s%s><legend>%s</legend><div class="group-body">`, cls, groupStyleAttr(el), html.EscapeString(title))
 		for _, c := range el.Children {
@@ -1907,10 +1945,11 @@ func renderPreviewElement(buf *bytes.Buffer, el *metadata.FormElement, tabsCount
 		if el.ReadOnly {
 			buf.WriteString(` readonly`)
 		}
-		buf.WriteString(`></div>`)
+		buf.WriteString(`>`)
 		if el.Hint != "" {
-			fmt.Fprintf(buf, `<div class="hint" style="margin-top:-8px">%s</div>`, html.EscapeString(el.Hint))
+			fmt.Fprintf(buf, `<div class="hint">%s</div>`, html.EscapeString(el.Hint))
 		}
+		buf.WriteString(`</div>`)
 	case metadata.FormElementCheckbox:
 		field := lastSegment(el.DataPath)
 		if field == "" {
@@ -1927,11 +1966,12 @@ func renderPreviewElement(buf *bytes.Buffer, el *metadata.FormElement, tabsCount
 	case metadata.FormElementButton:
 		layout := metadata.FormElementLayoutCSS(el)
 		if layout == "" {
-			fmt.Fprintf(buf, `<button type="button" class="btn">%s</button>`, html.EscapeString(title))
+			fmt.Fprintf(buf, `<button type="button" class="btn"%s>%s</button>`,
+				styleAttr(metadata.FormElementBackgroundCSS(el)), html.EscapeString(title))
 			break
 		}
-		fmt.Fprintf(buf, `<div class="btn-layout"%s><button type="button" class="btn">%s</button></div>`,
-			styleAttr(layout), html.EscapeString(title))
+		fmt.Fprintf(buf, `<div class="btn-layout"%s><button type="button" class="btn"%s>%s</button></div>`,
+			styleAttr(layout), styleAttr(metadata.FormElementBackgroundCSS(el)), html.EscapeString(title))
 	case metadata.FormElementPicture:
 		// width/height у картинки — размер самой картинки (см. рантайм), поэтому
 		// shrink-to-fit обёртка получает выравнивание, а настоящий img — те же

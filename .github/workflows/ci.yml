@@ -20,8 +20,10 @@ permissions:
 # снимает предыдущий незавершённый прогон, чтобы зависшие/лишние runs не
 # потребляли раннеры бесконечно. По ref, а не глобально, — параллельные ветки
 # не мешают друг другу.
+# Ручной запуск имеет отдельную группу: он не отменяет push@main, которым release.yml
+# доказывает готовность точного релизного SHA.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -49,7 +51,7 @@ jobs:
     needs: [classify]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Docs-only success
         if: ${{ needs.classify.result == 'success' && needs.classify.outputs.mode == 'docs' }}
@@ -82,6 +84,14 @@ jobs:
       # переездов). Гейт держит развод: он дешевле, чем разводить снова.
       - name: Plan numbers are unique
         run: go run ./tools/plannum
+
+      - name: Release license bundle (actual CLI binary)
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
+        run: |
+          set -euo pipefail
+          go test ./tools/licensebundle
+          go build -o "$RUNNER_TEMP/onebase-licensecheck" ./cmd/onebase
+          go run ./tools/licensebundle -release -out "$RUNNER_TEMP/licenses-cli" "$RUNNER_TEMP/onebase-licensecheck"
 
       - name: Lint shipped example/template configurations
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
@@ -272,7 +282,10 @@ jobs:
       # Coverage собирается тем же прогоном, чтобы не гонять тесты дважды.
       - name: Unit tests (-race, coverage)
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: |
+          python3 -m unittest discover -s .github/scripts -p 'test_coverage_test.py'
+          python3 .github/scripts/test-race-coverage_test.py
+          python3 .github/scripts/test-race-coverage.py coverage.out
 
       # Раннеры работают в UTC, поэтому целый класс дефектов «время
       # канонизируется не в той зоне» для CI невидим: #945 поймали случайно, на
@@ -352,6 +365,11 @@ jobs:
         env:
           CGO_ENABLED: 1
         run: go build -tags webview -o "$env:RUNNER_TEMP\onebase-gui.exe" ./cmd/onebase
+
+      - name: Release license bundle (actual native GUI binary)
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
+        shell: pwsh
+        run: go run ./tools/licensebundle -release -out "$env:RUNNER_TEMP\licenses-gui" "$env:RUNNER_TEMP\onebase-gui.exe"
 
       - name: Test launcher GUI state (Windows WebView2)
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
@@ -542,6 +560,21 @@ jobs:
     name: e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Browser fixtures exercise the same public routes on SQLite and PostgreSQL.
+    services:
+      postgres:
+        image: ${{ (needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs') && 'postgres:16' || '' }}
+        env:
+          POSTGRES_USER: onebase
+          POSTGRES_PASSWORD: onebase
+          POSTGRES_DB: onebase_browser_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U onebase -d onebase_browser_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Docs-only success
         if: ${{ needs.classify.result == 'success' && needs.classify.outputs.mode == 'docs' }}
@@ -583,12 +616,34 @@ jobs:
         working-directory: e2e
         run: npx playwright install --with-deps chromium
 
+      # Compile before Playwright starts its bounded webServer readiness wait.
+      # WORK is cleaned by e2e-server.sh, so keep this executable outside it.
+      - name: Build browser smoke binary
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
+        run: go build -o "$RUNNER_TEMP/onebase-e2e" ./cmd/onebase
+
       - name: Run browser smoke suite
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
         working-directory: e2e
         env:
           CI: '1'
+          OB_BIN: ${{ runner.temp }}/onebase-e2e
         run: npx playwright test
+
+      - name: Run image viewer acceptance
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
+        working-directory: e2e
+        env:
+          CI: '1'
+        run: npx playwright test --config=image-viewer.config.js
+
+      - name: Run public browser acceptance
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
+        env:
+          CI: '1'
+          ONEBASE_BROWSER_ACCEPTANCE: '1'
+          TEST_DATABASE_URL: postgres://onebase:onebase@127.0.0.1:5432/onebase_browser_test?sslmode=disable
+        run: go test -count=1 -v ./internal/ui ./internal/launcher -run 'Test(ChoiceFilter(Configurator)?|HiddenCopies|TabsClose|NavigationSettingsPalette)BrowserAcceptance$'
 
       # Без артефактов упавший браузерный тест разбирать нечем: трассировка
       # показывает шаги, снимок — что было на экране в момент падения.
@@ -614,7 +669,7 @@ jobs:
     needs: [classify]
     if: ${{ always() && !cancelled() }}
     runs-on: ${{ needs.classify.result == 'success' && needs.classify.outputs.mode == 'docs' && 'ubuntu-latest' || 'windows-latest' }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Docs-only success
         if: ${{ needs.classify.result == 'success' && needs.classify.outputs.mode == 'docs' }}
@@ -631,7 +686,24 @@ jobs:
       # исполняет обычные (без тега webview) windows-only тесты.
       - name: Unit tests (Windows)
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
-        run: go test ./...
+        shell: bash
+        run: |
+          set -euo pipefail
+          # UI has over a thousand top-level tests; keep the 10m deadline per
+          # bounded batch instead of spending it cumulatively on the entire suite.
+          package_file="$(mktemp)"
+          trap 'rm -f "$package_file"' EXIT
+          go list ./... > "$package_file"
+          packages=()
+          while IFS= read -r package; do
+            package="${package%$'\r'}"
+            if [ "$package" != "github.com/ivantit66/onebase/internal/ui" ]; then
+              packages+=("$package")
+            fi
+          done < "$package_file"
+          [ "${#packages[@]}" -gt 0 ]
+          go test "${packages[@]}"
+          bash .github/scripts/test-ui-batches.sh
 
       # install.ps1 не исполнял ни один джоб: скрипт установки для Windows
       # проверялся только тем, что кто-то его запускал у себя. Опечатка в нём
@@ -764,23 +836,33 @@ jobs:
           # Гоним весь пакет, чтобы новый матричный тест нельзя было добавить
           # рядом с checks_matrix_test.go и случайно оставить вне PG-гейта.
           go test -race -count=1 -timeout 15m ./internal/dbcheck
+          # Fresh migrate/test databases must initialize auth before creating
+          # reference:_users foreign keys; run both dialects and dry-run here.
+          # Include procrun row indexing; verbose output confirms the PostgreSQL
+          # subtests execute instead of being skipped.
+          go test -race -count=1 -v -timeout 5m ./internal/cli \
+            -run '^(TestMigrateUserReferencesMatrix|TestTestUserReferencesMatrix|TestMigrateUserReferencesDryRunMatrix|TestProcrunInfoRegRowIndexMatrix)$'
           # Очередь фоновых заданий (план 130). Юнит-джоб гоняет её на SQLite,
           # где исполнитель ровно один по построению — то есть ГЛАВНОЕ свойство
           # подсистемы, параллельная работа N исполнителей и расхождение
           # конкурентов через FOR UPDATE SKIP LOCKED, там не проверяется вообще.
           # Без этой строки пул на 16–32 исполнителя не доказан ни одним гейтом.
           go test -race -count=1 -timeout 15m ./internal/jobqueue
-          # Table-part shape compatibility is dialect-matrix tested in
-          # internal/exchange. The regular unit job has no TEST_DATABASE_URL,
-          # so explicitly gate the PostgreSQL half here.
-          go test -race -count=1 -timeout 5m ./internal/exchange \
-            -run '^TestApplyPackage_НедостающееПолеТЧПринимается$/^postgres$'
+          # Run the whole exchange package while TEST_DATABASE_URL is present:
+          # table-part compatibility and receiver movement cleanup are matrix
+          # tested, and new matrix tests must enter the PostgreSQL gate too.
+          # The regular unit job only executes their SQLite branches.
+          go test -race -count=1 -timeout 15m ./internal/exchange
           # DR-01 (issue #784): сквозной backup→restore PostgreSQL. Проверяет,
           # что pg_dump снимает дамп, а psql-restore возвращает те же данные
           # (round-trip на выделенной базе, чтобы разрушительный restore не
           # затронул общую onebase_test). Требует pg_dump/psql — см. шаг выше.
           go test -race -count=1 -timeout 10m -tags integration ./internal/backup \
             -run '^(TestPostgresBackupRestoreRoundTrip|TestUniversalBackupRoundTripInNonPublicSchema|TestUniversalNavigationSettingsMatrix)$'
+          # REST v2 матрицы (включая TestInfoRegV2*) должны исполнять
+          # PostgreSQL-подтесты в обязательном job. Запускаем весь пакет
+          # последовательно; -v показывает выполненные диалекты в журнале CI.
+          go test -race -count=1 -timeout 15m -v ./internal/api
           # Run the whole UI package while TEST_DATABASE_URL is present. Every
           # dbtest.ForEachDialect call therefore executes its PostgreSQL branch,
           # including a newly added matrix test without maintaining a fragile
@@ -815,12 +897,9 @@ jobs:
           cache: true
       - name: govulncheck
         if: ${{ needs.classify.result != 'success' || needs.classify.outputs.mode != 'docs' }}
-        # Пайп через tools/govulnpolicy: GO-2026-6452 (excelize, CVE-2026-59162)
-        # в vulndb записан без fixed-версии, поэтому голый govulncheck считает
-        # уязвимой ЛЮБУЮ версию — даже запиненный коммит с исправлением. Фильтр
-        # гасит ТОЛЬКО этот advisory и только при точном совпадении версии с
-        # пином из go.mod; любой другой достижимый OSV, откат пина или оборванный
-        # запуск роняют проверку. Условие снятия записи — в комментарии там же.
+        # tools/govulnpolicy проверяет JSON-поток, config и достижимые находки.
+        # Allowlist пуст: прежнее исключение GO-2026-6452 удалено после
+        # обновления vulndb. Любой достижимый advisory блокирует проверку.
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
           govulncheck -json ./... | go run ./tools/govulnpolicy

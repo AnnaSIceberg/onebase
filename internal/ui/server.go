@@ -103,6 +103,9 @@ type Server struct {
 	// поэтому новый запуск снова сообщает оператору о причине обхода кэша.
 	svcCacheCookieWarned sync.Map
 	widgetCache          *widget.Cache
+	concealMu            sync.Mutex
+	concealInstances     map[string]*concealInstance
+	concealClock         func() time.Time
 	closeIntentMu        sync.Mutex
 	closeIntents         *formCloseReplayLedger
 	lockMgr              *runtime.LockManager   // #2 managed locks
@@ -128,6 +131,8 @@ type Server struct {
 	closing              bool
 	wsMu                 sync.Mutex                // защищает wsIntakes
 	wsIntakes            map[string]*wsIntakeEntry // живые WS-соединения приёмки (план 120A)
+	// nil uses os.CreateTemp; per-server injection keeps upload failure tests isolated.
+	createProcessorTempFile func(dir, pattern string) (processorUploadFile, error)
 }
 
 func New(reg *runtime.Registry, store *storage.DB, interp *interpreter.Interpreter, authRepo *auth.Repo, cfg Config, sched *scheduler.Scheduler) *Server {
@@ -352,10 +357,17 @@ func (s *Server) MountStatic(r chi.Router) {
 }
 
 func (s *Server) Mount(r chi.Router) {
+	r.Get("/ui/help", s.helpIndex)
+	r.Get("/ui/help/chapter/{chapter}", s.helpChapter)
+	r.Get("/ui/help/assets/*", s.helpAsset)
 	r.Get("/ui", s.index)
 	r.Get("/ui/", s.index)
 	r.Get("/ui/app", s.appShell)           // оболочка вкладок (issue #129/#130, фаза 1)
 	r.Post("/ui/form-mode", s.setFormMode) // переключение режима открытия форм
+	// Поля панели «Отбор», добавленные пользователем (list_filters сущности).
+	r.Post("/ui/_list-filters", s.listFilterFieldsSave)
+	// Порядок колонок таблицы управляемой формы за пользователем (как в 1С).
+	r.Post("/ui/_grid-order", s.gridOrderSave)
 
 	// Gengen — ДО catch-all роутов! (иначе /ui/dev/gengen матчится как {kind}/{entity})
 	r.Get("/ui/dev/gengen", s.gengenPage)

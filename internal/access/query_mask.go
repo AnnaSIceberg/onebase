@@ -2,6 +2,7 @@ package access
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -25,8 +26,12 @@ type QueryMaskPlan struct {
 	// byColumn — решения по имени результирующей колонки (нижний регистр).
 	byColumn map[string]FieldDecision
 	// byField — решения по именам полей для проекции «*»: имена колонок
-	// результата там совпадают с колонками таблиц.
+	// результата после query.RestoreLongLabels совпадают с логическими
+	// именами колонок таблиц.
 	byField map[string]FieldDecision
+	// deniedReason уточняет причину отказа в тексте ошибки. Пусто — обычный
+	// отказ «поле под маской в отборе/агрегате».
+	deniedReason string
 }
 
 // Empty сообщает, что маскировать нечего и запрос разрешён.
@@ -34,10 +39,29 @@ func (p QueryMaskPlan) Empty() bool {
 	return p.Denied == "" && len(p.byColumn) == 0 && len(p.byField) == 0
 }
 
+// sourceMeta — метаданные источника для полевых политик. У табличной части
+// («Справочник.X.ТЧ») — её поля (номер строки и реквизиты ТЧ), а не поля
+// владельца: иначе ПДн строк ТЧ ушли бы из запроса без маски.
+func sourceMeta(kind, name, tablePart string, lookup func(kind, name string) *metadata.Entity) *metadata.Entity {
+	if lookup == nil {
+		return nil
+	}
+	meta := lookup(kind, name)
+	if meta == nil || tablePart == "" {
+		return meta
+	}
+	for i := range meta.TableParts {
+		if strings.EqualFold(meta.TableParts[i].Name, tablePart) {
+			return metadata.TablePartQueryEntity(meta, &meta.TableParts[i], meta.Name)
+		}
+	}
+	return nil
+}
+
 // QueryMaskPlanFor строит план маскирования результата скомпилированного
 // запроса для пользователя u. lookup разрешает метаданные объекта-источника.
 func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity) QueryMaskPlan {
-	masked, columns := maskedSourceFields(u, res.Sources, lookup)
+	masked, columns, fieldColumns := maskedSourceFields(u, res.Sources, lookup)
 	if len(masked) == 0 {
 		return QueryMaskPlan{}
 	}
@@ -88,6 +112,17 @@ func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 			return QueryMaskPlan{Denied: denied}
 		}
 	}
+	// Одно и то же имя выходной колонки у двух элементов выборки делает
+	// сопоставление «колонка → политика» неоднозначным. Движок разводит такие
+	// колонки по-своему: SQLite в обёртке пагинации переименовывает дубль в
+	// `телефон:1`, а карта строки схлопывает точный дубль в один ключ. Маска
+	// адресует одно имя и ложится на одну колонку — вторая уходит клиенту
+	// сырой. Частично замаскированную выдачу отдавать нельзя, поэтому
+	// отказываем до выполнения запроса.
+	if denied, ambiguous := ambiguousMaskedOutput(res.Projection, masked, columns, fieldColumns,
+		res.SourceOccurrences, lookup); ambiguous {
+		return QueryMaskPlan{Denied: denied, deniedReason: "имя колонки встречается в выборке дважды"}
+	}
 	plan := QueryMaskPlan{}
 	for _, col := range res.Projection.Columns {
 		if col.Star {
@@ -108,6 +143,18 @@ func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 		if prev, exists := plan.byColumn[col.Output]; !exists || lessRestrictive(prev, dec) {
 			plan.byColumn[col.Output] = dec
 		}
+	}
+	// Wildcard ambiguity is checked against physical SQL columns above. Rows
+	// reach Apply after Run/RunLimit restores the selected logical labels.
+	if len(plan.byField) > 0 && len(res.LongIdents) > 0 {
+		restored := make(map[string]FieldDecision, len(plan.byField))
+		for column, dec := range plan.byField {
+			if logical, ok := res.LongIdents[column]; ok {
+				column = logical
+			}
+			restored[column] = dec
+		}
+		plan.byField = restored
 	}
 	return plan
 }
@@ -130,6 +177,9 @@ func (p QueryMaskPlan) Apply(rows []map[string]any) error {
 // бы скрытое число в 0, а пустую ссылку — в правдоподобный объект ссылки.
 func (p QueryMaskPlan) ApplyTracked(rows []map[string]any) ([]map[string]struct{}, error) {
 	if p.Denied != "" {
+		if p.deniedReason != "" {
+			return nil, fmt.Errorf("запрос отклонён: защищённое поле %q — %s", p.Denied, p.deniedReason)
+		}
 		return nil, fmt.Errorf("запрос отклонён: защищённое поле %q", p.Denied)
 	}
 	if len(rows) == 0 || p.Empty() {
@@ -143,9 +193,12 @@ func (p QueryMaskPlan) ApplyTracked(rows []map[string]any) ([]map[string]struct{
 		tracked[row][key] = struct{}{}
 	}
 	for column, dec := range p.byColumn {
-		key, ok := matchRowKey(rows[0], column)
-		if !ok {
+		key, count := matchRowKeyStrict(rows[0], column)
+		if count == 0 {
 			return nil, fmt.Errorf("защищённая колонка %q не найдена в результате запроса", column)
+		}
+		if count > 1 {
+			return nil, fmt.Errorf("защищённая колонка %q встречается в результате запроса дважды", column)
 		}
 		for i, row := range rows {
 			applyDecision(row, key, dec)
@@ -172,13 +225,16 @@ func applyDecision(row map[string]any, key string, dec FieldDecision) {
 }
 
 // maskedSourceFields собирает решения по всем источникам запроса: по логическому
-// имени поля и, отдельно, по имени колонки таблицы (для проекции «*»).
-func maskedSourceFields(u *auth.User, sources []query.SourceRef, lookup func(kind, name string) *metadata.Entity) (byField, byColumn map[string]FieldDecision) {
+// имени поля и, отдельно, по имени колонки таблицы (для проекции «*»). Третья
+// карта — обратная: логическое имя поля → его физические колонки, чтобы явную
+// проекцию ссылки сопоставлять с той же колонкой, которую покрывает «*».
+func maskedSourceFields(u *auth.User, sources []query.SourceRef, lookup func(kind, name string) *metadata.Entity) (byField, byColumn map[string]FieldDecision, fieldColumns map[string][]string) {
 	if u == nil || (u.IsAdmin && !MaskAdmin()) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	byField = map[string]FieldDecision{}
 	byColumn = map[string]FieldDecision{}
+	fieldColumns = map[string][]string{}
 	put := func(m map[string]FieldDecision, key string, dec FieldDecision) {
 		key = fieldKey(key)
 		if prev, ok := m[key]; ok && !lessRestrictive(prev, dec) {
@@ -189,21 +245,173 @@ func maskedSourceFields(u *auth.User, sources []query.SourceRef, lookup func(kin
 	for _, src := range sources {
 		var meta *metadata.Entity
 		if lookup != nil {
-			meta = lookup(src.Kind, src.Name)
+			meta = sourceMeta(src.Kind, src.Name, src.TablePart, lookup)
 		}
 		for field, dec := range FieldDecisions(u, src.Kind, src.Name, meta) {
 			put(byField, field, dec)
 			if f, ok := concreteMetaField(meta, field); ok {
-				put(byColumn, metadata.ColumnName(f), dec)
+				col := metadata.ColumnName(f)
+				put(byColumn, col, dec)
+				fk := fieldKey(field)
+				if !containsString(fieldColumns[fk], fieldKey(col)) {
+					fieldColumns[fk] = append(fieldColumns[fk], fieldKey(col))
+				}
 			} else {
 				put(byColumn, field, dec)
 			}
 		}
 	}
 	if len(byField) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
-	return byField, byColumn
+	return byField, byColumn, fieldColumns
+}
+
+func containsString(list []string, v string) bool {
+	for _, s := range list {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
+
+// wildcardSourceColumnCounts считает выходные колонки по отдельным
+// вхождениям источников, а не по карте защищённых полей. Обычное поле другого
+// источника также может дублировать защищённое имя. Self-JOIN учитывается дважды;
+// уникальный список Sources предназначен для RBAC и здесь недостаточен.
+// Виртуальный источник использует только доказанную SQL-проекцию компилятора:
+// метаданные предиката регистра не описывают производные имена его колонок.
+// nil означает, что однозначность источников доказать нельзя.
+func wildcardSourceColumnCounts(sources []query.SourceOccurrence, qualifier string, lookup func(kind, name string) *metadata.Entity) map[string]int {
+	if len(sources) == 0 {
+		return nil
+	}
+	counts := map[string]int{}
+	found := false
+	for _, src := range sources {
+		if qualifier != "" && fieldKey(src.Qualifier) != fieldKey(qualifier) {
+			continue
+		}
+		found = true
+		if src.Virtual {
+			if len(src.OutputColumns) == 0 {
+				return nil
+			}
+			for _, name := range src.OutputColumns {
+				counts[fieldKey(name)]++
+			}
+			continue
+		}
+		if lookup == nil {
+			return nil
+		}
+		meta := sourceMeta(src.Kind, src.Name, src.TablePart, lookup)
+		if meta == nil {
+			return nil
+		}
+		own := map[string]bool{"id": true, "deletion_mark": true, "_version": true}
+		if meta.Kind == metadata.KindDocument {
+			own["posted"] = true
+		}
+		if meta.Hierarchical {
+			own["parent_id"], own["is_folder"] = true, true
+		}
+		if meta.Kind == metadata.KindCatalog && len(meta.Predefined) > 0 {
+			own["_predefined_name"], own["_is_predefined"] = true, true
+		}
+		for _, f := range meta.Fields {
+			own[fieldKey(metadata.ColumnName(f))] = true
+		}
+		for name := range own {
+			counts[name]++
+		}
+	}
+	if !found {
+		return nil
+	}
+	return counts
+}
+
+// ambiguousMaskedOutput ищет защищённое имя выходной колонки, встречающееся в
+// списке выборки больше одного раза. «*» учитывает кратность выходных колонок
+// всех источников (в том числе обычных полей и повторов одной сущности).
+// Поэтому «ВЫБРАТЬ *, Телефон» тоже попадает сюда. Элемент
+// выборки учитывается под выходным именем: разные алиасы одного физического
+// поля адресуются независимо и получают каждый свою маску. Отдельно проверяем
+// пересечение явной проекции со «*» по физическим колонкам: защищённая ссылка
+// выводится под логическим именем (`секрет`), а «*» и auto-JOIN адресуют ту же
+// колонку по физическому имени (`секрет_id`) — без сопоставления их опасное
+// сочетание не обнаруживалось бы вовсе (круг 4 #1428). Дубль
+// НЕзащищённого имени к отказу не ведёт: маску он не трогает.
+func ambiguousMaskedOutput(p query.ProjectionPlan, masked, columns map[string]FieldDecision, fieldColumns map[string][]string, sources []query.SourceOccurrence, lookup func(kind, name string) *metadata.Entity) (string, bool) {
+	counts := map[string]int{}
+	protected := map[string]bool{}
+	starColumns := map[string]bool{}
+	ambiguous := map[string]bool{}
+	starCounts := make([]map[string]int, len(p.Columns))
+	for i, col := range p.Columns {
+		if !col.Star {
+			continue
+		}
+		qualifier := ""
+		if len(col.Path) == 1 {
+			qualifier = col.Path[0]
+		}
+		starCounts[i] = wildcardSourceColumnCounts(sources, qualifier, lookup)
+		for name := range columns {
+			key := fieldKey(name)
+			if starCounts[i] == nil {
+				// Неизвестный источник: не отдаём частично защищённую строку.
+				ambiguous[key] = true
+			} else if starCounts[i][key] > 0 {
+				starColumns[key] = true
+			}
+		}
+	}
+	for i, col := range p.Columns {
+		if col.Star {
+			// Обычная колонка звёздочки может совпасть с защищённым
+			// выходным алиасом явной проекции: считаем все имена.
+			for key, n := range starCounts[i] {
+				counts[key] += n
+				if _, isProtected := columns[key]; isProtected {
+					protected[key] = true
+				}
+			}
+			continue
+		}
+		if col.Output == "" {
+			continue
+		}
+		_, isProtected := mostRestrictive(masked, col.Fields)
+		key := fieldKey(col.Output)
+		counts[key]++
+		if isProtected {
+			protected[key] = true
+		}
+		for _, field := range col.Fields {
+			for _, colKey := range fieldColumns[fieldKey(field)] {
+				if starColumns[colKey] {
+					ambiguous[colKey] = true
+				}
+			}
+		}
+	}
+	denied := ""
+	for key := range protected {
+		if counts[key] > 1 {
+			ambiguous[key] = true
+		}
+	}
+	for key := range ambiguous {
+		// Имя выбирается детерминированно, чтобы текст отказа не плясал от
+		// обхода карты.
+		if denied == "" || key < denied {
+			denied = key
+		}
+	}
+	return denied, denied != ""
 }
 
 // firstMaskedField возвращает первое из полей, на которое стоит маска.

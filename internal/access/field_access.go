@@ -178,7 +178,7 @@ func DeniedMaskedColumn(u *auth.User, sources []query.SourceRef, cols []string, 
 	for _, src := range sources {
 		var meta *metadata.Entity
 		if lookup != nil {
-			meta = lookup(src.Kind, src.Name)
+			meta = sourceMeta(src.Kind, src.Name, src.TablePart, lookup)
 		}
 		for field := range FieldDecisions(u, src.Kind, src.Name, meta) {
 			masked[strings.ToLower(strings.TrimSpace(field))] = true
@@ -328,6 +328,22 @@ func lookupFieldPolicy(policies auth.FieldPolicies, key string) (auth.FieldPolic
 }
 
 func fieldKey(f string) string { return strings.ToLower(strings.TrimSpace(f)) }
+
+// matchRowKeyStrict возвращает совпавший ключ и число совпадений. Два ключа с
+// одним именем без учёта регистра означают, что колонку не адресовать
+// однозначно, и вызывающий обязан отказать, а не маскировать наугад.
+func matchRowKeyStrict(row map[string]any, field string) (string, int) {
+	match, count := "", 0
+	for k := range row {
+		if strings.EqualFold(k, field) {
+			if count == 0 {
+				match = k
+			}
+			count++
+		}
+	}
+	return match, count
+}
 
 func matchRowKey(row map[string]any, field string) (string, bool) {
 	for k := range row {

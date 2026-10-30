@@ -18,8 +18,8 @@ import (
 // шаблоном управляемой формы. Проверка присутствием строк в исходнике здесь
 // бесполезна: она краснеет от переформатирования и остаётся зелёной при
 // перепутанном направлении обхода вкладок — а именно оно и решает, увидит
-// пользователь незаполненное поле или нет (переключение внешней группы прячет
-// вложенные страницы, поэтому идти надо от внешней к внутренней).
+// пользователь незаполненное поле или нет. Каждый набор меняет только свои
+// страницы; доступных предков открываем от внешнего к внутреннему.
 //
 // DOM для node строится из разметки шаблона, а не выдумывается в JS: иначе
 // переименование класса вкладки оставило бы тест зелёным на несуществующей
@@ -65,8 +65,12 @@ func managedRequiredTabsDOM(t *testing.T) []byte {
 			{Kind: metadata.FormElementPage, Name: "ВложеннаяВторая", Children: []*metadata.FormElement{required("ПолеВложенное")}},
 		},
 	}
+	// Внешний набор объявляет ПриСменеСтраницы, вложенный — нет: node
+	// проверяет, что событие шлёт только набор с обработчиком и только на
+	// пользовательский щелчок.
 	pages := &metadata.FormElement{
 		Kind: metadata.FormElementPages, Name: "Страницы",
+		Handlers: map[metadata.FormEventType]string{metadata.FormEventOnPageChange: "СтраницыПриСменеСтраницы"},
 		Children: []*metadata.FormElement{
 			{Kind: metadata.FormElementPage, Name: "Основная", Children: []*metadata.FormElement{required("ПолеВкладки")}},
 			{Kind: metadata.FormElementPage, Name: "Дополнительно", Children: []*metadata.FormElement{inner}},

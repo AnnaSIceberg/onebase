@@ -31,12 +31,31 @@ const maxConvertExamples = 5
 // его с учётом режима (SchemaOptions). Возвращает ошибку, если изменение
 // невозможно выполнить безопасно.
 func (db *DB) restructureTable(ctx context.Context, table string, fields []metadata.Field) error {
+	return db.restructureTableWithProvenance(ctx, table, fields, standardFieldProvenance{})
+}
+
+func (db *DB) restructureEntityTable(ctx context.Context, entity *metadata.Entity) error {
+	return db.restructureTableWithProvenance(ctx, metadata.TableName(entity.Name), entity.Fields, standardProvenance(entity))
+}
+
+func (db *DB) restructureTableWithProvenance(ctx context.Context, table string, fields []metadata.Field, provenance standardFieldProvenance) error {
+	warnings, err := db.untrackedTableTypeWarnings(ctx, table, fields, false)
+	if err != nil {
+		return err
+	}
+	for _, warning := range warnings {
+		if db.schemaOpts.Warn != nil {
+			db.schemaOpts.Warn(warning)
+		} else {
+			storageLog().Warn(warning.String())
+		}
+	}
 	if !anyFieldHasID(fields) {
 		// Ни у одного поля нет устойчивого id — реструктурировать нечего,
 		// работает прежний аддитивный путь.
 		return nil
 	}
-	changes, err := db.PlanTableChanges(ctx, table, fields)
+	changes, err := db.planTableChanges(ctx, table, fields, provenance)
 	if err != nil {
 		return err
 	}
@@ -133,6 +152,19 @@ func anyFieldHasID(fields []metadata.Field) bool {
 
 func (db *DB) applySchemaChange(ctx context.Context, c SchemaChange) error {
 	switch c.Kind {
+	case ChangeRebindFieldID:
+		d := db.dialect
+		query := `UPDATE _schema_fields SET field_id = ` + d.Placeholder(1) +
+			` WHERE table_name = ` + d.Placeholder(2) + ` AND field_id = ` + d.Placeholder(3) +
+			` AND column_name = ` + d.Placeholder(4) + ` AND field_type = ` + d.Placeholder(5)
+		tag, err := db.Exec(ctx, query, c.FieldID, c.Table, c.From, c.To, metadata.FieldSignature(c.Field))
+		if err != nil {
+			return fmt.Errorf("%s.%s: rebind field id %s → %s: %w", c.Table, c.To, c.From, c.FieldID, err)
+		}
+		if tag.RowsAffected != 1 {
+			return fmt.Errorf("%s.%s: rebind field id %s → %s affected %d rows, expected 1", c.Table, c.To, c.From, c.FieldID, tag.RowsAffected)
+		}
+		return nil
 	case ChangeAdd:
 		return db.AddColumnIfMissing(ctx, c.Table, c.To, fieldType(db.dialect, c.Field))
 	case ChangeRename:
@@ -255,7 +287,7 @@ func sqliteRetypeExpr(col string, f metadata.Field, newSQL string) string {
 // объявленные в конфигурации пересоздаются тем же прогоном миграции
 // (ensureEntityIndexes идёт следом).
 func (db *DB) dropColumn(ctx context.Context, table, column string) error {
-	if db.IsSQLite() {
+	if db.IsSQLite() && ctx.Value(entityDDLKey{}) != table {
 		if err := db.dropIndexesOnColumn(ctx, table, column); err != nil {
 			return err
 		}

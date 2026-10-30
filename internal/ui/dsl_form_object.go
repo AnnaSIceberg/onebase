@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -70,9 +71,24 @@ type formObjectThis struct {
 	// отличить от реквизита, которого форма не прислала: оба nil, а умолчание
 	// вправе заполнить только второй.
 	assigned map[string]struct{}
+	// xdtoState is independent of isNew (MakeThis also wraps new Save objects
+	// with isNew=false). It carries the actual source through the lifecycle.
+	xdtoState *entityHookXDTOState
+	// HTTP form values carry unsaved fields, but cannot attest posting/deletion
+	// state. Only this wrapper needs a live, authorized service-state snapshot;
+	// entity lifecycle wrappers already carry the in-flight Save object.
+	xdtoFormSnapshot bool
 	// writeBlocked prevents a form write lifecycle handler from recursively
 	// saving the same object and then letting the outer Save persist it again.
 	writeBlocked bool
+}
+
+// runtimeObject exposes identity for Заполнить; unsaved fields stay in the form.
+func (f *formObjectThis) runtimeObject() *runtime.Object {
+	if f == nil {
+		return nil
+	}
+	return f.obj
 }
 
 // liveCtx — контекст с открытой DSL-транзакцией, если она есть.
@@ -86,6 +102,50 @@ func (f *formObjectThis) liveCtx() context.Context {
 		return f.ctx
 	}
 	return context.Background()
+}
+
+func (f *formObjectThis) XDTOObject() *runtime.Object {
+	if !f.xdtoFormSnapshot {
+		return f.obj
+	}
+	// Keep the browser's unsaved fields/TP and optimistic version intact. The
+	// two service flags come exclusively from the same row whose read access
+	// is checked here, never from POST or similarly named application fields.
+	snapshot := *f.obj
+	snapshot.Posted, snapshot.DeletionMark = false, false
+	if !f.isNew || f.saved {
+		ctx := f.liveCtx()
+		if !f.srv.canCtx(ctx, string(f.entity.Kind), f.entity.Name, "read") {
+			interpreter.RaiseUserError("доступ запрещён")
+		}
+		row, err := f.srv.store.GetByID(ctx, f.entity.Name, f.obj.ID, f.entity)
+		if err != nil {
+			interpreter.RaiseUserError(err.Error())
+		}
+		readable, err := f.srv.rowAllowedContextResult(ctx, f.entity, "read", row)
+		if err != nil || !readable {
+			interpreter.RaiseUserError("доступ запрещён")
+		}
+		snapshot.Posted = asBool(row["posted"])
+		snapshot.DeletionMark = asBool(row["deletion_mark"])
+	}
+	return &snapshot
+}
+
+func (f *formObjectThis) XDTOMaskField() func(string, any) any {
+	state := f.hookXDTOState()
+	return f.srv.xdtoFieldMask(f.liveCtx(), f.entity, state.loaded, state.assigned)
+}
+
+func (f *formObjectThis) hookXDTOState() *entityHookXDTOState {
+	if f.xdtoState == nil {
+		// Persistence identity alone does not prove where a form's values came
+		// from (for example, a new form may contain copied data). Only the
+		// lifecycle or its originating writer can supply a less restrictive
+		// origin; explicit Set calls still mark this operation's own values.
+		f.xdtoState = &entityHookXDTOState{loaded: true, assigned: map[string]bool{}}
+	}
+	return f.xdtoState
 }
 
 // GetRefUUID сохраняет ссылочную идентичность runtime.Object у формовой
@@ -131,7 +191,11 @@ func (f *formObjectThis) CallMethod(method string, args []any) any {
 			interpreter.RaiseUserError("Записать недоступно внутри обработчика записи формы")
 		}
 		if err := f.write(); err != nil {
-			interpreter.RaiseUserError("Записать(" + f.entity.Name + "): " + err.Error())
+			message := err.Error()
+			if errors.Is(err, errCloseResultUnreadable) {
+				message = f.srv.tr(f.srv.resolveLangCtx(f.liveCtx()), "доступ запрещён")
+			}
+			interpreter.RaiseUserError("Записать(" + f.entity.Name + "): " + message)
 		}
 		return f.selfRef()
 	case "этоновый", "isnew":
@@ -159,6 +223,40 @@ func (f *formObjectThis) write() error {
 			return err
 		}
 	}
+	// Save needs the stored values, while the form handler must keep seeing its
+	// original masked/hidden view, including on rejection and transaction retry.
+	// Unlike loaded DSL writers, Get on this wrapper reads Fields directly.
+	var restoreProtectedFields func(map[string]any)
+	hookState := f.hookXDTOState()
+	if !isNew {
+		originalFields := cloneRecord(f.obj.Fields)
+		restored, err := f.srv.protectMaskedFieldsOnWrite(ctx, f.entity, f.obj.ID, f.obj.Fields)
+		if err != nil {
+			return err
+		}
+		if len(restored) > 0 {
+			restoreProtectedFields = func(fields map[string]any) {
+				for _, key := range restored {
+					if value, present := originalFields[key]; present {
+						fields[key] = value
+					} else {
+						delete(fields, key)
+					}
+				}
+			}
+			defer func() { restoreProtectedFields(f.obj.Fields) }()
+			// Only Save's XDTO provenance changes while it holds real values.
+			// Keep the handler's assignments intact: an explicit empty value
+			// must still suppress new-object defaults after an outer rollback.
+			hookState = &entityHookXDTOState{loaded: hookState.loaded, assigned: make(map[string]bool, len(hookState.assigned))}
+			for name, assigned := range f.hookXDTOState().assigned {
+				hookState.assigned[name] = assigned
+			}
+			for _, key := range restored {
+				delete(hookState.assigned, strings.ToLower(strings.TrimSpace(key)))
+			}
+		}
+	}
 	wasSaved := f.saved
 	previousExpectedVersion := f.expectedVersion
 	previousSavedFields := f.lastSavedFields
@@ -176,7 +274,12 @@ func (f *formObjectThis) write() error {
 			f.expectedVersion = &version
 			f.obj.Fields["_version"] = version
 		}
-		f.lastSavedFields = snapshotFieldValues(f.obj.Fields)
+		savedFields := f.obj.Fields
+		if restoreProtectedFields != nil {
+			savedFields = cloneRecord(savedFields)
+			restoreProtectedFields(savedFields)
+		}
+		f.lastSavedFields = snapshotFieldValues(savedFields)
 		f.lastSavedTableParts = tablePartRowsSnapshot(f.obj.TablePartRows)
 		storage.DeferUntilTxRollback(ctx, func() {
 			f.saved = wasSaved
@@ -200,7 +303,10 @@ func (f *formObjectThis) write() error {
 			}
 		})
 	}
-	result, err := f.srv.entitySvc.Save(ctx, entityservice.SaveRequest{
+	hookCtx := context.WithValue(ctx, hookXDTOOriginKey{}, hookXDTOOrigin{
+		entity: f.entity.Name, id: f.obj.ID, state: hookState,
+	})
+	result, err := f.srv.entitySvc.Save(hookCtx, entityservice.SaveRequest{
 		Entity:        f.entity,
 		ID:            f.obj.ID,
 		IsNew:         isNew,
@@ -328,6 +434,7 @@ func (f *formObjectThis) Set(name string, v any) {
 		f.assigned = map[string]struct{}{}
 	}
 	f.assigned[strings.ToLower(name)] = struct{}{}
+	f.hookXDTOState().assigned[strings.ToLower(strings.TrimSpace(name))] = true
 	f.obj.Set(name, v)
 }
 

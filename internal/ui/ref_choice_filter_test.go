@@ -51,7 +51,12 @@ func newChoiceHTTPFixtureWithOwner(t *testing.T, subordinate bool) choiceHTTPFix
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
+	return newChoiceHTTPFixtureWithStore(t, db, subordinate)
+}
 
+func newChoiceHTTPFixtureWithStore(t *testing.T, db *storage.DB, subordinate bool) choiceHTTPFixture {
+	t.Helper()
+	ctx := context.Background()
 	direction := &metadata.Entity{
 		Name: "Направление", Kind: metadata.KindCatalog, Hierarchical: true,
 		Fields: []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}},
@@ -185,7 +190,7 @@ func newChoiceHTTPFixtureWithOwner(t *testing.T, subordinate bool) choiceHTTPFix
 	server.entitySvc = server.newEntityService(nil)
 	return choiceHTTPFixture{
 		server: server, direction: direction, target: target, owner: owner,
-		rootA: rootA, rootB: rootB, pageTwo: choiceHTTPUUID(0x20, 51), hidden: hidden,
+		rootA: rootA, rootB: rootB, pageTwo: choiceHTTPUUID(0x20, 2), hidden: hidden,
 		legacySelected: legacySelected, foreignOther: foreignOther, ownerID: ownerID, user: user,
 	}
 }

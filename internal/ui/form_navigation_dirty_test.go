@@ -109,7 +109,7 @@ if ([start, end, fireEnd, helpersStart, helpersEnd, mergeStart, mergeEnd].some(i
   throw new Error('managed.js behavior slices not found');
 }
 const dirtyEnd = source.indexOf('  function applySavedIdentity(data){', helpersEnd);
-const markStart = source.indexOf('  function _obMarkDirty(){');
+const markStart = source.indexOf('  function _obMarkDirty(');
 const markEnd = source.indexOf('  document.addEventListener', markStart);
 const gridHelpersStart = source.indexOf('  function reindexOrd(items) {');
 const gridHelpersEnd = source.indexOf('  // obGridCopyRow', gridHelpersStart);
@@ -148,6 +148,7 @@ async function run(response, formDirty, concurrentEdit) {
     obSetEmbeddedDirty(v) { calls.dirty.push(v); },
     _obGrids: { Items: grid },
     obManagedApplyTablePartRefOptions() {},
+    obManagedApplyColumnTitles() {},
     applyTableParts(parts) {
       if (parts && parts.Items) rows = parts.Items.map((r, i) => ({ ...r, id: i + 1, _ord: i }));
     },
@@ -160,6 +161,9 @@ async function run(response, formDirty, concurrentEdit) {
     formEditState,
     formEventQueue: Promise.resolve(), formEventPendingCount: 0, formEventPending: false,
     closePending: null, closeHandoffPending: false, retryableClose: null,
+    // Вопрос перед проведением (ПередПроведением) живёт в контроллере закрытия,
+    // вне вырезки; навигации он не касается.
+    beforePostState: null, beforePostSnapshot: () => false, settleBeforePost() {},
     DOC_ID: 'doc', URL: '/ui/form-event',
     fetch: () => { fetchEntered(); return waiting; },
     flash: (m, kind) => calls.flash.push([m, kind]),

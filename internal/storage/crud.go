@@ -27,17 +27,21 @@ type ListParams struct {
 	// чокпоинтом в List как признак «фильтр не забыли», иначе fail-closed.
 	RowFilterEvaluated bool
 	JournalRowFilters  map[string]*Predicate // per document name row-level predicates for journal UNIONs
-	Sort               string                // field Name (empty = default sort by id)
-	Dir                string                // "asc" or "desc"
-	ParentStr          string                // "" = no filter; "root" = parent IS NULL; "<uuid>" = parent = uuid
-	Search             string                // full-text search: ILIKE across all string fields
-	ActivityScope      string                // "", "active", "inactive", "all"; applied only for opt-in catalogs
-	Limit              int                   // 0 = no limit
-	Offset             int                   // for pagination
-	AfterID            *uuid.UUID            // exclusive keyset cursor; requires id ASC and Offset=0
-	ThroughID          *uuid.UUID            // inclusive keyset high-water mark; requires id ASC and Offset=0
-	ExcludeFolders     bool                  // for hierarchical catalogs: only non-folder elements
-	OnlyFolders        bool                  // for hierarchical catalogs: only folder elements
+	// Sort is a metadata field name. Empty selects the default: keyset by id ASC;
+	// otherwise entity.OrderBy followed by id ASC (folders first for hierarchy),
+	// folders then first string for hierarchical lists without OrderBy,
+	// first document date DESC, flat catalog name/first string ASC, or id (using Dir).
+	Sort           string
+	Dir            string     // "asc" or "desc"
+	ParentStr      string     // "" = no filter; "root" = parent IS NULL; "<uuid>" = parent = uuid
+	Search         string     // full-text search: ILIKE across all string fields
+	ActivityScope  string     // "", "active", "inactive", "all"; applied only for opt-in catalogs
+	Limit          int        // 0 = no limit
+	Offset         int        // for pagination
+	AfterID        *uuid.UUID // exclusive keyset cursor; requires id ASC and Offset=0
+	ThroughID      *uuid.UUID // inclusive keyset high-water mark; requires id ASC and Offset=0
+	ExcludeFolders bool       // for hierarchical catalogs: only non-folder elements
+	OnlyFolders    bool       // for hierarchical catalogs: only folder elements
 	// IncludeFolders — явное согласие показать ГРУППЫ там, где подбор их всегда
 	// прятал (choice_folders у элемента формы). Слой UI снимает по нему свой
 	// ExcludeFolders; сам запрос дополнительных условий не получает.
@@ -84,10 +88,27 @@ func (db *DB) UpsertProvisional(ctx context.Context, entityName string, id uuid.
 		bumpVersion:      true,
 		validateRequired: false,
 		auditMode:        upsertAuditSkip,
+		transient:        true,
 	}); err != nil {
 		return err
 	}
 	return armWriteLifecycle(ctx, state)
+}
+
+// UpdateProvisional makes a new parent's post-OnWrite snapshot visible to
+// OnPost without closing its create lifecycle, advancing the version or
+// publishing durable effects. Only the final UpsertPreserveVersion may commit it.
+func (db *DB) UpdateProvisional(ctx context.Context, entityName string, id uuid.UUID, fields map[string]any, entity *metadata.Entity) error {
+	if !HasTx(ctx) {
+		return errors.New("storage: UpdateProvisional requires an active transaction")
+	}
+	if _, err := pendingWriteLifecycle(ctx, entityWriteLifecycleKey(db, "provisional-create", entityName, id)); err != nil {
+		return err
+	}
+	return db.upsert(ctx, entityName, id, fields, entity, upsertWriteOptions{
+		auditMode: upsertAuditSkip,
+		transient: true,
+	})
 }
 
 // UpsertPreserveVersion updates fields without advancing _version on conflict.
@@ -148,6 +169,9 @@ const (
 
 type upsertWriteOptions struct {
 	bumpVersion bool
+	// transient writes are visible only to hooks in the active lifecycle.
+	// Stage validation/history, FTS and audit belong to its final snapshot.
+	transient bool
 	// validateRequired is false only for an active provisional-create
 	// lifecycle. Audit policy is deliberately independent of this invariant.
 	validateRequired  bool
@@ -217,6 +241,11 @@ func (db *DB) upsertInTx(ctx context.Context, entityName string, id uuid.UUID, f
 		oldRow = existing
 	}
 	effectOldRow := oldRow
+	if options.auditMode == upsertAuditCreate {
+		// A provisional create has no original logical row. Validate and record
+		// the initial stage only once, using the final object.
+		effectOldRow = nil
+	}
 	if options.effectOldOverride != nil {
 		// A posting prelude already made the OnWrite snapshot visible inside the
 		// transaction and bumped the version. Durable effects belong to the one
@@ -248,9 +277,13 @@ func (db *DB) upsertInTx(ctx context.Context, entityName string, id uuid.UUID, f
 	// Compare against the persisted final snapshot, not just raw incoming keys.
 	// A posting final may omit the stage and thereby retain the transient prelude
 	// value; that retained value still has to pass the original-to-final route.
-	stageTr, err := db.checkStageTransition(ctx, entityName, entity, effectOldRow, effectiveFields)
-	if err != nil {
-		return err
+	var stageTr *stageTransition
+	if !options.transient {
+		var err error
+		stageTr, err = db.checkStageTransition(ctx, entityName, entity, effectOldRow, effectiveFields)
+		if err != nil {
+			return err
+		}
 	}
 
 	table := metadata.TableName(entityName)
@@ -391,27 +424,14 @@ func (db *DB) upsertInTx(ctx context.Context, entityName string, id uuid.UUID, f
 		return ErrStageConcurrentWrite
 	}
 
-	// Полнотекстовый индекс (план 82) — в той же транзакции, что и запись:
-	// откат записи откатывает и индекс, поэтому разъехаться они не могут.
-	// Здесь, а не в entityservice, потому что путей записи несколько
-	// (entityservice.Save, ui/dsl_documents, обмен, приёмка) — общий у них
-	// только этот upsert.
-	if err := db.IndexObject(ctx, entity, id, effectiveFields); err != nil {
-		return err
-	}
-
-	// История переходов (план 121) — в той же транзакции, что и запись, и
-	// безусловно: журнал регистрации ниже выключается настройкой, а отчёт «где
-	// застряло» обязан работать всегда.
-	//
-	// Режим аудита здесь СОЗНАТЕЛЬНО не учитывается. Провизорная вставка нового
-	// объекта (upsertAuditSkip) — это и есть момент, когда «» → начальный этап;
-	// её запись в истории откатится вместе с транзакцией, если хук упадёт.
-	// Audit mode intentionally does not affect stage history: a provisional
-	// insert is still the real transition from no stage to the initial stage,
-	// and its history row is committed or rolled back with the transaction.
-	if err := db.logStageTransition(ctx, entityName, id, stageTr); err != nil {
-		return err
+	// Only the final logical snapshot contributes FTS and stage history.
+	if !options.transient {
+		if err := db.IndexObject(ctx, entity, id, effectiveFields); err != nil {
+			return err
+		}
+		if err := db.logStageTransition(ctx, entityName, id, stageTr); err != nil {
+			return err
+		}
 	}
 
 	// Audit (best-effort, non-blocking)
@@ -466,17 +486,8 @@ func (db *DB) GetByID(ctx context.Context, entityName string, id uuid.UUID, enti
 func (db *DB) getByID(ctx context.Context, entityName string, id uuid.UUID, entity *metadata.Entity, forUpdate bool) (map[string]any, error) {
 	d := db.dialect
 	table := metadata.TableName(entityName)
-	cols := []string{"id"}
-	for _, f := range entity.Fields {
-		cols = append(cols, metadata.ColumnName(f))
-	}
-	if entity.Kind == metadata.KindDocument {
-		cols = append(cols, "posted")
-	}
-	cols = append(cols, "deletion_mark", "_version")
-	if entity.Hierarchical {
-		cols = append(cols, "is_folder", "parent_id")
-	}
+	cols := objectReadColumns(entity)
+
 	sql := fmt.Sprintf("SELECT %s FROM %s WHERE id = %s", strings.Join(cols, ", "), table, d.Placeholder(1))
 	if forUpdate && db.IsPostgres() && HasTx(ctx) {
 		sql += " FOR UPDATE"
@@ -492,7 +503,28 @@ func (db *DB) getByID(ctx context.Context, entityName string, id uuid.UUID, enti
 		return nil, fmt.Errorf("getbyid %s: %w", entityName, err)
 	}
 
-	result := make(map[string]any, len(cols))
+	return objectReadValues(entity, dest), nil
+}
+
+// objectReadColumns and objectReadValues keep single and batched object reads
+// identical, including document, hierarchy and optimistic-lock fields.
+func objectReadColumns(entity *metadata.Entity) []string {
+	cols := []string{"id"}
+	for _, f := range entity.Fields {
+		cols = append(cols, metadata.ColumnName(f))
+	}
+	if entity.Kind == metadata.KindDocument {
+		cols = append(cols, "posted")
+	}
+	cols = append(cols, "deletion_mark", "_version")
+	if entity.Hierarchical {
+		cols = append(cols, "is_folder", "parent_id")
+	}
+	return cols
+}
+
+func objectReadValues(entity *metadata.Entity, dest []any) map[string]any {
+	result := make(map[string]any, len(dest))
 	result["id"] = normalizeValue(dest[0])
 	for i, f := range entity.Fields {
 		result[f.Name] = normalizeFieldValue(f, dest[i+1])
@@ -511,7 +543,7 @@ func (db *DB) getByID(ctx context.Context, entityName string, id uuid.UUID, enti
 		off++
 		result["parent_id"] = normalizeValue(dest[off])
 	}
-	return result, nil
+	return result
 }
 
 // normalizeValue converts pgx scan results to display-friendly Go types.
@@ -690,7 +722,7 @@ func ListEntityColumns(entity *metadata.Entity) []string {
 // listWhere builds the complete predicate shared by List and CountList. Count
 // deliberately omits keyset cursors because its public contract reports the
 // total before pagination; every other filter must be byte-for-byte identical.
-func (db *DB) listWhere(entity *metadata.Entity, params ListParams, includeKeyset bool) (string, []any, error) {
+func (db *DB) listWhere(entityName string, entity *metadata.Entity, params ListParams, includeKeyset bool) (string, []any, error) {
 	d := db.dialect
 	var whereParts []string
 	var args []any
@@ -741,6 +773,26 @@ func (db *DB) listWhere(entity *metadata.Entity, params ListParams, includeKeyse
 				args = append(args, bound)
 				argIdx++
 			}
+		case field.Type == metadata.FieldTypeBool:
+			// Булево — точное сравнение, а не подстрока: на SQLite значение
+			// хранится как 0/1, и «%Да%» не совпадал ни с одной записью. «Нет»
+			// включает незаполненное (NULL) — в карточке оно и показывается как
+			// «Нет». Непонятное значение не открывает весь список.
+			if filter.Value != "" {
+				b, ok := parseAnyBool(filter.Value)
+				switch {
+				case !ok:
+					whereParts = append(whereParts, "1 = 0")
+				case b:
+					whereParts = append(whereParts, fmt.Sprintf("%s = %s", column, d.Placeholder(argIdx)))
+					args = append(args, true)
+					argIdx++
+				default:
+					whereParts = append(whereParts, fmt.Sprintf("(%s = %s OR %s IS NULL)", column, d.Placeholder(argIdx), column))
+					args = append(args, false)
+					argIdx++
+				}
+			}
 		case field.RefEntity != "":
 			if filter.Value != "" {
 				whereParts = append(whereParts, fmt.Sprintf("%s = %s", column, d.Placeholder(argIdx)))
@@ -763,13 +815,48 @@ func (db *DB) listWhere(entity *metadata.Entity, params ListParams, includeKeyse
 	if params.Search != "" {
 		var searchParts []string
 		pattern := "%" + params.Search + "%"
-		// SQLite placeholders are positional, so bind the pattern once per
-		// searchable field rather than reusing a numbered placeholder.
-		for _, field := range metadata.SearchFields(entity) {
-			column := metadata.ColumnName(field)
-			searchParts = append(searchParts, d.LowerLike(column)+" LIKE "+d.LowerLike(d.Placeholder(argIdx)))
-			args = append(args, pattern)
-			argIdx++
+		paths, err := metadata.SearchFieldPaths(entity)
+		if err != nil {
+			return "", nil, err
+		}
+		// Group each table part into one correlated EXISTS. Bind every LIKE
+		// separately because SQLite placeholders are positional.
+		type tableSearch struct {
+			name    string
+			columns []string
+		}
+		var tables []tableSearch
+		tableIndex := make(map[string]int)
+		for _, path := range paths {
+			if path.TablePart == nil {
+				column := metadata.ColumnName(path.Field)
+				searchParts = append(searchParts, d.LowerLike(column)+" LIKE "+d.LowerLike(d.Placeholder(argIdx)))
+				args = append(args, pattern)
+				argIdx++
+				continue
+			}
+			name := path.TablePart.Name
+			index, ok := tableIndex[name]
+			if !ok {
+				index = len(tables)
+				tableIndex[name] = index
+				tables = append(tables, tableSearch{name: name})
+			}
+			tables[index].columns = append(tables[index].columns, metadata.ColumnName(path.Field))
+		}
+		for i, tp := range tables {
+			alias := fmt.Sprintf("ob_search_tp_%d", i)
+			for strings.EqualFold(alias, metadata.TableName(entityName)) {
+				alias += "_"
+			}
+			var matches []string
+			for _, column := range tp.columns {
+				matches = append(matches, d.LowerLike(alias+"."+column)+" LIKE "+d.LowerLike(d.Placeholder(argIdx)))
+				args = append(args, pattern)
+				argIdx++
+			}
+			searchParts = append(searchParts, fmt.Sprintf("EXISTS (SELECT 1 FROM %s AS %s WHERE %s.parent_id = %s.id AND (%s))",
+				metadata.TablePartTableName(entityName, tp.name), alias, alias, metadata.TableName(entityName), strings.Join(matches, " OR ")))
 		}
 		if len(searchParts) > 0 {
 			whereParts = append(whereParts, "("+strings.Join(searchParts, " OR ")+")")
@@ -835,13 +922,23 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 	table := metadata.TableName(entityName)
 	cols := ListEntityColumns(entity)
 	hasPredefined := entity.Kind == metadata.KindCatalog && len(entity.Predefined) > 0
-	whereClause, args, err := db.listWhere(entity, params, true)
+	whereClause, args, err := db.listWhere(entityName, entity, params, true)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", entityName, err)
 	}
-	query := fmt.Sprintf("SELECT %s FROM %s%s", strings.Join(cols, ", "), table, whereClause)
+	baseSelect := fmt.Sprintf("SELECT %s FROM %s", strings.Join(cols, ", "), table)
+	query := baseSelect + whereClause
+	// split — порядок по умолчанию «пустые в конце», который этот диалект сам
+	// не даёт (см. ниже): тогда непустые и пустые читаются двумя запросами.
+	var split *nullsLastOrder
 
 	// sorting
+	// Папки впереди — только когда они перемешаны с элементами. Если отбор
+	// оставил одни элементы (выбор значения ссылки) или одни папки, is_folder
+	// у всех строк одинаков, а ключ сортировки по нему лишь мешает индексу:
+	// «первые 50 по коду» превращались в сортировку всего справочника (иерархия
+	// адресов 615 тыс. строк — 0,2–0,4 с на каждое ссылочное поле формы).
+	foldersFirst := entity.Hierarchical && !params.OnlyFolders && !params.ExcludeFolders
 	if keyset {
 		query += " ORDER BY id ASC"
 	} else if params.Sort == "" && len(entity.OrderBy) > 0 {
@@ -851,7 +948,7 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 		// дерево.
 		d := db.dialect
 		parts := make([]string, 0, len(entity.OrderBy)+1)
-		if entity.Hierarchical {
+		if foldersFirst {
 			parts = append(parts, "is_folder DESC")
 		}
 		for _, spec := range entity.OrderBy {
@@ -903,9 +1000,9 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 			}
 			parts = append(parts, expr+" "+dir)
 		}
-		if len(parts) == 0 {
-			parts = append(parts, "id ASC")
-		}
+		// Уникальный последний ключ задаёт полный порядок равных значений
+		// order_by, в том числе у папок и при устаревших именах полей.
+		parts = append(parts, "id ASC")
 		query += " ORDER BY " + strings.Join(parts, ", ")
 	} else if entity.Hierarchical && params.Sort == "" {
 		firstStrCol := "id"
@@ -915,9 +1012,17 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 				break
 			}
 		}
-		query += fmt.Sprintf(" ORDER BY is_folder DESC, %s ASC", firstStrCol)
+		if foldersFirst {
+			query += fmt.Sprintf(" ORDER BY is_folder DESC, %s ASC", firstStrCol)
+		} else {
+			query += fmt.Sprintf(" ORDER BY %s ASC", firstStrCol)
+		}
 	} else {
 		orderCol := "id"
+		orderDir := "ASC"
+		if strings.EqualFold(params.Dir, "desc") {
+			orderDir = "DESC"
+		}
 		if params.Sort != "" {
 			for _, f := range entity.Fields {
 				if f.Name == params.Sort {
@@ -925,18 +1030,151 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 					break
 				}
 			}
+		} else {
+			// Без заданной сортировки показываем документы по дате, а плоские
+			// справочники — по Наименованию либо первому строковому реквизиту.
+			// Если подходящего поля нет, сохраняем прежний fallback по id.
+			switch entity.Kind {
+			case metadata.KindDocument:
+				for _, f := range entity.Fields {
+					if f.Type == metadata.FieldTypeDate {
+						orderCol = metadata.ColumnName(f)
+						orderDir = "DESC"
+						break
+					}
+				}
+			case metadata.KindCatalog:
+				// Код может быть синтезирован нумератором перед Наименованием.
+				// Список должен идти по видимому имени, а не по коду.
+				for _, f := range entity.Fields {
+					if f.Type == metadata.FieldTypeString && strings.EqualFold(f.Name, "Наименование") {
+						orderCol = metadata.ColumnName(f)
+						orderDir = "ASC"
+						break
+					}
+				}
+				if orderCol == "id" {
+					for _, f := range entity.Fields {
+						if f.Type == metadata.FieldTypeString {
+							orderCol = metadata.ColumnName(f)
+							orderDir = "ASC"
+							break
+						}
+					}
+				}
+			}
 		}
-		orderDir := "ASC"
-		if strings.ToLower(params.Dir) == "desc" {
-			orderDir = "DESC"
+		if params.Sort == "" && orderCol != "id" {
+			// PostgreSQL и SQLite по-разному располагают NULL при ASC/DESC, а
+			// пустые значения обязаны идти в конце на обоих. Выражение
+			// «CASE WHEN col IS NULL …» в ORDER BY это давало, но запрещало
+			// индекс: справочник на 2 млн строк сортировался целиком на каждое
+			// открытие списка (24 с при индексе по наименованию). Где диалект
+			// сам ставит NULL в конец, хватает обычного ORDER BY; где нет —
+			// непустые и пустые читаются раздельно, каждые по индексу.
+			if db.dialect.Name() == "postgres" && orderDir == "ASC" || db.dialect.Name() != "postgres" && orderDir == "DESC" {
+				query += fmt.Sprintf(" ORDER BY %s %s, id ASC", orderCol, orderDir)
+			} else {
+				split = &nullsLastOrder{col: orderCol, dir: orderDir}
+			}
+		} else {
+			query += fmt.Sprintf(" ORDER BY %s %s", orderCol, orderDir)
 		}
-		query += fmt.Sprintf(" ORDER BY %s %s", orderCol, orderDir)
 	}
 
+	scan := func(query string, args []any) ([]map[string]any, error) {
+		return db.scanListRows(ctx, entityName, entity, cols, hasPredefined, query, args)
+	}
+	if split != nil {
+		if HasTx(ctx) {
+			// A borrowed PostgreSQL transaction may be READ COMMITTED and
+			// already in use: neither sharing it nor a savepoint fixes the
+			// snapshot across statements. Read this List in one statement,
+			// retaining the caller's own writes and transaction settings.
+			query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, id ASC", split.col, split.dir)
+		} else {
+			var result []map[string]any
+			err := db.WithReadSnapshot(ctx, func(readCtx context.Context) error {
+				readScan := func(query string, args []any) ([]map[string]any, error) {
+					return db.scanListRows(readCtx, entityName, entity, cols, hasPredefined, query, args)
+				}
+				var err error
+				result, err = db.listNullsLast(readCtx, entityName, table, baseSelect, whereClause, args, split, params, readScan)
+				return err
+			})
+			return result, err
+		}
+	}
 	if params.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d OFFSET %d", params.Limit, params.Offset)
 	}
+	return scan(query, args)
+}
 
+// nullsLastOrder — порядок «col dir, id», при котором строки с пустым col идут
+// последними, а диалект без CASE в ORDER BY ставит их первыми.
+type nullsLastOrder struct {
+	col string
+	dir string
+}
+
+// listNullsLast читает страницу в порядке «непустые по col, затем пустые по id»
+// двумя запросами, каждый из которых может идти по индексу: сначала непустые
+// (ORDER BY col, id + LIMIT/OFFSET страницы), и только если страница ими не
+// заполнилась — пустые с остатком смещения. Счёт непустых нужен лишь на
+// последних страницах. Результат совпадает с прежним
+// «ORDER BY CASE WHEN col IS NULL THEN 1 ELSE 0 END, col, id».
+func (db *DB) listNullsLast(ctx context.Context, entityName, table, baseSelect, whereClause string, args []any,
+	order *nullsLastOrder, params ListParams,
+	scan func(string, []any) ([]map[string]any, error)) ([]map[string]any, error) {
+	where := func(cond string) string {
+		if strings.TrimSpace(whereClause) == "" {
+			return " WHERE " + cond
+		}
+		return whereClause + " AND " + cond
+	}
+	notNull := baseSelect + where(order.col+" IS NOT NULL") + fmt.Sprintf(" ORDER BY %s %s, id ASC", order.col, order.dir)
+	isNull := baseSelect + where(order.col+" IS NULL") + " ORDER BY id ASC"
+	if params.Limit <= 0 {
+		head, err := scan(notNull, args)
+		if err != nil {
+			return nil, err
+		}
+		tail, err := scan(isNull, args)
+		if err != nil {
+			return nil, err
+		}
+		return append(head, tail...), nil
+	}
+	head, err := scan(notNull+fmt.Sprintf(" LIMIT %d OFFSET %d", params.Limit, params.Offset), args)
+	if err != nil {
+		return nil, err
+	}
+	if len(head) >= params.Limit {
+		return head, nil
+	}
+	// Страница добирается пустыми: смещение среди них — за вычетом всех
+	// непустых строк выборки.
+	var nonNull int
+	countSQL := "SELECT COUNT(*) FROM " + table + where(order.col+" IS NOT NULL")
+	if err := db.QueryRow(ctx, countSQL, args...).Scan(&nonNull); err != nil {
+		return nil, fmt.Errorf("list %s: %w", entityName, err)
+	}
+	offset := params.Offset - nonNull
+	if offset < 0 {
+		offset = 0
+	}
+	tail, err := scan(isNull+fmt.Sprintf(" LIMIT %d OFFSET %d", params.Limit-len(head), offset), args)
+	if err != nil {
+		return nil, err
+	}
+	return append(head, tail...), nil
+}
+
+// scanListRows выполняет запрос списка и разбирает строки в map по полям
+// сущности (общая часть List для одного и двух запросов).
+func (db *DB) scanListRows(ctx context.Context, entityName string, entity *metadata.Entity, cols []string,
+	hasPredefined bool, query string, args []any) ([]map[string]any, error) {
 	rows, err := db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", entityName, err)
@@ -984,7 +1222,7 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 // (ignoring pagination: Limit, Offset, AfterID and ThroughID).
 func (db *DB) CountList(ctx context.Context, entityName string, entity *metadata.Entity, params ListParams) (int, error) {
 	table := metadata.TableName(entityName)
-	whereClause, args, err := db.listWhere(entity, params, false)
+	whereClause, args, err := db.listWhere(entityName, entity, params, false)
 	if err != nil {
 		return 0, fmt.Errorf("count %s: %w", entityName, err)
 	}
@@ -1007,7 +1245,7 @@ func (db *DB) ListContainsID(ctx context.Context, entityName string, entity *met
 		return false, fmt.Errorf("strict RLS: membership of %q requested without row access evaluation (fail-closed, plan 79F)", entityName)
 	}
 	table := metadata.TableName(entityName)
-	whereClause, args, err := db.listWhere(entity, params, false)
+	whereClause, args, err := db.listWhere(entityName, entity, params, false)
 	if err != nil {
 		return false, fmt.Errorf("list contains %s: %w", entityName, err)
 	}
@@ -1184,8 +1422,12 @@ func (db *DB) upsertTablePartRows(ctx context.Context, entityName, tpName string
 	}
 
 	for i, row := range prepared {
-		if err := db.exec(ctx, row.sql, row.args...); err != nil {
-			return fmt.Errorf("insert tablepart %s.%s row %d: %w", entityName, tpName, i+1, err)
+		if _, err := db.execAllowingFKDiagnosis(ctx, row.sql, row.args...); err != nil {
+			classified := classifyConstraintErr(err)
+			if errors.Is(classified, ErrForeignKeyViolation) {
+				classified = db.explainFKViolation(ctx, &metadata.Entity{Fields: tp.Fields}, rows[i], classified)
+			}
+			return fmt.Errorf("insert tablepart %s.%s row %d: %w", entityName, tpName, i+1, classified)
 		}
 	}
 	return nil

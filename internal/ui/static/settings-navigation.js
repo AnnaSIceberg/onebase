@@ -195,23 +195,47 @@
     function renderPalette() {
       palette.replaceChildren();
       var filter = document.getElementById('navigation-filter').value.toLowerCase();
+      var available = 0, matches = 0;
       walk(data.base, function (entry) {
-        if (find(entry.node.id) || filter && label(entry.node).toLowerCase().indexOf(filter) < 0) return;
-        var row = element('div'); row.appendChild(element('span', label(entry.node)));
+        if (find(entry.node.id)) return;
+        available++;
+        if (filter && label(entry.node).toLowerCase().indexOf(filter) < 0) return;
+        matches++;
+        var row = element('div'); row.dataset.kind = entry.kind; row.appendChild(element('span', label(entry.node)));
         var control = button(labels.restore, function () { restore(entry.node.id); }); control.dataset.restoreId = entry.node.id; row.appendChild(control); palette.appendChild(row);
       });
+      if (!matches) palette.appendChild(element('p', available ? labels.paletteNoMatches : labels.palettePlaced));
     }
     function renderPreview(sections) {
       preview.replaceChildren();
+      function decorated(tag, text, name) {
+        var node = element(tag, text);
+        // Match NormalizeIconName and LucideIcon; only server-listed symbols
+        // may become fragments of the versioned, same-origin sprite URL.
+        var key = (name || '').trim().toLowerCase().replace(/[ _-]+/g, '-').replace(/^-|-$/g, '');
+        if (!key) return node;
+        if (Object.prototype.hasOwnProperty.call(data.iconAliases || {}, key)) key = data.iconAliases[key];
+        if (!(data.icons || []).includes(key)) key = data.iconFallback;
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'lucide ob-icon');
+        svg.setAttribute('style', 'vertical-align:middle;margin-right:5px');
+        svg.setAttribute('width', '1em'); svg.setAttribute('height', '1em');
+        svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2'); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+        svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
+        var use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+        use.setAttribute('href', data.iconSprite + '#' + key); svg.appendChild(use); node.prepend(svg);
+        return node;
+      }
       (sections || []).forEach(function (section) {
-        preview.appendChild(element('h3', section.title));
+        preview.appendChild(decorated('h3', section.title, section.icon));
         function items(value, container) {
           var list = element('ul');
-          (value || []).forEach(function(item){var li = element('li'), link = element('a', item.label); link.href = item.url; li.appendChild(link); list.appendChild(li);});
+          (value || []).forEach(function(item){var li = element('li'), link = decorated('a', item.label, item.icon); link.href = item.url; li.appendChild(link); list.appendChild(li);});
           container.appendChild(list);
         }
         items(section.items, preview);
-        (section.groups || []).forEach(function(group){var folder = element('details'); folder.open = true; folder.appendChild(element('summary', group.title)); items(group.items, folder); preview.appendChild(folder);});
+        (section.groups || []).forEach(function(group){var folder = element('details'); folder.open = true; folder.appendChild(decorated('summary', group.title, group.icon)); items(group.items, folder); preview.appendChild(folder);});
       });
     }
     function requestPreview() {

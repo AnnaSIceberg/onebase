@@ -338,10 +338,24 @@ type Entity struct {
 	// сегодня). Событие данные.<lower(имя)> публикуется автоматически при
 	// NotifyChanges; прочие имена шлёт конфигурация через ОтправитьУведомление.
 	ListRefreshOn []string
+	// ListFilters — основной набор полей панели «Отбор» списка. Пусто —
+	// панель показывает все реквизиты (как раньше); задано — только эти, а
+	// остальные пользователь добавляет себе кнопкой «+ Отбор» (выбор
+	// запоминается за ним). У документа на сотню реквизитов панель из всех
+	// полей нечитаема.
+	ListFilters []string
 	// NotifyChanges — opt-in автопубликации служебного события данные.<lower(имя)>
 	// после успешной записи/проведения/отмены/удаления (row-aware адресация по
 	// правам). Без него «живому списку» нечего слушать без ручного кода.
 	NotifyChanges bool
+	// NoInteractiveCreate — `interactive_create: false`: создать объект из
+	// интерфейса (кнопки «Создать», «Скопировать», ввод на основании, создание
+	// из поля ссылки, адрес /new) может только роль с явным правом `create` —
+	// как право «Интерактивное добавление» в 1С; одного `write` мало.
+	// Программно (Документы.X.Создать(), REST) создают по праву `write`: так
+	// документ, который рождается из другого (заявка из звонка), не появится в
+	// базе в обход своего основания у тех, кому ручное создание не положено.
+	NoInteractiveCreate bool
 	// TileView задаёт пользовательскую компоновку плитки списка. Nil означает
 	// старое автоправило: картинка из image-поля, заголовок из первого поля,
 	// остальные реквизиты ниже.
@@ -397,13 +411,14 @@ type Entity struct {
 	DetailPanel *DetailPanel
 	// FullText — реквизиты шапки, попадающие в полнотекстовый индекс (план 82).
 	// Nil (блока нет в YAML) означает умолчание: все строковые реквизиты, см.
-	// FullTextFields. Явный пустой список — объект исключён из глобального поиска.
+	// HeaderFullTextFields. Явный пустой список — объект исключён из глобального поиска.
 	FullText []string
 	// FullTextSet отличает отсутствующий ключ fulltext от явного «fulltext: []».
 	FullTextSet bool
-	// Search — реквизиты, по которым ищет строка поиска списка и подбор ссылки
+	// Search — реквизиты шапки или пути ТабличнаяЧасть.Поле, по которым ищет
+	// строка поиска списка и подбор ссылки
 	// (ввод по строке в ячейке ТЧ, форма выбора). Nil означает умолчание: все
-	// строковые реквизиты, как было всегда, — см. SearchFields. Отдельно от
+	// строковые реквизиты, как было всегда, — см. SearchFieldPaths. Отдельно от
 	// FullText: тот управляет ГЛОБАЛЬНЫМ индексом, и `fulltext: []` (объект вне
 	// глобального поиска) не должен заодно ломать подбор в форме.
 	Search []string
@@ -442,66 +457,6 @@ func (e *Entity) ItemFormNames() []string {
 		names = append(names, f.Name)
 	}
 	return names
-}
-
-// SearchFields возвращает реквизиты, по которым идёт поиск подстроки в списке и
-// в подборе ссылки. Без блока `search_fields:` это все строковые реквизиты
-// шапки — историческое поведение, менять которое молча нельзя.
-//
-// Явный список снимает ограничение по типу: артикул или штрихкод часто хранят
-// числом, и по умолчанию такой реквизит в поиск не попадал — ровно этого и не
-// хватало, чтобы набирать позицию не по наименованию. Приведение к тексту берёт
-// на себя диалект (LowerLike), поэтому отдельный CAST не нужен.
-//
-// Ссылочные реквизиты не участвуют никогда: в колонке лежит UUID, искать по нему
-// подстроку бессмысленно (валидация такой список отклоняет).
-func SearchFields(e *Entity) []Field {
-	if e == nil {
-		return nil
-	}
-	if e.SearchSet {
-		out := make([]Field, 0, len(e.Search))
-		for _, name := range e.Search {
-			if f := findEntityFieldFold(e, name); f != nil && f.RefEntity == "" {
-				out = append(out, *f)
-			}
-		}
-		return out
-	}
-	var out []Field
-	for _, f := range e.Fields {
-		if f.Type == FieldTypeString && f.RefEntity == "" {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
-// FullTextFields возвращает реквизиты шапки, которые индексируются глобальным
-// поиском (план 82). Без блока `fulltext:` в YAML это все строковые реквизиты —
-// у документа сюда попадает и синтезированный Номер. Явный `fulltext: []`
-// выключает объект из индекса, поэтому пустой результат — валидное состояние,
-// а не «список не задан».
-func FullTextFields(e *Entity) []Field {
-	if e == nil {
-		return nil
-	}
-	if e.FullTextSet {
-		out := make([]Field, 0, len(e.FullText))
-		for _, name := range e.FullText {
-			if f := findEntityFieldFold(e, name); f != nil {
-				out = append(out, *f)
-			}
-		}
-		return out
-	}
-	var out []Field
-	for _, f := range e.Fields {
-		if f.Type == FieldTypeString {
-			out = append(out, f)
-		}
-	}
-	return out
 }
 
 // findEntityFieldFold ищет реквизит шапки по имени без учёта регистра: DSL и
@@ -841,6 +796,11 @@ type InfoRegister struct {
 	Recorder   bool
 	Dimensions []Field // key fields
 	Resources  []Field // value fields
+	// Indexes — дополнительные (неуникальные) индексы таблицы регистра.
+	// Первичный ключ начинается с period, поэтому отбор по измерению без
+	// периода («срез последних по адресу») без своего индекса читает всю
+	// таблицу. Поля — измерения, ресурсы или служебное period.
+	Indexes []IndexSpec
 }
 
 // DisplayName возвращает заголовок регистра сведений с учётом языка.
@@ -856,12 +816,22 @@ func (ir *InfoRegister) DisplayName(lang string) string {
 	return ir.Name
 }
 
-func RegisterTableName(regName string) string {
-	return "рег_" + strings.ToLower(regName)
-}
+// Функции имён таблиц и колонок. Каждая — SQLIdent от «логического» имени
+// (*Logical): логическое — то, что уходило в базу до #1946; оно нужно миграции,
+// чтобы найти и переименовать таблицу, созданную под длинным именем.
+
+func RegisterTableName(regName string) string { return SQLIdent(RegisterTableLogical(regName)) }
+
+// RegisterTableLogical — логическое имя таблицы регистра накопления.
+func RegisterTableLogical(regName string) string { return "рег_" + strings.ToLower(regName) }
 
 // RegisterTotalsTableName — таблица предрасчитанных итогов регистра (план 80).
 func RegisterTotalsTableName(regName string) string {
+	return SQLIdent(RegisterTotalsTableLogical(regName))
+}
+
+// RegisterTotalsTableLogical — логическое имя таблицы итогов регистра.
+func RegisterTotalsTableLogical(regName string) string {
 	return "итоги_" + strings.ToLower(regName)
 }
 
@@ -870,11 +840,33 @@ func RegisterTotalsTableName(regName string) string {
 // time.Format("2006-01"), чтобы границу момента можно было вычислить в Go.
 const RegisterTotalsMonthCol = "месяц"
 
-func InfoRegTableName(regName string) string {
-	return "инфо_" + strings.ToLower(regName)
+func InfoRegTableName(regName string) string { return SQLIdent(InfoRegTableLogical(regName)) }
+
+// InfoRegTableLogical — логическое имя таблицы регистра сведений.
+func InfoRegTableLogical(regName string) string { return "инфо_" + strings.ToLower(regName) }
+
+// TablePartRowNumberField — номер строки табличной части в запросе
+// («ТЧ.НомерСтроки», как в 1С); в таблице это колонка «строка».
+const TablePartRowNumberField = "НомерСтроки"
+
+// TablePartQueryEntity — табличная часть как источник запроса: номер строки и
+// реквизиты ТЧ под именем name. Ссылка такого источника — владелец строки.
+func TablePartQueryEntity(owner *Entity, tp *TablePart, name string) *Entity {
+	if owner == nil || tp == nil {
+		return nil
+	}
+	fields := make([]Field, 0, len(tp.Fields)+1)
+	fields = append(fields, Field{Name: TablePartRowNumberField, Type: FieldTypeNumber})
+	fields = append(fields, tp.Fields...)
+	return &Entity{Name: name, Kind: owner.Kind, Fields: fields}
 }
 
 func TablePartTableName(entityName, tpName string) string {
+	return SQLIdent(TablePartTableLogical(entityName, tpName))
+}
+
+// TablePartTableLogical — логическое имя таблицы табличной части.
+func TablePartTableLogical(entityName, tpName string) string {
 	return strings.ToLower(entityName) + "_" + strings.ToLower(tpName)
 }
 
@@ -936,9 +928,10 @@ func EnumTypeName(ft FieldType) string {
 	return strings.TrimPrefix(string(ft), "enum:")
 }
 
-func TableName(entityName string) string {
-	return strings.ToLower(entityName)
-}
+func TableName(entityName string) string { return SQLIdent(TableLogical(entityName)) }
+
+// TableLogical — логическое имя таблицы справочника или документа.
+func TableLogical(entityName string) string { return strings.ToLower(entityName) }
 
 // FieldSignature — диалект-независимая подпись типа поля (план 81).
 //
@@ -959,7 +952,10 @@ func FieldSignature(f Field) string {
 	}
 }
 
-func ColumnName(f Field) string {
+func ColumnName(f Field) string { return SQLIdent(LogicalColumnName(f)) }
+
+// LogicalColumnName — логическое имя колонки поля: lower(имя), у ссылки — с _id.
+func LogicalColumnName(f Field) string {
 	col := strings.ToLower(f.Name)
 	if f.RefEntity != "" {
 		return col + "_id"
