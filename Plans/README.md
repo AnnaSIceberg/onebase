@@ -515,6 +515,7 @@
 |---|---|---|---|---|
 | 210 | [210-catalog-first-page-performance.md](210-catalog-first-page-performance.md) | Ленивая панель «Отбор» и opt-in индексы точного порядка order_by после замеров, с сохранением RLS и пагинации (#2255) | ~10–16 дней | 📋 Проектирование |
 | 212 | [212-form-opening-parameters.md](212-form-opening-parameters.md) | Общие имена и значения URL: отбор списка, даты/диапазоны и форма отчёта с/без запуска (#2389, #2359) | ~6–9 дней | 📋 Проектирование |
+| 213 | [213-tail-durable-discovery-and-backlog.md](213-tail-durable-discovery-and-backlog.md) | Долговечные cursor/backlog TAIL, восстановление после простоя и сохранение существующего trust (#1248) | ~8–12 дней | 📋 Проектирование |
 
 ## Граф зависимостей (архив)
 
