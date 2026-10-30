@@ -518,6 +518,12 @@
 | 213 | [213-tail-durable-discovery-and-backlog.md](213-tail-durable-discovery-and-backlog.md) | Долговечные cursor/backlog TAIL, восстановление после простоя и сохранение существующего trust (#1248) | ~8–12 дней | 📋 Проектирование |
 | 214 | [214-persistent-list-filter-contract.md](214-persistent-list-filter-contract.md) | Постоянные отборы списка: ошибки, false/NULL, группы без обхода RLS и lf_off (#2375, #2376) | ~6–9 дней | 📋 Проектирование |
 
+### Bootstrap: платформенные пути и транспорт
+
+| № | Файл | Фича | Эстимейт | Статус |
+|---|---|---|---|---|
+| 215 | [215-bootstrap-platform-and-transport-contract.md](215-bootstrap-platform-and-transport-contract.md) | Пути PowerShell, HTTPS без downgrade, медленная сеть, noexec и PATH-ссылки; продолжение плана 202 (#2392, #2082, #2083) | ~6,5–10 дней | 📋 Проектирование |
+
 ## Граф зависимостей (архив)
 
 > Историческая секция: все перечисленные ниже планы (05–17) закрыты. Оставлена
