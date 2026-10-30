@@ -2863,7 +2863,7 @@ function obInitListDelegates() {
     var picker = e.target.closest('[data-ob-ref-picker]');
     if (picker) {
       e.preventDefault();
-      openRefPicker(picker.getAttribute('data-ob-ref-picker') || '');
+      obOpenRefPickerOnce(e, picker.getAttribute('data-ob-ref-picker') || '');
       return;
     }
     var row = e.target.closest('[data-ob-list-row]');
@@ -3677,13 +3677,13 @@ function obInitFormDelegates() {
     if (refPicker) {
       e.preventDefault();
       var pickerTarget = refPicker.getAttribute('data-ob-ref-picker') || '';
-      openRefPicker(pickerTarget === 'closest' ? obClosestSelect(refPicker) : pickerTarget);
+      obOpenRefPickerOnce(e, pickerTarget === 'closest' ? obClosestSelect(refPicker) : pickerTarget);
       return;
     }
     var refPickerSelf = e.target.closest('[data-ob-ref-picker-self]');
     if (refPickerSelf) {
       e.preventDefault();
-      openRefPicker(obClosestSelect(refPickerSelf));
+      obOpenRefPickerOnce(e, obClosestSelect(refPickerSelf));
       return;
     }
     var refCurrentSelf = e.target.closest('[data-ob-ref-current-self]');
@@ -3843,7 +3843,7 @@ function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, 
       pickBtn.setAttribute('data-ob-ref-picker-self', '');
       wrapper.appendChild(sel);
       wrapper.appendChild(pickBtn);
-      if (meta && meta.entity) {
+      if (meta && meta.entity && tbody.getAttribute('data-tp-hide-ref-card') !== '1') {
         var openBtn = document.createElement('button');
         openBtn.type = 'button';
         openBtn.textContent = '🔍';
@@ -5259,6 +5259,28 @@ function obInitChoiceFilterRefresh() {
   document.addEventListener('change', function () { obAttachTPChoiceContexts(document); window.obRefreshChoiceFilters(); });
 }
 obReady(obInitChoiceFilterRefresh);
+
+// BEGIN onebase-ref-picker-claim
+// obOpenRefPickerOnce — один щелчок открывает окно выбора один раз. Кнопку 🔍
+// ловят несколько делегатов document: делегат списка и формы в ui.js и
+// делегат управляемой формы в managed.js. Второй вызов openRefPicker закрывал
+// только что открытое окно — его запрос отменялся (nginx 499, сервер писал
+// 500), и тот же запрос уходил заново: двойная нагрузка на каждый щелчок.
+// Отметка живёт на самом событии, поэтому следующий щелчок открывает окно как
+// обычно. Берётся только тем делегатом, который нашёл поле: делегат списка
+// видит у кнопки управляемой формы «closest», а не id, — заберёт он отметку
+// первым, и окно не откроет никто.
+function obOpenRefPickerOnce(e, selOrId) {
+  var sel = (typeof selOrId === 'string') ? (selOrId ? document.getElementById(selOrId) : null) : selOrId;
+  if (!sel) return;
+  if (e) {
+    if (e.__obRefPickerOpened) return;
+    try { e.__obRefPickerOpened = true; } catch (_) {}
+  }
+  openRefPicker(sel);
+}
+window.obOpenRefPickerOnce = obOpenRefPickerOnce;
+// END onebase-ref-picker-claim
 
 function openRefPicker(selOrId) {
   var sel = (typeof selOrId === 'string') ? document.getElementById(selOrId) : selOrId;
