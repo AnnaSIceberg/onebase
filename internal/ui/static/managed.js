@@ -180,6 +180,39 @@ function obManagedApplyTablePartRefOptions(next) {
 }
 window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 
+function obEscapeColumnTitle(text) {
+  return String(text == null ? "" : text)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// obManagedApplyColumnTitles — заголовки колонок с title_from после события
+// формы: {путь размещения ТЧ: {реквизит: заголовок}}. Меняется и описание колонки
+// (его заново рисует setColumns при перестановке), и уже нарисованная шапка.
+function obManagedApplyColumnTitles(titles) {
+  if (!titles) return;
+  // Все экземпляры сетки табличной части (рядом с редактируемой бывает
+  // сводка только для чтения), а не только канонический из _obGrids.
+  var views = (window._obGridViews || []).slice();
+  var grids = window._obGrids || {};
+  Object.keys(grids).forEach(function(tp) {
+    if (views.indexOf(grids[tp]) < 0) views.push(grids[tp]);
+  });
+  views.forEach(function(state) {
+    if (!state || !state.grid || !state.div) return;
+    var byField = titles[state.div.getAttribute("data-sg-path")];
+    if (!byField) return;
+    (state.columns || []).forEach(function(col) {
+      if (!Object.prototype.hasOwnProperty.call(byField, col.id)) return;
+      var title = obEscapeColumnTitle(byField[col.id]);
+      if (col.name === title) return;
+      col.name = title;
+      if (state.grid.updateColumnHeader) state.grid.updateColumnHeader(col.id, title);
+    });
+  });
+}
+window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
+
 // Отправляет текущие form-values + имя элемента/события в /ui/.../form-event,
 // получает JSON с новыми значениями и сообщениями от Сообщить(), применяет их.
 (function(){
@@ -1336,6 +1369,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
       } else {
         if (Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
         applyElementStates(data.elementStates);
+        window.obManagedApplyColumnTitles(data.columnTitles);
         window.obManagedApplyTablePartRefOptions(data.tpRefOptions);
         window.applyTableParts(data.tableparts);
         applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
@@ -1788,6 +1822,7 @@ window.obManagedApplyTablePartRefOptions = obManagedApplyTablePartRefOptions;
 	// for the retry based on the current snapshot.
 	if (!merging && Object.prototype.hasOwnProperty.call(data, 'conditionalCss')) applyFormConditionalCSS(data.conditionalCss);
 	if (!merging) applyElementStates(data.elementStates);
+	if (!merging) window.obManagedApplyColumnTitles(data.columnTitles);
 	window.obManagedApplyTablePartRefOptions(tpRefOptions);
 	window.applyTableParts(tableparts);
 	applyValues(values, refOptions);
@@ -2603,7 +2638,9 @@ function obManagedInitDelegates() {
     if (btn.hasAttribute('data-ob-ref-picker')) {
       e.preventDefault();
       var pickSel = obManagedClosestSelect(btn);
-      if (pickSel && typeof openRefPicker === 'function') openRefPicker(pickSel);
+      // Тот же щелчок ловит и делегат формы в ui.js: окно — один раз.
+      if (pickSel && typeof window.obOpenRefPickerOnce === 'function') window.obOpenRefPickerOnce(e, pickSel);
+      else if (pickSel && typeof openRefPicker === 'function') openRefPicker(pickSel);
       return;
     }
     if (btn.hasAttribute('data-ob-ref-current')) {
@@ -3674,7 +3711,9 @@ function obGridColumnIds(columns) {
       // Выкинуть её отсюда И оттуда значило бы стирать реквизит при записи:
       // сервер подставляет пустое значение всему, чего нет в строке.
       if (c && c.hidden) continue;
-      var col = {id: c.id, name: c.name, field: c.id, width: 120, resizable: true, sortable: true,
+      // Заголовок из реквизита формы (title_from) — текст, а шапка SlickGrid
+      // рисует подпись как HTML: экранируем.
+      var col = {id: c.id, name: c.titleFrom ? obEscapeColumnTitle(c.name) : c.name, field: c.id, width: 120, resizable: true, sortable: true,
                  metaIndex: (c && typeof c.index === "number") ? c.index : -1};
       // Ширина из `width` элемента Колонка (или виртуальной колонки).
       // obWidth — объявленная ширина: autosizeColumns перезаписывает width, а
