@@ -966,16 +966,18 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
     Object.keys(vts).forEach(function(vtName){
       var tableBodies = obManagedTableBodies('vt-body-' + vtName, 'data-vt-fields');
       if (!tableBodies.length) return;
+      var before = obManagedVtRowsKey(tableBodies[0]);
       tableBodies.forEach(function(tbody){
-      var before = obManagedVtRowsKey(tbody);
-      tbody.innerHTML = '';
-      (vts[vtName] || []).forEach(function(row, idx){
-        tbody.appendChild(buildVtRow(tbody, vtName, idx, row));
+        tbody.innerHTML = '';
+        (vts[vtName] || []).forEach(function(row, idx){
+          tbody.appendChild(buildVtRow(tbody, vtName, idx, row));
+        });
       });
       // An unchanged event echo replaces DOM nodes, but preserves the selection.
       // A different result set (including order or hidden values) clears it.
-      if (before !== obManagedVtRowsKey(tbody)) obManagedVtActiveRow.delete(tbody);
-      });
+      if (before !== obManagedVtRowsKey(tableBodies[0])) {
+        tableBodies.forEach(function(tbody){ obManagedVtActiveRow.delete(tbody); });
+      }
     });
   }
   function buildVtRow(tbody, vtName, idx, row) {
@@ -1243,6 +1245,27 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
     if (window.obGridSync && window.obGridSync() === false) return;
     const body = new URLSearchParams();
     const eventFD = fileEventFormData(form, fileHelpers);
+    if (eventName === 'ПриАктивизацииСтроки' && extraParams && extraParams._tp) {
+      var vtBody = obManagedTableBodies('vt-body-' + extraParams._tp, 'data-vt-fields').find(function(tbody){
+        return tbody.getAttribute('data-ob-vt-activate') === elementName;
+      });
+      if (vtBody) {
+        // Use this exact outgoing snapshot, after file/grid synchronization.
+        // The server sorts submitted indices and discards wholly empty rows.
+        var vtRows = obManagedVtPayloadRows(vtBody, eventFD);
+        if (vtRows) {
+          var vtIndex = vtRows.findIndex(function(row){ return String(row.index) === String(extraParams._tp_row); });
+          if (vtIndex < 0) {
+            obManagedVtActiveRow.delete(vtBody);
+            return;
+          }
+          extraParams._tp_row = String(vtIndex);
+        }
+        var selectedRow = String(extraParams._tp_row);
+        if (obManagedVtActiveRow.get(vtBody) === selectedRow) return;
+        obManagedVtActiveRow.set(vtBody, selectedRow);
+      }
+    }
     eventFD.set(serviceField('_element'), elementName || '');
     eventFD.set(serviceField('_event'), eventName || '');
     eventFD.set(serviceField('_kind'), 'object');
@@ -2530,9 +2553,46 @@ function obManagedReindexVtRows(tbody) {
 }
 window.obManagedReindexVtRows = obManagedReindexVtRows;
 
-// Compare rendered values rather than response JSON: initial HTML has no stored
-// response, and numeric/string representations must compare the same way.
+// Project only declared columns from successful controls. Unknown columns do
+// not keep a row alive. Keep exact strings: "0", "false" and whitespace are
+// nonempty; an absent unchecked checkbox is different from a false carrier.
+function obManagedVtPayloadRows(tbody, data) {
+  var fields = obManagedParseFieldMeta(tbody.getAttribute('data-vt-fields') || '');
+  var vtName = tbody.getAttribute('data-ob-vt-name') || String(tbody.id || '').slice('vt-body-'.length);
+  var rows = new Map();
+  var valid = true;
+  data.forEach(function(value, name){
+    var parts = name.split('.');
+    if (parts[0].toLowerCase() !== 'vt' || (parts[1] || '').toLowerCase() !== vtName.toLowerCase()) return;
+    if (parts.length !== 4 || !/^\d+$/.test(parts[2]) || !Number.isSafeInteger(Number(parts[2]))) { valid = false; return; }
+    var field = fields.find(function(f){ return f.name.toLowerCase() === parts[3].toLowerCase(); });
+    if (!field) return;
+    var index = Number(parts[2]);
+    if (!rows.has(index)) rows.set(index, new Map());
+    var row = rows.get(index);
+    if (row.has(field.name) || typeof value !== 'string') { valid = false; return; }
+    row.set(field.name, value);
+  });
+  // With no submitted columns (a display-only table), the server retains its
+  // form state. Do not reinterpret that absence as an empty writable payload.
+  // Leave malformed/duplicate payload to the existing strict server validator.
+  if (!valid || !rows.size) return null;
+  return Array.from(rows, function(entry){ return {index: entry[0], values: fields.map(function(f){
+    return [f.name, entry[1].has(f.name) ? entry[1].get(f.name) : ''];
+  })}; }).sort(function(a, b){ return a.index - b.index; }).filter(function(row){
+    return row.values.some(function(field){ return field[1] !== ''; });
+  });
+}
+
+// Compare the normalized successful payload, so removing empty drafts in an
+// otherwise unchanged echo preserves the selected logical row. Capture this
+// once before repainting all placements, then compare after all are rebuilt.
 function obManagedVtRowsKey(tbody) {
+  var form = document.getElementById('main-form');
+  var rows = form && obManagedVtPayloadRows(tbody, new FormData(form));
+  if (rows) return JSON.stringify(rows.map(function(row){ return row.values; }));
+  // Display-only tables have no successful controls; compare their rendered
+  // values, as before, to invalidate selection when the result set changes.
   return JSON.stringify(Array.prototype.map.call(tbody.rows, function(tr){
     return Array.prototype.map.call(tr.children, function(td){
       var input = td.children[0];
@@ -2550,8 +2610,6 @@ function obManagedVtRowActivated(tr) {
   if (!elName || !vtName) return;
   var row = tr.getAttribute('data-ob-vt-row');
   if (row === null || row === '') return;
-  if (obManagedVtActiveRow.get(tbody) === row) return;
-  obManagedVtActiveRow.set(tbody, row);
   if (window.obFire) window.obFire(elName, 'ПриАктивизацииСтроки', {_tp: vtName, _tp_row: row});
 }
 

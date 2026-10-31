@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/storage"
 	"github.com/ivantit66/onebase/internal/testutil/browseracceptance"
 )
 
@@ -18,6 +20,13 @@ import (
 // placements must remain display-only while readonly columns preserve values.
 func TestValueTableColumnsBrowserAcceptance(t *testing.T) {
 	browseracceptance.Require(t)
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		t.Run("columns", func(t *testing.T) { testValueTableColumnsBrowser(t, db) })
+		t.Run("drafts", func(t *testing.T) { testValueTableDraftBrowser(t, db) })
+	})
+}
+
+func testValueTableColumnsBrowser(t *testing.T, db *storage.DB) {
 	column := func(name string, ro bool) *metadata.FormElement {
 		return &metadata.FormElement{Kind: metadata.FormElementColumn, Name: name, DataPath: name, ReadOnly: ro}
 	}
@@ -26,7 +35,7 @@ func TestValueTableColumnsBrowserAcceptance(t *testing.T) {
 			Children: []*metadata.FormElement{column("Name", false), column("Locked", true), column("VisibleFlag", true)},
 			Handlers: map[metadata.FormEventType]string{metadata.FormEventOnRowActivated: "SelectRow"}}
 	}
-	s, ent := setupManagedEventsServer(t, `
+	_, ent := setupManagedEventsServer(t, `
 Процедура OpenForm()
  Results.Очистить();
  Для Н = 0 По 1 Цикл
@@ -54,6 +63,7 @@ func TestValueTableColumnsBrowserAcceptance(t *testing.T) {
 	ent.Forms[0].Attributes = []*metadata.FormAttribute{{Name: "Results", TypeRef: "ValueTable", Columns: []*metadata.FormAttributeColumn{
 		{Name: "Name", TypeRef: "string"}, {Name: "Locked", TypeRef: "number"}, {Name: "VisibleFlag", TypeRef: "bool"}, {Name: "Flag", TypeRef: "bool"}, {Name: "ID", TypeRef: "string"},
 	}}}
+	s := newSubmitTestServerOn(t, db, []*metadata.Entity{ent})
 	router := chi.NewRouter()
 	s.MountStatic(router)
 	router.Get("/ui/{kind}/{entity}/new", s.form)

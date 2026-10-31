@@ -212,8 +212,16 @@ global.HTMLFormElement = FakeHTMLFormElement;
 class FakeFormData {
   constructor(form) {
     this.values = [];
-    for (const control of (form && form.controls) || []) {
-      if (!control.disabled && control.name) this.append(control.name, control.value || '');
+    const controls = [...((form && form.controls) || [])];
+    if (form && current) {
+      for (const tbody of current.tableBodies) for (const tr of tbody.children) {
+        for (const td of tr.children) controls.push(...td.children.filter(c => c.tagName === 'INPUT'));
+      }
+    }
+    for (const control of controls) {
+      if (!control.disabled && control.name && !(control.type === 'checkbox' && !control.checked)) {
+        this.append(control.name, String(control.value === undefined ? '' : control.value));
+      }
     }
   }
   append(name, value) { this.values.push([String(name), value]); }
@@ -843,34 +851,43 @@ test('NoGrid command selection comes from writable duplicate', async () => {
   assert.equal(new URLSearchParams(fetchBodies[0]).get('_tp_selected'), '0');
 });
 
-test('ValueTable activation follows replaced rows and separate table instances', () => {
+test('ValueTable activation follows replaced rows and separate table instances', async () => {
   resetDOM();
   const attributes = {
-    'data-vt-fields': 'Name|string', 'data-vt-editable': '0',
+    'data-vt-fields': 'Name|string', 'data-vt-editable': '0', 'data-ob-table-readonly': '1',
     'data-ob-vt-activate': 'Results', 'data-ob-vt-name': 'Results'
   };
   const first = installTableBody('vt-body-Results', attributes);
-  const second = installTableBody('vt-body-Results', attributes);
-  const previousFire = window.obFire;
+  const second = installTableBody('vt-body-Results', {...attributes, 'data-ob-table-readonly': '0', 'data-ob-vt-activate': 'OtherResults'});
+  const previousFetch = global.fetch;
   const calls = [];
-  window.obFire = (...args) => calls.push(args);
-  const clickRow = row => {
+  global.fetch = async (_url, options) => {
+    calls.push(new URLSearchParams(options.body));
+    return {ok: true, json: async () => ({ok: true})};
+  };
+  let pending;
+  const previousFire = window.obFire;
+  window.obFire = (...args) => (pending = previousFire(...args));
+  const clickRow = async row => {
     const event = {target: {closest(selector) { return selector === 'tr[data-ob-vt-row]' ? row : null; }}};
     for (const listener of documentListeners.get('click') || []) listener(event);
+    await pending;
   };
   try {
     window.applyFormTables({Results: [{Name: 'old'}]});
-    clickRow(first.children[0]);
-    clickRow(first.children[0]);
+    await clickRow(first.children[0]);
+    await clickRow(first.children[0]);
     assert.equal(calls.length, 1, 'same live row should activate once');
-    clickRow(second.children[0]);
+    await clickRow(second.children[0]);
     assert.equal(calls.length, 2, 'another table instance shares no active row');
     window.applyFormTables({Results: [{Name: 'new'}]});
-    clickRow(first.children[0]);
-    clickRow(first.children[0]);
+    await clickRow(first.children[0]);
+    await clickRow(first.children[0]);
     assert.equal(calls.length, 3, 'replacement at row zero must activate');
-    assert.deepEqual(calls[2], ['Results', 'ПриАктивизацииСтроки', {_tp: 'Results', _tp_row: '0'}]);
-  } finally {window.obFire = previousFire;}
+    assert.equal(calls[2].get('_element'), 'Results');
+    assert.equal(calls[2].get('_event'), 'ПриАктивизацииСтроки');
+    assert.equal(calls[2].get('_tp_row'), '0');
+  } finally {window.obFire = previousFire; global.fetch = previousFetch;}
 });
 
 test('ValueTable repaint preserves server column order, types and hidden values', () => {
