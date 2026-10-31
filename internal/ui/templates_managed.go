@@ -452,8 +452,8 @@ const tplManagedForm = `
   {{$vtLayout := elLayout $el}}
   {{/* Заданная высота ограничивает весь блок ValueTable, включая строки и команды. */}}
   {{if $vtLayout}}<div class="managed-vt-layout{{if elFill $el}} managed-vt-scroll{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{$vtLayout}}">{{end}}
-  {{/* Заголовок уже напечатан выше, для ЛЮБОЙ табличной части: здесь он давал
-       вторую такую же надпись над ValueTable. */}}
+  {{/* Заголовок ValueTable находится в том же контейнере высоты, что и таблица. */}}
+  <h3 style="font-size:14px;font-weight:600;margin:0 0 8px">{{fieldTitleRU $el.TitleMap $tpName}}</h3>
   {{$vtPlan := managedVTColumnPlan $el $vtCols}}
   {{$vtEditable := managedVTEditable $vtPlan}}
   {{$vtActivate := hasHandler $el "ПриАктивизацииСтроки"}}
