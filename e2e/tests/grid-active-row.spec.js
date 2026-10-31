@@ -39,11 +39,14 @@ test('текущая строка видна поверх условного ф�
   const grid = page.locator('.ob-grid[data-sg-layout]').filter({ visible: true }).first();
   await expect(grid.locator('.slick-header-column').first()).toBeVisible();
   const add = page.locator('[data-ob-grid-add], [data-ob-rowadd], [data-ob-add-tp]').filter({ visible: true }).first();
+  // Первая колонка строковая: новая строка открывает обычный редактор, его
+  // закрывает один Escape. Второй ушёл бы форме — она изменена, и диалог
+  // подтверждения закрытия перекрыл бы кнопку «Добавить строку».
   for (let i = 0; i < 2; i++) {
     await add.click();
     await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
   }
+  await expect(page.locator('#ob-managed-close-confirm')).toBeHidden();
   const rows = grid.locator('.slick-row');
   await expect(rows).toHaveCount(2);
   const cell = (i) => rows.nth(i).locator('.slick-cell').last();
