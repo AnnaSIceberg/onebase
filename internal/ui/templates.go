@@ -261,6 +261,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return processorFileContentName(proc.Params, name)
 		},
+		"entityQuestionFieldsName": entityQuestionFieldsName,
 		"processorServiceFieldNames": func(proc *processorpkg.Processor) map[string]string {
 			if proc == nil {
 				return nil

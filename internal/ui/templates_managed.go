@@ -911,6 +911,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   "initialDirty" .InitialDirty
   "docId" .ID
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
+  "serviceFields" (dict "_question_fields" (entityQuestionFieldsName .Entity .Form))
   "beforePost" (and .Entity.Posting (hasFormHandler .Form "ПередПроведением"))
   "formAttrs" (formAttrNames .Form .Entity)
   "formAttrValues" (formAttrValues .Form .Entity .Values)
