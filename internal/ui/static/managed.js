@@ -5061,3 +5061,73 @@ document.addEventListener('DOMContentLoaded', function () {
     window.history.replaceState(window.history.state, '', url.toString());
   }
 });
+
+// ─── deadline_warn: поле-срок ───────────────────────────────────────────────
+//
+// Значение поля — срок: «ЧЧ:ММ» (сегодня) или дата со временем. До срока меньше
+// N минут (data-ob-deadline) — класс ob-deadline-soon, срок прошёл —
+// ob-deadline-over. Считается по часам браузера и пересчитывается каждые 15
+// секунд: форма открыта долго, а «время вышло» должно стать видно без
+// перезагрузки. Значение, которое не читается как срок, подсветки не даёт.
+function obDeadlineParse(raw, now) {
+  var v = String(raw || "").trim();
+  if (!v) return null;
+  function validTime(h, min, sec) {
+    return h <= 23 && min <= 59 && sec <= 59;
+  }
+  function dateTime(y, month, day, h, min, sec, ms, zone) {
+    if (!validTime(h, min, sec)) return null;
+    // Validate calendar components before Date can normalize an invalid day.
+    // setUTCFullYear also avoids the constructor's special handling of 0–99.
+    var utc = new Date(0);
+    utc.setUTCFullYear(y, month - 1, day);
+    utc.setUTCHours(h, min, sec, ms);
+    if (utc.getUTCFullYear() !== y || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) return null;
+    if (zone) {
+      var offset = 0;
+      if (zone !== "Z") {
+        var parts = /^([+-])(\d{2}):(\d{2})$/.exec(zone);
+        if (!parts || !validTime(+parts[2], +parts[3], 0)) return null;
+        offset = (+parts[2] * 60 + +parts[3]) * (parts[1] === "+" ? 1 : -1);
+      }
+      return new Date(utc.getTime() - offset * 60000);
+    }
+    var local = new Date(0);
+    local.setFullYear(y, month - 1, day);
+    local.setHours(h, min, sec, ms);
+    if (local.getFullYear() !== y || local.getMonth() !== month - 1 || local.getDate() !== day ||
+        local.getHours() !== h || local.getMinutes() !== min || local.getSeconds() !== sec) return null;
+    return local;
+  }
+  var m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(v);
+  if (m) return dateTime(now.getFullYear(), now.getMonth() + 1, now.getDate(), +m[1], +m[2], +(m[3] || 0), 0, "");
+  m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:\d{2})?$/.exec(v);
+  if (m) return dateTime(+m[1], +m[2], +m[3], +m[4], +m[5], +(m[6] || 0), +(m[7] || "").slice(0, 3).padEnd(3, "0"), m[8]);
+  m = /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(v);
+  if (m) return dateTime(+m[3], +m[2], +m[1], +m[4], +m[5], +(m[6] || 0), 0, "");
+  return null;
+}
+function obDeadlineState(raw, warnMinutes, now) {
+  var due = obDeadlineParse(raw, now);
+  if (!due) return "";
+  var left = due.getTime() - now.getTime();
+  if (left <= 0) return "over";
+  if (left <= warnMinutes * 60000) return "soon";
+  return "";
+}
+function obDeadlineTick() {
+  var now = new Date();
+  document.querySelectorAll("input[data-ob-deadline]").forEach(function (inp) {
+    var state = obDeadlineState(inp.value, parseFloat(inp.getAttribute("data-ob-deadline")) || 0, now);
+    inp.classList.toggle("ob-deadline-soon", state === "soon");
+    inp.classList.toggle("ob-deadline-over", state === "over");
+  });
+}
+window.obDeadlineTick = obDeadlineTick;
+obManagedReady(function () {
+  obDeadlineTick();
+  setInterval(obDeadlineTick, 15000);
+  document.addEventListener("input", function (e) {
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute("data-ob-deadline")) obDeadlineTick();
+  });
+});
