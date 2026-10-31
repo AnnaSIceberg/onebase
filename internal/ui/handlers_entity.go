@@ -75,6 +75,8 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	}
 	s.resolveListSort(r, entity, &params)
 
+	params = s.applyListFormFilter(r, entity, params)
+
 	view := r.URL.Query().Get("view")
 	// tree проходит мимо нормализации: иерархический вид открывается по
 	// ?view=tree, но персистентно не сохраняется — его выбирают заново.
@@ -100,12 +102,22 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	var breadcrumbs []map[string]string
 	var parentStr string
 	var upURL string
+	// Поиск и отбор в иерархическом списке ищут по всему справочнику, а не
+	// среди прямых детей открытой папки: «Севрюкова» из корня не находилась,
+	// если мастер лежит в группе. Папка в адресе остаётся — по ней строятся
+	// хлебные крошки и «✕» возвращает туда, где пользователь был.
+	searchAll := entity.Hierarchical && !treeView && listSearchesWholeHierarchy(params)
 	if entity.Hierarchical && !treeView {
 		parentStr = r.URL.Query().Get("parent")
-		if parentStr == "" {
+		switch {
+		case searchAll:
+			params.ParentStr = ""
+		case parentStr == "":
 			params.ParentStr = "root"
-		} else {
+		default:
 			params.ParentStr = parentStr
+		}
+		if parentStr != "" {
 			breadcrumbs = s.buildHierarchyBreadcrumbs(r.Context(), entity, parentStr)
 			baseListURL := "/ui/" + strings.ToLower(string(entity.Kind)) + "/" + strings.ToLower(entity.Name)
 			upParent := ""
@@ -142,6 +154,9 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	s.maskRecords(r.Context(), entity, rows)
 	s.resolveRefs(r.Context(), entity, rows)
 	markActivityRows(entity, rows)
+	if searchAll {
+		s.markHierarchyGroups(r.Context(), entity, rows)
+	}
 
 	// Tree view is lazy: render only root rows first, children are loaded by
 	// /ui/_tree-children/{entity} when the user expands a folder.
@@ -192,6 +207,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"IsAdmin":          isAdmin,
 		"Breadcrumbs":      breadcrumbs,
 		"ParentStr":        parentStr,
+		"SearchAll":        searchAll,
 		"UpURL":            upURL,
 		"TreeView":         treeView,
 		"TilesView":        tilesView,
@@ -207,8 +223,39 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"EnumLabels":       s.buildEnumLabels(entity, lang),
 		"BasedOnActions":   s.basedOnActions(r, entity, lang),
 		"RequestURI":       r.URL.RequestURI(),
+		"ListFormToggles":  s.listFormFilterToggles(r, entity),
+		"ListFormOff":      r.URL.Query().Get(listFormFilterOffParam),
 		"ListFilterExtra":  listFilterExtra,
 	})
+}
+
+// listSearchesWholeHierarchy — поиск или отбор в списке иерархического
+// справочника идут по всему справочнику, а не только по открытой папке.
+func listSearchesWholeHierarchy(params storage.ListParams) bool {
+	return strings.TrimSpace(params.Search) != "" || len(params.Filters) > 0
+}
+
+// markHierarchyGroups подписывает строки результата поиска по всему
+// иерархическому справочнику их группой: «_group_id» и «_group_label».
+// Родитель может быть закрыт строковыми правами даже при доступном ребёнке:
+// подпись и ссылку добавляем только после RBAC/RLS-проверки родителя.
+func (s *Server) markHierarchyGroups(ctx context.Context, entity *metadata.Entity, rows []map[string]any) {
+	ids := make(map[string]uuid.UUID)
+	for _, row := range rows {
+		if pid, id, ok := uuidFromValue(row["parent_id"]); ok {
+			ids[pid] = id
+		}
+	}
+	labels := make(map[string]string, len(ids))
+	s.batchReadableLabels(ctx, entity, ids, labels)
+	for _, row := range rows {
+		if pid, _, ok := uuidFromValue(row["parent_id"]); ok {
+			if label, readable := labels[pid]; readable {
+				row["_group_id"] = pid
+				row["_group_label"] = label
+			}
+		}
+	}
 }
 
 // buildCatalogTree converts a flat list of catalog rows into a depth-first ordered
@@ -832,6 +879,7 @@ func (s *Server) parseSubmitForm(w http.ResponseWriter, r *http.Request, entity 
 	// клиентом. Удаляем ключ и из полей объекта, и из признаков отправки:
 	// у существующей записи остаётся прежнее значение, у новой — умолчание.
 	removeSubmittedFormFields(r, dropAdminOnlyFields(form, fields, s.isAdmin(r)))
+	s.dropConcealedInput(r, entity, form, fields)
 
 	mergeSubmittedEntityServiceFields(r, entity, fields)
 
@@ -1002,6 +1050,9 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	if s.refuseInteractiveCreate(w, r, entity) {
 		return
 	}
+	r, finishConceal := s.beginConcealRequest(r, entity, true, nil)
+	defer finishConceal()
+
 	// Предел тела зависит от метаданных: форме с richtext-реквизитом нужен запас
 	// на порядок больше (#629). Сущность известна из маршрута — getEntity читает
 	// только URL-параметр и тела не касается, так что порядок безопасен.
@@ -1013,6 +1064,7 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	managedForm := pickManagedForm(entity, "object")
 	if managedForm != nil {
 		s.mergeFormAttrValues(r.Context(), r, managedForm, entity, obj)
+		s.restoreConcealControllers(r, entity, managedForm, obj)
 		if strings.TrimSpace(r.FormValue(copySourceFormField)) != "" {
 			if failed := s.restoreManagedCopyState(
 				w, r, entity, managedForm, fields, obj.Fields, obj.TablePartRows,
@@ -1383,6 +1435,7 @@ func (s *Server) treeChildrenJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	params = s.applyListFormFilter(r, ent, params)
 	rows, err := s.store.List(r.Context(), ent.Name, ent, params)
 	if err != nil {
 		s.serverError(w, r, err)
@@ -1427,6 +1480,9 @@ func (s *Server) treeChildRows(r *http.Request, entity *metadata.Entity, rows []
 		if subQS != "" {
 			folderURL += "&" + subQS
 			openURL += "?" + subQS
+		}
+		if off := r.URL.Query().Get(listFormFilterOffParam); off != "" {
+			folderURL += "&" + listFormFilterOffParam + "=" + url.QueryEscape(off)
 		}
 		copyURL := ""
 		if canCopy {
@@ -1568,7 +1624,7 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 	// поэтому RLS на чтение, объявленный в autogen-форме, тоже срабатывает.
 	if objForm := pickObjectFormWithReadHook(entity); objForm != nil {
 		if denied := s.runFormReadHook(r.Context(), entity, objForm, id); denied != nil {
-			s.renderForbidden(w, r)
+			s.renderReadHookDenied(w, r, denied)
 			return
 		}
 	}
@@ -1747,6 +1803,9 @@ func (s *Server) submitEdit(w http.ResponseWriter, r *http.Request) {
 	if entity == nil {
 		return
 	}
+	r, finishConceal := s.beginConcealRequest(r, entity, true, nil)
+	defer finishConceal()
+
 	// Предел тела — по метаданным сущности, см. комментарий в submit (#629).
 	r.Body = http.MaxBytesReader(w, r.Body, s.entityFormBodyLimit(r, entity))
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -1776,6 +1835,7 @@ func (s *Server) submitEdit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.mergeFormAttrValues(r.Context(), r, managedForm, entity, obj)
+		s.restoreConcealControllers(r, entity, managedForm, obj)
 		hookMsgs, _, saveErr := s.saveManagedObject(r, entity, managedForm, obj, false, action, false, nil)
 		if saveErr != nil {
 			s.renderManagedObjectSaveFailure(w, r, entity, false, obj, hookMsgs, saveErr)
