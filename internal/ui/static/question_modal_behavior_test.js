@@ -192,3 +192,40 @@ test('обработчики вызывающего получают ответ 
   assert.equal(dismissed, 1);
   assert.deepEqual(answers, ['Нет']);
 });
+
+
+test('callback получает один ответ со строковым и многострочным вводом', () => {
+  const app = setup();
+  const answers = [];
+  const before = fired.length;
+  app.obOpenQuestion({text: 'Провести?', variants: ['Да'], fields: [
+    {name: 'Кому', editable: true}, {name: 'Комментарий', editable: true, multiline: true},
+  ]}, '', {onAnswer: (variant, extra) => answers.push({variant, extra})});
+  const nodes = walk(app.__modalNode(), []);
+  nodes.find((n) => n.tag === 'input').value = 'дежурный';
+  nodes.find((n) => n.tag === 'textarea').value = 'строка 1\nстрока 2';
+  nodes.find((n) => n.tag === 'button').click();
+  assert.equal(answers.length, 1);
+  assert.equal(answers[0].variant, 'Да');
+  assert.equal(answers[0].extra._question_answer, 'Да');
+  assert.deepEqual(JSON.parse(answers[0].extra._question_fields), {Кому: 'дежурный', Комментарий: 'строка 1\nстрока 2'});
+  assert.equal(fired.length, before);
+});
+
+test('callback без ввода получает только ответ; backdrop не отвечает', () => {
+  const app = setup();
+  const answers = [];
+  let dismissed = 0;
+  const handlers = {onAnswer: (variant, extra) => answers.push(extra), onDismiss: () => dismissed++};
+  const question = {text: 'Провести?', variants: ['Да'], fields: [{name: 'Показ', value: 'текст'}]};
+  app.obOpenQuestion(question, '', handlers);
+  walk(app.__modalNode(), []).find((n) => n.tag === 'button').click();
+  assert.equal(answers.length, 1);
+  assert.equal(answers[0]._question_answer, 'Да');
+  assert.equal(Object.hasOwn(answers[0], '_question_fields'), false);
+  app.obOpenQuestion(question, '', handlers);
+  const modal = app.__modalNode();
+  modal.listeners.get('click')({target: modal});
+  assert.equal(dismissed, 1);
+  assert.equal(answers.length, 1);
+});

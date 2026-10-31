@@ -1400,7 +1400,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
         // снимком формы; закрытие вопроса мимо кнопок отменяет проведение.
         beforePostState.questionOpen = true;
         if (window.obOpenQuestion) window.obOpenQuestion(data.question, '', {
-          onAnswer: function(variant){ runBeforePostEvent({_question_answer: variant}); },
+          onAnswer: function(variant, extra){ runBeforePostEvent(extra || {_question_answer: variant}); },
           onDismiss: function(){ settleBeforePost(false); }
         });
         else settleBeforePost(false);

@@ -5019,7 +5019,7 @@ function obOpenQuestion(payload, elementName, handlers) {
         names.forEach(function (name) { values[name] = inputs[name].value; });
         extra._question_fields = JSON.stringify(values);
       }
-      if (handlers && typeof handlers.onAnswer === 'function') { handlers.onAnswer(variant); return; }
+      if (handlers && typeof handlers.onAnswer === 'function') { handlers.onAnswer(variant, extra); return; }
       if (typeof obFire === 'function') obFire(elementName, 'Ответ', extra);
     });
     row.appendChild(btn);
