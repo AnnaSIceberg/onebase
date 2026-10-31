@@ -17,15 +17,10 @@ func hintFromAttr(el *metadata.FormElement) string {
 	return strings.TrimPrefix(strings.TrimSpace(el.HintFrom), "Форма.")
 }
 
-// elHintText — подсказка элемента: значение реквизита hint_from, а если оно
-// пусто (или ключа нет) — статический hint; hotKey дописывается в скобках.
-func elHintText(values map[string]any, el *metadata.FormElement, hotKey string) string {
-	return elHintTextOr(values, el, hotKey, "")
-}
-
-// elHintTextOr — то же, но без значения реквизита и без статического hint
-// подставляется def: штатная подсказка вида поля (формат числа) не пропадает
-// из-за того, что у поля объявлен hint_from.
+// elHintTextOr — подсказка элемента: значение реквизита hint_from, а если оно
+// пусто (или ключа нет) — статический hint; без того и другого — def, чтобы
+// штатная подсказка вида поля (формат числа) не пропадала из-за hint_from.
+// hotKey дописывается в скобках.
 func elHintTextOr(values map[string]any, el *metadata.FormElement, hotKey, def string) string {
 	text := ""
 	if attr := hintFromAttr(el); attr != "" && values != nil {
