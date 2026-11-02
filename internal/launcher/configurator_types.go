@@ -59,6 +59,9 @@ type saveField struct {
 	// ChoiceShowDeleted — choice_show_deleted ссылочного реквизита. Редактор
 	// его не показывает, ключ переносится из прежнего состояния файла.
 	ChoiceShowDeleted *bool `yaml:"choice_show_deleted,omitempty"`
+	// PIIOpenWhen — условие раскрытия ПДн в форме записи (Field.PIIOpenWhen).
+	// Редактор его тоже не показывает: переносится из прежнего файла, как pii.
+	PIIOpenWhen string `yaml:"pii_open_when,omitempty"`
 }
 
 type saveTP struct {

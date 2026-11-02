@@ -266,6 +266,9 @@ func carryFieldKeys(f, old saveField) saveField {
 	if f.ChoiceShowDeleted == nil {
 		f.ChoiceShowDeleted = old.ChoiceShowDeleted
 	}
+	if f.PIIOpenWhen == "" {
+		f.PIIOpenWhen = old.PIIOpenWhen
+	}
 	return f
 }
 
