@@ -1486,6 +1486,12 @@ window.obManagedApplyHints = obManagedApplyHints;
         headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'X-OneBase-Shell': (typeof window.obShellId === 'function' ? window.obShellId() : '') },
         credentials: 'same-origin'
       });
+      // Сервер перезапущен после открытия формы — её серверное состояние
+      // пропало; продолжать молча нельзя.
+      if (window.obServerRestarted && window.obServerRestarted(res)) {
+        window.obReloadAfterRestart();
+        return;
+      }
       const data = await res.json();
       if (snapshot.pickerRequest && snapshot.pickerRequest.search && !window.obPickerRequestCurrent(snapshot.pickerRequest)) return;
 	  // A JSON proxy/error page is not a trusted application envelope. `ok` is
