@@ -375,6 +375,9 @@ func (s *Server) Mount(r chi.Router) {
 	// Порядок колонок таблицы управляемой формы за пользователем (как в 1С).
 	r.Post("/ui/_grid-order", s.gridOrderSave)
 	r.Post("/ui/_grid-widths", s.gridWidthsSave)
+	// Строка состояния внизу страницы (status_bar): содержимое и кнопки.
+	r.Get("/ui/_status-bar", s.statusBarGet)
+	r.Post("/ui/_status-bar", s.statusBarPress)
 
 	// Gengen — ДО catch-all роутов! (иначе /ui/dev/gengen матчится как {kind}/{entity})
 	r.Get("/ui/dev/gengen", s.gengenPage)
