@@ -211,3 +211,18 @@ test('color строки: подпись и значение красятся, �
   assert.equal(byText('Номер').style.color, undefined);
   assert.equal(nodes.find((n) => n.tag === 'input').style.color, '#0055aa', 'поле ввода тоже');
 });
+
+test('модальный вопрос: щелчок мимо окна не закрывает его и не отвечает', () => {
+  const app = setup();
+  fired.length = 0;
+  app.window.obOpenQuestion(payload, 'Команда');
+  const modal = app.__modalNode();
+  modal.click(); // щелчок по затемнённому фону
+  assert.ok(app.document.getElementById('_question-modal'), 'окно вопроса осталось');
+  assert.equal(fired.length, 0, 'без кнопки ответ не уходит');
+  const buttons = [];
+  (function walk(n) { if (n.tag === 'button') buttons.push(n); (n.children || []).forEach(walk); })(modal);
+  buttons[0].click();
+  assert.equal(app.document.getElementById('_question-modal'), null, 'кнопка закрывает окно');
+  assert.deepEqual(fired.map((f) => [f[0], f[1], f[2]._question_answer]), [['Команда', 'Ответ', 'Да']]);
+});
