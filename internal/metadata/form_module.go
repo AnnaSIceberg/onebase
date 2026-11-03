@@ -276,6 +276,13 @@ type FormElement struct {
 	// каждой строки). nil и true — рамка, как было.
 	Frame      *bool  `yaml:"frame,omitempty"`
 	Background string `yaml:"background,omitempty"` // фон: ГруппаФормы (#1547), СтраницыФормы (весь набор), Кнопка, у ПолеВвода — фон самого ввода; цвет проверяет csssafe.Color
+	// TitleColor / TitleBold — у kind: Страница: цвет и жирность заголовка её
+	// закладки; цвет — и у нижней черты активной закладки. TabTitlesBold — у
+	// СтраницыФормы: все заголовки набора жирные и крупнее (15px). Цвет
+	// проверяет csssafe.Color, недопустимый игнорируется.
+	TitleColor    string `yaml:"title_color,omitempty"`
+	TitleBold     bool   `yaml:"title_bold,omitempty"`
+	TabTitlesBold bool   `yaml:"tab_titles_bold,omitempty"`
 	// BorderColor — цвет рамки ввода ПолеВвода (вместе с background выделяет
 	// поле, как в ТЗ форм колл-центра); цвет проверяет csssafe.Color.
 	BorderColor string `yaml:"border_color,omitempty"`
