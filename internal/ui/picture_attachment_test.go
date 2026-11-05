@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -263,8 +264,12 @@ func TestManagedFormPictureWithHiddenEditorUpdatesInNode(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET формы: %d %s", rec.Code, rec.Body.String())
 	}
-	if values := pictureFormControls(t, rec.Body.String()); len(values["Наименование"]) != 0 {
-		t.Fatalf("hidden group unexpectedly rendered a named control: %v", values["Наименование"])
+	// Скрытая условием группа есть в разметке, но выключена целиком
+	// (disabled fieldset): её копия поля не отправляется и не мешает
+	// видимой картинке (form_hidden_until.go).
+	if values := pictureFormControls(t, rec.Body.String()); len(values["Наименование"]) != 0 &&
+		!regexp.MustCompile(`<fieldset[^>]*data-ob-el="СкрытаяГруппа"[^>]*\sdisabled`).MatchString(rec.Body.String()) {
+		t.Fatalf("hidden group rendered a submittable named control: %v", values["Наименование"])
 	}
 	doc, err := html.Parse(strings.NewReader(rec.Body.String()))
 	if err != nil {
