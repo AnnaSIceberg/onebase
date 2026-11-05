@@ -785,8 +785,8 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
 <link rel="stylesheet" href="/vendor/slickgrid/slick-default-theme.css">
 <style>
 .ob-grid{font-size:13px;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden}
-.ob-grid .slick-header-columns{background:#f1f5f9;border-bottom:2px solid #cbd5e1}
-.ob-grid .slick-header-column{font-weight:600;color:#475569;font-size:12px;padding:6px 8px;border-right:1px solid #cbd5e1}
+.ob-grid .slick-header-columns{background:#eef2f7;border-bottom:2px solid #cbd5e1}
+.ob-grid .slick-header-column{font-weight:600;color:#334155;background:#eef2f7;font-size:12px;padding:6px 8px;border-right:1px solid #cbd5e1}
 .ob-grid .slick-header-column:hover{background:#e2e8f0}
 /* header_background / header_border_color у ТабличнаяЧасть: шапка этой
    таблицы своим цветом — на цветном фоне формы серая шапка сливается со
