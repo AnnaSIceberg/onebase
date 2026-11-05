@@ -2134,21 +2134,9 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 			msgs = append(msgs, warnings...)
 		}
 	}
-	// Состояния — по полным значениям; затем значения полей, все размещения
-	// которых скрыты условием, из ответа убираются (ПДн в скрытой группе не
-	// уезжают в браузер, пока группа не показана).
 	elementStates := s.timedFormElementStates(ctx, form, entity, values)
 	refOptions := s.eventRefOptions(ctx, form, entity, refValues)
 	columnTitles := managedTPColumnTitles(form, entity, values, langFromCtx(ctx))
-	if elementStates != nil {
-		hiddenFields := fullyHiddenFormFields(form, elementStates.Hidden)
-		dropHiddenFieldValues(values, hiddenFields)
-		for k := range refOptions {
-			if hiddenFields[strings.ToLower(k)] {
-				delete(refOptions, k)
-			}
-		}
-	}
 	return formEventState{
 		Revealed:       revealed,
 		Values:         values,
