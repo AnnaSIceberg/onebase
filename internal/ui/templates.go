@@ -1498,6 +1498,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"managedTPColumnsHiddenWhen": managedTPColumnsHiddenWhen,
 		// statusBarMeta — признак строки состояния внизу страницы (status_bar).
 		"statusBarMeta": statusBarMetaHTML,
+		// messagesMeta — режим показа сообщений интерфейса (home_page: messages).
+		"messagesMeta": messagesMetaHTML,
 		// managedTPColumnsTitled — заголовки колонок из title_from по значениям
 		// формы при отрисовке; после событий их присылает columnTitles.
 		"managedTPColumnsTitled": func(plan []managedTPColumn, values any) []managedTPColumn {
@@ -1732,7 +1734,7 @@ const tplHead = `
   "closeNotConfirmed" (t (or $.Lang "ru") "Форма не закрыта: сервер не подтвердил закрытие.")
   "unsavedClose" (t (or $.Lang "ru") "Данные были изменены и не записаны. Закрыть форму?")
 )}}</script>
-{{statusBarMeta .}}<script src="/static/ui.js"></script>
+{{statusBarMeta .}}{{messagesMeta .}}<script src="/static/ui.js"></script>
 <style>
 .ob-embedded .topbar,.ob-embedded .subsys-bar,.ob-embedded #ob-nav{display:none!important}
 *{box-sizing:border-box;margin:0;padding:0}

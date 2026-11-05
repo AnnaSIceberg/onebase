@@ -856,6 +856,11 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	// Строка состояния внизу страницы (status_bar) — у пользователя, которому
 	// она положена; head выводит её признак, содержимое берёт ui.js.
 	s.addStatusBarData(r, data)
+	if _, ok := data["MessagesMode"]; !ok {
+		if hp := s.messagesModeData(); hp != nil {
+			data["MessagesMode"] = hp
+		}
+	}
 	if _, ok := data["CollapsibleNav"]; !ok {
 		data["CollapsibleNav"] = s.store.GetNavCollapsible(r.Context())
 	}
