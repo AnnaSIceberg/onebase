@@ -804,6 +804,10 @@ type FormCellStyle struct {
 // FormDensityCompact — плотная раскладка формы (FormModule.Density).
 const FormDensityCompact = "compact"
 
+// FormDensityDense — ещё плотнее compact (поле 25px, шрифт 12.5px, подпись
+// 10.5px): для формы, которой compact не хватает, чтобы влезть в экран.
+const FormDensityDense = "dense"
+
 type FormModule struct {
 	EntityName string                    `yaml:"entity,omitempty"`
 	Name       string                    `yaml:"name,omitempty"`
@@ -873,9 +877,10 @@ type FormModule struct {
 	// работают всегда, независимо от этого ключа.
 	EnterSubmitsForm bool `yaml:"enter_submits_form,omitempty"`
 	// Density — плотность раскладки этой формы: "" — обычная, "compact" —
-	// плотная (поле 28px, шрифт 13px, подпись 11px, меньшие отступы). Нужна
-	// рабочим формам, которые обязаны поместиться в экран без прокрутки,
-	// не меняя остальные страницы системы.
+	// плотная (поле 28px, шрифт 13px, подпись 11px, меньшие отступы), "dense"
+	// — ещё плотнее (поле 25px, шрифт 12.5px, подпись 10.5px). Нужна рабочим
+	// формам, которые обязаны поместиться в экран без прокрутки, не меняя
+	// остальные страницы системы.
 	Density string `yaml:"density,omitempty"`
 	// TabSkipReadonly — нередактируемые поля и ячейки таблиц не входят в порядок
 	// Tab: оператор переходит только по тому, что можно ввести.

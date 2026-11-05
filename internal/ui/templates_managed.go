@@ -685,6 +685,27 @@ input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#
 /* ПослеОткрытия: пока грузятся данные элемента — индикатор поверх него. */
 .ob-loading{position:relative;pointer-events:none}
 .ob-loading::after{content:"";position:absolute;inset:0;background:rgba(255,255,255,.55) no-repeat center/28px 28px url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 50 50%27%3E%3Ccircle cx=%2725%27 cy=%2725%27 r=%2720%27 fill=%27none%27 stroke=%27%233b82f6%27 stroke-width=%275%27 stroke-dasharray=%2790 60%27%3E%3CanimateTransform attributeName=%27transform%27 type=%27rotate%27 from=%270 25 25%27 to=%27360 25 25%27 dur=%27.9s%27 repeatCount=%27indefinite%27/%3E%3C/circle%3E%3C/svg%3E");border-radius:8px;z-index:5}
+/* density: dense — ещё плотнее compact: поле 25px, шрифт 12.5px, подпись
+   10.5px. На <html> стоят оба класса, поэтому всё, что dense не задаёт
+   (табличные части, вкладки), остаётся как в compact; правила ниже идут
+   после compact и перекрывают его при той же специфичности. В горизонтальной
+   группе кнопка встаёт вровень с верхом поля (подпись 12+1, у compact — 13+2),
+   флажок (13px) — по центру поля 25px: 13 + 6 (замер в браузере). */
+.ob-density-dense .form-group{margin-bottom:3px}
+.ob-density-dense label{font-size:10.5px;line-height:12px;margin-bottom:1px}
+.ob-density-dense input[type=text],.ob-density-dense input[type=datetime-local],.ob-density-dense input[type=date],.ob-density-dense input[type=number],.ob-density-dense select{height:25px;padding:2px 7px;font-size:12.5px}
+.ob-density-dense textarea{font-size:12.5px;padding:3px 7px}
+.ob-density-dense .btn{padding:3px 9px;font-size:12.5px}
+.ob-density-dense .form-group-box{padding:4px 8px 5px !important;margin-bottom:5px !important}
+.ob-density-dense .managed-group-horizontal>.managed-group-body{gap:6px}
+.ob-density-dense .managed-group-horizontal>.managed-group-body>.form-group>label{line-height:12px}
+.ob-density-dense .managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn,.ob-density-dense .managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn-layout{margin-top:13px}
+.ob-density-dense .managed-group-horizontal>.managed-group-body>.form-group.managed-checkbox{margin-top:19px}
+.ob-density-dense h3{margin:4px 0 2px !important}
+.ob-density-dense .ob-form-head{margin-bottom:4px !important}
+.ob-density-dense main>.card{padding:6px}
+.ob-density-dense main{padding:6px}
+.ob-density-dense .managed-control-row>button,.ob-density-dense .managed-control-row>a{height:25px;min-width:25px;padding:0 7px}
 .ob-managed-control{border:0;padding:0;min-width:0}
 .managed-group-horizontal>.managed-group-body{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
 /* scroll_x: ряд действий не рвётся на вторую строку, а прокручивается. */

@@ -280,8 +280,14 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			data, _ := page.(map[string]any)
 			form, _ := data["Form"].(*metadata.FormModule)
 			var classes []string
-			if form != nil && form.Density == metadata.FormDensityCompact {
+			switch {
+			case form == nil:
+			case form.Density == metadata.FormDensityCompact:
 				classes = append(classes, "ob-density-compact")
+			case form.Density == metadata.FormDensityDense:
+				// dense уточняет compact: правила compact (табличные части,
+				// вкладки) действуют, dense переопределяет поля и отступы.
+				classes = append(classes, "ob-density-compact", "ob-density-dense")
 			}
 			// header_inline — заголовок и строка команд одной строкой.
 			if form != nil && form.HeaderInline {
