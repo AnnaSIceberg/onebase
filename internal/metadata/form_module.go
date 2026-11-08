@@ -241,7 +241,7 @@ type FormElement struct {
 	// и половина кнопок читается как отдельный блок. По умолчанию перенос, как
 	// было.
 	ScrollX    bool   `yaml:"scroll_x,omitempty"`
-	Background string `yaml:"background,omitempty"` // фон: ГруппаФормы (#1547), Кнопка, у ПолеВвода — фон самого ввода; цвет проверяет csssafe.Color
+	Background string `yaml:"background,omitempty"` // фон: ГруппаФормы (#1547), СтраницыФормы (весь набор с полосой закладок), Кнопка, у ПолеВвода — фон самого ввода; цвет проверяет csssafe.Color
 	// BorderColor — цвет рамки ввода ПолеВвода (вместе с background выделяет
 	// поле, как в ТЗ форм колл-центра); цвет проверяет csssafe.Color.
 	BorderColor string `yaml:"border_color,omitempty"`
