@@ -215,6 +215,11 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 						"Задайте rows от 1 до 50."))
 				}
 			}
+			if el.ChoiceFreeInput && (el.Kind != metadata.FormElementInputList || len(el.Choices) == 0) {
+				warns = append(warns, formKeyIssue(owner, form, el, "form.choice-free-input",
+					fmt.Sprintf("ключ choice_free_input игнорируется — ввод со списком есть только у kind: %s с choices", metadata.FormElementInputList),
+					"Задайте kind: ПолеСписка и choices или уберите ключ."))
+			}
 			if !el.ChoiceFolders && el.ChoiceDropdown == nil {
 				return
 			}

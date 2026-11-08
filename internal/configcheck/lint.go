@@ -666,6 +666,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 
 		"placement",
 		"text_color", "importance",
+		"choice_free_input",
 	} {
 		element.keys[k] = nil
 	}
