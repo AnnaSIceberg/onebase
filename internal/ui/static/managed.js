@@ -222,6 +222,25 @@ function obManagedApplyColumnTitles(titles) {
   });
 }
 window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
+// obManagedApplyHints — подсказки элементов с hint_from после события формы:
+// значение реквизита из ответа, пустое — статический hint; горячая клавиша
+// кнопки дописывается в скобках, как при отрисовке.
+function obManagedApplyHints(values) {
+  if (!values || !document.querySelectorAll) return;
+  var els = document.querySelectorAll('[data-ob-hint-from]');
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    var attr = el.getAttribute('data-ob-hint-from');
+    if (!Object.prototype.hasOwnProperty.call(values, attr)) continue;
+    var v = values[attr];
+    var text = v == null ? '' : String(v).trim();
+    if (!text) text = el.getAttribute('data-ob-hint') || '';
+    var key = el.getAttribute('data-ob-hint-key') || '';
+    if (key) text = text ? text + ' (' + key + ')' : key;
+    if (text) el.setAttribute('title', text); else el.removeAttribute('title');
+  }
+}
+window.obManagedApplyHints = obManagedApplyHints;
 
 // Отправляет текущие form-values + имя элемента/события в /ui/.../form-event,
 // получает JSON с новыми значениями и сообщениями от Сообщить(), применяет их.
@@ -1711,6 +1730,9 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
         window.obManagedApplyTablePartRefOptions(data.tpRefOptions, data.tpRefChoices);
         window.applyTableParts(data.tableparts);
         applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
+      window.obManagedApplyHints(data.values);
+      // hint_from формы обработки: реквизита подсказки нет в values.
+      window.obManagedApplyHints(data.elementStates && data.elementStates.hints);
         applyChoiceList(elementName, data.choiceList);
         applyFormTables(data.formTables);
       }
@@ -2177,6 +2199,8 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
     window.obManagedApplyTablePartRefOptions(tpRefOptions, tpRefChoices);
 	window.applyTableParts(tableparts);
 	applyValues(values, refOptions);
+	window.obManagedApplyHints(values);
+	if (!merging) window.obManagedApplyHints(data.elementStates && data.elementStates.hints);
 	applyFormTables(formTables);
     if (window.obApplyConcealed) window.obApplyConcealed(data.revealed, document.getElementById('main-form'), values || {}, data.values || {});
     (data.messages || []).forEach(obFlashMessage);
