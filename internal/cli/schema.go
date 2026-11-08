@@ -597,7 +597,8 @@ func managedFormSchema() map[string]any {
 			"fit_window":          boolSchema("СтраницыФормы: страницы занимают остаток высоты окна, рамка формы без прокрутки, длинная страница прокручивается внутри"),
 			"equal_height":        boolSchema("СтраницыФормы: область страниц высотой с самую высокую страницу; переключение закладок не сдвигает форму"),
 
-			"placement":           map[string]any{"type": "string", "enum": []string{"header"}, "description": "Кнопка: header — в строке команд документа после «История», а не в теле формы"},
+
+			"placement":           map[string]any{"type": "string", "enum": []string{"header", "header_end"}, "description": "Кнопка, ПолеВвода, Флажок (поле — только чтение): header_end — после «? Справка»; header — в строке команд документа после «История», а не в теле формы"},
 			"scroll_x":            boolSchema("Прокручивать горизонтальную ГруппаФормы вместо переноса содержимого на следующую строку; по умолчанию false"),
 			"children": map[string]any{
 				"type":  "array",

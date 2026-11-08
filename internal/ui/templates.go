@@ -281,17 +281,24 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return strings.Join(classes, " ")
 		},
-		// Keep the table owner when moving a command out of its original toolbar.
-		"formHeaderButtons": func(form *metadata.FormModule) []managedHeaderButton {
-			var out []managedHeaderButton
-			walkBrowserFormElements(form, func(visit browserFormElementVisit) {
-				el := visit.element
-				if el.Kind == metadata.FormElementButton && el.Placement == metadata.FormPlacementHeader {
-					out = append(out, managedHeaderButton{Element: el, Table: visit.parentTablePart})
-				}
+		// formHeaderElements — элементы формы с placement: header (перед
+		// «? Справка») или header_end (после неё) по всему дереву элементов, в
+		// порядке объявления: их рисует строка команд документа. Кнопка из
+		// табличной части сохраняет таблицу-владельца.
+		"formHeaderElements": func(form *metadata.FormModule, placement string) []managedHeaderButton {
+			return collectFormHeaderElements(form, func(el *metadata.FormElement) bool {
+				return el.Placement == placement
 			})
-			return out
 		},
+		// formHeaderButtons — только кнопки строки команд (header и header_end):
+		// всплывающая форма без строки команд показывает их отдельной панелью,
+		// а поля оставляет в теле.
+		"formHeaderButtons": func(form *metadata.FormModule) []managedHeaderButton {
+			return collectFormHeaderElements(form, func(el *metadata.FormElement) bool {
+				return el.Kind == metadata.FormElementButton
+			})
+		},
+		"formHeaderPlaced": metadata.FormHeaderPlaced,
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
 			if proc == nil {
 				return processorParamPresencePrefix + name
@@ -998,7 +1005,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			var out []*metadata.FormElement
 			for _, ch := range el.Children {
-				if ch != nil && ch.Kind == metadata.FormElementButton && ch.Placement != metadata.FormPlacementHeader {
+				if ch != nil && ch.Kind == metadata.FormElementButton && !metadata.FormHeaderPlaced(ch) {
 					out = append(out, ch)
 				}
 			}

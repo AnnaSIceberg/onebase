@@ -311,7 +311,7 @@ func managedFormElementStates(form *metadata.FormModule, header map[string]any, 
 		// Header commands leave their ancestor DOM containers. Carry those
 		// containers' visibility to the command's own placement key, including
 		// false states so a later form event can reveal it again.
-		if el.Kind == metadata.FormElementButton && el.Placement == metadata.FormPlacementHeader {
+		if metadata.FormHeaderPlaced(el) {
 			for path := visit.path; strings.Contains(path, "."); {
 				path = path[:strings.LastIndex(path, ".")]
 				if state, ok := hidden[path]; ok {
