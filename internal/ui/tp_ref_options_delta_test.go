@@ -113,3 +113,64 @@ func TestFormEventTPRefOptionsOnlyChangedTableParts(t *testing.T) {
 		t.Error("ТЧ не на форме не должна пересылать варианты и после изменения соседней")
 	}
 }
+
+// Открытие управляемой формы: варианты ссылочных колонок приходят только для
+// ТЧ, стоящих на форме; ТЧ сущности, которой на форме нет, браузер не рисует.
+func TestFormOpenTPRefOptionsOnlyPlacedTableParts(t *testing.T) {
+	db, err := storage.ConnectSQLite(t.Context(), filepath.Join(t.TempDir(), "open.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ref := metadata.Field{Name: "Товар", Type: metadata.FieldType("reference:Номенклатура"), RefEntity: "Номенклатура"}
+	goods := &metadata.Entity{Name: "Номенклатура", Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}}}
+	dir := t.TempDir()
+	yaml := "schema: onebase.form/v1\nform:\n  name: ФормаОбъекта\n  kind: object\n  entity: Заявка\nelements:\n" +
+		"  - kind: ТабличнаяЧасть\n    name: ТЧТовары\n    data_path: Объект.Товары\n"
+	if err := os.WriteFile(filepath.Join(dir, "ФормаОбъекта.form.yaml"), []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := loader.NewManagedFormLoader().LoadFormFile(filepath.Join(dir, "ФормаОбъекта.form.yaml"), "Заявка")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order := &metadata.Entity{Name: "Заявка", Kind: metadata.KindCatalog,
+		Fields: []metadata.Field{{Name: "Наименование", Type: metadata.FieldTypeString}},
+		TableParts: []metadata.TablePart{
+			{Name: "Товары", Fields: []metadata.Field{ref}},
+			{Name: "Прочее", Fields: []metadata.Field{ref}},
+		},
+		Forms: []*metadata.FormModule{fm}}
+	entities := []*metadata.Entity{goods, order}
+	if err := db.Migrate(t.Context(), entities); err != nil {
+		t.Fatal(err)
+	}
+	reg := orun.NewRegistry()
+	reg.Load(orun.LoadOptions{Entities: entities})
+	srv := New(reg, db, interpreter.New(), auth.NewRepo(db), Config{}, nil)
+	defer srv.BeginShutdown()
+	router := chi.NewRouter()
+	srv.Mount(router)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/catalog/заявка/new", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("form: %d", rec.Code)
+	}
+	page := rec.Body.String()
+	marker := `id="ob-managed-tp-ref-opts">`
+	i := strings.Index(page, marker)
+	if i < 0 {
+		t.Fatal("нет вариантов ТЧ в странице")
+	}
+	end := strings.Index(page[i:], "</script>")
+	var opts map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(page[i+len(marker):i+end]), &opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := opts["Товары"]; !ok {
+		t.Error("ТЧ на форме обязана получить варианты при открытии")
+	}
+	if _, ok := opts["Прочее"]; ok {
+		t.Error("ТЧ не на форме не должна получать варианты при открытии")
+	}
+}
