@@ -26,6 +26,7 @@ import (
 	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/storage"
 	"github.com/ivantit66/onebase/internal/webhook"
+	"github.com/ivantit66/onebase/internal/widget"
 )
 
 type basedOnAction struct {
@@ -152,6 +153,8 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	// Маскирование ПДн (план 88) — до resolveRefs: если чувствительное поле
 	// ссылочное, скрытый UUID уже не резолвится в подпись.
 	s.maskRecords(r.Context(), entity, rows)
+	// row_style формы списка — после маски и до разрешения ссылок.
+	s.applyListRowStyle(r.Context(), entity, rows)
 	s.resolveRefs(r.Context(), entity, rows)
 	markActivityRows(entity, rows)
 	if searchAll {
@@ -170,6 +173,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 			Limit:              storage.MaxListPageSize,
 		})
 		s.maskRecords(r.Context(), entity, allRows)
+		s.applyListRowStyle(r.Context(), entity, allRows)
 		s.resolveRefs(r.Context(), entity, allRows)
 		markActivityRows(entity, allRows)
 		treeRows = buildCatalogTree(allRows)
@@ -1392,6 +1396,9 @@ type treeChildRow struct {
 	Marked           bool     `json:"marked"`
 	ActivityEnabled  bool     `json:"activity_enabled"`
 	ActivityInactive bool     `json:"activity_inactive"`
+	RowBackground    string   `json:"row_background,omitempty"`
+	RowTextColor     string   `json:"row_text_color,omitempty"`
+	RowBold          bool     `json:"row_bold,omitempty"`
 	TreeCell         int      `json:"tree_cell"`
 	Cells            []string `json:"cells"`
 	DetailURL        string   `json:"detail_url"`
@@ -1462,6 +1469,7 @@ func (s *Server) treeChildrenJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.maskRecords(r.Context(), ent, rows) // план 88: маска ПДн в ячейках дерева
+	s.applyListRowStyle(r.Context(), ent, rows)
 	s.resolveRefs(r.Context(), ent, rows)
 	markActivityRows(ent, rows)
 
@@ -1515,6 +1523,11 @@ func (s *Server) treeChildRows(r *http.Request, entity *metadata.Entity, rows []
 		for i, col := range cols {
 			cells[i] = treeCellText(row[col.Name], col, enumLabels)
 		}
+		background := widget.NormalizeRowColor(row[listRowBackgroundKey])
+		textColor := ""
+		if background != "" {
+			textColor = widget.RowTextColor(background)
+		}
 		out = append(out, treeChildRow{
 			ID:               id,
 			ParentID:         refValueString(row["parent_id"]),
@@ -1525,6 +1538,9 @@ func (s *Server) treeChildRows(r *http.Request, entity *metadata.Entity, rows []
 			Marked:           asBool(row["deletion_mark"]),
 			ActivityEnabled:  entity.Activity != nil,
 			ActivityInactive: asBool(row["_activity_inactive"]),
+			RowBackground:    background,
+			RowTextColor:     textColor,
+			RowBold:          asBool(row[listRowBoldKey]),
 			TreeCell:         treeCell,
 			Cells:            cells,
 			DetailURL:        base + "/" + url.PathEscape(id) + "/detail-panel",
