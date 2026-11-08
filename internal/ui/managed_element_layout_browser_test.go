@@ -1,10 +1,8 @@
 package ui
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"html"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -24,7 +23,7 @@ import (
 // прогон ловит две исходные ошибки: auto-margin у inline-button не сдвигает его,
 // а высокий flex-контейнер со ссылкой оставляет select однострочным.
 func TestManagedLayout_BrowserPositionsAndFillsControls(t *testing.T) {
-	browser := managedLayoutTestBrowser(t)
+	browser := newMobileLayoutBrowserSize(t, managedLayoutTestBrowser(t), 0, 0)
 
 	contractors := &metadata.Entity{
 		Name:   "Контрагенты",
@@ -93,7 +92,7 @@ func TestManagedLayout_BrowserPositionsAndFillsControls(t *testing.T) {
     fileRatio: file && file.parentElement ? file.getBoundingClientRect().height / file.parentElement.getBoundingClientRect().height : 0
   };
   const out = document.createElement('pre');
-  out.id = 'layout-measure';
+  out.id = 'list-mobile-measure';
   out.textContent = JSON.stringify(result);
   document.body.appendChild(out);
 })();
@@ -116,42 +115,13 @@ func TestManagedLayout_BrowserPositionsAndFillsControls(t *testing.T) {
 	}))
 	t.Cleanup(pageServer.Close)
 
-	profile := t.TempDir()
-	args := []string{
-		"--headless=new",
-		"--disable-gpu",
-		"--disable-background-networking",
-		"--disable-component-update",
-		"--disable-extensions",
-		"--disable-sync",
-		"--no-first-run",
-		"--no-default-browser-check",
-		"--user-data-dir=" + profile,
-		"--dump-dom",
-		pageServer.URL,
-	}
-	if runtime.GOOS == "linux" {
-		// CI запускает Edge внутри контейнера без настроенного setuid-sandbox.
-		// Флаг ограничен тестовым headless-процессом без внешней навигации.
-		args = append([]string{"--no-sandbox"}, args...)
-	}
-	cmd := exec.CommandContext(t.Context(), browser, args...) //nolint:gosec // test-only browser is resolved from a closed allow-list below
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	dumped, err := cmd.Output()
+	// Read the measurement over CDP without waiting for --dump-dom to exit.
+	// Keep the browser's default viewport and all geometry assertions below.
+	measureCtx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	data, err := browser.measure(measureCtx, pageServer.URL)
 	if err != nil {
-		t.Fatalf("headless browser: %v\n%s", err, stderr.String())
-	}
-
-	const marker = `<pre id="layout-measure">`
-	start := bytes.Index(dumped, []byte(marker))
-	if start < 0 {
-		t.Fatalf("браузер не выполнил измерение:\n%s\n%s", stderr.String(), string(dumped))
-	}
-	start += len(marker)
-	end := bytes.Index(dumped[start:], []byte(`</pre>`))
-	if end < 0 {
-		t.Fatalf("результат измерения не закрыт: %s", string(dumped[start:]))
+		t.Fatalf("headless browser: %v\n%s", err, browser.diagnostics())
 	}
 	var got struct {
 		RightGap     float64 `json:"rightGap"`
@@ -164,8 +134,8 @@ func TestManagedLayout_BrowserPositionsAndFillsControls(t *testing.T) {
 		FileHeight   float64 `json:"fileHeight"`
 		FileRatio    float64 `json:"fileRatio"`
 	}
-	if err := json.Unmarshal([]byte(html.UnescapeString(string(dumped[start:start+end]))), &got); err != nil {
-		t.Fatalf("разобрать измерение: %v: %s", err, string(dumped[start:start+end]))
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("разобрать измерение: %v: %s", err, data)
 	}
 	if got.RightGap > 8 {
 		t.Errorf("halign:right не довёл кнопку до правого края: gap=%.1fpx", got.RightGap)

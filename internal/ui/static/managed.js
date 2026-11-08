@@ -761,6 +761,9 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
         if (n.tagName === 'SELECT' && roMirror) roMirror.value = n.value || '';
       });
     });
+    // Показанный или скрытый элемент меняет высоту страниц: equal_height
+    // пересчитывается по новому содержимому.
+    if (window.obEqualizeAllTabs) window.obEqualizeAllTabs();
   }
   window.applyElementStates = applyElementStates;
   // END onebase-ro-apply-states
@@ -5084,9 +5087,12 @@ function obManagedSwitchTab(btn) {
   btn.classList.add('active');
   obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(function (c) { c.style.display = 'none'; });
   var content = obManagedOwnTabParts(tabs, '.managed-tab-content[data-tab-content="' + idx + '"]')[0];
-  if (content) content.style.display = 'block';
+  if (content) content.style.display = tabs.getAttribute('data-ob-equal-height') === '1' ? 'flow-root' : 'block';
   try { sessionStorage.setItem(obManagedTabKey(tabs), idx); } catch (_) {}
   if (window._obResizeGrids) setTimeout(window._obResizeGrids, 0);
+  // Вложенный набор на только что открытой странице до этого был скрыт и не
+  // мог измериться.
+  if (window.obEqualizeAllTabs) window.obEqualizeAllTabs();
 }
 
 // obManagedSetPageHidden применяет пересчитанное событием формы условие
@@ -5163,6 +5169,137 @@ function obManagedSyncPageRequired() {
   });
 }
 
+// obEqualizeTabs — equal_height у СтраницыФормы: область страниц высотой с
+// самую высокую страницу, чтобы при переключении закладок форма не прыгала и
+// то, что ниже набора (панель кнопок), стояло на месте. Скрытые страницы
+// измеряются в собственном formatting context: margin последнего поля должен
+// входить в offsetHeight, а не схлопываться за границу страницы. Набор с
+// заданной height не трогаем: там высота уже постоянная,
+// а длинная страница прокручивается внутри.
+function obEqualizeTabs(tabs) {
+  if (!tabs || !tabs.hasAttribute || !tabs.hasAttribute('data-ob-equal-height')) return;
+  // Вложенный набор может лежать на неактивных страницах нескольких уровней.
+  // Открываем только эти страницы, не скрытые правилами группы/поля. Никаких
+  // кликов, событий формы и записи выбора вкладок при измерении нет.
+  var ancestors = [];
+  var parent = tabs.parentElement;
+  while (parent) {
+    if (parent.classList.contains('managed-tab-content') && parent.style.display === 'none') {
+      ancestors.push({el: parent, display: parent.style.display, visibility: parent.style.visibility});
+      parent.style.visibility = 'hidden';
+      var owner = parent.closest('.managed-tabs');
+      parent.style.display = owner && owner.hasAttribute('data-ob-equal-height') ? 'flow-root' : 'block';
+    }
+    parent = parent.parentElement;
+  }
+  var contents = obManagedOwnTabParts(tabs, '.managed-tab-content');
+  var max = 0;
+  try {
+    contents.forEach(function (c) { c.style.minHeight = ''; });
+    contents.forEach(function (c) {
+      var shown = c.style.display;
+      try {
+        c.style.display = 'flow-root';
+        var h = c.offsetHeight;
+        if (h > max) max = h;
+      } finally { c.style.display = shown; }
+    });
+    if (max > 0) contents.forEach(function (c) { c.style.minHeight = max + 'px'; });
+  } finally {
+    ancestors.forEach(function (saved) {
+      saved.el.style.display = saved.display;
+      saved.el.style.visibility = saved.visibility;
+    });
+  }
+}
+// obFitTabsToWindow — fit_window у СтраницыФормы: рамка формы (шапка, панели,
+// кнопки) помещается в окно без прокрутки, а набор страниц получает остаток
+// высоты — одинаковый для всех страниц; длинная страница прокручивается внутри.
+// Остаток = видимая высота области прокрутки формы (main) минус всё, что на
+// форме кроме страниц. Не меньше 120px: на совсем низком окне лучше прокрутка
+// формы, чем страница в одну строку.
+function obFitTabsToWindow(tabs) {
+  if (!tabs || !tabs.getAttribute || tabs.getAttribute('data-ob-fit-window') !== '1') return;
+  var scroller = tabs.closest ? tabs.closest('main') : null;
+  if (!scroller || !scroller.getBoundingClientRect) return;
+  var contents = obManagedOwnTabParts(tabs, '.managed-tab-content');
+  var active = null;
+  contents.forEach(function (c) {
+    c.style.height = ''; c.style.overflowY = '';
+    if (c.style.display !== 'none') active = c;
+  });
+  if (!active) return;
+  var top = scroller.getBoundingClientRect().top;
+  var bottom = 0;
+  for (var i = 0; i < scroller.children.length; i++) {
+    var b = scroller.children[i].getBoundingClientRect().bottom;
+    if (b > bottom) bottom = b;
+  }
+  var cs = window.getComputedStyle ? window.getComputedStyle(scroller) : null;
+  var padBottom = cs ? parseFloat(cs.paddingBottom) || 0 : 0;
+  var natural = bottom - top + scroller.scrollTop + padBottom;
+  var other = natural - active.offsetHeight;
+  var h = Math.max(120, Math.floor(scroller.clientHeight - other));
+  contents.forEach(function (c) { c.style.height = h + 'px'; c.style.overflowY = 'auto'; });
+}
+// obFitGroupToWindow — fit_window у ГруппаФормы (правая панель рядом с
+// закладками): высота как у fit_window-набора страниц той же строки, без
+// соседа — остаток окна; содержимое прокручивается внутри. Перед подгонкой
+// страниц группа схлопывается, иначе высоту строки задавала бы она.
+function obFitGroupToWindow(group) {
+  var row = group.parentElement;
+  var tabs = null;
+  if (row) for (var i = 0; i < row.children.length; i++) {
+    var sib = row.children[i];
+    if (sib !== group && sib.getAttribute && sib.getAttribute('data-ob-fit-window') === '1') { tabs = sib; break; }
+  }
+  group.style.overflowY = 'auto';
+  if (tabs) { group.style.height = tabs.offsetHeight + 'px'; return; }
+  group.style.height = '';
+  var scroller = group.closest ? group.closest('main') : null;
+  if (!scroller || !scroller.getBoundingClientRect) return;
+  var top = scroller.getBoundingClientRect().top, bottom = 0;
+  for (var j = 0; j < scroller.children.length; j++) {
+    var b = scroller.children[j].getBoundingClientRect().bottom;
+    if (b > bottom) bottom = b;
+  }
+  var cs = window.getComputedStyle ? window.getComputedStyle(scroller) : null;
+  var natural = bottom - top + scroller.scrollTop + (cs ? parseFloat(cs.paddingBottom) || 0 : 0);
+  group.style.height = Math.max(120, Math.floor(group.offsetHeight + scroller.clientHeight - natural)) + 'px';
+}
+function obEqualizeAllTabs() {
+  var groups = document.querySelectorAll('[data-ob-fit-group="1"]');
+  groups.forEach(function (g) { g.style.height = '0px'; g.style.overflowY = 'hidden'; });
+  // Потомок получает min-height до измерения внешней страницы. Обратный
+  // порядок DOM гарантирует это на любой глубине, в том числе до открытия.
+  Array.from(document.querySelectorAll('[data-ob-equal-height="1"]')).reverse().forEach(obEqualizeTabs);
+  document.querySelectorAll('[data-ob-fit-window="1"]').forEach(obFitTabsToWindow);
+  groups.forEach(obFitGroupToWindow);
+  if (window.obTrimFitOverflow) window.obTrimFitOverflow(groups);
+}
+window.obEqualizeAllTabs = obEqualizeAllTabs;
+// obTrimFitOverflow — сверка подгонки с тем, что видит браузер. Подгонка
+// считает высоту по нижним краям блоков main и не видит того, что не
+// попадает в их прямоугольники (отступы flex-строк, псевдоэлементы, вложенные
+// выступы), — форма оказывалась выше окна на несколько пикселей и получала
+// полосу прокрутки. Если main всё-таки прокручивается, подогнанные страницы и
+// группы ужимаются ровно на перебор (не ниже тех же 120px).
+function obTrimFitOverflow(groups) {
+  var fitted = document.querySelectorAll('[data-ob-fit-window="1"]');
+  var first = fitted[0] || (groups && groups[0]);
+  var scroller = first && first.closest ? first.closest('main') : null;
+  if (!scroller) return;
+  var over = scroller.scrollHeight - scroller.clientHeight;
+  if (!(over > 0)) return;
+  var shrink = function (el) {
+    var h = parseFloat(el.style.height);
+    if (h > 0) el.style.height = Math.max(120, Math.floor(h - over)) + 'px';
+  };
+  fitted.forEach(function (tabs) { obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(shrink); });
+  if (groups) groups.forEach(shrink);
+}
+window.obTrimFitOverflow = obTrimFitOverflow;
+
 obManagedReady(function () {
   // Native constraint validation fires `invalid` before it tries to focus the
   // first bad control. Open that control's managed tab synchronously; otherwise
@@ -5222,6 +5359,50 @@ obManagedReady(function () {
       obFire(owner, 'ПриСменеСтраницы', { _page: btn.getAttribute('data-tab-page') || '' });
     }
   });
+  obEqualizeAllTabs();
+  var resizeTimer = null;
+  if (window.addEventListener) window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(obEqualizeAllTabs, 150);
+  });
+  // Подгонка под окно считается по вёрстке на момент вызова. Позже вёрстка
+  // меняется без resize окна: догружаются шрифты и отложенные группы
+  // (ПослеОткрытия), событие формы показывает вторую строку шапки — и форма
+  // становилась выше окна на эти пиксели. Блоки main наблюдаются: изменился
+  // размер — подгонка пересчитывается следующей задачей. Пересчёт, давший тот
+  // же размер, нового уведомления не порождает, поэтому цикла нет.
+  // Два запроса, а не список через запятую: так селектор понимают и
+  // упрощённые DOM поведенческих тестов.
+  var fitAnchor = document.querySelector('[data-ob-fit-window="1"]') || document.querySelector('[data-ob-fit-group="1"]');
+  var fitMain = fitAnchor && fitAnchor.closest ? fitAnchor.closest('main') : null;
+  if (fitMain) {
+    var fitQueued = false;
+    var refit = function () { fitQueued = false; obEqualizeAllTabs(); };
+    var queueRefit = function () {
+      if (fitQueued) return;
+      fitQueued = true;
+      setTimeout(refit, 0);
+    };
+    if (window.ResizeObserver) {
+      var fitObserver = new window.ResizeObserver(queueRefit);
+      // Панель сообщений вне main меняет его доступную высоту, даже когда
+      // размеры дочерних блоков остаются прежними.
+      fitObserver.observe(fitMain);
+      for (var fi = 0; fi < fitMain.children.length; fi++) fitObserver.observe(fitMain.children[fi]);
+    }
+    // Вставка и удаление узлов (отложенная группа, строка шапки, перерисовка
+    // таблицы) — отдельным сигналом: он не ждёт кадра отрисовки. Сама
+    // подгонка меняет только стили, поэтому себя не перезапускает.
+    if (window.MutationObserver) {
+      new window.MutationObserver(queueRefit).observe(fitMain, {childList: true, subtree: true});
+      // Панель находится вне main. Её показ/очистка — самостоятельный сигнал:
+      // пересчёт не должен зависеть только от доставки ResizeObserver после
+      // смены доступной высоты. Стилевые записи самой подгонки сюда не входят.
+      new window.MutationObserver(function (records) {
+        if (records.some(function (record) { return record.target.id === 'ob-msg-bar'; })) queueRefit();
+      }).observe(document.body, {attributes: true, attributeFilter: ['class'], subtree: true});
+    }
+  }
   var groups = document.querySelectorAll('.managed-tabs');
   for (var i = 0; i < groups.length; i++) {
     var tabs = groups[i];
