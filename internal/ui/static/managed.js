@@ -726,7 +726,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
       if (!el) return;
       var on = !!ro[path];
       // Сам элемент может быть кнопкой (kind: Кнопка) — тогда управляем им же.
-      if (el.tagName === 'BUTTON') { el.disabled = on; return; }
+      if (el.tagName === 'BUTTON') { el.disabled = on || !!(el.dataset && el.dataset.obWriteDenied === '1'); return; }
       // input/textarea оставляем видимыми и выделяемыми (readonly), select и
       // кнопку подбора гасим (disabled) — как это делает серверный рендер.
       // Зеркало значения (план 181C/#1672): select под запретом браузер не
@@ -757,7 +757,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
       // клиент не может — вернуть её способна только перезагрузка страницы.
       el.querySelectorAll('select, button:not([data-ob-ref-current])').forEach(function (n) {
         if (!ownControl(el, n)) return;
-        n.disabled = on;
+        n.disabled = on || !!(n.dataset && n.dataset.obWriteDenied === '1');
         if (n.tagName === 'SELECT' && roMirror) roMirror.value = n.value || '';
       });
     });
@@ -2977,7 +2977,7 @@ function obManagedInitDelegates() {
     var form = document.getElementById('main-form');
     if (!form || !document.contains(form)) return;
     var target = e.target;
-    if (target && target !== document.body && !form.contains(target)) return;
+    if (target && target !== document.body && !form.contains(target) && target.form !== form) return;
     var btn = typeof window.obResolveActionableFormHotkey === 'function'
       ? window.obResolveActionableFormHotkey(hotkey) : null;
     if (!btn) return;

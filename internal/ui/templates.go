@@ -260,6 +260,17 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return ""
 		},
+		// Keep the table owner when moving a command out of its original toolbar.
+		"formHeaderButtons": func(form *metadata.FormModule) []managedHeaderButton {
+			var out []managedHeaderButton
+			walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+				el := visit.element
+				if el.Kind == metadata.FormElementButton && el.Placement == metadata.FormPlacementHeader {
+					out = append(out, managedHeaderButton{Element: el, Table: visit.parentTablePart})
+				}
+			})
+			return out
+		},
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
 			if proc == nil {
 				return processorParamPresencePrefix + name
@@ -929,11 +940,23 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			var out []*metadata.FormElement
 			for _, ch := range el.Children {
-				if ch != nil && ch.Kind == metadata.FormElementButton {
+				if ch != nil && ch.Kind == metadata.FormElementButton && ch.Placement != metadata.FormPlacementHeader {
 					out = append(out, ch)
 				}
 			}
 			return out
+		},
+		// Header commands still consume row selection even though their buttons
+		// are rendered outside the local table toolbar.
+		"hasTPCommands": func(el *metadata.FormElement) bool {
+			if el != nil {
+				for _, child := range el.Children {
+					if child != nil && child.Kind == metadata.FormElementButton {
+						return true
+					}
+				}
+			}
+			return false
 		},
 		// hasGridTP checks if any TablePart element in the form has use_grid flag (plan 48).
 		// Used to conditionally include SlickGrid CSS/JS.

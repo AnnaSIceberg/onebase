@@ -2,6 +2,11 @@ package ui
 
 import "github.com/ivantit66/onebase/internal/metadata"
 
+type managedHeaderButton struct {
+	Element *metadata.FormElement
+	Table   *metadata.FormElement
+}
+
 // tplManagedForm — шаблон рендеринга «управляемой формы» из FormModule
 // (план 37, этап 3). В отличие от tplForm, который автоматически выводит
 // все поля Entity подряд, этот шаблон обходит дерево FormModule.Elements
@@ -25,7 +30,7 @@ const tplManagedForm = `
      effectiveFormElementReadOnly, условного — карта ElReadOnly, которую строит
      managedFormElementStates. Скрытые контейнеры не отрисовываются; простые
      поля остаются в DOM с disabled fieldset для безопасной отправки. */}}
-{{$ro := or (effectiveFormElementReadOnly $ctx.Form $el) (elReadOnly $ctx $el) (adminOnlyLocked $ctx $el)}}
+{{$ro := or (effectiveFormElementReadOnly $ctx.Form $el) (elReadOnly $ctx $el) (adminOnlyLocked $ctx $el) $.TableReadOnly}}
 		{{/* $roUnlockable — запрет, который клиент может снять без перезагрузки (readonly_when): такой элемент несёт кнопку подбора и data-ob-fire-change даже в запертом состоянии, иначе после разблокировки работать нечем (#1612). */}}
 		{{$roUnlockable := and (not (adminOnlyLocked $ctx $el)) (or (not $ro) (ne $el.ReadOnlyWhen ""))}}
 {{$effectiveReq := effectiveFormElementRequired $ctx.Entity $el}}{{$req := nativeFormElementRequired $ctx.Entity $el}}
@@ -265,15 +270,18 @@ const tplManagedForm = `
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </div>
 {{else if eq (str $el.Kind) "Кнопка"}}
+  {{/* placement: header — кнопка рисуется в строке команд формы (form-header-commands), а не в теле. */}}
+  {{if and (eq $el.Placement "header") (not $.HeaderPass)}}{{else}}
   {{$clickAction := or (hasHandler $el "Нажатие") (and $ctx.IsProcessor (processorExecuteFallbackButton $ctx.Form $el))}}
   {{$hotKey := ""}}{{if and (not $ro) $clickAction}}{{$hotKey = normalizedFormHotkey $el.HotKey}}{{end}}
   {{$buttonLayout := elLayout $el}}
   {{$buttonHidden := elHidden $ctx $el}}
   {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{if $buttonHidden}}display:none;{{end}}{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground $el}}"{{else}}{{with elBackground $el}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{end}}>
+  <button type="button" class="btn {{if $el.Primary}}btn-primary{{else}}btn-secondary{{end}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground $el}}"{{else}}{{with elBackground $el}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
   {{if $buttonLayout}}</div>{{end}}
+  {{end}}
 {{else if eq (str $el.Kind) "ПолеКартинки"}}
   {{/* width/height здесь ограничивают САМУ картинку — так было до общего
        контракта раскладки (#1185), и менять смысл ключей значило бы перестроить
@@ -313,6 +321,7 @@ const tplManagedForm = `
   {{$tpRef := index $ctx.TPRefOptions $tpName}}
   {{$tpEnum := index $ctx.TPEnumLabels $tpName}}
   {{$tpCmds := tpCommandButtons $el}}
+  {{$tpHasCommands := hasTPCommands $el}}
   {{$tpReadOnly := or $ro (not $ctx.CanWrite)}}
   {{/* data-ob-tp — граница табличной части для клиентского пересчёта условий:
        её содержимое (грид, кнопки строк, командные кнопки) applyElementStates
@@ -369,7 +378,7 @@ const tplManagedForm = `
        data-sg-choice-rows='{{jsJSON (tpChoiceRows $ctx $el)}}'
        data-sg-enum='{{jsJSON $tpEnum}}'
        data-sg-rows='{{managedTPRowsJSON $tpMeta.Fields $tpRows}}'
-       {{if $tpCmds}}data-sg-cmd="1"{{end}}
+       {{if $tpHasCommands}}data-sg-cmd="1"{{end}}
        {{if not $tpReadOnly}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}></div>
   {{if not $tpReadOnly}}<input type="hidden" name="tp_json.{{$tpName}}" id="tp-json-{{$tpName}}" value="">{{end}}
   <div style="display:flex;gap:6px;margin-top:4px">
@@ -392,16 +401,16 @@ const tplManagedForm = `
   {{if not $tpReadOnly}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}>
     <thead>
       <tr>
-        {{if $tpCmds}}<th style="width:30px"></th>{{end}}
+        {{if $tpHasCommands}}<th style="width:30px"></th>{{end}}
         {{range $c := $tpPlan}}<th{{if $c.Hidden}} style="display:none"{{else if $c.Width}} style="width:{{$c.Width}}px"{{end}}>{{$c.Field.DisplayName (str $ctx.Lang)}}</th>{{end}}
         {{range $tpVirtualCols}}<th>{{.ColumnTitle (str $ctx.Lang)}}</th>{{end}}
         <th style="width:40px"></th>
       </tr>
     </thead>
-    <tbody id="tp-body-{{$tpName}}" {{if $ctx.HideRefCard}}data-tp-hide-ref-card="1" {{end}}{{if $tpCmds}}data-tp-cmd="1" {{end}}{{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}data-tp-choice="{{jsJSON (tpChoiceContexts $ctx $el)}}" data-tp-fields="{{managedTPFieldsAttr $tpPlan}}" data-tp-hidden-cols="{{managedTPHiddenColsJSON $tpPlan}}" data-tp-virtual-cols="{{managedTPVirtualNamesJSON $tpVirtualCols}}">
+    <tbody id="tp-body-{{$tpName}}" {{if $ctx.HideRefCard}}data-tp-hide-ref-card="1" {{end}}{{if $tpHasCommands}}data-tp-cmd="1" {{end}}{{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}data-tp-choice="{{jsJSON (tpChoiceContexts $ctx $el)}}" data-tp-fields="{{managedTPFieldsAttr $tpPlan}}" data-tp-hidden-cols="{{managedTPHiddenColsJSON $tpPlan}}" data-tp-virtual-cols="{{managedTPVirtualNamesJSON $tpVirtualCols}}">
     {{range $i, $row := $tpRows}}
       <tr{{with formRowClass $row}} class="{{.}}"{{end}} tabindex="-1" aria-selected="false">
-        {{if $tpCmds}}<td style="text-align:center"><input type="checkbox" class="_tp-sel"{{if $tpReadOnly}} disabled{{end}}></td>{{end}}
+        {{if $tpHasCommands}}<td style="text-align:center"><input type="checkbox" class="_tp-sel"{{if $tpReadOnly}} disabled{{end}}></td>{{end}}
         {{range $c := $tpPlan}}
         {{$f := $c.Field}}
         <td{{with formCellClass $row $f.Name}} class="{{.}}"{{end}}{{if $c.Hidden}} style="display:none"{{end}}>
@@ -452,7 +461,7 @@ const tplManagedForm = `
     {{end}}
     </tbody>
     <tfoot id="tp-foot-{{$tpName}}" class="tp-footer" style="display:none"><tr>
-      {{if $tpCmds}}<td></td>{{end}}
+      {{if $tpHasCommands}}<td></td>{{end}}
       {{range $c := $tpPlan}}{{$f := $c.Field}}{{if $c.Hidden}}<td style="display:none"></td>{{else if eq (str $f.Type) "number"}}<td class="tp-total" data-tp-total="{{$tpName}}.{{$f.Name}}" style="text-align:right;font-variant-numeric:tabular-nums">0</td>{{else}}<td></td>{{end}}{{end}}{{range $tpVirtualCols}}<td></td>{{end}}<td></td>
     </tr></tfoot>
   </table>
@@ -602,6 +611,14 @@ const tplManagedForm = `
 {{end}}
 {{end}}
 
+{{/* form-header-commands — кнопки формы с placement: header и «? Справка» в строке
+     команд документа: сразу после «История» (у новой записи и обработки — в конце
+     строки). Освобождает строку тела формы, где такие кнопки стояли отдельно. */}}
+{{define "form-header-commands"}}{{$page := .}}<span class="ob-header-commands">{{range formHeaderButtons .Form}}
+  {{$tableName := ""}}{{$tableRO := false}}
+  {{with .Table}}{{$tableName = canonicalFormTableName $page.Form $page.Entity (dpField .DataPath)}}{{$tableRO = or (not $page.CanWrite) (elReadOnly $page .) (adminOnlyLocked $page .)}}{{end}}
+  {{template "managed-element" (dict "El" .Element "Ctx" $page "HeaderPass" true "TableName" $tableName "TableReadOnly" $tableRO "TableWriteDenied" (and .Table (not $page.CanWrite)))}}
+{{end}}</span>{{if not .IsPopup}}{{template "context-help" .}}{{end}}{{end}}
 {{define "page-managed-form"}}
 {{template "head" .}}{{if not .IsPopup}}{{template "nav" .}}{{end}}
 {{if .TabTitle}}<meta name="ob-tab-title" content="{{.TabTitle}}">{{end}}
@@ -639,6 +656,9 @@ const tplManagedForm = `
 /* deadline_warn: поле-срок подсвечивается по часам браузера (obDeadlineTick). */
 input.ob-deadline-soon,.form-group input.ob-deadline-soon[readonly]{background:#fef3c7 !important;border-color:#f59e0b !important;color:#92400e !important}
 input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#fee2e2 !important;border-color:#ef4444 !important;color:#991b1b !important;font-weight:600}
+.ob-header-commands{display:contents}
+.ob-header-commands .managed-btn,.ob-header-commands .managed-btn-layout{margin:0}
+.ob-header-commands .managed-btn{padding:5px 12px;font-size:13px}
 .ob-managed-control{border:0;padding:0;min-width:0}
 .managed-group-horizontal>.managed-group-body{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
 /* scroll_x: ряд действий не рвётся на вторую строку, а прокручивается. */
@@ -761,7 +781,9 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
     {{if .IsProcessor}}{{.Processor.DisplayName $.Lang}}{{else}}{{if .IsNew}}{{t $.Lang "Создать"}} — {{.Entity.DisplayName $.Lang}}{{else}}{{if .RecordTitle}}{{.RecordTitle}}{{else}}{{t $.Lang "Редактировать"}} — {{.Entity.DisplayName $.Lang}}{{end}}{{end}}{{end}}
     <span style="font-size:11px;color:#10b981;background:#d1fae5;padding:2px 8px;border-radius:10px;vertical-align:middle;font-weight:500" title="Управляемая форма из forms/{{if .IsProcessor}}{{lower .Processor.Name}}{{else}}{{lower .Entity.Name}}{{end}}/">◇ managed</span>
   </h2>
-  {{template "context-help" .}}
+  {{/* «? Справка» у формы в строке команд рядом с «История»; у всплывающей
+       формы этой строки нет — справка остаётся в заголовке. */}}
+  {{if .IsPopup}}{{template "context-help" .}}{{end}}
   {{if .IsPopup}}
   <a href="#" data-ob-ref-cancel title="Закрыть" style="font-size:22px;line-height:1;color:#94a3b8;text-decoration:none;padding:2px 8px;border-radius:5px;background:#f1f5f9;font-weight:300">×</a>
   {{else}}
@@ -810,6 +832,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
          создания, а F9 здесь занята копированием строки ТЧ. */}}
     {{if .CanCreate}}<a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new?copy={{.ID}}" class="btn btn-sm btn-secondary">{{t $.Lang "Скопировать"}}</a>{{end}}
     <a href="/ui/{{lower (str .Entity.Kind)}}/{{.Entity.Name}}/{{.ID}}/history" class="btn btn-sm btn-secondary">{{t $.Lang "История"}}</a>
+    {{template "form-header-commands" .}}
     {{if or .AllPrintForms .HasPrintProc}}
     <div style="position:relative">
       <button type="button" class="btn btn-sm btn-secondary" data-ob-toggle-next>{{t $.Lang "Печать"}} ▾</button>
@@ -850,8 +873,10 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
     {{end}}
   {{end}}
   {{end}}{{/* end if not .IsProcessor */}}
+  {{if or .IsNew .IsProcessor}}{{template "form-header-commands" .}}{{end}}
 </div>
 {{end}}{{/* end if not .IsPopup */}}
+{{if and .IsPopup (formHeaderButtons .Form)}}<div class="ob-popup-commands" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">{{template "form-header-commands" .}}</div>{{end}}
 {{if and (not .IsNew) .Entity.Posting}}
 {{if eq (index .Values "posted") "true"}}
 <form id="form-unpost" method="POST" action="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/{{.ID}}/unpost"></form>

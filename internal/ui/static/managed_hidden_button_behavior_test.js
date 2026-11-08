@@ -62,3 +62,14 @@ test('собственный display элемента (flex) по-прежнем
   app.window.applyElementStates({ hidden: { '0.3': false } });
   assert.equal(bar.style.display, 'flex');
 });
+
+
+test('moved table command keeps its server write restriction after state updates', () => {
+  const command = anchor('0.1', '');
+  command.tagName = 'BUTTON';
+  command.disabled = true;
+  command.dataset.obWriteDenied = '1';
+  const app = setup({'0.1': command});
+  app.window.applyElementStates({readonly: {'0.1': false}});
+  assert.equal(command.disabled, true);
+});
