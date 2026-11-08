@@ -1507,6 +1507,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return result
 		},
+		"managedTPEditable": managedTPEditable,
 		// managedTPColumnsTitled — заголовки колонок из title_from по значениям
 		// формы при отрисовке; после событий их присылает columnTitles.
 		"managedTPColumnsTitled": func(plan []managedTPColumn, values any) []managedTPColumn {
