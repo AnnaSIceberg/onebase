@@ -352,7 +352,7 @@ const tplManagedForm = `
   {{/* Состав и порядок колонок задают дети kind: Колонка (план 154). Реквизит,
        не попавший в выбор, остаётся в плане скрытым: убрать его из полезной
        нагрузки значит затереть его в базе при следующей же записи. */}}
-  {{$tpPlan := managedTPColumnsTitled (managedTPColumnPlan $el $tpMeta.Fields) $ctx.Values}}
+  {{$tpPlan := managedTPColumnsHiddenWhen (managedTPColumnsTitled (managedTPColumnPlan $el $tpMeta.Fields) $ctx.Values) $ctx}}
   {{$tpColEvents := managedTPColumnEventsJSON $tpPlan $tpReadOnly}}
   {{if $tpCmds}}
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
@@ -508,7 +508,7 @@ const tplManagedForm = `
   {{/* show_count — число записей в заголовке: «Заявки клиента (5)»; после событий
        формы его обновляет перерисовка таблицы (applyFormTables). */}}
   {{if not $el.TitleHidden}}<h3 class="ob-table-title" style="font-size:14px;font-weight:600;margin:0 0 8px;{{tableTitleStyle $ctx.Form}}">{{fieldTitleRU $el.TitleMap $tpName}}{{if $el.ShowCount}} <span data-ob-vt-count="{{$tpName}}">({{len $vtRows}})</span>{{end}}</h3>{{end}}
-  {{$vtPlan := managedVTColumnPlan $el $vtCols}}
+  {{$vtPlan := managedVTColumnsHiddenWhen (managedVTColumnPlan $el $vtCols) $ctx}}
   {{$vtEditable := managedVTEditable $vtPlan}}
   {{$vtActivate := hasHandler $el "ПриАктивизацииСтроки"}}
   {{if $vtCmds}}
@@ -533,16 +533,16 @@ const tplManagedForm = `
   <table class="tp-table{{tableHeaderClass $el}}" data-vt="{{$tpName}}"{{with tableHeaderVars $el}} style="{{.}}"{{end}}>
     <thead>
       <tr>
-        {{range $vtPlan}}{{if not .Hidden}}<th{{with .Width}} style="width:{{.}}px"{{end}}>{{.Title}}</th>{{end}}{{end}}
+        {{range $vtPlan}}{{if not .Hidden}}<th{{with .ElPath}} data-ob-vt-col="{{.}}"{{end}}{{with .HeaderStyle}} style="{{.}}"{{end}}>{{.Title}}</th>{{end}}{{end}}
         {{if $vtEditable}}<th style="width:40px"></th>{{end}}
       </tr>
     </thead>
-    <tbody id="vt-body-{{$tpName}}" {{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}{{if $vtActivate}}data-ob-vt-activate="{{$el.Name}}" data-ob-vt-name="{{$tpName}}" {{end}}data-vt-editable="{{if $vtEditable}}1{{else}}0{{end}}"{{with $el.EmptyText}} data-vt-empty="{{.}}"{{end}} data-vt-flags="{{range $i, $col := $vtPlan}}{{if $i}},{{end}}{{$col.Column.Name}}:{{if $col.ReadOnly}}r{{end}}{{if $col.Hidden}}h{{end}}{{end}}" data-vt-fields="{{range $i, $col := $vtPlan}}{{if $i}},{{end}}{{$col.Column.Name}}|{{$col.Column.TypeRef}}{{end}}">
+    <tbody id="vt-body-{{$tpName}}" {{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}{{if $vtActivate}}data-ob-vt-activate="{{$el.Name}}" data-ob-vt-name="{{$tpName}}" {{end}}data-vt-editable="{{if $vtEditable}}1{{else}}0{{end}}"{{with $el.EmptyText}} data-vt-empty="{{.}}"{{end}} data-vt-flags="{{range $i, $col := $vtPlan}}{{if $i}},{{end}}{{$col.Column.Name}}:{{if $col.ReadOnly}}r{{end}}{{if or $col.Hidden $col.CondHidden}}h{{end}}{{end}}"{{with managedVTCondAttr $vtPlan}} data-vt-cond="{{.}}"{{end}} data-vt-fields="{{range $i, $col := $vtPlan}}{{if $i}},{{end}}{{$col.Column.Name}}|{{$col.Column.TypeRef}}{{end}}">
     {{range $i, $row := $vtRows}}
       <tr{{with formRowClass $row}} class="{{.}}"{{end}}{{if $vtActivate}} data-ob-vt-row="{{$i}}" style="cursor:pointer"{{end}}>
         {{range $col := $vtPlan}}{{$c := $col.Column}}
         {{$cellRO := or $tpReadOnly $col.ReadOnly}}
-        <td{{with formCellClass $row $c.Name}} class="{{.}}"{{end}}{{if $col.Hidden}} style="display:none"{{end}}>
+        <td{{with formCellClass $row $c.Name}} class="{{.}}"{{end}}{{if or $col.Hidden $col.CondHidden}} style="display:none"{{end}}>
           {{$v := index $row $c.Name}}
           {{if eq (lower $c.TypeRef) "number"}}
             <input type="number" step="any" name="vt.{{$tpName}}.{{$i}}.{{$c.Name}}" value="{{$v}}" data-vt-num="{{$c.Name}}"{{if $tpReadOnly}} disabled{{else if $col.ReadOnly}} readonly{{end}}>
