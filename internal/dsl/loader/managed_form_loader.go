@@ -189,6 +189,8 @@ type formYAMLDoc struct {
 		Density         string `yaml:"density"`
 		TabSkipReadonly bool   `yaml:"tab_skip_readonly"`
 		Autofocus       string `yaml:"autofocus"`
+		// GroupTitles — оформление заголовков групп и таблиц ("" | "bold").
+		GroupTitles string `yaml:"group_titles"`
 	} `yaml:"form"`
 	Attributes            []*metadata.FormAttribute       `yaml:"attributes"`
 	Commands              []*metadata.FormCommand         `yaml:"commands"`
@@ -245,6 +247,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		Density:                doc.Form.Density,
 		TabSkipReadonly:        doc.Form.TabSkipReadonly,
 		Autofocus:              doc.Form.Autofocus,
+		GroupTitles:            doc.Form.GroupTitles,
 		Attributes:             doc.Attributes,
 		Commands:               doc.Commands,
 		AutoCommandBar:         doc.CommandBar,
