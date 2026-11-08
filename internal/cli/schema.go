@@ -353,6 +353,38 @@ func allSchemas() map[string]map[string]any {
 				// документации назван основным.
 				"choice_preview":      stringSchema("Реквизит, текст которого показывается в области просмотра формы выбора (диалога подбора)"),
 				"choice_show_deleted": boolSchema("Показывать в выборе элементы, помеченные на удаление: true — показывать, false — скрывать. По умолчанию при вводе данных скрыты, в параметрах отчётов и отборах списков показаны с отметкой"),
+				"choice_row_style": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"description":          "Оформление строк выбора ссылок на справочник (выпадающий список, форма подбора, быстрый ввод) по реквизитам элемента",
+					"properties": map[string]any{
+						"for_roles": arrayOf(stringSchema("Роль: оформление только пользователям с одной из ролей")),
+						"for_user": map[string]any{
+							"type":                 "object",
+							"additionalProperties": false,
+							"description":          "Оформление только пользователям, у которых реквизит карточки сотрудника равен предопределённому элементу, либо функция конфигурации вернула Истина",
+							"properties": map[string]any{
+								"func":          stringSchema("«Модуль.Функция» без параметров, возвращает Булево; только чтение"),
+								"card":          stringSchema("Справочник карточки сотрудника"),
+								"account_field": stringSchema("Реквизит карточки reference:_users; можно опустить, если он один"),
+								"field":         stringSchema("Реквизит карточки"),
+								"equals":        stringSchema("<Справочник>.<предопределённый элемент>"),
+							},
+						},
+						"rules": arrayOf(map[string]any{
+							"type":                 "object",
+							"additionalProperties": false,
+							"required":             []string{"when"},
+							"properties": map[string]any{
+								"when":       stringSchema("Условие на реквизиты элемента: имя булева реквизита или выражение"),
+								"color":      stringSchema("Цвет текста: hex, rgb() или имя цвета"),
+								"background": stringSchema("Цвет фона: hex, rgb() или имя цвета"),
+								"bold":       boolSchema("Жирный"),
+								"italic":     boolSchema("Курсив"),
+							},
+						}),
+					},
+				},
 				"choice_preview_proc": stringSchema("«Модуль.Функция», собирающая тексты просмотра формы выбора с учётом контекста подбора: Функция(Ссылки, Контекст) → Соответствие"),
 				"presentation": map[string]any{
 					"description": "Реквизит(ы) представления объекта; по умолчанию — правило по именам, «Код» последним",
@@ -599,16 +631,14 @@ func managedFormSchema() map[string]any {
 			"show_count":          boolSchema("ТабличнаяЧасть над ValueTable: число записей в заголовке таблицы — «Заявки клиента (5)»"),
 			"empty_text":          stringSchema("ТабличнаяЧасть над ValueTable: надпись пустой таблицы — «Заявок нет»"),
 
+			"fit_window":   boolSchema("СтраницыФормы: страницы занимают остаток высоты окна, рамка формы без прокрутки, длинная страница прокручивается внутри; ГруппаФормы рядом — высота этих страниц; ТабличнаяЧасть — сетка на остаток высоты окна, строки прокручиваются внутри"),
+			"equal_height": boolSchema("СтраницыФормы: область страниц высотой с самую высокую страницу; переключение закладок не сдвигает форму"),
 
-			"fit_window":          boolSchema("СтраницыФормы: страницы занимают остаток высоты окна, рамка формы без прокрутки, длинная страница прокручивается внутри; ГруппаФормы рядом — высота этих страниц; ТабличнаяЧасть — сетка на остаток высоты окна, строки прокручиваются внутри"),
-			"equal_height":        boolSchema("СтраницыФормы: область страниц высотой с самую высокую страницу; переключение закладок не сдвигает форму"),
+			"placement": map[string]any{"type": "string", "enum": []string{"header", "header_end"}, "description": "Кнопка, ПолеВвода, Флажок (поле — только чтение): header_end — после «? Справка»; header — в строке команд документа после «История», а не в теле формы"},
 
-
-			"placement":           map[string]any{"type": "string", "enum": []string{"header", "header_end"}, "description": "Кнопка, ПолеВвода, Флажок (поле — только чтение): header_end — после «? Справка»; header — в строке команд документа после «История», а не в теле формы"},
-
-			"text_color":          stringSchema("Цвет текста ПолеВвода или Надпись (подпись и значение, у нередактируемого поля тоже): hex, rgb(...) или имя CSS-цвета"),
-			"importance":          map[string]any{"type": "string", "enum": []any{"error"}, "description": "Смысловое выделение ПолеВвода или Надпись: error — красный текст ошибки; text_color сильнее"},
-			"scroll_x":            boolSchema("Прокручивать горизонтальную ГруппаФормы вместо переноса содержимого на следующую строку; по умолчанию false"),
+			"text_color": stringSchema("Цвет текста ПолеВвода или Надпись (подпись и значение, у нередактируемого поля тоже): hex, rgb(...) или имя CSS-цвета"),
+			"importance": map[string]any{"type": "string", "enum": []any{"error"}, "description": "Смысловое выделение ПолеВвода или Надпись: error — красный текст ошибки; text_color сильнее"},
+			"scroll_x":   boolSchema("Прокручивать горизонтальную ГруппаФормы вместо переноса содержимого на следующую строку; по умолчанию false"),
 			"children": map[string]any{
 				"type":  "array",
 				"items": map[string]any{"$dynamicRef": "#formElement"},

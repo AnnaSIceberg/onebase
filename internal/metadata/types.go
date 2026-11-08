@@ -339,6 +339,9 @@ type Entity struct {
 	// nil — правило по месту (см. Field.ChoiceShowDeleted); ключ реквизита,
 	// элемента формы или параметра его перекрывает.
 	ChoiceShowDeleted *bool
+	// ChoiceRowStyle — оформление строк выбора ссылок на справочник
+	// (`choice_row_style`, см. choice_row_style.go). nil — без оформления.
+	ChoiceRowStyle *ChoiceRowStyle
 	// ListMode — режим загрузки списка по умолчанию: "" / "pages" (постранично)
 	// или "feed" (лента с догрузкой по скроллу, как динамический список 1С).
 	// Пользователь может переопределить тумблером (запоминается per-сущность).

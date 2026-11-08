@@ -142,11 +142,13 @@ type rawEntity struct {
 	BasedOn  []string           `yaml:"based_on"`
 	Activity *rawActivity       `yaml:"activity"`
 	// ChoiceShowDeleted — choice_show_deleted (см. Entity.ChoiceShowDeleted).
-	ChoiceShowDeleted *bool    `yaml:"choice_show_deleted"`
-	ListMode          string   `yaml:"list_mode"`
-	ListRefreshOn     []string `yaml:"list_refresh_on"`
-	ListFilters       []string `yaml:"list_filters"`
-	NotifyChanges     bool     `yaml:"notify_changes"`
+	ChoiceShowDeleted *bool `yaml:"choice_show_deleted"`
+	// ChoiceRowStyle — choice_row_style (см. Entity.ChoiceRowStyle).
+	ChoiceRowStyle *rawChoiceRowStyle `yaml:"choice_row_style"`
+	ListMode       string             `yaml:"list_mode"`
+	ListRefreshOn  []string           `yaml:"list_refresh_on"`
+	ListFilters    []string           `yaml:"list_filters"`
+	NotifyChanges  bool               `yaml:"notify_changes"`
 	// InteractiveCreate — указатель: отсутствие ключа значит «можно».
 	InteractiveCreate *bool           `yaml:"interactive_create"`
 	TileView          *rawTileView    `yaml:"tile_view"`
@@ -348,6 +350,7 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 	e.ChoicePreview = strings.TrimSpace(raw.ChoicePreview)
 	e.ChoicePreviewProc = strings.TrimSpace(raw.ChoicePreviewProc)
 	e.ChoiceShowDeleted = raw.ChoiceShowDeleted
+	e.ChoiceRowStyle = parseChoiceRowStyle(raw.ChoiceRowStyle)
 	if raw.Numerator != nil {
 		n := &Numerator{
 			Prefix:     raw.Numerator.Prefix,

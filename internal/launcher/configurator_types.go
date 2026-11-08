@@ -183,8 +183,11 @@ type saveEntity struct {
 	InteractiveCreate *bool `yaml:"interactive_create,omitempty"`
 	// ChoiceShowDeleted — choice_show_deleted справочника; редактор его не
 	// показывает, ключ переносится как есть.
-	ChoiceShowDeleted *bool     `yaml:"choice_show_deleted,omitempty"`
-	TileView          yaml.Node `yaml:"tile_view,omitempty"`
+	ChoiceShowDeleted *bool `yaml:"choice_show_deleted,omitempty"`
+	// ChoiceRowStyle — choice_row_style справочника; редактор его не
+	// показывает, блок переносится как есть.
+	ChoiceRowStyle yaml.Node `yaml:"choice_row_style,omitempty"`
+	TileView       yaml.Node `yaml:"tile_view,omitempty"`
 	// DetailPanel — состав боковой панели деталей (план 118C). Конфигуратор его
 	// не редактирует (прецедент tile_view), но обязан сохранить: иначе правка
 	// реквизитов из UI молча вытирала бы блок.
