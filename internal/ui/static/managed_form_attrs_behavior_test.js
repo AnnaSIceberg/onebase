@@ -50,6 +50,7 @@ function runtime(cfg, controls = []) {
     function obManagedReady(fn) { fn(); }
     var DOC_ID = '';
     var formEditState = {revision: 0};
+    var deferredGeneration = 0, deferredPendingCount = 0;
     var controlEditRevisions = new WeakMap();
     function serviceField(name) { return name; }
     ${attrsInit}
@@ -58,6 +59,7 @@ function runtime(cfg, controls = []) {
     ${extract('applyValues')}
     ${extract('controlSubmittable')}
     ${extract('captureFormControlState')}
+    ${extract('concurrentFormState')}
     ${extract('fileEventFormData')}
     ${extract('snapshotFormEvent')}
     return {ensureFormAttrControls, applyValues, snapshotFormEvent};

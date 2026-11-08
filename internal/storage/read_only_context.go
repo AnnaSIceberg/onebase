@@ -8,9 +8,9 @@ import (
 
 type readOnlyContextKey struct{}
 
-var ErrReadOnlyContext = errors.New("запись недоступна в обработчике Поиск")
+var ErrReadOnlyContext = errors.New("запись недоступна в контексте только чтения")
 
-// ReadOnlyContext marks a form search handler's database access as read-only.
+// ReadOnlyContext marks a background form handler's database access as read-only.
 // The check lives at the storage boundary so writes through object methods,
 // managers, or explicit transactions obey the same rule.
 func ReadOnlyContext(ctx context.Context) context.Context {
@@ -24,7 +24,7 @@ func writeAllowed(ctx context.Context) error {
 	return nil
 }
 
-// CheckWriteAllowed lets higher-level writers reject a search-handler write
+// CheckWriteAllowed lets higher-level writers reject a background-handler write
 // before hooks, number allocation, or other work with side effects begins.
 func CheckWriteAllowed(ctx context.Context) error { return writeAllowed(ctx) }
 

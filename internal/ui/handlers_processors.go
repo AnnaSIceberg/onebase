@@ -552,6 +552,7 @@ const (
 var processorServiceFields = []string{
 	"_element",
 	"_event",
+	"_deferred",
 	"_kind",
 	"_id",
 	"_close_intent_id",

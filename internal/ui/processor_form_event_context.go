@@ -22,9 +22,13 @@ func addProcessorTPEventContext(
 	target browserFormEventTarget,
 	obj *runtime.Object,
 	vars map[string]any,
+	eventName string,
 ) error {
 	read := func(key string) ([]string, bool) {
 		return processorPostFormValues(r, processorServiceFieldName(proc.Params, key))
+	}
+	if deferredFormEvent(eventName) {
+		return addAfterOpenTableContext(read, proc.ManagedForm(), processorVirtualEntity(proc).TableParts, target, vars)
 	}
 	return addValidatedTPEventContext(read, controls.formTables, target, obj, vars)
 }
@@ -37,8 +41,12 @@ func addEntityTPEventContext(
 	target browserFormEventTarget,
 	obj *runtime.Object,
 	vars map[string]any,
+	eventName string,
 ) error {
 	read := func(key string) ([]string, bool) { return formPostValues(r, key) }
+	if deferredFormEvent(eventName) {
+		return addAfterOpenTableContext(read, form, entity.TableParts, target, vars)
+	}
 	allowed, err := editableFormTablesFromAuthorities(form, entity.TableParts, authorities)
 	if err != nil {
 		return err
@@ -296,4 +304,29 @@ func setTPNameVars(vars map[string]any, name string) {
 	vars["ИмяТабличнойЧасти"] = name
 	vars["ТекущаяТабличнаяЧасть"] = name
 	vars["TablePartName"] = name
+}
+
+// ПослеОткрытия относится ко всей таблице, а не к выбранной строке. Имя
+// берётся из метаданных разрешённой цели; присланный row/column-контекст не
+// может превратить загрузку readonly-таблицы в обычное событие редактирования.
+func addAfterOpenTableContext(read tpContextReader, form *metadata.FormModule, declared []metadata.TablePart, target browserFormEventTarget, vars map[string]any) error {
+	for _, key := range []string{"_tp", "_tp_selected", "_tp_row", "_tp_row_number", "_tp_col", "_tp_col_index"} {
+		if _, present := read(key); present {
+			return fmt.Errorf("контекст строки недопустим для ПослеОткрытия")
+		}
+	}
+	if target.element == nil || target.element.Kind != metadata.FormElementTablePart {
+		return nil
+	}
+	definitions, err := metadata.FormTableDefinitions(form, declared)
+	if err != nil {
+		return err
+	}
+	for _, definition := range definitions {
+		if strings.EqualFold(definition.Name, dpFieldName(target.element.DataPath)) {
+			setTPNameVars(vars, definition.Name)
+			return nil
+		}
+	}
+	return fmt.Errorf("таблица загрузки %q не объявлена", target.element.Name)
 }

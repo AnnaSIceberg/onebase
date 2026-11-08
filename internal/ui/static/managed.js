@@ -1368,6 +1368,68 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
 	return legacySelected.join(',');
   }
 
+  // Capture disabled/read-only fields as well as submitted ones: a loaded
+  // ValueTable can be read-only and therefore absent from FormData entirely.
+  function concurrentFormState(form){
+    var state = new Map();
+    if (!form) return state;
+    Array.prototype.forEach.call(form.querySelectorAll('[name]'), function(input){
+      var name = String(input.name || input.getAttribute('name') || '').toLowerCase();
+      var values = state.get(name) || [];
+      values.push([String(input.value == null ? '' : input.value),
+        input.type === 'checkbox' || input.type === 'radio' ? !!input.checked : null]);
+      state.set(name, values);
+    });
+    return state;
+  }
+
+  function concurrentStateKey(state, matches){
+    var entries = [];
+    state.forEach(function(value, name){ if (matches(name)) entries.push([name, value]); });
+    entries.sort(function(a, b){ return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; });
+    return JSON.stringify(entries);
+  }
+
+  // Both sides of an overlapping background/ordinary request merge against
+  // the live form. An ordinary echo of its old snapshot must not erase a
+  // result already delivered by a loader, nor may a loader erase newer input.
+  function mergeConcurrentFormResponse(data, snapshot){
+    if (!snapshot.deferredOverlap && snapshot.deferredGeneration === deferredGeneration) return data;
+    var before = snapshot.concurrentState;
+    var current = concurrentFormState(snapshot.form);
+    var suppressed = false;
+    function unchanged(matches){
+      return concurrentStateKey(before, matches) === concurrentStateKey(current, matches);
+    }
+    function field(name){
+      var want = name.toLowerCase();
+      return unchanged(function(key){ return key === want; });
+    }
+    function table(kind, name){
+      var prefix = kind + '.' + name.toLowerCase() + '.';
+      var json = 'tp_json.' + name.toLowerCase();
+      return unchanged(function(key){ return key.indexOf(prefix) === 0 || (kind === 'tp' && key === json); });
+    }
+    function filter(values, keep){
+      return filterCloseMap(values, function(name){
+        if (keep(name)) return true;
+        suppressed = true;
+        return false;
+      });
+    }
+    var merged = Object.assign({}, data);
+    merged.values = filter(data.values, field);
+    merged.refOptions = filter(data.refOptions, field);
+    merged.formTables = filter(data.formTables, function(name){ return table('vt', name); });
+    merged.tableparts = filter(data.tableparts, function(name){ return table('tp', name); });
+    merged.tpRefOptions = filter(data.tpRefOptions, function(name){ return table('tp', name); });
+    if (suppressed) {
+      delete merged.conditionalCss;
+      delete merged.elementStates;
+    }
+    return merged;
+  }
+
   async function snapshotFormEvent(elementName, eventName, extraParams, triggerSelection, pickerRequest){
     // Зафиксировать активную правку и синхронизировать ТЧ. При невалидной
     // ссылке или исключении editor-lock отправлять старое tp_json нельзя.
@@ -1421,6 +1483,8 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
 	  body: body, form: form, controlState: captureFormControlState(form), elementName: elementName,
 	  extraParams: extraParams, wasNew: !DOC_ID,
 	  editRevision: formEditState.revision,
+      concurrentState: concurrentFormState(form), deferredGeneration: deferredGeneration,
+      deferredOverlap: deferredPendingCount > 0,
 	  eventName: eventName, pickerRequest: pickerRequest
 	};
   }
@@ -1456,19 +1520,20 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
         headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'X-OneBase-Conceal-Context': form && form.getAttribute ? form.getAttribute('data-ob-conceal-context') || '' : '' },
         credentials: 'same-origin'
       });
-      const data = await res.json();
+      let data = await res.json();
       if (snapshot.pickerRequest && snapshot.pickerRequest.search && !window.obPickerRequestCurrent(snapshot.pickerRequest)) return;
 	  // A JSON proxy/error page is not a trusted application envelope. `ok` is
 	  // mandatory in every formEventResponse, including server-side failures.
       if (!data || typeof data !== 'object' || typeof data.ok !== 'boolean') {
 		throw new Error('invalid form-event response');
 	  }
+      data = mergeConcurrentFormResponse(data, snapshot);
       responseKnown = true;
       if (!res.ok || !data.ok || data.error || data.cancel) data.revealed = [];
       if (window.obApplyConcealed) window.obApplyConcealed(data.revealed, form);
 	  // Even parseable JSON on non-2xx may come from an intermediary after the
 	  // application committed. No subsequent write is safe on this document.
-	  if (!res.ok) fenceUnknownResult();
+	  if (!res.ok && snapshot.eventName !== 'ПослеОткрытия') fenceUnknownResult();
       // A handler may have durably created this object. Adopt its identity and
       // optimistic version before any renderer, picker or message callback can
       // throw, so a later queued action updates the row instead of inserting it.
@@ -1539,7 +1604,10 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
       // not emit input/change, so raise it before touching mutable DOM state.
       if (data.dirty === true) setManagedFormDirty(true);
       var beforePostMerged = beforePostSnapshot(snapshot) && formEditState.revision !== snapshot.editRevision;
-      if (beforePostMerged) {
+      if (data.deferred) {
+        applyValues(data.values || {}, data.refOptions, snapshot.body, snapshot.controlState);
+        applyFormTables(data.formTables);
+      } else if (beforePostMerged) {
         // Перед ответом на вопрос сохранить свежий ввод, но принять правки
         // обработчика в полях и таблицах, которых пользователь не касался.
         var mergeRevision = formEditState.revision;
@@ -1560,7 +1628,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
         applyChoiceList(elementName, data.choiceList);
         applyFormTables(data.formTables);
       }
-      if (!beforePostMerged && window.obApplyConcealed) window.obApplyConcealed(data.revealed, form, data.values || {});
+      if (!beforePostMerged && !data.deferred && window.obApplyConcealed) window.obApplyConcealed(data.revealed, form, data.values || {});
       if (window.obFormKeyboard) window.obFormKeyboard(true);
 	  // Server events repaint controls programmatically and therefore do not
 	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
@@ -1609,7 +1677,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
       // Серверный поиск открытого диалога подбора — исключение: его обработчик
       // не пишет документ (фаза 1 того же диалога), а вечный фенс делал бы
       // ошибку поиска фатальной для всей формы.
-      if (!responseKnown && snapshot.wasNew && !DOC_ID && !(snapshot.pickerRequest && snapshot.pickerRequest.search)) fenceUnknownResult();
+      if (!responseKnown && snapshot.wasNew && !DOC_ID && snapshot.eventName !== 'ПослеОткрытия' && !(snapshot.pickerRequest && snapshot.pickerRequest.search)) fenceUnknownResult();
       // A partial renderer must never leave a disclosed control submittable.
       if (window.obApplyConcealed) window.obApplyConcealed([], form, {});
       flash('Сетевая ошибка: ' + (e && e.message ? e.message : e), 'err');
@@ -1645,6 +1713,14 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
 	  flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
 	  return Promise.resolve();
 	}
+    var standaloneSearch = !!(pickerRequest && pickerRequest.search);
+    // The server enforces read-only access for every AfterOpen invocation,
+    // independently of client flags and processor parameter names.
+    var standaloneDeferred = capturedEvent === 'ПослеОткрытия';
+    if (standaloneDeferred) {
+      deferredGeneration++;
+      deferredPendingCount++;
+    }
 	// The leading event snapshots synchronously (until a possible FileReader
 	// wait). A queued event keeps its immutable trigger context but snapshots the
 	// form only after the previous response was applied. Otherwise a fresh
@@ -1655,6 +1731,7 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
 	  try { snapshotPromise = snapshotFormEvent(capturedElement, capturedEvent, capturedExtra, capturedSelection, pickerRequest); }
 	  catch (e) {
 		flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
+        if (standaloneDeferred) deferredPendingCount--;
 		return Promise.resolve();
 	  }
 	}
@@ -1673,11 +1750,8 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
 	  if (!snapshot || reloadRequired || formEventWriteUnknown || manualReconcileRequired) return;
 	  return dispatchFormEvent(snapshot);
 	};
-	// Серверный поиск диалога не пишет документ: гоняем его вне общей очереди
-	// записи, чтобы он не ждал обычные события формы и не блокировал их.
-	var standaloneSearch = !!(pickerRequest && pickerRequest.search);
 	var queued;
-	if (standaloneSearch) {
+	if (standaloneSearch || standaloneDeferred) {
 	  queued = runEvent();
 	} else {
 	  formEventPendingCount++;
@@ -1689,7 +1763,8 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
 	  queued = queued.finally(function(){ window.obPickerSearchFinished(pickerRequest); });
 	}
 	return queued.finally(function(){
-	  if (standaloneSearch) return;
+      if (standaloneDeferred) deferredPendingCount--;
+	  if (standaloneSearch || standaloneDeferred) return;
 	  formEventPendingCount = Math.max(0, formEventPendingCount - 1);
 	  formEventPending = formEventPendingCount > 0;
 	});
@@ -1746,6 +1821,8 @@ window.obManagedApplyColumnTitles = obManagedApplyColumnTitles;
   // after this IIFE has initialized every shared state variable.
   var formEventQueue = Promise.resolve();
   var formEventPendingCount = 0;
+  var deferredPendingCount = 0;
+  var deferredGeneration = 0;
   var formEventPending = false;
   var formEventWriteUnknown = false;
 	var manualReconcileRequired = false;
@@ -5058,10 +5135,27 @@ function obGridColumnIds(columns) {
 
 // Авто-вызов ПриОткрытииФормы при загрузке страницы. Без этого
 // серверный handler на event="ПриОткрытии" не запускается сам по себе.
+// obStartDeferredLoads — ПослеОткрытия: элементы с отложенной загрузкой
+// получают индикатор и своё событие; запросы идут параллельно, мимо очереди.
+var obDeferredStarted = false;
+function obStartDeferredLoads() {
+  if (obDeferredStarted || !window.obFire) return;
+  obDeferredStarted = true;
+  document.querySelectorAll('[data-ob-after-open]').forEach(function (el) {
+    var name = el.getAttribute('data-ob-after-open');
+    if (!name) return;
+    el.classList.add('ob-loading');
+    var done = function () { el.classList.remove('ob-loading'); };
+    Promise.resolve(window.obFire(name, 'ПослеОткрытия', {_deferred: '1'})).then(done, done);
+  });
+}
 obManagedReady(function () {
   var cfg = obManagedConfig();
-  if (!cfg.autoOpen) return;
-  setTimeout(function () { if (window.obFire) obFire('', 'ПриОткрытии'); }, 0);
+  if (!cfg.autoOpen) { setTimeout(obStartDeferredLoads, 0); return; }
+  setTimeout(function () {
+    var opened = window.obFire ? obFire('', 'ПриОткрытии') : null;
+    Promise.resolve(opened).then(obStartDeferredLoads, obStartDeferredLoads);
+  }, 0);
 });
 
 function obManagedTabKey(tabs) {
