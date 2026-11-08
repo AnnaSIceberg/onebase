@@ -8,6 +8,7 @@ import (
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/query"
+	"github.com/ivantit66/onebase/internal/storage"
 )
 
 // Field masking strategies (план 88). A field not listed in any policy is
@@ -22,9 +23,11 @@ const (
 
 // fixedMask is the constant replacement used by mask_all and by any unknown
 // (fail-closed) strategy — it deliberately leaks neither value nor length.
-const fixedMask = "••••••"
+// Константы общие со страховкой записи storage.IsMaskPlaceholder: заглушка,
+// которую подставляет маска, обязана распознаваться при попытке её записать.
+const fixedMask = storage.MaskFixed
 
-const maskBullet = "•"
+const maskBullet = storage.MaskBullet
 
 // FieldDecision is the effective read decision for one field, after merging all
 // roles that grant object-level read (least-restrictive wins).
@@ -427,7 +430,14 @@ func maskTail(s string, keep int) string {
 	if keep >= len(r) {
 		return strings.Repeat(maskBullet, len(r))
 	}
-	return strings.Repeat(maskBullet, len(r)-keep) + string(r[len(r)-keep:])
+	masked := strings.Repeat(maskBullet, len(r)-keep) + string(r[len(r)-keep:])
+	// A single bullet followed by whitespace is ordinary list text to the
+	// storage backstop. Ambiguous output must still be a recognizable mask,
+	// otherwise copying it through DSL could persist the placeholder as data.
+	if !storage.IsMaskPlaceholder(masked) {
+		return fixedMask
+	}
+	return masked
 }
 
 func maskAll(s string) string {
