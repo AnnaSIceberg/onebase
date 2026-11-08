@@ -1625,6 +1625,10 @@ window.obManagedApplyHints = obManagedApplyHints;
         headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'X-OneBase-Conceal-Context': form && form.getAttribute ? form.getAttribute('data-ob-conceal-context') || '' : '', 'X-OneBase-Shell': (typeof window.obShellId === 'function' ? window.obShellId() : '') },
         credentials: 'same-origin'
       });
+      // The new process may already have committed this command. Fence queued
+      // writes immediately, but consume its response before offering reload.
+      var serverRestarted = !!(window.obServerRestarted && window.obServerRestarted(res));
+      if (serverRestarted) reloadRequired = true;
       let data = await res.json();
       if (snapshot.pickerRequest && snapshot.pickerRequest.search && !window.obPickerRequestCurrent(snapshot.pickerRequest)) return;
 	  // A JSON proxy/error page is not a trusted application envelope. `ok` is
@@ -1634,6 +1638,12 @@ window.obManagedApplyHints = obManagedApplyHints;
 	  }
       data = mergeConcurrentFormResponse(data, snapshot);
       responseKnown = true;
+      if (serverRestarted) {
+        applySavedIdentity(data);
+        if (data.dirty === true) setManagedFormDirty(true);
+        window.obReloadAfterRestart();
+        return;
+      }
       if (!res.ok || !data.ok || data.error || data.cancel) data.revealed = [];
       if (window.obApplyConcealed) window.obApplyConcealed(data.revealed, form);
 	  // Even parseable JSON on non-2xx may come from an intermediary after the

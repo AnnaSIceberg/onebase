@@ -294,6 +294,7 @@ func (s *Server) saveManagedCloseObject(r *http.Request, entity *metadata.Entity
 
 // handleManagedFormEvent — единая точка обработки событий managed-форм.
 func (s *Server) handleManagedFormEvent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-OB-Boot", uiBootID)
 	s.handleManagedFormEventMode(w, r, nil)
 }
 
@@ -2593,6 +2594,7 @@ func serializeValue(v any) any {
 // Аналог handleManagedFormEvent, но вместо Entity использует виртуальную entity
 // из параметров обработки. Кнопка «Выполнить» запускает proc.os через interp.
 func (s *Server) handleProcessorFormEvent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-OB-Boot", uiBootID)
 	s.handleProcessorFormEventMode(w, r, nil)
 }
 

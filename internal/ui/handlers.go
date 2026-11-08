@@ -916,6 +916,7 @@ func (s *Server) requirePerm(w http.ResponseWriter, r *http.Request, kind, entit
 func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data map[string]any) {
 	defer serverTimingSpan(r.Context(), "render")()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	markFreshPage(w)
 	if data == nil {
 		data = make(map[string]any)
 	}
