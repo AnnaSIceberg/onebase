@@ -1038,6 +1038,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   "initialDirty" .InitialDirty
   "docId" ""
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
+  "notify" (hasFormHandler .Form "ОбработкаОповещения")
   "serviceFields" (processorServiceFieldNames .Processor)
   "formAttrs" .ProcessorCarryAttrs
   "formAttrValues" .ProcessorCarryValues
@@ -1058,6 +1059,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   "docId" .ID
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
   "serviceFields" (dict "_question_fields" (entityQuestionFieldsName .Entity .Form))
+  "notify" (hasFormHandler .Form "ОбработкаОповещения")
   "beforePost" (and .Entity.Posting (hasFormHandler .Form "ПередПроведением"))
   "formAttrs" (formAttrNames .Form .Entity)
   "formAttrValues" (formAttrValues .Form .Entity .Values)

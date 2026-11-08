@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -378,6 +379,23 @@ func (s *Server) finishProcessorCarry(r *http.Request, proc *processorpkg.Proces
 		resp.Values = map[string]any{}
 	}
 	resp.Values[processorCarryFieldName(proc, form)] = token
+}
+
+// finishProcessorCarryEvent — finishProcessorCarry для ответа события формы.
+// Ответ ПослеОткрытия (deferred) приходит позже обычных событий: новый токен
+// заменил бы в браузере их состояние снимком до них. Поэтому отложенный ответ
+// везёт токен, только если его обработчик изменил переносимые значения.
+func (s *Server) finishProcessorCarryEvent(r *http.Request, proc *processorpkg.Processor, form *metadata.FormModule, fields map[string]any, before map[string]string, deferred bool, resp *formEventResponse) {
+	if deferred && resp != nil && proc != nil && maps.Equal(processorCarryValues(proc, form, fields), before) {
+		unplaced := processorUnplaced(proc, form)
+		for key := range resp.Values {
+			if unplaced[strings.ToLower(key)] {
+				delete(resp.Values, key)
+			}
+		}
+		return
+	}
+	s.finishProcessorCarry(r, proc, form, fields, resp)
 }
 
 // setProcessorCarryContext — начальное состояние формы обработки для

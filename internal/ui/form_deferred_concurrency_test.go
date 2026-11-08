@@ -120,6 +120,7 @@ func TestManagedDeferredProcessorServiceFieldCollisions(t *testing.T) {
 			body := url.Values{names["_element"]: {"Загрузка"}, names["_event"]: {formEventAfterOpen}, "_event": {"user event"}, "_deferred": {"user deferred"}, "Имя": {"Original"}}
 			body.Set(deferredKey, "1")
 			resp := decodeFormEventResponse(t, postProcessorFormEventExecution(t, srv, proc.Name, "application/x-www-form-urlencoded; charset=utf-8", strings.NewReader(body.Encode())).Body.Bytes())
+			dropProcessorCarry(resp.Values)
 			if !resp.OK || !resp.Deferred || len(resp.Values) != 1 || valueCIDeferred(resp.Values, "Имя") != "Loaded" || len(resp.Messages) != 1 || resp.Messages[0] != "loaded" {
 				t.Fatalf("mapped loader returned full/stale response: %+v", resp)
 			}
@@ -147,6 +148,7 @@ func TestManagedDeferredCannotWriteThroughManagers(t *testing.T) {
 			srv.reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{ent}})
 			body := url.Values{"_element": {"Загрузка"}, "_event": {formEventAfterOpen}, "_deferred": {"1"}}
 			resp := decodeFormEventResponse(t, postProcessorFormEventExecution(t, srv, proc.Name, "application/x-www-form-urlencoded; charset=utf-8", strings.NewReader(body.Encode())).Body.Bytes())
+			dropProcessorCarry(resp.Values)
 			if resp.OK || !resp.Deferred || !strings.Contains(resp.Error, "контексте только чтения") {
 				t.Fatalf("manager wrote from background: %+v", resp)
 			}

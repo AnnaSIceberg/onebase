@@ -108,6 +108,12 @@ func TestManagedDeferredProcessorUsesDeferredResponse(t *testing.T) {
 				"_deferred": {"1"}, "Имя": {"Original"}, "_ob_present_Флаг": {"1"}}
 			rec := postProcessorFormEventExecution(t, srv, proc.Name, "application/x-www-form-urlencoded; charset=utf-8", strings.NewReader(body.Encode()))
 			resp := decodeFormEventResponse(t, rec.Body.Bytes())
+			// Неизменённый отложенный ответ токен состояния обработки не везёт:
+			// он пришёл бы позже обычных событий и затёр бы их состояние.
+			if hasProcessorCarry(resp.Values) != tc.changed {
+				t.Fatalf("carry token in deferred response = %v, want %v: %+v", hasProcessorCarry(resp.Values), tc.changed, resp)
+			}
+			dropProcessorCarry(resp.Values)
 			if resp.OK == tc.failed || (resp.Error != "") != tc.failed {
 				t.Fatalf("unexpected handler result: %+v", resp)
 			}
@@ -137,5 +143,24 @@ func TestManagedDeferredKeepsHandlerTableChanges(t *testing.T) {
 	rows := resp.FormTables["Список"]
 	if !resp.OK || !resp.Deferred || len(rows) != 1 || rows[0]["Текст"] != "loaded table cell" || rows[0]["Активен"] != true {
 		t.Fatalf("in-place handler table mutation lost: %+v", resp)
+	}
+}
+
+// hasProcessorCarry / dropProcessorCarry — служебный токен состояния формы
+// обработки (_ob_carry, при совпадении имён — с префиксом службы).
+func hasProcessorCarry(values map[string]any) bool {
+	for k := range values {
+		if strings.Contains(k, processorCarryField) {
+			return true
+		}
+	}
+	return false
+}
+
+func dropProcessorCarry(values map[string]any) {
+	for k := range values {
+		if strings.Contains(k, processorCarryField) {
+			delete(values, k)
+		}
 	}
 }
