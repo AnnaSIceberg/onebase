@@ -116,3 +116,26 @@ func formPlacedFieldNames(form *metadata.FormModule) map[string]bool {
 	})
 	return placed
 }
+
+type tpRefOnlyKey struct{}
+
+// tpRefOnly — набор ТЧ, которым варианты выбора нужны (ответ закрытия:
+// только изменившиеся ТЧ). nil-набор в контексте значит «никаким».
+type tpRefOnly struct {
+	tables map[string][]map[string]any
+}
+
+func withTPRefOnly(ctx context.Context, tables map[string][]map[string]any) context.Context {
+	return context.WithValue(ctx, tpRefOnlyKey{}, &tpRefOnly{tables: tables})
+}
+
+// skipTPRefOnly — ТЧ нет в наборе контекста. Сравнение имён без учёта
+// регистра — как у filterCloseTPRefOptions, которая отбирает ответ закрытия.
+func skipTPRefOnly(ctx context.Context, name string) bool {
+	only, _ := ctx.Value(tpRefOnlyKey{}).(*tpRefOnly)
+	if only == nil {
+		return false
+	}
+	_, ok := tableRowsCI(only.tables, name)
+	return !ok
+}
