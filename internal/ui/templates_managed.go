@@ -333,7 +333,7 @@ const tplManagedForm = `
        $ro уже содержит условие предка (#1184). */}}
   <div class="managed-tp" data-ob-tp="{{$el.Name}}"{{if hasHandler $el "ПослеОткрытия"}} data-ob-after-open="{{$el.Name}}"{{end}}>
   {{if $tpMeta}}
-  <h3 class="ob-table-title" style="margin:18px 0 8px;font-size:14px;{{tableTitleStyle $ctx.Form}}">{{fieldTitleRU $el.TitleMap (or (tablePartTitle $tpMeta) $tpName)}}</h3>
+  {{if not $el.TitleHidden}}<h3 class="ob-table-title" style="margin:18px 0 8px;font-size:14px;{{tableTitleStyle $ctx.Form}}">{{fieldTitleRU $el.TitleMap (or (tablePartTitle $tpMeta) $tpName)}}</h3>{{end}}
   {{$tpVirtualCols := managedTPVirtualColumns $tpMeta.Fields $el.VirtualColumns}}
   {{/* Состав и порядок колонок задают дети kind: Колонка (план 154). Реквизит,
        не попавший в выбор, остаётся в плане скрытым: убрать его из полезной
@@ -483,7 +483,7 @@ const tplManagedForm = `
   {{/* Заголовок ValueTable находится в том же контейнере высоты, что и таблица. */}}
   {{/* show_count — число записей в заголовке: «Заявки клиента (5)»; после событий
        формы его обновляет перерисовка таблицы (applyFormTables). */}}
-  <h3 class="ob-table-title" style="font-size:14px;font-weight:600;margin:0 0 8px;{{tableTitleStyle $ctx.Form}}">{{fieldTitleRU $el.TitleMap $tpName}}{{if $el.ShowCount}} <span data-ob-vt-count="{{$tpName}}">({{len $vtRows}})</span>{{end}}</h3>
+  {{if not $el.TitleHidden}}<h3 class="ob-table-title" style="font-size:14px;font-weight:600;margin:0 0 8px;{{tableTitleStyle $ctx.Form}}">{{fieldTitleRU $el.TitleMap $tpName}}{{if $el.ShowCount}} <span data-ob-vt-count="{{$tpName}}">({{len $vtRows}})</span>{{end}}</h3>{{end}}
   {{$vtPlan := managedVTColumnPlan $el $vtCols}}
   {{$vtEditable := managedVTEditable $vtPlan}}
   {{$vtActivate := hasHandler $el "ПриАктивизацииСтроки"}}
