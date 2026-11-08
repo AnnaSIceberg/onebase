@@ -129,8 +129,10 @@ type rawEntity struct {
 	ChoicePreview string `yaml:"choice_preview"`
 	// ChoicePreviewProc — «Модуль.Функция», собирающая тексты просмотра с учётом
 	// контекста подбора (Entity.ChoicePreviewProc).
-	ChoicePreviewProc string          `yaml:"choice_preview_proc"`
-	Predefined        []rawPredefined `yaml:"predefined"`
+	ChoicePreviewProc string `yaml:"choice_preview_proc"`
+	// ChoiceSearchProc — «Модуль.Функция» поиска подбора (Entity.ChoiceSearchProc).
+	ChoiceSearchProc string          `yaml:"choice_search_proc"`
+	Predefined       []rawPredefined `yaml:"predefined"`
 	// Owner — справочник-владелец (1С: подчинённый справочник). См. Entity.Owner.
 	Owner         string   `yaml:"owner"`
 	Hierarchical  bool     `yaml:"hierarchical"`
@@ -351,6 +353,7 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 	e.ChoicePreviewProc = strings.TrimSpace(raw.ChoicePreviewProc)
 	e.ChoiceShowDeleted = raw.ChoiceShowDeleted
 	e.ChoiceRowStyle = parseChoiceRowStyle(raw.ChoiceRowStyle)
+	e.ChoiceSearchProc = strings.TrimSpace(raw.ChoiceSearchProc)
 	if raw.Numerator != nil {
 		n := &Numerator{
 			Prefix:     raw.Numerator.Prefix,
