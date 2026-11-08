@@ -241,6 +241,7 @@ func TestManagedFormPictureFieldEnglishLabels(t *testing.T) {
 
 // Exercise the actual GET markup in the browser applyValues path: metadata
 // contains an editor, but its hidden group is absent from the rendered form.
+// Группа скрыта константой: скрытую условием #2517 рисует отключённой.
 func TestManagedFormPictureWithHiddenEditorUpdatesInNode(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -249,7 +250,7 @@ func TestManagedFormPictureWithHiddenEditorUpdatesInNode(t *testing.T) {
 	oldID := uuid.New().String()
 	srv, ent := setupManagedEventsServer(t, ``, nil, []*metadata.FormElement{
 		{Kind: metadata.FormElementPicture, Name: "ПолеФото", DataPath: "Объект.Наименование"},
-		{Kind: metadata.FormElementGroupBox, Name: "СкрытаяГруппа", HiddenWhen: `Наименование <> ""`, Children: []*metadata.FormElement{
+		{Kind: metadata.FormElementGroupBox, Name: "СкрытаяГруппа", HiddenWhen: `Истина`, Children: []*metadata.FormElement{
 			{Kind: metadata.FormElementField, Name: "РедакторФото", DataPath: "Объект.Наименование"},
 		}},
 	})
