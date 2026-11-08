@@ -251,6 +251,11 @@ type FormElement struct {
 	HeaderBackground  string `yaml:"header_background,omitempty"`
 	HeaderBorderColor string `yaml:"header_border_color,omitempty"`
 	ReadOnly          bool   `yaml:"readonly,omitempty"` // только чтение
+	// Frame — рамка ГруппаФормы: frame: false убирает рамку, внутренние
+	// отступы и заголовок, оставляя только раскладку детей. Так собирают
+	// строку полей внутри раздела (как в карточке 1С: рамка у раздела, а не у
+	// каждой строки). nil и true — рамка, как было.
+	Frame *bool `yaml:"frame,omitempty"`
 	// EditableAdminOnly — поле редактирует только администратор, остальным оно
 	// нередактируемо всегда. В отличие от ReadOnlyWhen условие тут не от данных
 	// записи, а от того, кто смотрит, поэтому вычисляется на сервере при
@@ -1181,3 +1186,8 @@ func FormTitleSourceName(source string) string {
 // FormGroupTitlesBold — жирные тёмные заголовки групп и таблиц формы
 // (FormModule.GroupTitles).
 const FormGroupTitlesBold = "bold"
+
+// Frameless — ГруппаФормы с frame: false: без рамки, отступов и заголовка.
+func (el *FormElement) Frameless() bool {
+	return el != nil && el.Kind == FormElementGroupBox && el.Frame != nil && !*el.Frame
+}
