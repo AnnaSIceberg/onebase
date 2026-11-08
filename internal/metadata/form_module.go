@@ -278,6 +278,13 @@ type FormElement struct {
 	// title платформа подставляет имя таблицы, а таблице-выдаче (результат
 	// поиска) подпись не нужна и стоит строки высоты формы.
 	TitleHidden bool `yaml:"title_hidden,omitempty"`
+	// TextColor — цвет текста поля ввода или надписи (подпись и значение,
+	// у нередактируемого поля тоже); цвет проверяет csssafe.Color, как у
+	// background. Importance — смысловое выделение вместо конкретного цвета:
+	// error — красный текст ошибки (например, «Не отправлена в 1С»). Если
+	// заданы оба, text_color сильнее. См. FormElementTextColorCSS.
+	TextColor  string `yaml:"text_color,omitempty"`
+	Importance string `yaml:"importance,omitempty"`
 	// EditableAdminOnly — поле редактирует только администратор, остальным оно
 	// нередактируемо всегда. В отличие от ReadOnlyWhen условие тут не от данных
 	// записи, а от того, кто смотрит, поэтому вычисляется на сервере при

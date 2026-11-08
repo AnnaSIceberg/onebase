@@ -600,6 +600,9 @@ func managedFormSchema() map[string]any {
 
 
 			"placement":           map[string]any{"type": "string", "enum": []string{"header", "header_end"}, "description": "Кнопка, ПолеВвода, Флажок (поле — только чтение): header_end — после «? Справка»; header — в строке команд документа после «История», а не в теле формы"},
+
+			"text_color":          stringSchema("Цвет текста ПолеВвода или Надпись (подпись и значение, у нередактируемого поля тоже): hex, rgb(...) или имя CSS-цвета"),
+			"importance":          map[string]any{"type": "string", "enum": []any{"error"}, "description": "Смысловое выделение ПолеВвода или Надпись: error — красный текст ошибки; text_color сильнее"},
 			"scroll_x":            boolSchema("Прокручивать горизонтальную ГруппаФормы вместо переноса содержимого на следующую строку; по умолчанию false"),
 			"children": map[string]any{
 				"type":  "array",

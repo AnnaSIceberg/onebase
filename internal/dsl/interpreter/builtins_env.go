@@ -90,6 +90,17 @@ func installEnvironmentConstants(e *env) {
 	}}
 	e.setLocal("УровеньЖурналаРегистрации", eventLogLevels)
 	e.setLocal("EventLogLevel", eventLogLevels)
+	// СтатусСообщения — второй аргумент Сообщить, как в 1С. Значение —
+	// русское имя статуса: его разбирает msgstatus.FromDSL, и оно же читается
+	// при отладке. Важное и ОченьВажное интерфейс показывает как ошибку.
+	messageStatus := &MapThis{M: map[string]any{
+		"БезСтатуса": "БезСтатуса", "Обычное": "Обычное", "Информация": "Информация",
+		"Внимание": "Внимание", "Важное": "Важное", "ОченьВажное": "ОченьВажное",
+		"WithoutStatus": "БезСтатуса", "Ordinary": "Обычное", "Information": "Информация",
+		"Attention": "Внимание", "Important": "Важное", "VeryImportant": "ОченьВажное",
+	}}
+	e.setLocal("СтатусСообщения", messageStatus)
+	e.setLocal("MessageStatus", messageStatus)
 
 	// Короткие имена встречаются в перенесённых конфигурациях и остаются
 	// однозначными в поддерживаемом подмножестве API.
