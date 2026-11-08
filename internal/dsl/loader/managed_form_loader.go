@@ -187,7 +187,7 @@ type formYAMLDoc struct {
 		RefCardButtonAdminOnly bool `yaml:"ref_card_button_admin_only"`
 		// EnterSubmitsForm — форма возвращает себе прежний Enter-submit (#1486).
 		EnterSubmitsForm bool `yaml:"enter_submits_form"`
-		// Density — плотность раскладки формы ("" | "compact").
+		// Density — плотность раскладки формы ("" | "compact" | "dense").
 		Density         string `yaml:"density"`
 		TabSkipReadonly bool   `yaml:"tab_skip_readonly"`
 		Autofocus       string `yaml:"autofocus"`
