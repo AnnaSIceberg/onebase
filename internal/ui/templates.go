@@ -669,8 +669,9 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// elHintAttrs — title (и data-ob-hint-*) элемента формы: hint_from из
 		// реквизита формы, иначе hint; у кнопки к подсказке добавляется
 		// горячая клавиша.
-		"elHintAttrs":   elHintAttrs,
-		"elHintAttrsOr": elHintAttrsOr,
+		"elHintAttrs":    elHintAttrs,
+		"elHintAttrsOr":  elHintAttrsOr,
+		"choiceValueCSS": choiceValueCSS,
 		"itemFormVisible": func(entity *metadata.Entity) []itemFormField {
 			vis, _ := splitItemFormFields(entity)
 			return vis

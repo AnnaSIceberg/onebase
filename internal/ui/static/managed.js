@@ -504,10 +504,12 @@ window.obManagedApplyHints = obManagedApplyHints;
       if (String(sel.options[i].value) === String(val)) return;
     }
     let label = (fallbackLabel != null && fallbackLabel !== '') ? fallbackLabel : val;
+    let css = '';
     if (rows) {
       for (let i = 0; i < rows.length; i++){
         if (rows[i] && String(rows[i].id) === String(val)) {
           if (rows[i]._label != null && rows[i]._label !== '') label = rows[i]._label;
+          css = rows[i]['\u0000ref_style'] || '';
           break;
         }
       }
@@ -515,6 +517,8 @@ window.obManagedApplyHints = obManagedApplyHints;
     const o = document.createElement('option');
     o.value = val;
     o.textContent = label;
+    // choice_row_style присвоенного обработчиком значения — для choice_style_value.
+    if (css) o.setAttribute('style', css);
     sel.appendChild(o);
   }
   // BEGIN onebase-ro-apply-values
@@ -635,6 +639,9 @@ window.obManagedApplyHints = obManagedApplyHints;
       });
     });
     if (typeof refreshPictureBindings === 'function') refreshPictureBindings(form, values);
+    // Значения, присвоенные обработчиком, приходят без change: оформление
+    // выбранного значения (choice_style_value) перерисовываем здесь.
+    if (typeof window.obPaintChoiceValues === 'function') window.obPaintChoiceValues(form);
     // A form handler may change a choice_filter source without dispatching a
     // native change event. Re-scan fingerprints after the whole response has
     // been applied, so dependants see the final source and selected values.
