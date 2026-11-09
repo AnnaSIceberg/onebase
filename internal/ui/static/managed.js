@@ -1601,6 +1601,21 @@ window.obManagedApplyHints = obManagedApplyHints;
     return merged;
   }
 
+  // obBinaryFileFields — поля файла параметров обработки type: binary. Их байты
+  // не превращаются в текст: в urlencoded-теле события их нет вовсе, а выбранные
+  // файлы уходят multipart-ом (см. отправку события). Пустая строка на их месте
+  // означала бы для сервера «двоичный файл через текст» — отказ.
+  function obBinaryFileFields(form){
+    var names = {}, files = [];
+    Array.prototype.forEach.call(form.querySelectorAll('input[type="file"][data-ob-binary-file]'), function(input){
+      if (!input.name) return;
+      names[input.name] = true;
+      if (input.disabled) return;
+      Array.prototype.forEach.call(input.files || [], function(file){ files.push([input.name, file]); });
+    });
+    return {names: names, files: files};
+  }
+
   async function snapshotFormEvent(elementName, eventName, extraParams, triggerSelection, pickerRequest){
     // Зафиксировать активную правку и синхронизировать ТЧ. При невалидной
     // ссылке или исключении editor-lock отправлять старое tp_json нельзя.
@@ -1614,6 +1629,7 @@ window.obManagedApplyHints = obManagedApplyHints;
     // повторяем commit/sync и при любом veto оставляем событие неотправленным.
     if (window.obGridSync && window.obGridSync() === false) return;
     const body = new URLSearchParams();
+    const binaryFields = obBinaryFileFields(form);
     const eventFD = fileEventFormData(form, fileHelpers);
     if (eventName === 'ПриАктивизацииСтроки' && extraParams && extraParams._tp) {
       var vtBody = obManagedTableBodies('vt-body-' + extraParams._tp, 'data-vt-fields').find(function(tbody){
@@ -1641,6 +1657,7 @@ window.obManagedApplyHints = obManagedApplyHints;
     eventFD.set(serviceField('_kind'), 'object');
     if (DOC_ID) eventFD.set(serviceField('_id'), DOC_ID);
     eventFD.forEach((v, k) => {
+      if (binaryFields.names[k]) return;
       if (typeof v !== 'string') { body.append(k, ''); return; }
       body.append(k, v);
     });
@@ -1651,7 +1668,7 @@ window.obManagedApplyHints = obManagedApplyHints;
       Object.keys(extraParams).forEach(k => body.append(serviceField(k), extraParams[k]));
     }
     return {
-	  body: body, form: form, controlState: captureFormControlState(form), elementName: elementName,
+	  body: body, files: binaryFields.files, form: form, controlState: captureFormControlState(form), elementName: elementName,
 	  extraParams: extraParams, wasNew: !DOC_ID,
 	  editRevision: formEditState.revision,
       concurrentState: concurrentFormState(form), deferredGeneration: deferredGeneration,
@@ -1685,10 +1702,11 @@ window.obManagedApplyHints = obManagedApplyHints;
 	// диалог уже не тот — ответ некуда применять.
 	if (snapshot.pickerRequest && snapshot.pickerRequest.search && !window.obPickerRequestCurrent(snapshot.pickerRequest)) return;
     try {
+      var request = obFormEventRequest(body, snapshot.files, { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'X-OneBase-Conceal-Context': form && form.getAttribute ? form.getAttribute('data-ob-conceal-context') || '' : '', 'X-OneBase-Shell': (typeof window.obShellId === 'function' ? window.obShellId() : '') });
       const res = await fetch(URL, {
         method: 'POST',
-        body: body,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'X-OneBase-Conceal-Context': form && form.getAttribute ? form.getAttribute('data-ob-conceal-context') || '' : '', 'X-OneBase-Shell': (typeof window.obShellId === 'function' ? window.obShellId() : '') },
+        body: request.body,
+        headers: request.headers,
         credentials: 'same-origin'
       });
       // The new process may already have committed this command. Fence queued
@@ -1963,6 +1981,19 @@ window.obManagedApplyHints = obManagedApplyHints;
 	  formEventPending = formEventPendingCount > 0;
 	});
   }
+  // obFormEventRequest — тело и заголовки запроса события. Без выбранных файлов
+  // binary — прежний urlencoded; с ними — multipart: те же поля плюс байты,
+  // Content-Type с границей частей ставит сам браузер.
+  function obFormEventRequest(body, files, headers){
+    if (!files || !files.length) return {body: body, headers: headers};
+    var data = new FormData();
+    body.forEach(function(v, k){ data.append(k, v); });
+    files.forEach(function(pair){ data.append(pair[0], pair[1], pair[1].name); });
+    var multipartHeaders = {};
+    Object.keys(headers).forEach(function(k){ if (k !== 'Content-Type') multipartHeaders[k] = headers[k]; });
+    return {body: data, headers: multipartHeaders};
+  }
+
   window.obFire = function(elementName, eventName, extraParams, pickerRequest){
     return fireFormEvent(elementName, eventName, extraParams, pickerRequest);
   };
@@ -2097,7 +2128,9 @@ window.obManagedApplyHints = obManagedApplyHints;
     fd.set(serviceField('_kind'), closeFormKind());
     if (DOC_ID) fd.set(serviceField('_id'), DOC_ID);
     var body = new URLSearchParams();
+    var binaryNames = obBinaryFileFields(form).names;
     fd.forEach(function(v, k){
+      if (binaryNames[k]) return;
       if (typeof v !== 'string') { body.append(k, ''); return; }
       body.append(k, v);
     });

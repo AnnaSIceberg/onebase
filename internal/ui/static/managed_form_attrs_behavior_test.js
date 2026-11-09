@@ -61,6 +61,7 @@ function runtime(cfg, controls = []) {
     ${extract('captureFormControlState')}
     ${extract('concurrentFormState')}
     ${extract('fileEventFormData')}
+    ${extract('obBinaryFileFields')}
     ${extract('snapshotFormEvent')}
     return {ensureFormAttrControls, applyValues, snapshotFormEvent};
   `)(document, {}, cfg, FormData);
