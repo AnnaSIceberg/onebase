@@ -1335,10 +1335,12 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 		// Помеченные на удаление: признаки поля из разметки (search/marked),
 		// поверх — ключ элемента формы из доверенного контекста выбора.
 		mode := refOptionsModeFromRequest(r)
+		optCtx := withLang(r.Context(), s.resolveLang(r))
 		if choice != nil {
 			mode = mode.withMarked(choice.ShowDeleted)
+			optCtx = withChoiceStyleParams(optCtx, choice.StyleParams)
 		}
-		items, total, err = s.referenceOptionsPageWithParams(withLang(r.Context(), s.resolveLang(r)), ent, mode, r.URL.Query().Get("q"), limit, offset, extra)
+		items, total, err = s.referenceOptionsPageWithParams(optCtx, ent, mode, r.URL.Query().Get("q"), limit, offset, extra)
 		if errors.Is(err, errChoiceSearch) {
 			s.choiceSearchUnavailable(w, r)
 			return

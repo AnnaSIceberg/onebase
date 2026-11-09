@@ -42,6 +42,9 @@ type resolvedChoiceRequest struct {
 	Predicates []storage.ChoicePredicate
 	Empty      bool
 	Selected   *uuid.UUID
+	// StyleParams — флаги оформления строк выбора (choice_style_params поля),
+	// вычисленные сервером из присланных значений формы.
+	StyleParams map[string]bool
 	// Folders — элемент объявил choice_folders: группы справочника остаются в
 	// выдаче. Признак берётся из метаданных формы, а не из запроса браузера.
 	Folders bool
@@ -166,6 +169,11 @@ func choiceSourceControls(element *metadata.FormElement) map[string]string {
 			add(path)
 		}
 	}
+	// Флаги оформления строк выбора (choice_style_params) — тоже источники:
+	// значение ведущего поля присылает браузер, флаг за ссылкой читает сервер.
+	for _, path := range element.ChoiceStyleParams {
+		add(path)
+	}
 	if len(controls) == 0 {
 		return nil
 	}
@@ -184,11 +192,15 @@ func (s *Server) choicePredicates(ctx context.Context, owner *metadata.Entity, f
 	// choice_folders живёт и без условий: элемент объявляет только состав
 	// выдачи, отбирать при этом нечего.
 	if len(element.ChoiceFilter) == 0 {
-		if !element.ChoiceFolders {
+		if !element.ChoiceFolders && len(element.ChoiceStyleParams) == 0 {
 			return nil, false, fmt.Errorf("choice_filter is not declared")
 		}
-		if len(sources) > 0 {
-			return nil, false, fmt.Errorf("unexpected choice sources")
+		// Без условий отбора источники — только флаги оформления.
+		allowed := choiceSourceControls(element)
+		for path := range sources {
+			if _, ok := allowed[path]; !ok {
+				return nil, false, fmt.Errorf("unexpected choice sources")
+			}
 		}
 		return nil, false, nil
 	}
@@ -640,7 +652,7 @@ func (s *Server) resolveChoiceRequest(r *http.Request, target *metadata.Entity) 
 			}
 		}
 	}
-	if element == nil || (len(element.ChoiceFilter) == 0 && !element.ChoiceFolders) {
+	if element == nil || (len(element.ChoiceFilter) == 0 && !element.ChoiceFolders && len(element.ChoiceStyleParams) == 0) {
 		return nil, fmt.Errorf("unknown choice element")
 	}
 	targetName := formChoiceElementTarget(owner, form, element)
@@ -669,7 +681,8 @@ func (s *Server) resolveChoiceRequest(r *http.Request, target *metadata.Entity) 
 		return nil, err
 	}
 
-	resolved := &resolvedChoiceRequest{Predicates: predicates, Empty: empty, Folders: element.ChoiceFolders, ShowDeleted: formChoiceShowDeleted(owner, form, element)}
+	resolved := &resolvedChoiceRequest{Predicates: predicates, Empty: empty, Folders: element.ChoiceFolders, ShowDeleted: formChoiceShowDeleted(owner, form, element),
+		StyleParams: s.choiceStyleParamValues(r.Context(), owner, form, element, sources)}
 	if selectedRaw != "" {
 		id, parseErr := uuid.Parse(selectedRaw)
 		if parseErr != nil || id == uuid.Nil {
@@ -839,7 +852,7 @@ func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity,
 		if element == nil {
 			return true
 		}
-		filtered := len(element.ChoiceFilter) > 0 || element.ChoiceFolders
+		filtered := len(element.ChoiceFilter) > 0 || element.ChoiceFolders || len(element.ChoiceStyleParams) > 0
 		if (!filtered && element.ChoiceShowDeleted == nil) || (filtered && strings.TrimSpace(element.ID) == "") {
 			return true
 		}
@@ -867,7 +880,8 @@ func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity,
 		if hf, ok := ownerHolderField(owner, target.Owner); ok {
 			ownerID, ownerAsked = formValueForPath(data["Values"], "Объект."+hf.Name), true
 		}
-		rows, err := s.initialChoiceOptions(ctx, owner, form, target, element, sources, selected, ownerID, ownerAsked)
+		styleCtx := withChoiceStyleParams(ctx, s.choiceStyleParamValues(ctx, owner, form, element, sources))
+		rows, err := s.initialChoiceOptions(styleCtx, owner, form, target, element, sources, selected, ownerID, ownerAsked)
 		if err == nil {
 			options[element] = rows
 		} else {
