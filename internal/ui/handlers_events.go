@@ -12,6 +12,7 @@ import (
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/realtime"
+	"github.com/ivantit66/onebase/internal/storage"
 )
 
 // hubNotifier адаптирует *realtime.Hub к interpreter.Notifier: DSL-функция
@@ -23,10 +24,11 @@ import (
 // второй — с повторным ПриОткрытии, — а закрыть копию в фоновой вкладке
 // команде было нечем, и пользователь работал в незакрытой форме.
 type hubNotifier struct {
-	hub   *realtime.Hub
-	shell string
-	forms *formNotifyStore
-	login string
+	hub       *realtime.Hub
+	shell     string
+	forms     *formNotifyStore
+	login     string
+	ctxSource interpreter.CtxSource
 }
 
 func (n hubNotifier) Publish(target, name string, data any) {
@@ -37,7 +39,11 @@ func (n hubNotifier) Publish(target, name string, data any) {
 	if n.shell != "" && n.login != "" && target == n.login && shellScopedEvent(name) {
 		ev.Shell = n.shell
 	}
-	n.hub.Publish(target, ev)
+	publish := func() { n.hub.Publish(target, ev) }
+	if n.ctxSource != nil && storage.DeferUntilTxCommit(n.ctxSource.Ctx(), publish) {
+		return
+	}
+	publish()
 }
 
 // shellScopedEvent — команды, которые относятся к оболочке-источнику, а не ко
@@ -50,8 +56,9 @@ func shellScopedEvent(name string) bool {
 // notifier возвращает издателя уведомлений для инжекции в DSL-переменные.
 // Адрес оболочки и логин берутся из контекста запроса: у фоновых заданий их
 // нет, и уведомление уходит всем сеансам, как раньше.
-func (s *Server) notifier(ctx context.Context) interpreter.Notifier {
-	n := hubNotifier{hub: s.hub, shell: shellIDFrom(ctx)}
+func (s *Server) notifier(ctxSource interpreter.CtxSource) interpreter.Notifier {
+	ctx := ctxSource.Ctx()
+	n := hubNotifier{hub: s.hub, shell: shellIDFrom(ctx), ctxSource: ctxSource}
 	if s.hub != nil {
 		n.forms = s.formNotifies()
 	}

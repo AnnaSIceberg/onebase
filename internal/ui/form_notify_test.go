@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/processor"
 	"github.com/ivantit66/onebase/internal/realtime"
@@ -109,7 +110,7 @@ func TestFormNotify_ForeignOrUnknownIDRejected(t *testing.T) {
 	_, foreign, cancelForeign := srv.hub.Subscribe(op2.ID, op2.Login, nil)
 	defer cancelForeign()
 
-	srv.notifier(auth.ContextWithUser(context.Background(), op1)).(hubNotifier).NotifyForms("Событие", nil, nil)
+	srv.notifier(interpreter.NewTxState(auth.ContextWithUser(context.Background(), op1))).(hubNotifier).NotifyForms("Событие", nil, nil)
 	id := waitFormNotify(t, events, "Событие")
 	select {
 	case ev := <-foreign:
@@ -156,7 +157,7 @@ func TestFormNotify_UndeclaredHandlerRejected(t *testing.T) {
 КонецПроцедуры
 `, nil, nil)
 	srv.hub = realtime.NewHub()
-	srv.notifier(context.Background()).(hubNotifier).NotifyForms("Событие", nil, nil)
+	srv.notifier(interpreter.NewTxState(context.Background())).(hubNotifier).NotifyForms("Событие", nil, nil)
 	var id string
 	for k := range srv.formNotifies().items {
 		id = k
@@ -240,7 +241,7 @@ func TestFormNotify_ProcessorFormReceives(t *testing.T) {
 	srv.hub = realtime.NewHub()
 	_, events, cancel := srv.hub.Subscribe("", "", nil)
 	defer cancel()
-	srv.notifier(context.Background()).(hubNotifier).NotifyForms("Обновить", "42", nil)
+	srv.notifier(interpreter.NewTxState(context.Background())).(hubNotifier).NotifyForms("Обновить", "42", nil)
 	id := waitFormNotify(t, events, "Обновить")
 
 	body := url.Values{}
