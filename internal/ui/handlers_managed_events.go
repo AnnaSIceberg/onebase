@@ -1634,7 +1634,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			resp.OK = false
 			resp.Error = "форма результата несовместима с вопросом или навигацией в том же ответе"
 		} else {
-			handoffDirty := s.managedCloseStateDirty(liveCtx, entity, resultHandoffForm(entity, form), obj, fieldsBefore, tpBefore)
+			handoffDirty := s.managedCloseStateDirtyWithRows(liveCtx, entity, resultHandoffForm(entity, form), obj, fieldsBefore, tpBefore, nil)
 			payload, resultErr := s.prepareResultForm(r, requestedResult, thisObj, handoffDirty)
 			if resultErr != nil {
 				resp.OK = false
