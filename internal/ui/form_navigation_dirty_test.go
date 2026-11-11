@@ -98,6 +98,7 @@ func TestManagedNavigationRespectsResponseDirtyState(t *testing.T) {
 	const harness = `
 const fs = require('fs');
 const source = fs.readFileSync(process.argv[2], 'utf8');
+const bootstrap = source.slice(0, source.indexOf('function obManagedReady('));
 const start = source.indexOf('  async function dispatchFormEvent(snapshot){');
 const concurrencyStart = source.indexOf('  function concurrentFormState(form){');
 const concurrencyEnd = source.indexOf('  async function snapshotFormEvent(', concurrencyStart);
@@ -162,7 +163,7 @@ async function run(response, formDirty, concurrentEdit) {
     obOpenQuestion() {},
   };
   const env = {
-    window: win, document: {}, _obBaseTitle: '',
+    window: win, document: {getElementById(id) { return id === 'ob-managed-config' ? {textContent: JSON.stringify({url:'/ui/form-event',docId:'doc'})} : null; }}, _obBaseTitle: '',
     rememberActiveGrid() {}, updateTotals() {},
     reloadRequired: false, formEventWriteUnknown: false, manualReconcileRequired: false,
     formEditState,
@@ -193,7 +194,7 @@ async function run(response, formDirty, concurrentEdit) {
     }),
     refreshQueuedFormEventIdentity() {},
   };
-  const factory = new Function(...Object.keys(env), fnSource + '\nwindow.markNativeEdit = _obMarkDirty; return window.obFire;');
+  const factory = new Function(...Object.keys(env), bootstrap + '\nvar cfg = obManagedConfig();\n' + fnSource + '\nwindow.markNativeEdit = _obMarkDirty; return window.obFire;');
   const fire = factory(...Object.values(env));
   const pending = fire('Открыть', 'Нажатие');
   await entered;

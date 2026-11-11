@@ -2095,7 +2095,7 @@ window.obManagedApplyHints = obManagedApplyHints;
   window.obResultHandoffCurrent = function(token){
     return !!pendingResultSnapshot && pendingResultSnapshot.token === token &&
       pendingResultSnapshot.revision === formEditState.revision &&
-      pendingResultSnapshot.documentToken === window.obFrameCloseDocumentToken;
+      pendingResultSnapshot.documentToken === window.obFrameCloseDocumentToken && !window._obFormDirty;
   };
   var closePending = null;
   // Embedded OK/post first crosses a postMessage boundary before the parent
