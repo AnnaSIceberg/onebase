@@ -269,6 +269,7 @@ function shell(storage, search = '', confirmClose = () => true, requestFrameClos
     count() { return strip.children.length; },
     activeIndex() { return strip.children.findIndex(button => button.classList.contains('active')); },
     titles() { return strip.children.map(button => button.title); },
+    labels() { return strip.children.map(button => button.children[0].textContent); },
     click(index) { strip.children[index].dispatch('click'); },
     close(index) { strip.children[index].children[2].dispatch('click'); },
     duplicate(index) { strip.children[index].children[1].dispatch('click'); },
