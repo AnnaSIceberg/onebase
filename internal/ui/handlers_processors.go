@@ -47,6 +47,14 @@ func (s *Server) processorForm(w http.ResponseWriter, r *http.Request) {
 				paramValues[p.Name] = fmt.Sprintf("%v", paramDefaultValue(p.Default, p.Type))
 			}
 		}
+		resultContext, resultErr := s.readResultForm(r, proc.Name)
+		if resultErr != nil {
+			s.renderForbidden(w, r)
+			return
+		}
+		if resultContext != nil {
+			paramValues[resultContext.request.parameter] = resultContext.request.reference.UUID
+		}
 		refOpts, _ := s.loadInitialRefOptions(r.Context(), virtEntity, paramValues)
 		tpRefOpts, _ := s.loadTPReferenceData(r.Context(), virtEntity, tablePartRows)
 		enumOpts := s.loadEnumOptions(virtEntity, s.resolveLang(r))
@@ -68,6 +76,9 @@ func (s *Server) processorForm(w http.ResponseWriter, r *http.Request) {
 			"TablePartRows": tablePartRows,
 		}
 		s.setProcessorManagedContext(r, data, proc)
+		if resultContext != nil {
+			data["TabTitle"] = proc.DisplayName(s.resolveLang(r))
+		}
 		// choice_filter полей формы обработки — тем же серверным путём, что у
 		// форм сущностей: отфильтрованный первый список и контекст подбора (#1840).
 		s.applyProcessorChoiceFilters(r.Context(), proc, data)
@@ -247,6 +258,10 @@ func (s *Server) processorRun(w http.ResponseWriter, r *http.Request) {
 	// состояния формы, как в событиях (processor_form_carry.go).
 	applyProcessorCarryParams(proc, s.openProcessorCarry(r, proc, proc.ManagedForm()), paramValues)
 
+	if err := s.applyResultFormParameter(r, proc.Name, paramValues); err != nil {
+		s.renderForbidden(w, r)
+		return
+	}
 	// Обязательные параметры проверяются ДО запуска. Атрибут required в форме
 	// останавливает обычного пользователя, но он же — подсказка, а не гарантия:
 	// запрос приходит и мимо браузера. Отказ здесь заодно даёт человеческий
@@ -383,6 +398,11 @@ func (s *Server) renderProcessorManagedResult(w http.ResponseWriter, r *http.Req
 // Server.render подставить право фиктивного справочника по умолчанию.
 func (s *Server) setProcessorManagedContext(r *http.Request, data map[string]any, proc *processorpkg.Processor) {
 	data["IsProcessor"] = true
+	data["ResultQuery"] = ""
+	if token := r.URL.Query().Get(resultContextQuery); token != "" {
+		data["ResultQuery"] = "?" + resultContextQuery + "=" + url.QueryEscape(token)
+		data["IsResultForm"] = true
+	}
 	data["Processor"] = proc
 	data["CanWrite"] = proc != nil && s.can(r, "processor", proc.Name, "run")
 	s.setProcessorCarryContext(r, data, proc)

@@ -45,13 +45,16 @@ import (
 
 // formEventResponse — структура ответа JSON.
 type formEventResponse struct {
-	OK             bool                        `json:"ok"`
-	Values         map[string]any              `json:"values,omitempty"`
-	Revealed       []string                    `json:"revealed,omitempty"`
-	Deferred       bool                        `json:"deferred,omitempty"`
-	TableParts     map[string][]map[string]any `json:"tableparts,omitempty"`
-	FormTables     map[string][]map[string]any `json:"formTables,omitempty"`
-	ConditionalCSS string                      `json:"conditionalCss"`
+	ResultForm      *resultFormPayload          `json:"resultForm,omitempty"`
+	CloseResultForm bool                        `json:"closeResultForm,omitempty"`
+	FormTitle       *string                     `json:"formTitle,omitempty"`
+	OK              bool                        `json:"ok"`
+	Values          map[string]any              `json:"values,omitempty"`
+	Revealed        []string                    `json:"revealed,omitempty"`
+	Deferred        bool                        `json:"deferred,omitempty"`
+	TableParts      map[string][]map[string]any `json:"tableparts,omitempty"`
+	FormTables      map[string][]map[string]any `json:"formTables,omitempty"`
+	ConditionalCSS  string                      `json:"conditionalCss"`
 	// ElementStates — состояние элементов с условиями readonly_when/hidden_when,
 	// пересчитанное по полям записи ПОСЛЕ обработчика. Без него запрет,
 	// зависящий от состояния объекта, появлялся бы только после перезагрузки
@@ -1311,6 +1314,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 
 	// Навигация (#1557, план 158 срез B): ОткрытьФорму(Ссылка) кладёт в ответ
 	// canonical URL; доставляется только инициировавшей вкладке, с recheck прав.
+	var requestedResult *resultFormRequest
+	resultFn := newResultFormBuiltin(&requestedResult, closeInv == nil)
+	vars["ОткрытьФормуРезультата"], vars["OpenResultForm"] = resultFn, resultFn
 	var navigation *navigationPayload
 	navFn := newNavigationBuiltin(&navigation, s.reg, s.store, auth.UserFromContext(r.Context()))
 	vars["ОткрытьФорму"] = navFn
@@ -1623,6 +1629,20 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	resp.SavedID = savedFormID(thisObj)
 	resp.Version = versionWrittenByHandler(thisObj)
 	resp.Dirty = eventDirty
+	if requestedResult != nil && resp.OK && !resp.Cancel {
+		if navigation != nil || question.Variants != nil {
+			resp.OK = false
+			resp.Error = "форма результата несовместима с вопросом или навигацией в том же ответе"
+		} else {
+			payload, resultErr := s.prepareResultForm(r, requestedResult, thisObj, dirty)
+			if resultErr != nil {
+				resp.OK = false
+				resp.Error = resultErr.Error()
+			} else {
+				resp.ResultForm = payload
+			}
+		}
+	}
 	filterDeferredResponse(deferredBaseline, &resp)
 	compactFormCloseDelta(&resp, closeInv)
 	defer serverTimingSpan(r.Context(), "encode")()
@@ -2025,6 +2045,8 @@ func savedFormID(this *formObjectThis) string {
 // Прежняя россыпь возвратов и была бы ровно тем механизмом отказа, который
 // разбирает #615, — инвариант, применённый в N−1 месте из N.
 type formEventState struct {
+	FormTitle      *string
+	TitleError     error
 	Values         map[string]any
 	Revealed       []string
 	TableParts     map[string][]map[string]any
@@ -2040,8 +2062,9 @@ type formEventState struct {
 
 // response — единственное место, где состояние переносится в ответ.
 func (st formEventState) response(ok bool) formEventResponse {
-	return formEventResponse{
-		OK:             ok,
+	resp := formEventResponse{
+		OK:             ok && st.TitleError == nil,
+		FormTitle:      st.FormTitle,
 		Revealed:       st.Revealed,
 		Values:         st.Values,
 		TableParts:     st.TableParts,
@@ -2054,6 +2077,10 @@ func (st formEventState) response(ok bool) formEventResponse {
 		ElementStates:  st.ElementStates,
 		ColumnTitles:   st.ColumnTitles,
 	}
+	if st.TitleError != nil {
+		resp.Error = "form title evaluation failed"
+	}
+	return resp
 }
 
 // elementStates — состояние элементов формы, зависящее от полей записи.
@@ -2164,7 +2191,10 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 			msgs = append(msgs, warnings...)
 		}
 	}
+	title, titleErr := s.managedFormTitle(ctx, entity, form, obj)
 	return formEventState{
+		FormTitle:      title,
+		TitleError:     titleErr,
 		Revealed:       revealed,
 		Values:         values,
 		TableParts:     tableParts,
@@ -2655,7 +2685,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		r, cancel = s.withFormCloseOperationDeadline(r, opProcessorRun)
 		defer cancel()
 		value := func(name string) string { return missingFormCloseValue(r, name) }
-		routeKey := "processor|" + strings.ToLower(proc.Name)
+		routeKey := processorResultCloseRoute(r, proc.Name)
 		renderedSchema := value("_close_schema")
 		currentSchema := processorFormCloseSchema(proc, form)
 		if renderedSchema == "" || renderedSchema != currentSchema {
@@ -2722,7 +2752,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			return
 		}
 		value := func(name string) string { return missingFormCloseValue(r, name) }
-		routeKey := "processor|" + strings.ToLower(proc.Name)
+		routeKey := processorResultCloseRoute(r, proc.Name)
 		if err := s.prepareFormCloseInvocation(r, closeInv, routeKey, value); err != nil {
 			var closeErr *formCloseHTTPError
 			reconcile := false
@@ -2853,6 +2883,10 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 	// скрыт), приходят запечатанным состоянием формы (processor_form_carry.go).
 	carry := s.openProcessorCarry(r, proc, form)
 	applyProcessorCarryParams(proc, carry, paramValues)
+	if err := s.applyResultFormParameter(r, proc.Name, paramValues); err != nil {
+		respondJSON(enc, formEventResponse{Error: err.Error()})
+		return
+	}
 	progAny := form.ProgramAST
 	var program *ast.Program
 	if p, ok := progAny.(*ast.Program); ok && p != nil {
@@ -2979,6 +3013,9 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		// на другой объект. Запрет уже поставил disableDialogBuiltinsForClose
 		// выше; регистрация здесь его перезаписывала. Условие надёжнее простой
 		// перестановки строк: при следующей правке порядка запрет не потеряется.
+		var closeResult bool
+		closeResultFn := s.resultCloseBuiltin(r, proc.Name, &closeResult, closeInv == nil)
+		vars["ЗакрытьФормуРезультата"], vars["CloseResultForm"] = closeResultFn, closeResultFn
 		var navigation *navigationPayload
 		if closeInv == nil {
 			navFn := newNavigationBuiltin(&navigation, s.reg, s.store, auth.UserFromContext(r.Context()))
@@ -3095,6 +3132,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		if navigation != nil {
 			resp.Navigation = navigation
 		}
+		resp.CloseResultForm = closeResult && resp.OK
 		resp.ChoiceList = choiceItems
 		resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
 		filterDeferredResponse(deferredBaseline, &resp)
@@ -3167,7 +3205,7 @@ func (s *Server) handleMissingProcessorFormClose(w http.ResponseWriter, r *http.
 	// See handleMissingEntityFormClose: after hot removal the old request body
 	// can be larger than any limit derivable from the remaining registry.
 	value := func(name string) string { return missingFormCloseValue(r, name) }
-	if err := s.prepareMissingFormCloseInvocation(r, inv, "processor|"+strings.ToLower(procName), value); err != nil {
+	if err := s.prepareMissingFormCloseInvocation(r, inv, processorResultCloseRoute(r, procName), value); err != nil {
 		status := http.StatusBadRequest
 		var closeErr *formCloseHTTPError
 		if errors.As(err, &closeErr) {
