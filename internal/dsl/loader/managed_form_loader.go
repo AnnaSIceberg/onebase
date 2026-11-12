@@ -186,6 +186,8 @@ type formYAMLDoc struct {
 		RowStyle *metadata.FormListRowStyle `yaml:"row_style"`
 		// «🔍 только администратору» (#1876).
 		RefCardButtonAdminOnly bool `yaml:"ref_card_button_admin_only"`
+		Roles                  []string `yaml:"roles"`
+		ExceptRoles            []string `yaml:"except_roles"`
 		// EnterSubmitsForm — форма возвращает себе прежний Enter-submit (#1486).
 		EnterSubmitsForm bool `yaml:"enter_submits_form"`
 		// Density — плотность раскладки формы ("" | "compact" | "dense").
@@ -250,6 +252,8 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		ListFilter:             doc.Form.ListFilter,
 		ListRowStyle:           doc.Form.RowStyle,
 		RefCardButtonAdminOnly: doc.Form.RefCardButtonAdminOnly,
+		Roles:                  doc.Form.Roles,
+		ExceptRoles:            doc.Form.ExceptRoles,
 		EnterSubmitsForm:       doc.Form.EnterSubmitsForm,
 		Density:                doc.Form.Density,
 		TabSkipReadonly:        doc.Form.TabSkipReadonly,

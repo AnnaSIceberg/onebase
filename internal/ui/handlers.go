@@ -458,8 +458,8 @@ func (s *Server) loadRefOptionsWithMode(ctx context.Context, entity *metadata.En
 func (s *Server) loadInitialRefOptions(ctx context.Context, entity *metadata.Entity, values map[string]string) (map[string][]map[string]any, error) {
 	defer serverTimingSpan(ctx, "refOptions")()
 	opts := make(map[string][]map[string]any)
-	dropdown := refDropdownFields(entity)
-	placed := formPlacedFieldNames(pickManagedForm(entity, "object"))
+	dropdown := refDropdownFields(ctx, entity)
+	placed := formPlacedFieldNames(pickManagedFormCtx(ctx, entity, "object"))
 	for _, f := range entity.Fields {
 		if f.RefEntity == "" {
 			continue
@@ -522,8 +522,8 @@ func (s *Server) loadInitialRefOptions(ctx context.Context, entity *metadata.Ent
 // последним сегментом data_path рисует выпадающий список без своего отбора.
 // Сравнение по последнему сегменту, как у шаблона (dpField), — заведомо с
 // запасом: колонка ТЧ с тем же именем лишь сохранит прежнюю предзагрузку.
-func refDropdownFields(entity *metadata.Entity) map[string]bool {
-	form := pickManagedForm(entity, "object")
+func refDropdownFields(ctx context.Context, entity *metadata.Entity) map[string]bool {
+	form := pickManagedFormCtx(ctx, entity, "object")
 	if form == nil {
 		return nil
 	}
