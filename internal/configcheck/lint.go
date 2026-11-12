@@ -636,6 +636,10 @@ func homePageYAMLSchema() *yamlLintSchema {
 		"status_bar": with(obj("roles", "source", "action", "interval"), map[string]*yamlLintSchema{
 			"buttons": seq(obj("name", "title")),
 		}),
+		"side_panel": with(obj("widget", "width", "hide_on_home"), map[string]*yamlLintSchema{
+			"roles":        seq(obj()),
+			"except_roles": seq(obj()),
+		}),
 	})
 }
 
