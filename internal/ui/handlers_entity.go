@@ -203,7 +203,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lang := s.resolveLang(r)
-	s.render(w, r, "page-list", map[string]any{
+	data := map[string]any{
 		"Entity":           entity,
 		"Rows":             rows,
 		"Params":           params,
@@ -230,7 +230,9 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"ListFormToggles":  s.listFormFilterToggles(r, entity),
 		"ListFormOff":      r.URL.Query().Get(listFormFilterOffParam),
 		"ListFilterExtra":  listFilterExtra,
-	})
+	}
+	s.listSettingsData(r, entity, data)
+	s.render(w, r, "page-list", data)
 }
 
 // listSearchesWholeHierarchy — поиск или отбор в списке иерархического
