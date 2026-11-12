@@ -312,8 +312,11 @@ const tplManagedForm = `
     {{else}}
     <select name="{{$fn}}"{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if and $roUnlockable (hasHandler $el "НачалоВыбора")}} data-el="{{$el.Name}}" data-ob-list-choice="{{$el.Name}}"{{end}}{{if $ro}} disabled{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       <option value="">{{if $ro}}—{{else}}— выбрать —{{end}}</option>
-      {{range index $ctx.ChoiceOptions $el.Name}}
-      <option value="{{.Value}}" {{if eq .Value (index $ctx.Values $fn)}}selected{{end}}>{{.Label}}</option>
+      {{/* Текущее значение, которого нет среди вариантов (список строит
+           НачалоВыбора, или вариант убрали), выводится выбранным: иначе форма
+           отправляла пустое и запись стирала сохранённое значение. */}}
+      {{range choiceOptionsWithCurrent (index $ctx.ChoiceOptions $el.Name) (index $ctx.Values $fn)}}
+      <option value="{{.Value}}" {{if eq .Value (str (index $ctx.Values $fn))}}selected{{end}}>{{.Label}}</option>
       {{end}}
     </select>
     {{end}}
