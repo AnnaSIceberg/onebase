@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -116,12 +117,13 @@ func (s *Server) resultFormAllowed(r *http.Request, request resultFormRequest) (
 	return proc, nil
 }
 
-func (s *Server) prepareResultForm(r *http.Request, request *resultFormRequest, source *formObjectThis, dirty bool) (*resultFormPayload, error) {
+func (s *Server) prepareResultForm(r *http.Request, request *resultFormRequest, source *formObjectThis, dirty bool, dirtyReason string) (*resultFormPayload, error) {
 	if request == nil {
 		return nil, nil
 	}
 	if source == nil || !source.saved || dirty || source.obj == nil || source.obj.ID.String() != request.reference.UUID ||
 		!strings.EqualFold(source.entity.Name, request.reference.Type) {
+		logResultFormRefusal(r, request, source, dirty, dirtyReason)
 		return nil, fmt.Errorf("ОткрытьФормуРезультата: исходная карточка должна быть успешно записана без несохранённых изменений")
 	}
 	proc, err := s.resultFormAllowed(r, *request)
@@ -149,6 +151,41 @@ func (s *Server) prepareResultForm(r *http.Request, request *resultFormRequest, 
 	}
 	s.resultForms[token] = resultFormContext{request: *request, owner: owner, expires: now.Add(8 * time.Hour)}
 	return &resultFormPayload{Token: token, URL: "/ui/processor/" + url.PathEscape(proc.Name) + "?" + resultContextQuery + "=" + token}, nil
+}
+
+// logResultFormRefusal — диагностика отказа ОткрытьФормуРезультата в журнал
+// сервера (не оператору): первая причина — карточка не записана в этом
+// обработчике, ссылка не та или имя поля/ТЧ/реквизита формы, расходящегося
+// с базой. Значений нет — только длина и отпечаток. Поведение не меняет.
+func logResultFormRefusal(r *http.Request, request *resultFormRequest, source *formObjectThis, dirty bool, dirtyReason string) {
+	var reasons []string
+	attrs := []any{"processor", request.processor, "reference_type", request.reference.Type, "reference", request.reference.UUID, "user", currentUserLogin(r)}
+	switch {
+	case source == nil || source.obj == nil:
+		reasons = append(reasons, "no-source-object")
+	default:
+		if !source.saved {
+			reasons = append(reasons, "saved=false: Объект.Записать() в этом обработчике не выполнен или откатился")
+		}
+		if id := source.obj.ID.String(); id != request.reference.UUID {
+			reasons = append(reasons, "id-mismatch: source="+id)
+		}
+		if source.entity == nil || !strings.EqualFold(source.entity.Name, request.reference.Type) {
+			name := ""
+			if source.entity != nil {
+				name = source.entity.Name
+			}
+			reasons = append(reasons, "entity-mismatch: source="+name)
+		}
+	}
+	if dirty {
+		if dirtyReason == "" {
+			dirtyReason = "dirty без причины"
+		}
+		reasons = append(reasons, "dirty: "+dirtyReason)
+	}
+	attrs = append(attrs, "reason", strings.Join(reasons, "; "))
+	slog.Warn("ОткрытьФормуРезультата: отказ гарда исходной карточки", attrs...)
 }
 
 // The opaque context is rechecked on GET, every command, and close-intent.
