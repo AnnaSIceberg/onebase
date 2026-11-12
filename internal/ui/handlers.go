@@ -596,7 +596,7 @@ func (s *Server) loadTPReferenceData(ctx context.Context, entity *metadata.Entit
 	var placed map[string]bool
 	if delta != nil {
 		placed = delta.placedTableParts(entity)
-	} else if form := pickManagedForm(entity, "object"); form != nil {
+	} else if form := pickManagedFormCtx(ctx, entity, "object"); form != nil {
 		// Открытие управляемой формы: варианты нужны только ТЧ, стоящим на
 		// ней, — остальные браузер не рисует.
 		placed = (&tpRefDelta{form: form}).placedTableParts(entity)

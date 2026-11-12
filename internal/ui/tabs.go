@@ -52,7 +52,7 @@ func (s *Server) appShell(w http.ResponseWriter, r *http.Request) {
 	data["TabStorageScope"] = scope
 	displayTitles := map[string]string{}
 	for _, e := range s.reg.Entities() {
-		if f := pickManagedForm(e, "object"); f != nil && f.TitleProc != "" {
+		if f := pickManagedFormCtx(r.Context(), e, "object"); f != nil && f.TitleProc != "" {
 			displayTitles[strings.ToLower("/ui/"+string(e.Kind)+"/"+e.Name+"/")] = e.DisplayName(s.resolveLang(r))
 		}
 	}
