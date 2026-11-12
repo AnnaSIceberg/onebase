@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1634,8 +1635,8 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			resp.OK = false
 			resp.Error = "форма результата несовместима с вопросом или навигацией в том же ответе"
 		} else {
-			handoffDirty := s.managedCloseStateDirtyWithRows(liveCtx, entity, resultHandoffForm(entity, form), obj, fieldsBefore, tpBefore, nil)
-			payload, resultErr := s.prepareResultForm(r, requestedResult, thisObj, handoffDirty)
+			handoffReason := s.managedCloseStateDirtyReason(liveCtx, entity, resultHandoffForm(entity, form), obj, fieldsBefore, tpBefore, nil)
+			payload, resultErr := s.prepareResultForm(r, requestedResult, thisObj, handoffReason != "", handoffReason)
 			if resultErr != nil {
 				resp.OK = false
 				resp.Error = resultErr.Error()
@@ -1870,12 +1871,30 @@ func (s *Server) managedCloseStateDirtyWithRows(
 	tpBefore map[string][]map[string]any,
 	storedTP map[string][]map[string]any,
 ) bool {
+	return s.managedCloseStateDirtyReason(ctx, entity, form, obj, fieldsBefore, tpBefore, storedTP) != ""
+}
+
+// managedCloseStateDirtyReason — то же сравнение, но с первой причиной
+// расхождения ("" — форма чистая). Причина только для журнала сервера:
+// значения в ней не печатаются (ПДн), только длина и отпечаток (dirtyValueDigest).
+func (s *Server) managedCloseStateDirtyReason(
+	ctx context.Context,
+	entity *metadata.Entity,
+	form *metadata.FormModule,
+	obj *runtime.Object,
+	fieldsBefore map[string]string,
+	tpBefore map[string][]map[string]any,
+	storedTP map[string][]map[string]any,
+) string {
 	if s == nil || s.store == nil || entity == nil || obj == nil || obj.ID == uuid.Nil {
-		return true
+		return "no-record: объект без id"
 	}
 	persisted, err := s.recordForRequest(ctx, entity, obj.ID)
-	if err != nil || persisted == nil {
-		return true
+	if err != nil {
+		return "record-read-error: " + err.Error()
+	}
+	if persisted == nil {
+		return "record-missing: записи нет в базе"
 	}
 	dialect := s.store.Dialect().Name()
 	// Индексы вместо перебора на каждое поле (ci_index.go): obj.Get и
@@ -1885,8 +1904,9 @@ func (s *Server) managedCloseStateDirtyWithRows(
 	liveKeys := newCIIndex(obj.Fields, strings.ToLower)
 	for _, field := range entity.Fields {
 		_, stored, _ := ciGet(persisted, persistedKeys, field.Name)
-		if tpCellNormStored(field, objectGetIndexed(obj, liveKeys, field.Name), dialect) != tpCellNormStored(field, stored, dialect) {
-			return true
+		liveNorm, storedNorm := tpCellNormStored(field, objectGetIndexed(obj, liveKeys, field.Name), dialect), tpCellNormStored(field, stored, dialect)
+		if liveNorm != storedNorm {
+			return fmt.Sprintf("entity-field %s type=%s live=%s stored=%s", field.Name, field.Type, dirtyValueDigest(liveNorm), dirtyValueDigest(storedNorm))
 		}
 	}
 	serviceKeys := []string{"deletion_mark"}
@@ -1908,10 +1928,10 @@ func (s *Server) managedCloseStateDirtyWithRows(
 		stored, _ := maskCIKeyValue(persisted, name)
 		if name == "parent_id" {
 			if refValueString(live) != refValueString(stored) {
-				return true
+				return "service-field parent_id"
 			}
 		} else if boolCanon(asBool(live)) != boolCanon(asBool(stored)) {
-			return true
+			return fmt.Sprintf("service-field %s live=%v stored=%v", name, asBool(live), asBool(stored))
 		}
 	}
 	for _, tablePart := range entity.TableParts {
@@ -1920,8 +1940,11 @@ func (s *Server) managedCloseStateDirtyWithRows(
 		if !cached {
 			stored, rowsErr = s.store.GetTablePartRows(ctx, entity.Name, tablePart.Name, obj.ID, tablePart)
 		}
-		if rowsErr != nil || !tpRowsEqualStored(obj.TablePartRows[tablePart.Name], stored, tablePart, dialect) {
-			return true
+		if rowsErr != nil {
+			return fmt.Sprintf("table-part %s read-error: %v", tablePart.Name, rowsErr)
+		}
+		if !tpRowsEqualStored(obj.TablePartRows[tablePart.Name], stored, tablePart, dialect) {
+			return fmt.Sprintf("table-part %s live_rows=%d stored_rows=%d", tablePart.Name, len(obj.TablePartRows[tablePart.Name]), len(stored))
 		}
 	}
 	for _, attr := range form.Attributes {
@@ -1930,8 +1953,11 @@ func (s *Server) managedCloseStateDirtyWithRows(
 		}
 		if strings.EqualFold(attr.TypeRef, "ValueTable") {
 			tp := formAttributeTablePart(attr)
-			if tp == nil || !tpRowsEqual(obj.TablePartRows[attr.Name], tpBefore[attr.Name], *tp) {
-				return true
+			if tp == nil {
+				return "form-table " + attr.Name + " без описания колонок"
+			}
+			if !tpRowsEqual(obj.TablePartRows[attr.Name], tpBefore[attr.Name], *tp) {
+				return fmt.Sprintf("form-table %s live_rows=%d before_rows=%d", attr.Name, len(obj.TablePartRows[attr.Name]), len(tpBefore[attr.Name]))
 			}
 			continue
 		}
@@ -1941,10 +1967,21 @@ func (s *Server) managedCloseStateDirtyWithRows(
 		before, beforeOK := snapshotValueCI(fieldsBefore, attr.Name)
 		after, afterOK := maskCIKeyValue(obj.Fields, attr.Name)
 		if beforeOK != afterOK || beforeOK && before != snapshotComparableValue(after) {
-			return true
+			afterCmp := ""
+			if afterOK {
+				afterCmp = snapshotComparableValue(after)
+			}
+			return fmt.Sprintf("form-attr %s before_present=%t after_present=%t before=%s after=%s", attr.Name, beforeOK, afterOK, dirtyValueDigest(before), dirtyValueDigest(afterCmp))
 		}
 	}
-	return false
+	return ""
+}
+
+// dirtyValueDigest — значение для журнала без самого значения (ПДн): длина в
+// байтах и первые 8 hex SHA-256. Одинаковые отпечатки — одинаковые значения.
+func dirtyValueDigest(v string) string {
+	sum := sha256.Sum256([]byte(v))
+	return fmt.Sprintf("len%d:%x", len(v), sum[:4])
 }
 
 func snapshotValueCI(snapshot map[string]string, name string) (string, bool) {
