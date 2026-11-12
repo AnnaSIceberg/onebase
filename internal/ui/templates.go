@@ -1299,6 +1299,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return "asc"
 		},
+		"listCellAttrs": listCellFilterAttrs,
 		"hasFilter": func(params storage.ListParams) bool {
 			return len(params.Filters) > 0
 		},
@@ -1332,7 +1333,9 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				if v.To != "" {
 					parts = append(parts, "f."+url.QueryEscape(k)+".to="+url.QueryEscape(v.To))
 				}
-				if v.Value != "" {
+				if v.Exact {
+					parts = append(parts, "f."+url.QueryEscape(k)+".eq="+url.QueryEscape(v.Value))
+				} else if v.Value != "" {
 					parts = append(parts, "f."+url.QueryEscape(k)+"="+url.QueryEscape(v.Value))
 				}
 			}
@@ -1968,6 +1971,7 @@ body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;height:
 .ob-list-wrap table th,.ob-list-wrap table td,.list-tbl th,.list-tbl td,.tp-table th{border-right:1px solid #cbd5e1}
 .ob-list-wrap table th:last-child,.ob-list-wrap table td:last-child,.list-tbl th:last-child,.list-tbl td:last-child,.tp-table th:last-child{border-right:none}
 .tbl tr:hover td{background:#f8fafc}
+td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .report-composed{width:100%;border-collapse:collapse;font-size:13px}
 .report-composed thead th{position:sticky;top:38px;background:#eef2f7;z-index:5;text-align:left;padding:8px 10px;border-bottom:2px solid #cbd5e1;color:#334155;font-weight:600;font-size:12px}
 .report-composed td{padding:6px 10px;border-bottom:1px solid #f1f5f9;color:#334155}
@@ -2036,6 +2040,8 @@ tr.ob-row-styled:hover td{background:inherit;filter:brightness(.95)}
 .ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) td{padding:2px 6px;font-size:12px;line-height:17px;border:1px solid #cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
 .ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) th{background:#e8edf3;border-bottom:1px solid #94a3b8;font-weight:600}
 .ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) tr:last-child td{border-bottom:1px solid #cbd5e1}
+
+td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .btn{display:inline-block;padding:8px 18px;border-radius:7px;font-size:14px;font-weight:500;text-decoration:none;cursor:pointer;border:none;line-height:1}
 .btn-primary{background:#3b82f6;color:#fff}.btn-primary:hover{background:#2563eb}
 .btn-post{background:#e8b400;color:#1a1a1a;font-weight:700}.btn-post:hover{background:#d4a200}
@@ -2673,7 +2679,7 @@ const tplList = `
       <div>
         <label>{{.DisplayName $.Lang}}</label>
         <div style="display:flex;gap:4px;align-items:center">
-          <select id="flt-{{.Name}}" name="f.{{.Name}}" data-ref-entity="{{.RefEntity}}"{{refPickAttrs true $f.ChoiceShowDeleted}} style="flex:1;min-width:0">
+          <select id="flt-{{.Name}}" name="f.{{.Name}}{{if (filterVal $params .Name).Exact}}.eq{{end}}" data-ref-entity="{{.RefEntity}}"{{refPickAttrs true $f.ChoiceShowDeleted}} style="flex:1;min-width:0">
             <option value="">{{t $.Lang "— все —"}}</option>
             {{range index $refOpts .Name}}
             <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index . "id") (filterVal $params $f.Name).Value}}selected{{end}}>{{index . "_label"}}</option>
@@ -2689,7 +2695,7 @@ const tplList = `
              («нет», «1», «истина»…), и отправляется нормализованным. Нераспознанное
              остаётся выбранным как есть: повторное «Применить» не превращает
              пустой список во весь (#2184). */}}
-        <select name="f.{{.Name}}">
+        <select name="f.{{.Name}}{{if (filterVal $params .Name).Exact}}.eq{{end}}">
           <option value="">{{t $.Lang "— все —"}}</option>
           <option value="true" {{if eq $bv "true"}}selected{{end}}>{{t $.Lang "Да"}}</option>
           <option value="false" {{if eq $bv "false"}}selected{{end}}>{{t $.Lang "Нет"}}</option>
@@ -2699,7 +2705,7 @@ const tplList = `
     {{else}}
       <div>
         <label>{{.DisplayName $.Lang}}</label>
-        <input type="text" name="f.{{.Name}}" value="{{(filterVal $params .Name).Value}}">
+        <input type="text" name="f.{{.Name}}{{if (filterVal $params .Name).Exact}}.eq{{end}}" value="{{(filterVal $params .Name).Value}}">
       </div>
     {{end}}
     {{end}}
@@ -2875,6 +2881,10 @@ const tplList = `
 {{end}}
 {{else}}
 {{/* ===== LIST VIEW (default) ===== */}}
+<div style="display:flex;gap:8px;margin-bottom:8px">
+<button type="button" class="btn btn-sm btn-secondary" data-ob-cell-filter disabled>{{t $.Lang "????? ?? ???????? ??????? ??????"}}</button>
+<button type="button" class="btn btn-sm btn-secondary" data-ob-cell-filter-clear>{{t $.Lang "????? ?????"}}</button>
+</div>
 {{if .Rows}}
 {{$fixed := listColumnsFixed $listCols}}
 <div style="overflow-x:auto">
@@ -2915,12 +2925,12 @@ const tplList = `
     </td>
   {{end}}
   {{range listColumnFields $listCols}}
-    {{if eq (str .Type) "date"}}<td style="white-space:nowrap">{{fmtDate (index $row .Name)}}</td>
-    {{else if eq (str .Type) "bool"}}<td style="white-space:nowrap">{{fmtBool (index $row .Name)}}</td>
-    {{else if isImage (str .Type)}}<td>{{$iv := index $row .Name}}{{if $iv}}<img src="/ui/_image/{{$iv}}" style="height:34px;width:34px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}<span style="color:#cbd5e1">—</span>{{end}}</td>
-    {{else if isRichText (str .Type)}}<td style="white-space:nowrap;color:#64748b">{{richPlain (index $row .Name)}}</td>
-    {{else if isEnum (str .Type)}}<td style="white-space:nowrap">{{enumLabel $.EnumLabels .Name (str (index $row .Name))}}</td>
-    {{else}}<td style="white-space:nowrap">{{if and (eq .Name "Наименование") $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{fmtCell (index $row .Name)}}{{if and (eq .Name "Наименование") (index $row "_is_predefined")}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}</td>{{end}}
+    {{if eq (str .Type) "date"}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{fmtDate (index $row .Name)}}</td>
+    {{else if eq (str .Type) "bool"}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{fmtBool (index $row .Name)}}</td>
+    {{else if isImage (str .Type)}}<td {{listCellAttrs $row .}}>{{$iv := index $row .Name}}{{if $iv}}<img src="/ui/_image/{{$iv}}" style="height:34px;width:34px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}<span style="color:#cbd5e1">—</span>{{end}}</td>
+    {{else if isRichText (str .Type)}}<td {{listCellAttrs $row .}} style="white-space:nowrap;color:#64748b">{{richPlain (index $row .Name)}}</td>
+    {{else if isEnum (str .Type)}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{enumLabel $.EnumLabels .Name (str (index $row .Name))}}</td>
+    {{else}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{if and (eq .Name "Наименование") $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{fmtCell (index $row .Name)}}{{if and (eq .Name "Наименование") (index $row "_is_predefined")}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}</td>{{end}}
   {{end}}
   {{if $.SearchAll}}<td style="white-space:nowrap" data-ob-list-group>{{with index $row "_group_id"}}<a href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}?parent={{.}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}">📁 {{index $row "_group_label"}}</a>{{else}}<span style="color:#94a3b8">{{t $.Lang "Корень"}}</span>{{end}}</td>{{end}}
   <td>
@@ -5058,7 +5068,9 @@ func funcsListQuerySuffix(params storage.ListParams) template.URL {
 		if v.To != "" {
 			parts = append(parts, "f."+url.QueryEscape(k)+".to="+url.QueryEscape(v.To))
 		}
-		if v.Value != "" {
+		if v.Exact {
+			parts = append(parts, "f."+url.QueryEscape(k)+".eq="+url.QueryEscape(v.Value))
+		} else if v.Value != "" {
 			parts = append(parts, "f."+url.QueryEscape(k)+"="+url.QueryEscape(v.Value))
 		}
 	}

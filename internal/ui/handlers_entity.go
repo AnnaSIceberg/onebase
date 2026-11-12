@@ -155,6 +155,8 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	s.maskRecords(r.Context(), entity, rows)
 	// row_style формы списка — после маски и до разрешения ссылок.
 	s.applyListRowStyle(r.Context(), entity, rows)
+
+	s.captureListCellFilters(r.Context(), entity, rows)
 	s.resolveRefs(r.Context(), entity, rows)
 	markActivityRows(entity, rows)
 	if searchAll {
@@ -1391,30 +1393,31 @@ type treeChildrenResponse struct {
 }
 
 type treeChildRow struct {
-	ID               string   `json:"id"`
-	ParentID         string   `json:"parent_id"`
-	Depth            int      `json:"depth"`
-	IsFolder         bool     `json:"is_folder"`
-	Predefined       bool     `json:"predefined"`
-	Posted           bool     `json:"posted"`
-	Marked           bool     `json:"marked"`
-	ActivityEnabled  bool     `json:"activity_enabled"`
-	ActivityInactive bool     `json:"activity_inactive"`
-	RowBackground    string   `json:"row_background,omitempty"`
-	RowTextColor     string   `json:"row_text_color,omitempty"`
-	RowBold          bool     `json:"row_bold,omitempty"`
-	TreeCell         int      `json:"tree_cell"`
-	Cells            []string `json:"cells"`
-	DetailURL        string   `json:"detail_url"`
-	OpenURL          string   `json:"open_url"`
-	CopyURL          string   `json:"copy_url"`
-	FolderURL        string   `json:"folder_url"`
-	MarkURL          string   `json:"mark_url"`
-	DeleteURL        string   `json:"delete_url"`
-	UnpostURL        string   `json:"unpost_url"`
-	UnmarkURL        string   `json:"unmark_url"`
-	ActivityHideURL  string   `json:"activity_hide_url"`
-	ActivityShowURL  string   `json:"activity_show_url"`
+	ID               string                `json:"id"`
+	ParentID         string                `json:"parent_id"`
+	Depth            int                   `json:"depth"`
+	IsFolder         bool                  `json:"is_folder"`
+	Predefined       bool                  `json:"predefined"`
+	Posted           bool                  `json:"posted"`
+	Marked           bool                  `json:"marked"`
+	ActivityEnabled  bool                  `json:"activity_enabled"`
+	ActivityInactive bool                  `json:"activity_inactive"`
+	RowBackground    string                `json:"row_background,omitempty"`
+	RowTextColor     string                `json:"row_text_color,omitempty"`
+	RowBold          bool                  `json:"row_bold,omitempty"`
+	TreeCell         int                   `json:"tree_cell"`
+	Cells            []string              `json:"cells"`
+	DetailURL        string                `json:"detail_url"`
+	OpenURL          string                `json:"open_url"`
+	CopyURL          string                `json:"copy_url"`
+	FolderURL        string                `json:"folder_url"`
+	MarkURL          string                `json:"mark_url"`
+	DeleteURL        string                `json:"delete_url"`
+	UnpostURL        string                `json:"unpost_url"`
+	UnmarkURL        string                `json:"unmark_url"`
+	ActivityHideURL  string                `json:"activity_hide_url"`
+	ActivityShowURL  string                `json:"activity_show_url"`
+	CellFilters      []listCellFilterValue `json:"cell_filters,omitempty"`
 }
 
 func (s *Server) treeChildrenJSON(w http.ResponseWriter, r *http.Request) {
@@ -1474,6 +1477,8 @@ func (s *Server) treeChildrenJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	s.maskRecords(r.Context(), ent, rows) // план 88: маска ПДн в ячейках дерева
 	s.applyListRowStyle(r.Context(), ent, rows)
+
+	s.captureListCellFilters(r.Context(), ent, rows)
 	s.resolveRefs(r.Context(), ent, rows)
 	markActivityRows(ent, rows)
 
@@ -1547,6 +1552,7 @@ func (s *Server) treeChildRows(r *http.Request, entity *metadata.Entity, rows []
 			RowBold:          asBool(row[listRowBoldKey]),
 			TreeCell:         treeCell,
 			Cells:            cells,
+			CellFilters:      listCellFilters(row, cols),
 			DetailURL:        base + "/" + url.PathEscape(id) + "/detail-panel",
 			OpenURL:          openURL,
 			CopyURL:          copyURL,
@@ -3146,6 +3152,14 @@ func parseListParams(r *http.Request, entity *metadata.Entity, defaultLimit int)
 				params.Filters[f.Name] = storage.FilterValue{From: from, To: to}
 			}
 		default:
+			if values, ok := q["f."+f.Name+".eq"]; ok {
+				val := ""
+				if len(values) > 0 {
+					val = values[0]
+				}
+				params.Filters[f.Name] = storage.FilterValue{Value: val, Exact: true}
+				continue
+			}
 			val := q.Get("f." + f.Name)
 			if val != "" {
 				params.Filters[f.Name] = storage.FilterValue{Value: val}
