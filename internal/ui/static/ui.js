@@ -3010,13 +3010,7 @@ function obCellFilterSelect(target) {
   obListActiveCell=cell;cell.classList.add('ob-cell-current');
   var button=document.querySelector('[data-ob-cell-filter]');if(button)button.disabled=false;
 }
-document.addEventListener('mousedown',function(e) { obCellFilterSelect(e.target); },true);
-document.addEventListener('contextmenu',function(e) { obCellFilterSelect(e.target); },true);
-document.addEventListener('click',function(e) {
-  if(!e.target.closest)return;
-  if(e.target.closest('[data-ob-cell-filter]')) { e.preventDefault();obCellFilterApply(); }
-  else if(e.target.closest('[data-ob-cell-filter-clear]')) { e.preventDefault();obCellFiltersClear(); }
-},true);
+
 function listMenuItems(tr) {
   var cfg = obListConfig();
   var labels = cfg.labels || {};
@@ -3027,7 +3021,7 @@ function listMenuItems(tr) {
     var cellButton=document.querySelector('[data-ob-cell-filter]');
     items.push({label:cellButton?cellButton.textContent:'Filter by selected value',fn:obCellFilterApply});
   }
-  var clearButton=document.querySelector('[data-ob-cell-filter-clear]');
+  var clearButton=typeof document!=='undefined' && document.querySelector ? document.querySelector('[data-ob-cell-filter-clear]') : null;
   if(clearButton)items.push({label:clearButton.textContent,fn:obCellFiltersClear});
 
   if (isFolder) {
@@ -3266,6 +3260,13 @@ function obRestoreListSearchFocus() {
 // END onebase-list-search-restore
 
 function obInitListDelegates() {
+document.addEventListener('mousedown',function(e) { obCellFilterSelect(e.target); },true);
+document.addEventListener('contextmenu',function(e) { obCellFilterSelect(e.target); },true);
+document.addEventListener('click',function(e) {
+  if(!e.target.closest)return;
+  if(e.target.closest('[data-ob-cell-filter]')) { e.preventDefault();obCellFilterApply(); }
+  else if(e.target.closest('[data-ob-cell-filter-clear]')) { e.preventDefault();obCellFiltersClear(); }
+},true);
   if (window.__obListDelegates) return;
   window.__obListDelegates = true;
   document.addEventListener('click', function (e) {
