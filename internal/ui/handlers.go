@@ -31,7 +31,7 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) *metadata.Ent
 		decoded = raw
 	}
 	if e := s.reg.GetEntityBySlug(decoded); e != nil {
-		return e
+		return entityWithUserListForm(r.Context(), e)
 	}
 	http.Error(w, "unknown entity: "+raw, 404)
 	return nil
