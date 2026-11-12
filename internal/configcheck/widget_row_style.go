@@ -71,14 +71,14 @@ func CheckWidgetRowStyle(proj *project.Project) []Issue {
 			add("row_style поддерживается только для виджетов типа list")
 			continue
 		}
-		bg, bold := strings.TrimSpace(w.RowStyle.Background), strings.TrimSpace(w.RowStyle.Bold)
-		if bg == "" && bold == "" {
+		bg, bold, color := strings.TrimSpace(w.RowStyle.Background), strings.TrimSpace(w.RowStyle.Bold), strings.TrimSpace(w.RowStyle.Color)
+		if bg == "" && bold == "" && color == "" {
 			add("row_style требует колонку background и/или bold")
 			continue
 		}
 		var cols []string
 		checkedColumns := false
-		for _, col := range []struct{ key, name string }{{"background", bg}, {"bold", bold}} {
+		for _, col := range []struct{ key, name string }{{"background", bg}, {"bold", bold}, {"color", color}} {
 			if col.name == "" || queryHasWord(w.Query, col.name) {
 				continue
 			}
