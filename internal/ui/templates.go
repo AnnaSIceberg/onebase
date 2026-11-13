@@ -1764,6 +1764,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"inputAutocomplete":   inputAutocomplete,
 		"uiBootID":            func() string { return uiBootID },
 		"inputMaskHint":       metadata.InputMaskHint,
+		"wCellAttrs":          widgetCellAttrs,
 		"wcell":               widgetCell,
 		"wRowStyle":           widgetRowStyle,
 		"wBackground":         widgetBackgroundStyle,
@@ -2501,13 +2502,31 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 .w-card-list .w-filter>span{min-width:0;overflow-wrap:anywhere}
 .w-card-list .w-filter input,.w-card-list .w-filter select{box-sizing:border-box;min-width:0;width:100%;max-width:100%;height:30px;padding:4px 6px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px}
 .w-card-list .w-filter-reset{flex:0 0 auto;max-width:100%;min-height:30px;padding:4px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#f1f5f9;color:#334155;cursor:pointer}
-@media(max-width:640px){.w-card-list .w-filters{flex-direction:column;align-items:stretch}.w-card-list .w-filter{flex:0 0 auto;max-width:none}.w-card-list .w-filter-reset{align-self:flex-start}}
+@media(max-width:640px){.w-card-list .w-filters{flex-direction:column;align-items:stretch}.w-card-list .w-filter{flex:0 0 auto;max-width:none}.w-card-list .w-filter-reset{align-self:flex-start}}{{if .Cfg.UIEnhancements}}
+
+
+/* BEGIN widget-list-controls */
+.ob-dashboard-title{margin:0 0 6px}
+.dash{gap:8px}
+.dash-row{gap:8px}
+.dash .w-card-list{padding:6px 10px;min-height:0}
+.dash .w-card-list .w-head{margin-bottom:4px}
+.w-card-list .w-cell-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.w-cell-filters .btn{box-sizing:border-box;min-height:0;height:24px;padding:1px 8px;font-size:12px;line-height:20px}
+.w-list td.ob-widget-cell-selected{outline:2px solid #2563eb;outline-offset:-2px}
+.w-card-list.ob-widget-fill{box-sizing:border-box;min-height:180px}
+.ob-widget-fill>[data-ob-widget-body]{flex:1;min-height:0;display:flex;flex-direction:column}
+.ob-widget-fill .w-list{flex:1;min-height:0;overflow:auto}
+.ob-widget-fill .w-list th{position:sticky;top:0;z-index:1}
+.ob-widget-fill .w-refresh-status:empty{display:none}
+/* END widget-list-controls */
+{{end}}
 .w-default-hint{color:#64748b;font-size:13px;margin:6px 0 14px}
 </style>
 {{end}}
 
 {{define "dashboard-body"}}
-  <h2 style="margin-bottom:14px">{{.HomeTitle}}</h2>
+  {{if .Cfg.UIEnhancements}}<h2 class="ob-dashboard-title">{{.HomeTitle}}</h2>{{else}}<h2 style="margin-bottom:14px">{{.HomeTitle}}</h2>{{end}}
   {{if .DefaultedHome}}<div class="w-default-hint">Стартовая страница не настроена — показаны последние документы из аудита. Создайте <code>config/home_page.yaml</code> и виджеты в <code>widgets/</code>, чтобы оформить дашборд.</div>{{end}}
   <div class="dash">
     {{range .WidgetRows}}
@@ -2553,6 +2572,13 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
     <button type="button" class="w-filter-reset" data-ob-filter-reset>{{.ResetLabel}}</button>
   </div>
   {{end}}
+  {{if .CellFilterKey}}
+  <div class="w-cell-filters">
+    <input type="hidden" data-ob-filter="{{.CellFilterKey}}" data-ob-widget-cell-input value="{{.CellFilterJSON}}">
+    <button type="button" class="btn btn-sm btn-secondary" data-ob-widget-cell-apply disabled>{{.CellFilterLabel}}</button>
+    <button type="button" class="btn btn-sm btn-secondary" data-ob-widget-cell-clear{{if not .CellFilterJSON}} disabled{{end}}>{{.CellFilterClearLabel}}</button>
+  </div>
+  {{end}}
   <div data-ob-widget-body>
   {{template "widget-body" .}}
   </div>
@@ -2592,7 +2618,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
       {{$style := wRowStyle $row}}
       {{with index $row "_row_url"}}<tr class="ob-row-link{{if $style}} ob-row-styled{{end}}" tabindex="0" data-ob-row-url="{{.}}"{{if $style}} style="{{$style}}"{{end}}>{{else}}<tr{{if $style}} class="ob-row-styled" style="{{$style}}"{{end}}>{{end}}
         {{range $.Columns}}
-        <td{{if eq .Align "right"}} class="right"{{end}}>{{wcell $row .Field .Format}}</td>
+        <td{{if $.CellFilterKey}}{{with wCellAttrs $row .Field}} {{.}}{{end}}{{end}}{{if eq .Align "right"}} class="right"{{end}}>{{wcell $row .Field .Format}}</td>
         {{end}}
       </tr>
     {{end}}

@@ -75,7 +75,7 @@ func (s *Server) sidePanelData(r *http.Request) map[string]any {
 		runner.User = u
 	}
 	runner.Cache = s.widgetCache
-	res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: lenientWidgetFilterParams(r, wMeta)})
+	res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: lenientWidgetFilterParams(r, wMeta), CellFilter: s.lenientWidgetCellFilter(r, wMeta), CaptureCellValues: s.uiEnhancementsAllowed(r)})
 	if res.AccessDenied {
 		return nil
 	}

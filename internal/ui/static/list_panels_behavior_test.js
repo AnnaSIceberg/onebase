@@ -2,8 +2,8 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
-const src=fs.readFileSync(__dirname+'/ui.js','utf8');
-const fn=src.slice(src.indexOf('function obInitListPanels()'),src.indexOf('function obInitReportBlocks()'));
+const src=fs.readFileSync(__dirname+'/list-controls.js','utf8');
+const fn=src.slice(src.indexOf('function obInitListPanels()'),src.indexOf('\n  obReady(obInitListPanels)', src.indexOf('function obInitListPanels()')));
 test('list panels: collapsed defaults, per-user and per-list restore, safe unavailable storage',()=>{
   const saved=new Map();
   function load(user,path='/ui/document/task',broken=false){

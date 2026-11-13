@@ -44,7 +44,12 @@ type Result struct {
 	// (план 182D), заполняются HTTP-слоем после Run вместе с PartialURL.
 	Filters []FilterControl
 	// ResetLabel — подпись кнопки сброса фильтров карточки (i18n HTTP-слоя).
-	ResetLabel string
+	CellFilterKey        string
+	CellFilterJSON       string
+	CellFilterLabel      string
+	CellFilterClearLabel string
+	InvalidCellFilter    bool
+	ResetLabel           string
 	// AccessDenied — у пользователя нет прав на источник данных виджета (или на
 	// все его кнопки-действия). Дашборд такие карточки не рендерит вовсе, в
 	// отличие от настоящих ошибок (compile/SQL), которые остаются видимыми.
@@ -192,8 +197,10 @@ type Runner struct {
 // are resolved and merged here. Fresh bypasses the exact cache entry and
 // replaces it after a successful run.
 type RunOptions struct {
-	Params map[string]any
-	Fresh  bool
+	Params            map[string]any
+	CellFilter        *CellFilter
+	CaptureCellValues bool
+	Fresh             bool
 }
 
 // New creates a Runner. The Resolve hook is optional — when non-nil it is
@@ -253,14 +260,20 @@ func (r *Runner) RunWithOptions(ctx context.Context, w *metadata.Widget, opts Ru
 		}
 	}
 
+	if opts.CellFilter != nil {
+		return r.runOnce(ctx, w, params, opts.CellFilter, true)
+	}
 	if r.Cache != nil && w.Type != metadata.WidgetTypeActions {
 		security, cacheable := securityFingerprint(r.User)
 		if !cacheable {
-			return r.runOnce(ctx, w, params)
+			return r.runOnce(ctx, w, params, nil, opts.CaptureCellValues)
 		}
 		paramsKey, cacheable := paramsFingerprint(params)
 		if !cacheable {
-			return r.runOnce(ctx, w, params)
+			return r.runOnce(ctx, w, params, nil, opts.CaptureCellValues)
+		}
+		if opts.CaptureCellValues {
+			paramsKey += "|cell-values"
 		}
 		key := cacheKey(w.Name, r.CurrentUser, security, paramsKey)
 		if !opts.Fresh {
@@ -268,7 +281,7 @@ func (r *Runner) RunWithOptions(ctx context.Context, w *metadata.Widget, opts Ru
 				return cached
 			}
 		}
-		res := r.runOnce(ctx, w, params)
+		res := r.runOnce(ctx, w, params, nil, opts.CaptureCellValues)
 		// Don't cache transient errors — they're often "compile" errors during
 		// the editing loop, and a stale failure looks worse than a fresh retry.
 		if res.Error == "" {
@@ -276,16 +289,20 @@ func (r *Runner) RunWithOptions(ctx context.Context, w *metadata.Widget, opts Ru
 		}
 		return res
 	}
-	return r.runOnce(ctx, w, params)
+	return r.runOnce(ctx, w, params, nil, opts.CaptureCellValues)
 }
 
-func (r *Runner) runOnce(ctx context.Context, w *metadata.Widget, params map[string]any) Result {
+func (r *Runner) runOnce(ctx context.Context, w *metadata.Widget, params map[string]any, filter *CellFilter, capture bool) Result {
 	res := Result{Name: w.Name, Type: string(w.Type), Title: w.Title, Link: safeWidgetLink(w.Link)}
 	switch w.Type {
 	case metadata.WidgetTypeKPI:
 		r.runKPI(ctx, w, params, &res)
 	case metadata.WidgetTypeList:
-		r.runList(ctx, w, params, &res)
+		if capture || filter != nil {
+			r.runListEnhanced(ctx, w, params, &res, filter)
+		} else {
+			r.runList(ctx, w, params, &res)
+		}
 	case metadata.WidgetTypeChart:
 		r.runChart(ctx, w, params, &res)
 	case metadata.WidgetTypeActions:
@@ -362,6 +379,61 @@ func (r *Runner) runList(ctx context.Context, w *metadata.Widget, params map[str
 		visible[col.Field] = true
 	}
 	r.resolveUUIDsForColumns(ctx, rows, visible)
+}
+
+func (r *Runner) runListEnhanced(ctx context.Context, w *metadata.Widget, params map[string]any, res *Result, filter *CellFilter) {
+	rows, cols, compiled, err := r.runQuery(ctx, w, params)
+	if err != nil {
+		setResultError(res, err)
+		return
+	}
+	idCol, _ := r.navigationIDs(w, cols, rows, compiled)
+	styleCols := applyRowStyle(w, cols, rows)
+	displayCols := cols
+	if (idCol != "" || len(styleCols) > 0) && len(w.Columns) == 0 {
+		hidden := map[string]bool{idCol: idCol != ""}
+		for _, c := range styleCols {
+			hidden[c] = true
+		}
+		displayCols = make([]string, 0, len(cols))
+		for _, c := range cols {
+			if !hidden[c] {
+				displayCols = append(displayCols, c)
+			}
+		}
+	}
+	res.Columns = columnsForList(w, displayCols)
+	// With no equality filter, tokenize only the rows actually displayed.
+	if filter == nil && w.Limit > 0 && len(rows) > w.Limit {
+		rows = rows[:w.Limit]
+	}
+	captureCellValues(rows, res.Columns)
+	rows, err = filterCells(rows, res.Columns, filter)
+	if err != nil {
+		res.InvalidCellFilter = true
+		setResultError(res, err)
+		return
+	}
+	if w.Limit > 0 && len(rows) > w.Limit {
+		rows = rows[:w.Limit]
+	}
+	_, rawIDs := r.navigationIDs(w, cols, rows, compiled)
+	if len(rawIDs) > 0 {
+		entity := r.Reg.GetEntity(w.Source.Entity)
+		for i, row := range rows {
+			id, err := uuid.Parse(rawIDs[i])
+			if err != nil || id == uuid.Nil || entity == nil {
+				continue
+			}
+			row["_row_url"] = "/ui/" + string(entity.Kind) + "/" + entity.Name + "/" + rawIDs[i]
+		}
+	}
+	visible := make(map[string]bool, len(res.Columns))
+	for _, col := range res.Columns {
+		visible[col.Field] = true
+	}
+	r.resolveUUIDsForColumns(ctx, rows, visible)
+	res.Rows = rows
 }
 
 func (r *Runner) runChart(ctx context.Context, w *metadata.Widget, params map[string]any, res *Result) {
