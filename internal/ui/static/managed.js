@@ -1829,13 +1829,18 @@ window.obManagedApplyHints = obManagedApplyHints;
       var navigationBlocked = false;
       if (data.navigation && data.navigation.url) {
         var savedByResponse = data.dirty === false && !!(data.savedId || data.version);
-        if (data.dirty !== true && (!window._obFormDirty || savedByResponse)) {
+        // A server-only dirty latch (e.g. current-row display state) is not a
+        // native edit. A fresh clean response may release it for a saved object.
+        var serverOnlyClean = !!DOC_ID && data.dirty === false &&
+          formEditState.revision === (formEditState.cleanRevision || 0);
+        if (data.dirty !== true && (!window._obFormDirty || savedByResponse || serverOnlyClean)) {
           if (!cfg.resultForm) {
+            if (savedByResponse || serverOnlyClean) setManagedFormDirty(false);
             window.location.assign(data.navigation.url);
             return;
           }
         }
-        if (!cfg.resultForm || data.dirty === true || (window._obFormDirty && !savedByResponse)) navigationBlocked = true;
+        if (!cfg.resultForm || data.dirty === true || (window._obFormDirty && !savedByResponse && !serverOnlyClean)) navigationBlocked = true;
       }
       // Подбор фазы 1: сервер вернул pickerData — открыть диалог, не трогая
       // ТЧ (её обновит фаза 2 после «Перенести»).
@@ -1895,11 +1900,11 @@ window.obManagedApplyHints = obManagedApplyHints;
       }
       if (!responseMerged && !data.deferred && window.obApplyConcealed) window.obApplyConcealed(data.revealed, form, data.values || {});
       if (window.obFormKeyboard) window.obFormKeyboard(true);
-	  // Server events repaint controls programmatically and therefore do not
-	  // trigger input/change. Raise dirty for unsaved handler mutations; clear
-	  // it only when this response proves a successful Object.Write and no
-	  // user edits followed the snapshot that was saved.
-	  if (!responseMerged && data.dirty === false && (data.savedId || data.version)) {
+	  // Server events repaint controls without native edits. A fresh clean
+	  // response may release their latch on a saved object; real native edits
+	  // still require write proof, with the existing revision guard preserved.
+	  if (!responseMerged && data.dirty === false && (data.savedId || data.version ||
+        (DOC_ID && formEditState.revision === (formEditState.cleanRevision || 0)))) {
 		setManagedFormDirty(formEditState.revision !== snapshot.editRevision);
 	  }
       if (!responseMerged) {
@@ -2121,7 +2126,7 @@ window.obManagedApplyHints = obManagedApplyHints;
   var formEventPending = false;
   var formEventWriteUnknown = false;
 	var manualReconcileRequired = false;
-  var formEditState = {revision: 0};
+  var formEditState = {revision: 0, cleanRevision: 0};
   var pendingResultSnapshot = null;
   window.obResultHandoffCurrent = function(token){
     return !!pendingResultSnapshot && pendingResultSnapshot.token === token &&
@@ -2320,6 +2325,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 
   function setManagedFormDirty(dirty){
     dirty = !!dirty;
+    if (!dirty) formEditState.cleanRevision = formEditState.revision;
     window._obFormDirty = dirty;
     if (typeof _obBaseTitle === 'string' && _obBaseTitle) {
       document.title = dirty ? ('● ' + _obBaseTitle) : _obBaseTitle;
