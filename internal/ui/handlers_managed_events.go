@@ -1896,6 +1896,11 @@ func (s *Server) managedCloseStateDirtyReason(
 	if persisted == nil {
 		return "record-missing: записи нет в базе"
 	}
+	// The form wrapper restores its masked/hidden view after Save. Compare
+	// durable values or that same authorized view, without mutating the object.
+	// recordFieldDecisions preserves pii_open_when and never opens hidden fields.
+	persistedView := cloneRecord(persisted)
+	s.maskRecordWithDecisions(s.recordFieldDecisions(ctx, entity, persisted), persistedView)
 	dialect := s.store.Dialect().Name()
 	// Индексы вместо перебора на каждое поле (ci_index.go): obj.Get и
 	// maskCIKeyValue — O(ключей), а полей у заявки сотни. Карты в цикле не
@@ -1905,7 +1910,8 @@ func (s *Server) managedCloseStateDirtyReason(
 	for _, field := range entity.Fields {
 		_, stored, _ := ciGet(persisted, persistedKeys, field.Name)
 		liveNorm, storedNorm := tpCellNormStored(field, objectGetIndexed(obj, liveKeys, field.Name), dialect), tpCellNormStored(field, stored, dialect)
-		if liveNorm != storedNorm {
+		view, _ := maskCIKeyValue(persistedView, field.Name)
+		if liveNorm != storedNorm && liveNorm != tpCellNormStored(field, view, dialect) {
 			return fmt.Sprintf("entity-field %s type=%s live=%s stored=%s", field.Name, field.Type, dirtyValueDigest(liveNorm), dirtyValueDigest(storedNorm))
 		}
 	}
