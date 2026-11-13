@@ -1896,22 +1896,29 @@ func (s *Server) managedCloseStateDirtyReason(
 	if persisted == nil {
 		return "record-missing: записи нет в базе"
 	}
-	// The form wrapper restores its masked/hidden view after Save. Compare
-	// durable values or that same authorized view, without mutating the object.
-	// recordFieldDecisions preserves pii_open_when and never opens hidden fields.
-	persistedView := cloneRecord(persisted)
-	s.maskRecordWithDecisions(s.recordFieldDecisions(ctx, entity, persisted), persistedView)
 	dialect := s.store.Dialect().Name()
 	// Индексы вместо перебора на каждое поле (ci_index.go): obj.Get и
 	// maskCIKeyValue — O(ключей), а полей у заявки сотни. Карты в цикле не
 	// меняются.
 	persistedKeys := newCIIndex(persisted, equalFoldKey)
 	liveKeys := newCIIndex(obj.Fields, strings.ToLower)
+	var persistedView map[string]any
+	var viewKeys ciIndex
 	for _, field := range entity.Fields {
 		_, stored, _ := ciGet(persisted, persistedKeys, field.Name)
 		liveNorm, storedNorm := tpCellNormStored(field, objectGetIndexed(obj, liveKeys, field.Name), dialect), tpCellNormStored(field, stored, dialect)
-		view, _ := maskCIKeyValue(persistedView, field.Name)
-		if liveNorm != storedNorm && liveNorm != tpCellNormStored(field, view, dialect) {
+		if liveNorm != storedNorm {
+			// Save restores the form's safe view after writing durable PII.
+			// Build that view only on a difference, without mutating the object.
+			if persistedView == nil {
+				persistedView = cloneRecord(persisted)
+				s.maskRecordWithDecisions(s.recordFieldDecisions(ctx, entity, persisted), persistedView)
+				viewKeys = newCIIndex(persistedView, equalFoldKey)
+			}
+			_, view, _ := ciGet(persistedView, viewKeys, field.Name)
+			if liveNorm == tpCellNormStored(field, view, dialect) {
+				continue
+			}
 			return fmt.Sprintf("entity-field %s type=%s live=%s stored=%s", field.Name, field.Type, dirtyValueDigest(liveNorm), dirtyValueDigest(storedNorm))
 		}
 	}
