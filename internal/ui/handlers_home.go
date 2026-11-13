@@ -266,6 +266,10 @@ func refreshableWidgetType(t metadata.WidgetType) bool {
 }
 
 func (s *Server) decorateRefreshResult(r *http.Request, wMeta *metadata.Widget, res *widget.Result, runner *widget.Runner) {
+	// A hidden card must not load reference filters or personal widths.
+	if res == nil || res.AccessDenied {
+		return
+	}
 	s.prepareWidgetColumnWidths(r, res)
 
 	if res != nil && wMeta != nil {
