@@ -22,3 +22,21 @@ test('list panels: collapsed defaults, per-user and per-list restore, safe unava
   assert.deepEqual(load('anna').map(p=>p.open),[false,true]);
   assert.doesNotThrow(()=>load('anna',undefined,true));
 });
+
+test('list field Enter completes filters, preserves Search and real button submits',()=>{
+  const handlers={};
+  const document={addEventListener(name,fn){(handlers[name]||=[]).push(fn);},querySelectorAll(){return [];}};
+  vm.runInNewContext(src,{document,window:{addEventListener(){}},obReady(){}});
+  function press(name,tag='input',root=true,search=false){
+    const el={name,blur(){this.blurred=true;},closest(selector){return selector==='main.ob-list-panels'?(root?{}:null):(search?{}:null);},matches(selector){return selector==='input,select'?tag!=='button':tag==='submit';}};
+    const event={target:el,key:'Enter',preventDefault(){this.defaultPrevented=true;},stopPropagation(){}};
+    for(const fn of handlers.keydown||[])fn(event);
+    return {event,el};
+  }
+  let c=press('flt_Branch');assert.equal(c.event.defaultPrevented,true);assert.equal(c.el.blurred,true);
+  assert.equal(press('q').event.defaultPrevented,undefined);
+  assert.equal(press('other','input',true,true).event.defaultPrevented,undefined);
+  assert.equal(press('filter','input',false).event.defaultPrevented,undefined);
+  assert.equal(press('apply','submit').event.defaultPrevented,undefined);
+  assert.equal(press('apply','button').event.defaultPrevented,undefined);
+});

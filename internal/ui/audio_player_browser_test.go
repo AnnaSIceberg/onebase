@@ -35,6 +35,8 @@ func TestAudioPlayerBrowserHTTP(t *testing.T) {
 	ordinary := &metadata.Entity{Name: "Ordinary", Kind: metadata.KindCatalog}
 	s, ctx := newSubmitTestServer(t, []*metadata.Entity{recordings, calls, ordinary})
 	s.hub = realtime.NewHub()
+	s.cfg.UIEnhancements = true
+	s.cfg.HideAttachments = true
 	s.store.SetFilesDir(t.TempDir())
 	if err := s.store.EnsureAttachmentTable(ctx); err != nil {
 		t.Fatal(err)

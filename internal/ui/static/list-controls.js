@@ -84,6 +84,17 @@ document.addEventListener('dblclick', function (ev) {
     card.querySelectorAll('.ob-widget-cell-selected').forEach(function (el) { el.classList.remove('ob-widget-cell-selected'); });
     cell.classList.add('ob-widget-cell-selected');
     card._obSelectedWidgetCell = cell;
+    if (window.MutationObserver && !card._obCellSelectionObserver) {
+      card._obCellSelectionObserver = new MutationObserver(function () {
+        var previous = card._obSelectedWidgetCell;
+        if (previous && !card.contains(previous)) {
+          card._obSelectedWidgetCell = null;
+          var apply = card.querySelector('[data-ob-widget-cell-apply]');
+          if (apply) apply.disabled = true;
+        }
+      });
+      card._obCellSelectionObserver.observe(card, {childList:true,subtree:true});
+    }
     var button = card.querySelector('[data-ob-widget-cell-apply]');
     if (button) button.disabled = false;
   }
@@ -114,4 +125,20 @@ document.addEventListener('dblclick', function (ev) {
     obFillDashboardLists();
   };
   obReady(obFillDashboardLists);
+
+  // Enter completes a filter/settings field. Search keeps its existing submit.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.defaultPrevented || ev.key !== 'Enter' || ev.isComposing || ev.ctrlKey || ev.altKey || ev.metaKey) return;
+    var el = ev.target;
+    if (!el || !el.closest || !el.closest('main.ob-list-panels') ||
+        !el.matches('input,select') || el.matches('input[type=submit],input[type=button]') ||
+        el.name === 'q' || el.closest('.ob-list-search,[data-ob-list-search]')) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var form = el.form;
+    var fields = form ? Array.prototype.filter.call(form.querySelectorAll('input,select,textarea'),function (field) {
+      return !field.disabled && field.type !== 'hidden' && field.getClientRects().length;
+    }) : [];
+    var next = fields[fields.indexOf(el) + 1];
+    if (next) next.focus(); else el.blur();
+  }, true);
 })();
