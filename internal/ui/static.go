@@ -22,6 +22,12 @@ var managedJS []byte
 //go:embed static/list-controls.js
 var listControlsJS []byte
 
+//go:embed static/date-input.js
+var dateInputJS []byte
+
+//go:embed static/report-controls.js
+var reportControlsJS []byte
+
 //go:embed static/query-builder.js
 var queryBuilderJS []byte
 
@@ -30,10 +36,13 @@ var settingsNavigationJS []byte
 
 // ETag'и приложенческого JS считаются один раз при старте по содержимому.
 var (
-	audioJSETag              = assetETag(audioJS)
-	uiJSETag                 = assetETag(uiJS)
-	managedJSETag            = assetETag(managedJS)
-	listControlsJSETag       = assetETag(listControlsJS)
+	audioJSETag        = assetETag(audioJS)
+	uiJSETag           = assetETag(uiJS)
+	managedJSETag      = assetETag(managedJS)
+	listControlsJSETag = assetETag(listControlsJS)
+
+	dateInputJSETag          = assetETag(dateInputJS)
+	reportControlsJSETag     = assetETag(reportControlsJS)
 	queryBuilderJSETag       = assetETag(queryBuilderJS)
 	settingsNavigationJSETag = assetETag(settingsNavigationJS)
 )
@@ -71,6 +80,10 @@ func mountStatic(r chi.Router) {
 	})
 	r.Get("/static/audio.js", func(w http.ResponseWriter, req *http.Request) {
 		serveAppJS(w, req, audioJS, audioJSETag)
+	})
+	r.Get("/static/date-input.js", func(w http.ResponseWriter, req *http.Request) { serveAppJS(w, req, dateInputJS, dateInputJSETag) })
+	r.Get("/static/report-controls.js", func(w http.ResponseWriter, req *http.Request) {
+		serveAppJS(w, req, reportControlsJS, reportControlsJSETag)
 	})
 	r.Get("/static/settings-navigation.js", func(w http.ResponseWriter, req *http.Request) {
 		serveAppJS(w, req, settingsNavigationJS, settingsNavigationJSETag)

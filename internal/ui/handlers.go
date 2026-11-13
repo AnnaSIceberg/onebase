@@ -933,6 +933,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		data["AudioOnlyPlayer"] = ent.AudioPlayer && effectiveCfg.HideAttachments
 	}
 	prepareDefaultFormDensity(name, data)
+	prepareReportControls(name, data)
 	if name == "page-list" && s.uiEnhancementsAllowed(r) {
 		scope := "open-access"
 		if user := auth.UserFromContext(r.Context()); user != nil {
