@@ -28,7 +28,7 @@ func addProcessorTPEventContext(
 		return processorPostFormValues(r, processorServiceFieldName(proc.Params, key))
 	}
 	if deferredFormEvent(eventName) {
-		return addAfterOpenTableContext(read, proc.ManagedForm(), processorVirtualEntity(proc).TableParts, target, vars)
+		return addAfterOpenTableContext(read, pickProcessorManagedFormCtx(r.Context(), proc), processorVirtualEntity(proc).TableParts, target, vars)
 	}
 	return addValidatedTPEventContext(read, controls.formTables, target, obj, vars)
 }

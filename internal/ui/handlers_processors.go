@@ -80,7 +80,7 @@ func (s *Server) processorForm(w http.ResponseWriter, r *http.Request) {
 			// Заголовок окна результата — заголовок формы (как у диалога), а
 			// без него — представление обработки.
 			data["TabTitle"] = proc.DisplayName(s.resolveLang(r))
-			if mf := proc.ManagedForm(); mf != nil {
+			if mf := pickProcessorManagedFormCtx(r.Context(), proc); mf != nil {
 				if title := mf.Title[s.resolveLang(r)]; title != "" {
 					data["TabTitle"] = title
 				} else if title := mf.Title["ru"]; title != "" {
@@ -265,7 +265,7 @@ func (s *Server) processorRun(w http.ResponseWriter, r *http.Request) {
 	}
 	// Значения без элемента на форме (служебные флаги) — из запечатанного
 	// состояния формы, как в событиях (processor_form_carry.go).
-	applyProcessorCarryParams(proc, s.openProcessorCarry(r, proc, proc.ManagedForm()), paramValues)
+	applyProcessorCarryParams(proc, s.openProcessorCarry(r, proc, pickProcessorManagedFormCtx(r.Context(), proc)), paramValues)
 
 	if err := s.applyResultFormParameter(r, proc.Name, paramValues); err != nil {
 		s.renderForbidden(w, r)

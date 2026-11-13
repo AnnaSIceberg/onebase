@@ -99,7 +99,7 @@ func newResultFormBuiltin(sink **resultFormRequest, allowed bool) interpreter.Bu
 func (s *Server) resultFormAllowed(r *http.Request, request resultFormRequest) (*processor.Processor, error) {
 	proc := s.reg.GetProcessor(request.processor)
 	entity := s.reg.GetEntity(request.reference.Type)
-	if proc == nil || proc.ManagedForm() == nil || entity == nil || entity.Kind != request.reference.Kind ||
+	if proc == nil || pickProcessorManagedFormCtx(r.Context(), proc) == nil || entity == nil || entity.Kind != request.reference.Kind ||
 		!s.can(r, "processor", proc.Name, "run") || !s.canRunExternalProc(r, proc) {
 		return nil, fmt.Errorf("форма результата недоступна")
 	}

@@ -410,7 +410,7 @@ func (s *Server) setProcessorCarryContext(r *http.Request, data map[string]any, 
 			fields[k] = v
 		}
 	}
-	form := proc.ManagedForm()
+	form := pickProcessorManagedFormCtx(r.Context(), proc)
 	name := processorCarryFieldName(proc, form)
 	data["ProcessorCarryAttrs"] = []string{name}
 	token, err := s.sealProcessorCarry(r, proc, form, processorCarryValues(proc, form, fields))
