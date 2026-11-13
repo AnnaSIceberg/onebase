@@ -50,7 +50,7 @@ function obFillDashboardLists() {
       if (!card.getClientRects().length) return;
       // Its natural top also works when the home container has been scrolled.
       var container = card.closest('#ob-tabhome') || card.closest('main');
-      var bottom = container ? Math.min(innerHeight, container.getBoundingClientRect().bottom) : innerHeight;
+      var bottom = container && container.id === "ob-tabhome" ? Math.min(innerHeight, container.getBoundingClientRect().bottom) : innerHeight;
       var top = card.getBoundingClientRect().top + (container ? container.scrollTop : 0);
       card.classList.add('ob-widget-fill');
       var height = Math.max(180, Math.floor(bottom - top - 8)) + 'px';

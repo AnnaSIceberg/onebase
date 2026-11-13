@@ -40,3 +40,15 @@ test('list field Enter completes filters, preserves Search and real button submi
   assert.equal(press('apply','submit').event.defaultPrevented,undefined);
   assert.equal(press('apply','button').event.defaultPrevented,undefined);
 });
+
+test('home list fills the viewport even when a standalone main is naturally short',()=>{
+ const a=src.indexOf('function obFillDashboardLists()');const b=src.indexOf("document.addEventListener('dblclick'",a);const fn=src.slice(a,b);
+ function height(container){
+  const card={style:{},getClientRects(){return [1];},closest(){return container;},getBoundingClientRect(){return {top:200};},classList:{add(){}}};
+  const row={querySelectorAll(){return [card];}},dash={querySelectorAll(){return [row];}};
+  vm.runInNewContext(fn+';obFillDashboardLists();',{document:{querySelectorAll(){return [dash];}},window:{},innerHeight:750});
+  return card.style.height;
+ }
+ assert.equal(height({id:'',scrollTop:0,getBoundingClientRect(){return {bottom:300};}}),'542px');
+ assert.equal(height({id:'ob-tabhome',scrollTop:0,getBoundingClientRect(){return {bottom:700};}}),'492px');
+});

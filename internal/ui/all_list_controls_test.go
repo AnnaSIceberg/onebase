@@ -39,7 +39,7 @@ func TestAllBusinessListTemplatesRoleScopeThroughHTTP(t *testing.T) {
 				t.Run(page, func(t *testing.T) {
 					render := func(enabled bool) string {
 						s.cfg.UIEnhancements = enabled
-						data := map[string]any{"Entity": entity, "InfoReg": &metadata.InfoRegister{Name: "ScopeProbe"}, "Register": &metadata.Register{Name: "ScopeProbe"}, "Journal": &metadata.Journal{Name: "ScopeProbe"}, "Chart": &metadata.ChartOfAccounts{Name: "ScopeProbe"}, "Rows": []map[string]any{}, "Params": storage.ListParams{}, "Page": 1, "TotalPages": 1, "RequestURI": "/scope-probe", "Lang": "ru"}
+						data := map[string]any{"Entity": entity, "InfoReg": &metadata.InfoRegister{Name: "ScopeProbe"}, "Register": &metadata.Register{Name: "ScopeProbe"}, "Journal": &metadata.Journal{Name: "ScopeProbe"}, "Chart": &metadata.ChartOfAccounts{Name: "ScopeProbe"}, "Rows": []map[string]any{}, "Params": storage.ListParams{}, "Page": 1, "TotalPages": 1, "Total": 0, "RequestURI": "/scope-probe", "Lang": "ru"}
 						if strings.HasPrefix(page, "page-accountreg") {
 							data["Register"] = &metadata.AccountRegister{Name: "ScopeProbe"}
 						}
