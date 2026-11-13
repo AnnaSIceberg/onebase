@@ -2735,7 +2735,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	form := proc.ManagedForm()
+	form := pickProcessorManagedFormCtx(r.Context(), proc)
 	if form == nil && closeInv == nil {
 		respondJSON(enc, formEventResponse{Error: "managed form not found for " + procName})
 		return
