@@ -2257,4 +2257,4 @@ AI-справочник, периодичность оборотов, видже
 
 - Widget/side_panel: добавлен role_overrides для безопасного фона и сужения видимости; except_roles сильнее include_admin. Изменение формата YAML для владельца конфигурации.
 
-- DSL: добавлен readonly КонтекстФормыРезультата()/ResultFormContext() для проверенного result-command; actor/typed ref/non-bearer nonce, без закрытия/записи/HTTP. Новая возможность для владельца конфигурации.
+- DSL: добавлен readonly КонтекстФормыРезультата()/ResultFormContext() для Нажатие/объявленного Ответ проверенного result-command; actor/typed ref/non-bearer nonce, без закрытия/записи/HTTP. Новая возможность для владельца конфигурации.
