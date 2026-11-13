@@ -1772,6 +1772,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 	  }
       data = mergeConcurrentFormResponse(data, snapshot);
       responseKnown = true;
+      if (window.obAudioFilterResponse) window.obAudioFilterResponse(data, snapshot);
       if (serverRestarted) {
         applySavedIdentity(data);
         if (data.dirty === true) setManagedFormDirty(true);
@@ -1896,6 +1897,7 @@ window.obManagedApplyHints = obManagedApplyHints;
       // hint_from формы обработки: реквизита подсказки нет в values.
       window.obManagedApplyHints(data.elementStates && data.elementStates.hints);
         applyChoiceList(elementName, data.choiceList);
+        if (window.obAudioApply) window.obAudioApply(data);
         applyFormTables(data.formTables);
       }
       if (!responseMerged && !data.deferred && window.obApplyConcealed) window.obApplyConcealed(data.revealed, form, data.values || {});
@@ -2078,6 +2080,7 @@ window.obManagedApplyHints = obManagedApplyHints;
   }
 
   window.obFire = function(elementName, eventName, extraParams, pickerRequest){
+    if (window.obAudioBeforeEvent) extraParams = window.obAudioBeforeEvent(elementName, eventName, extraParams);
     return fireFormEvent(elementName, eventName, extraParams, pickerRequest);
   };
 
