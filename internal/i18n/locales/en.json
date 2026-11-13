@@ -1634,5 +1634,6 @@
   "Не удалось воспроизвести запись": "Could not play the recording",
   "Записи нет": "No recording",
   "Подготовка записи…": "Preparing recording…",
-  "Воспроизвести": "Play"
+  "Воспроизвести": "Play",
+  "КонтекстФормыРезультата доступен только в команде текущей формы результата": "ResultFormContext is available only in a command of the current result form"
 }
