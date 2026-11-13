@@ -2958,15 +2958,13 @@ function makeTreeRow(row) {
     }
     tr.appendChild(td);
   }
-  if (!obListConfig().hideRowActions) {
-    var action = document.createElement('td');
-    var a = document.createElement('a');
-    a.className = row.is_folder ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-primary';
-    a.href = row.is_folder ? (row.folder_url || '#') : (row.open_url || '#');
-    a.textContent = row.is_folder ? obListLabel('enter', '▶ Войти') : obListLabel('open', 'Открыть');
-    action.appendChild(a);
-    tr.appendChild(action);
-  }
+  var action = document.createElement('td');
+  var a = document.createElement('a');
+  a.className = row.is_folder ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-primary';
+  a.href = row.is_folder ? (row.folder_url || '#') : (row.open_url || '#');
+  a.textContent = row.is_folder ? obListLabel('enter', '▶ Войти') : obListLabel('open', 'Открыть');
+  action.appendChild(a);
+  tr.appendChild(action);
   return tr;
 }
 
