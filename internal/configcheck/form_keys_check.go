@@ -186,7 +186,7 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 			}
 			if el.Placement != "" && !metadata.FormHeaderPlaced(el) {
 				warns = append(warns, formKeyIssue(owner, form, el, "form.placement",
-					fmt.Sprintf("placement: %q игнорируется — поддерживаются header и header_end у kind: %s, %s, %s", el.Placement, metadata.FormElementButton, metadata.FormElementField, metadata.FormElementCheckbox),
+					fmt.Sprintf("placement: %q игнорируется — поддерживаются header и header_end у kind: %s, %s, %s, %s", el.Placement, metadata.FormElementButton, metadata.FormElementField, metadata.FormElementCheckbox, metadata.FormElementAudio),
 					"Уберите ключ или перенесите его на кнопку или поле."))
 			}
 			if el.Primary && el.Kind != metadata.FormElementButton {

@@ -928,6 +928,10 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	} else if _, ok := data["Cfg"]; !ok {
 		data["Cfg"] = s.uiConfigForRequest(r)
 	}
+	effectiveCfg, _ := data["Cfg"].(Config)
+	if ent, ok := data["Entity"].(*metadata.Entity); ok && ent != nil {
+		data["AudioOnlyPlayer"] = ent.AudioPlayer && effectiveCfg.HideAttachments
+	}
 	prepareDefaultFormDensity(name, data)
 	if name == "page-list" && s.uiEnhancementsAllowed(r) {
 		scope := "open-access"

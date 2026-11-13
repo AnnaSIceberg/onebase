@@ -92,7 +92,7 @@ const (
 )
 
 var knownFormEventTypes = map[FormEventType]bool{
-	FormEventOnOpen: true, FormEventAfterOpen: true, FormEventOnReadAtServer: true, FormEventOnCreateAtServer: true,
+	FormEventAudioPlay: true, FormEventOnOpen: true, FormEventAfterOpen: true, FormEventOnReadAtServer: true, FormEventOnCreateAtServer: true,
 	FormEventBeforeWrite: true, FormEventOnWrite: true, FormEventAfterWrite: true,
 	FormEventBeforeClose: true, FormEventOnClose: true, FormEventOnActivate: true,
 	FormEventItemChoice: true, FormEventStartChoice: true, FormEventOnChange: true,
@@ -187,7 +187,7 @@ var knownFormElementTypes = map[FormElementType]bool{
 	FormElementInputList: true, FormElementDatePicker: true, FormElementFormField: true,
 	FormElementTablePart: true, FormElementColumn: true, FormElementCommandBar: true,
 	FormElementPicture: true, FormElementCommandBarButton: true,
-	FormElementCodeField: true,
+	FormElementCodeField: true, FormElementAudio: true,
 }
 
 // IsKnownFormElementType сообщает, поддерживается ли вид элемента формы движком.
@@ -231,7 +231,7 @@ func FormHeaderPlaced(el *FormElement) bool {
 	if el == nil || (el.Placement != FormPlacementHeader && el.Placement != FormPlacementHeaderEnd) {
 		return false
 	}
-	return el.Kind == FormElementButton || el.Kind == FormElementField || el.Kind == FormElementCheckbox
+	return el.Kind == FormElementAudio || el.Kind == FormElementButton || el.Kind == FormElementField || el.Kind == FormElementCheckbox
 }
 
 // FormElement represents a single form element (field, button, etc.)

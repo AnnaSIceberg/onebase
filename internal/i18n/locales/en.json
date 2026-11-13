@@ -1629,5 +1629,9 @@
   "Отбор по значению текущей ячейки": "Filter by selected cell value",
   "Снять отбор": "Clear filters",
   "Ширина панели": "Panel width",
-  "параметр %s: больше %d файлов за один запуск": "parameter %s: more than %d files per run"
+  "параметр %s: больше %d файлов за один запуск": "parameter %s: more than %d files per run",
+  "Не удалось воспроизвести запись": "Could not play the recording",
+  "Записи нет": "No recording",
+  "Подготовка записи…": "Preparing recording…",
+  "Воспроизвести": "Play"
 }

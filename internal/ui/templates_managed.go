@@ -35,13 +35,13 @@ const tplManagedForm = `
 		{{$roUnlockable := and (not (adminOnlyLocked $ctx $el)) (or (not $ro) (ne $el.ReadOnlyWhen ""))}}
 {{$effectiveReq := effectiveFormElementRequired $ctx.Entity $el}}{{$req := nativeFormElementRequired $ctx.Entity $el}}
 {{/* Кнопка, скрытая hidden_when при отрисовке, рисуется с display:none, а не пропускается: иначе после события формы, снявшего условие, показать её нечем — «Утвердить» после «ОК» появлялась только при повторном открытии. Остальные виды пока пропускаются (поля — #1914). Защитой hidden_when не служит: событие кнопки сервер принимает и без неё в разметке. */}}
-{{if and $.HeaderPass (ne (str $el.Kind) "Кнопка")}}
+{{if and $.HeaderPass (ne (str $el.Kind) "Кнопка") (ne (str $el.Kind) "Аудиоплеер")}}
   {{/* Поле в строке команд — только чтение, «Подпись: значение» одной строкой.
        Сам контрол остаётся в теле формы (скрыт стилем строки команд): с ним
        работают запись, события и hidden_when, а зеркало берёт у него значение
        и видимость (obRefreshHeaderFields). */}}
   {{if not (elHidden $ctx $el)}}<span class="ob-header-field" data-ob-header-field="{{$el.Name}}"><span class="ob-header-field-label">{{fieldTitleRU $el.TitleMap (dpField $el.DataPath)}}:</span> <span class="ob-header-field-value">{{index $ctx.Values (dpField $el.DataPath)}}</span></span>{{end}}
-{{else if and (elHidden $ctx $el) (ne (str $el.Kind) "Кнопка")}}
+{{else if and (elHidden $ctx $el) (ne (str $el.Kind) "Кнопка") (ne (str $el.Kind) "Аудиоплеер")}}
 {{else if eq (str $el.Kind) "ГруппаФормы"}}
   <fieldset class="form-group-box{{if eq $el.Orientation "horizontal"}} managed-group-horizontal{{end}}{{if $el.ScrollX}} managed-group-scrollx{{end}}{{if $el.UsesEqualColumns}} ob-equal-columns{{end}}{{if $el.Frameless}} ob-group-plain{{end}}"{{if $el.FitWindow}} data-ob-fit-group="1"{{end}}{{if hasHandler $el "ПослеОткрытия"}} data-ob-after-open="{{$el.Name}}"{{end}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{if $el.HiddenWhen}} data-ob-hidden-group="1"{{if elHiddenStyle $ctx $el}} disabled{{end}}{{end}} style="{{elHiddenStyle $ctx $el}}{{if $el.Frameless}}border:0;padding:0;margin:0;min-width:0;{{else}}border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{end}}{{elBackground $el}}{{elLayout $el}}">
     {{/* frame: false — только раскладка: без рамки, отступов и заголовка. */}}
@@ -352,6 +352,11 @@ const tplManagedForm = `
   </button>
   {{if $buttonLayout}}</div>{{end}}
   {{end}}
+{{else if eq (str $el.Kind) "Аудиоплеер"}}
+{{if and (formHeaderPlaced $el) (not $.HeaderPass)}}{{else}}
+  {{$source := audioField $el.DataPath}}{{$title := audioField $el.TitleFrom}}
+  {{template "ob-audio-controls" (dict "Name" $el.Name "Lang" $ctx.Lang "SourceField" $source "TitleField" $title "Source" (audioSource $ctx $source) "Title" (or (audioValue $ctx $title) (fieldTitleRU $el.TitleMap $el.Name)) "ReadOnly" $ro "Hidden" (elHidden $ctx $el) "Path" (elPath $ctx $el) "PlayEvent" (hasHandler $el "Воспроизведение"))}}
+{{end}}
 {{else if eq (str $el.Kind) "ПолеКартинки"}}
   {{/* width/height здесь ограничивают САМУ картинку — так было до общего
        контракта раскладки (#1185), и менять смысл ключей значило бы перестроить
@@ -697,7 +702,7 @@ const tplManagedForm = `
 {{define "form-header-element"}}{{$page := .Page}}{{$it := .Item}}{{$tableName := ""}}{{$tableRO := false}}{{with $it.Table}}{{$tableName = canonicalFormTableName $page.Form $page.Entity (dpField .DataPath)}}{{$tableRO = or (not $page.CanWrite) (elReadOnly $page .) (adminOnlyLocked $page .)}}{{end}}{{template "managed-element" (dict "El" $it.Element "Ctx" $page "HeaderPass" true "TableName" $tableName "TableReadOnly" $tableRO "TableWriteDenied" (and $it.Table (not $page.CanWrite)))}}{{end}}
 {{/* Во всплывающей форме строки команд нет: там только кнопки, поля остаются в теле. */}}
 {{define "form-header-commands"}}{{$page := .}}{{if .IsPopup}}<span class="ob-header-commands">{{range formHeaderButtons .Form}}{{template "form-header-element" (dict "Item" . "Page" $page)}}{{end}}</span>{{else}}<span class="ob-header-commands">{{range formHeaderElements .Form "header"}}{{template "form-header-element" (dict "Item" . "Page" $page)}}{{end}}</span>{{template "context-help" .}}<span class="ob-header-commands">{{range formHeaderElements .Form "header_end"}}{{template "form-header-element" (dict "Item" . "Page" $page)}}{{end}}</span>
-{{/* Поля, перенесённые в строку команд, в теле формы не видны. */}}<style>{{range formHeaderElements .Form "header"}}{{if ne (str .Element.Kind) "Кнопка"}}#main-form [data-ob-el="{{.Element.Name}}"]{display:none !important}{{end}}{{end}}{{range formHeaderElements .Form "header_end"}}{{if ne (str .Element.Kind) "Кнопка"}}#main-form [data-ob-el="{{.Element.Name}}"]{display:none !important}{{end}}{{end}}</style>{{end}}{{end}}
+{{/* Поля, перенесённые в строку команд, в теле формы не видны. */}}<style>{{range formHeaderElements .Form "header"}}{{if and (ne (str .Element.Kind) "Кнопка") (ne (str .Element.Kind) "Аудиоплеер")}}#main-form [data-ob-el="{{.Element.Name}}"]{display:none !important}{{end}}{{end}}{{range formHeaderElements .Form "header_end"}}{{if and (ne (str .Element.Kind) "Кнопка") (ne (str .Element.Kind) "Аудиоплеер")}}#main-form [data-ob-el="{{.Element.Name}}"]{display:none !important}{{end}}{{end}}</style>{{end}}{{end}}
 {{define "page-managed-form"}}
 {{template "head" .}}{{if not .IsPopup}}{{template "nav" .}}{{end}}
 {{if .TabTitle}}<meta name="ob-tab-title" content="{{.TabTitle}}">{{end}}
@@ -1182,6 +1187,8 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
 {{else}}
 <script src="/static/managed.js"></script>
 {{end}}
+
+{{if hasAudioPlayer .Form}}<script src="/static/audio.js"></script>{{end}}
 
 {{if hasCodeField .Form}}
 {{/* Редактор кода для kind: ПолеКода. Monaco уже встроен в бинарь (его же

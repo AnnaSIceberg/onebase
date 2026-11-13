@@ -323,6 +323,7 @@ func allSchemas() map[string]map[string]any {
 				"posting":               map[string]any{"type": "boolean"},
 				"post_caption":          stringSchema("Подпись кнопки проведения (пусто → «Провести»)"),
 				"post_and_close_hidden": map[string]any{"type": "boolean"},
+				"audio_player":          boolSchema("Аудиоплеер вместо общей панели вложений; по умолчанию false"),
 				"hierarchical":          map[string]any{"type": "boolean"},
 				"hierarchy_kind":        stringSchema("folders_and_items|items_only"),
 				"based_on":              arrayOf(stringSchema("Имя исходного объекта")),
@@ -625,7 +626,8 @@ func managedFormSchema() map[string]any {
 		"properties": map[string]any{
 			"id":                  stringSchema("Устойчивый уникальный id элемента формы"),
 			"kind":                stringSchema("Вид элемента формы"),
-			"data_path":           stringSchema("Путь к значению элемента"),
+			"data_path":           stringSchema("Путь к значению элемента; у Аудиоплеер — строковый UUID защищённого вложения"),
+			"title_from":          stringSchema("Реквизит подписи Аудиоплеер или заголовка колонки ТЧ"),
 			"equal_columns":       boolSchema("Равная ширина детей горизонтальной ГруппаФормы без scroll_x; по умолчанию false"),
 			"choice_show_deleted": boolSchema("Показывать в выборе элементы, помеченные на удаление: true — показывать, false — скрывать. По умолчанию при вводе данных скрыты, в параметрах отчётов и отборах списков показаны с отметкой"),
 
