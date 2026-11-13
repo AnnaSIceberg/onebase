@@ -242,6 +242,7 @@ func (f *formObjectThis) write() error {
 // saveActionPost — запись с проведением (права и построчный доступ на «post»
 // проверяются так же, как у кнопки «Провести»).
 func (f *formObjectThis) save(action string) error {
+	defer func() { f.obj.TakeServerFieldAssignments() }()
 	if f.srv == nil || f.entity == nil {
 		return fmt.Errorf("запись из обработчика формы недоступна")
 	}
@@ -293,6 +294,7 @@ func (f *formObjectThis) save(action string) error {
 			}
 			for _, key := range restored {
 				delete(hookState.assigned, strings.ToLower(strings.TrimSpace(key)))
+				f.obj.ForgetServerFieldAssignment(key)
 			}
 		}
 	}
@@ -346,12 +348,13 @@ func (f *formObjectThis) save(action string) error {
 		entity: f.entity.Name, id: f.obj.ID, state: hookState,
 	})
 	result, err := f.srv.entitySvc.Save(hookCtx, entityservice.SaveRequest{
-		Entity:        f.entity,
-		ID:            f.obj.ID,
-		IsNew:         isNew,
-		Fields:        f.obj.Fields,
-		TablePartRows: f.obj.TablePartRows,
-		Action:        action,
+		Entity:            f.entity,
+		ID:                f.obj.ID,
+		IsNew:             isNew,
+		Fields:            f.obj.Fields,
+		TablePartRows:     f.obj.TablePartRows,
+		Action:            action,
+		ServerAssignments: f.obj.TakeServerFieldAssignments(),
 		ExpectedVersion: func() *int64 {
 			if isNew {
 				return nil
@@ -489,6 +492,7 @@ func (f *formObjectThis) Set(name string, v any) {
 	f.assigned[strings.ToLower(name)] = struct{}{}
 	f.hookXDTOState().assigned[strings.ToLower(strings.TrimSpace(name))] = true
 	f.obj.Set(name, v)
+	f.obj.MarkServerFieldAssignment(name)
 }
 
 func (f *formObjectThis) GetDynamicField(name string) (any, bool) {

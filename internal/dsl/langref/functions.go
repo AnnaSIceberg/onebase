@@ -5,6 +5,13 @@ package langref
 // сверены с реализациями в internal/dsl/interpreter/*.
 var functionDescriptors = []Descriptor{
 	{
+		Name: "поленазначеносервером", Display: "ПолеНазначеноСервером", Aliases: []string{"ServerAssignedField"}, Kind: KindFunc,
+		Signature: "ПолеНазначеноСервером(ИмяПоля)",
+		Params:    []Param{{Name: "ИмяПоля", Type: "строка"}}, Returns: "булево",
+		Doc:   "Только в текущем объектном ПриЗаписи: поле было присвоено серверным DSL setter перед этой попыткой Save. REST, binding, гидратация и загруженные значения не создают доказательство. Одноразовое происхождение не заменяет RBAC/RLS и бизнес-проверки; вне хука false.",
+		Group: "Объекты",
+	},
+	{
 		Name: "возможностьформырезультата", Display: "ВозможностьФормыРезультата", Aliases: []string{"ResultFormCapability"}, Kind: KindFunc,
 		Signature: "ВозможностьФормыРезультата(Имя)",
 		Params:    []Param{{Name: "Имя", Type: "строка", Doc: "имя из result_capabilities текущей обработки"}},
