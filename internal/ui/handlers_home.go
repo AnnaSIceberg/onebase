@@ -273,8 +273,7 @@ func (s *Server) decorateRefreshResult(r *http.Request, wMeta *metadata.Widget, 
 	s.prepareWidgetColumnWidths(r, res)
 
 	if res != nil && wMeta != nil {
-		res.Background = csssafe.Color(wMeta.Background)
-
+		res.Background = csssafe.Color(widget.OverrideBackground(wMeta.Background, wMeta.RoleOverrides, auth.UserFromContext(r.Context())))
 	}
 	if res != nil {
 		s.prepareWidgetCellFilter(r, wMeta, res)
