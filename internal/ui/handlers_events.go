@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/realtime"
@@ -29,6 +31,7 @@ type hubNotifier struct {
 	forms     *formNotifyStore
 	login     string
 	ctxSource interpreter.CtxSource
+	commands  *uiResponseCommands
 }
 
 func (n hubNotifier) Publish(target, name string, data any) {
@@ -36,10 +39,18 @@ func (n hubNotifier) Publish(target, name string, data any) {
 		return
 	}
 	ev := realtime.Event{Name: name, Data: data}
+	if shellScopedEvent(name) {
+		ev.CommandID = uuid.NewString()
+	}
 	if n.shell != "" && n.login != "" && target == n.login && shellScopedEvent(name) {
 		ev.Shell = n.shell
 	}
-	publish := func() { n.hub.Publish(target, ev) }
+	publish := func() {
+		n.hub.Publish(target, ev)
+		if n.login != "" && target == n.login && shellScopedEvent(name) {
+			n.commands.add(uiResponseCommand{Name: name, Data: data, CommandID: ev.CommandID})
+		}
+	}
 	if n.ctxSource != nil && storage.DeferUntilTxCommit(n.ctxSource.Ctx(), publish) {
 		return
 	}
@@ -58,7 +69,7 @@ func shellScopedEvent(name string) bool {
 // нет, и уведомление уходит всем сеансам, как раньше.
 func (s *Server) notifier(ctxSource interpreter.CtxSource) interpreter.Notifier {
 	ctx := ctxSource.Ctx()
-	n := hubNotifier{hub: s.hub, shell: shellIDFrom(ctx), ctxSource: ctxSource}
+	n := hubNotifier{hub: s.hub, shell: shellIDFrom(ctx), ctxSource: ctxSource, commands: responseCommandsFrom(ctx)}
 	if s.hub != nil {
 		n.forms = s.formNotifies()
 	}
@@ -204,7 +215,11 @@ func (s *Server) eventsStream(w http.ResponseWriter, r *http.Request) {
 			// Кадр — дефолтное message-событие с {name,data} в JSON: клиент один
 			// раз парсит и ретранслирует в window CustomEvent('onebase:<name>'),
 			// поэтому имена событий не нужно согласовывать с сервером заранее.
-			frame, err := json.Marshal(map[string]any{"name": ev.Name, "data": ev.Data, "system": ev.System})
+			payload := map[string]any{"name": ev.Name, "data": ev.Data, "system": ev.System}
+			if ev.CommandID != "" {
+				payload["commandId"] = ev.CommandID
+			}
+			frame, err := json.Marshal(payload)
 			if err != nil {
 				continue
 			}

@@ -46,6 +46,8 @@ import (
 
 // formEventResponse — структура ответа JSON.
 type formEventResponse struct {
+	UICommands      []uiResponseCommand         `json:"uiCommands,omitempty"`
+	RefreshLive     bool                        `json:"refreshLive,omitempty"`
 	ResultForm      *resultFormPayload          `json:"resultForm,omitempty"`
 	CloseResultForm bool                        `json:"closeResultForm,omitempty"`
 	FormTitle       *string                     `json:"formTitle,omitempty"`
@@ -346,6 +348,9 @@ func (s *Server) installFormCloseAccessRecheck(
 }
 
 func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Request, closeInv *formCloseInvocation) {
+	if closeInv == nil {
+		r = withUIResponseCommands(r)
+	}
 	r = r.WithContext(withShellID(r.Context(), r.Header.Get(shellHeader)))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)
@@ -1648,6 +1653,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	}
 	filterDeferredResponse(deferredBaseline, &resp)
 	compactFormCloseDelta(&resp, closeInv)
+	if closeInv == nil {
+		attachUIResponseCommands(r, &resp, requestWrites.Load() > writesBefore)
+	}
 	defer serverTimingSpan(r.Context(), "encode")()
 	respondJSON(enc, resp)
 }
@@ -2691,6 +2699,9 @@ func (s *Server) handleProcessorFormEvent(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Request, closeInv *formCloseInvocation) {
+	if closeInv == nil {
+		r = withUIResponseCommands(r)
+	}
 	r = r.WithContext(withShellID(r.Context(), r.Header.Get(shellHeader)))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)
@@ -3190,6 +3201,9 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		filterDeferredResponse(deferredBaseline, &resp)
 		compactFormCloseDelta(&resp, closeInv)
 		s.finishProcessorCarryEvent(r, proc, form, obj.Fields, carryBefore, deferredBaseline != nil, &resp)
+		if closeInv == nil {
+			attachUIResponseCommands(r, &resp, false)
+		}
 		respondJSON(enc, resp)
 		return
 	}

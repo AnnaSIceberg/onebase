@@ -1752,7 +1752,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 	// диалог уже не тот — ответ некуда применять.
 	if (snapshot.pickerRequest && snapshot.pickerRequest.search && !window.obPickerRequestCurrent(snapshot.pickerRequest)) return;
     try {
-      var request = obFormEventRequest(body, snapshot.files, { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'X-OneBase-Conceal-Context': form && form.getAttribute ? form.getAttribute('data-ob-conceal-context') || '' : '', 'X-OneBase-Shell': (typeof window.obShellId === 'function' ? window.obShellId() : '') });
+      var request = obFormEventRequest(body, snapshot.files, { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'X-OneBase-Conceal-Context': form && form.getAttribute ? form.getAttribute('data-ob-conceal-context') || '' : '', 'X-OneBase-UI-Commands': '1', 'X-OneBase-Shell': (typeof window.obShellId === 'function' ? window.obShellId() : '') });
       const res = await fetch(URL, {
         method: 'POST',
         body: request.body,
@@ -1910,6 +1910,14 @@ window.obManagedApplyHints = obManagedApplyHints;
       if (!responseMerged) {
         (data.messages || []).forEach(obFlashMessage);
         if (data.error) flash(data.error, 'err');
+      }
+      // Apply committed self-commands only after state/dirty reconciliation and
+      // after leaving the event queue. The shell deduplicates the SSE copy and
+      // still uses normal form-close lifecycle; this never clears native edits.
+      if (res.ok && data.ok && !data.error && !data.cancel && !data.deferred && !data.question && window.obApplyUIResponse) {
+        setTimeout(function () {
+          window.obApplyUIResponse(data.uiCommands || [], !!data.refreshLive);
+        },0);
       }
       if (navigationBlocked) flash(closeMessage('navigationDirty', 'Форма содержит несохранённые изменения — переход не выполнен'), 'err');
       // Apply the response, including disclosed values, before opening a
