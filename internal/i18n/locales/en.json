@@ -1635,5 +1635,8 @@
   "Записи нет": "No recording",
   "Подготовка записи…": "Preparing recording…",
   "Воспроизвести": "Play",
-  "КонтекстФормыРезультата доступен только в команде текущей формы результата": "ResultFormContext is available only in a command of the current result form"
+  "КонтекстФормыРезультата доступен только в команде текущей формы результата": "ResultFormContext is available only in a command of the current result form",
+  "Пауза": "Pause",
+  "Позиция воспроизведения": "Playback position",
+  "Громкость": "Volume"
 }
