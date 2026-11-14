@@ -53,7 +53,7 @@ const s2Overlay = "ed54e6717300e29a60b876eabcb64867861c1710"
 const s2SourceRoot = "/home/onebase/cc2b-audio-task-polish-20261114"
 const s2LoginSourceSHA = "e1b6dffeb3d601c022bc7b43551d9592859499775f6fe7ac23aa95c71835a8eb"
 const s2LoginSourcePath = "C:/Users/a.sevrjukova/AppData/Local/Temp/cc2b-audio-task-polish-20261114/after_b10_browser.py"
-const s2CoordinatorSHA = "e98b24eafb0d580252105cd9441b64c218e0c773859c0155de1cc56a48246e45"
+const s2CoordinatorSHA = "f64fbb4856ab4fbabfad98d6c657c546445157a97913a6e85862126fc7131dd4"
 const s2OwnershipSHA = "d8c0c41b97f4e68ab0affa5df3af163388f8c7e6df637c59d78db81c3682e1fe"
 const s2MaxWire = 8 << 20
 const s2MaxFlags = 64 << 10
@@ -64,16 +64,17 @@ type s2FilePin struct {
 	SHA  string `json:"sha256"`
 }
 type s2Input struct {
-	Schema         string    `json:"schema"`
-	Base           string    `json:"base_runtime"`
-	ExecutableSHA  string    `json:"executable_sha256"`
-	Work           string    `json:"work_root"`
-	Mode           string    `json:"explicit_mode"`
-	OriginalParity string    `json:"original_strict_rls_parity"`
-	Provenance     s2FilePin `json:"mode_provenance"`
-	Ownership      s2FilePin `json:"ownership_preflight"`
-	SourceManifest s2FilePin `json:"source_manifest"`
-	Copy           struct {
+	Schema          string    `json:"schema"`
+	Base            string    `json:"base_runtime"`
+	ExecutableSHA   string    `json:"executable_sha256"`
+	Work            string    `json:"work_root"`
+	Mode            string    `json:"explicit_mode"`
+	OriginalParity  string    `json:"original_strict_rls_parity"`
+	ExperimentScope string    `json:"experiment_scope"`
+	Provenance      s2FilePin `json:"mode_provenance"`
+	Ownership       s2FilePin `json:"ownership_preflight"`
+	SourceManifest  s2FilePin `json:"source_manifest"`
+	Copy            struct {
 		SourceDB        string            `json:"source_db"`
 		SourceDBSHA     string            `json:"source_db_sha256"`
 		DB              string            `json:"database"`
@@ -109,19 +110,23 @@ type s2Input struct {
 		Platform               map[string]string `json:"platform_presentation"`
 	} `json:"native"`
 	Supervisor struct {
-		Proof            s2FilePin `json:"proof"`
-		Namespace        *bool     `json:"private_network"`
-		NoEgress         *bool     `json:"net_deny"`
-		JobsOff          *bool     `json:"jobs_stopped"`
-		ConnectionsZero  *bool     `json:"connections_zero"`
-		Units            []string  `json:"owned_units"`
-		TunnelCount      *int      `json:"owned_tunnel_count"`
-		BackendMemoryMax *int64    `json:"backend_memory_max"`
-		BrowserMemoryMax *int64    `json:"browser_memory_max"`
-		RuntimeMax       *int      `json:"runtime_max_seconds"`
-		BrowserMax       *int      `json:"browser_max_seconds"`
-		Port             *int      `json:"backend_port"`
-		FinallyContract  *bool     `json:"finally_cleanup_bound"`
+		Proof                     s2FilePin `json:"proof"`
+		Namespace                 *bool     `json:"private_network"`
+		BackendKernelNetDeny      *bool     `json:"backend_kernel_net_deny"`
+		BrowserNetworkBoundary    string    `json:"browser_network_boundary"`
+		BrowserOSNetworkIsolated  *bool     `json:"browser_os_network_isolated"`
+		BrowserRoutingCacheEffect string    `json:"browser_routing_cache_effect"`
+		BrowserJobBound           *bool     `json:"browser_job_bound"`
+		JobsOff                   *bool     `json:"jobs_stopped"`
+		ConnectionsZero           *bool     `json:"connections_zero"`
+		Units                     []string  `json:"owned_units"`
+		TunnelCount               *int      `json:"owned_tunnel_count"`
+		BackendMemoryMax          *int64    `json:"backend_memory_max"`
+		BrowserMemoryMax          *int64    `json:"browser_memory_max"`
+		RuntimeMax                *int      `json:"runtime_max_seconds"`
+		BrowserMax                *int      `json:"browser_max_seconds"`
+		Port                      *int      `json:"backend_port"`
+		FinallyContract           *bool     `json:"finally_cleanup_bound"`
 	} `json:"supervisor"`
 }
 
@@ -145,35 +150,41 @@ type s2Manifest struct {
 	Overlay string            `json:"overlay_commit"`
 }
 type s2ModeProof struct {
-	Schema   string `json:"schema"`
-	Mode     string `json:"explicit_mode"`
-	Original string `json:"original_parity"`
-	Work     string `json:"work_root"`
-	Fresh    *bool  `json:"fresh_copy"`
-	Approved *bool  `json:"execution_approved"`
+	Schema          string `json:"schema"`
+	Mode            string `json:"explicit_mode"`
+	Original        string `json:"original_parity"`
+	ExperimentScope string `json:"experiment_scope"`
+	Work            string `json:"work_root"`
+	Fresh           *bool  `json:"fresh_copy"`
+	Approved        *bool  `json:"execution_approved"`
 }
 type s2SupervisorProof struct {
-	Schema                string   `json:"schema"`
-	Work                  string   `json:"work_root"`
-	Mode                  string   `json:"explicit_mode"`
-	OwnershipSHA          string   `json:"ownership_sha256"`
-	LoginSourceSHA        string   `json:"login_source_sha256"`
-	CoordinatorSHA        string   `json:"coordinator_sha256"`
-	CaptureSHA            string   `json:"capture_sha256"`
-	Origin                string   `json:"origin"`
-	NativeOptionsReviewed *bool    `json:"native_mapping_reviewed"`
-	SourceInactive        *bool    `json:"source_units_inactive"`
-	Namespace             *bool    `json:"private_network"`
-	NoEgress              *bool    `json:"net_deny"`
-	JobsOff               *bool    `json:"jobs_stopped"`
-	Finally               *bool    `json:"finally_cleanup_bound"`
-	SourceImmutable       *bool    `json:"source_immutable"`
-	Units                 []string `json:"owned_units"`
-	BackendMemoryMax      *int64   `json:"backend_memory_max"`
-	BrowserMemoryMax      *int64   `json:"browser_memory_max"`
-	RuntimeMax            *int     `json:"runtime_max_seconds"`
-	BrowserMax            *int     `json:"browser_max_seconds"`
-	TunnelCount           *int     `json:"owned_tunnel_count"`
+	Schema                    string   `json:"schema"`
+	Work                      string   `json:"work_root"`
+	Mode                      string   `json:"explicit_mode"`
+	ExperimentScope           string   `json:"experiment_scope"`
+	OwnershipSHA              string   `json:"ownership_sha256"`
+	LoginSourceSHA            string   `json:"login_source_sha256"`
+	CoordinatorSHA            string   `json:"coordinator_sha256"`
+	CaptureSHA                string   `json:"capture_sha256"`
+	Origin                    string   `json:"origin"`
+	NativeOptionsReviewed     *bool    `json:"native_mapping_reviewed"`
+	SourceInactive            *bool    `json:"source_units_inactive"`
+	Namespace                 *bool    `json:"private_network"`
+	BackendKernelNetDeny      *bool    `json:"backend_kernel_net_deny"`
+	BrowserNetworkBoundary    string   `json:"browser_network_boundary"`
+	BrowserOSNetworkIsolated  *bool    `json:"browser_os_network_isolated"`
+	BrowserRoutingCacheEffect string   `json:"browser_routing_cache_effect"`
+	BrowserJobBound           *bool    `json:"browser_job_bound"`
+	JobsOff                   *bool    `json:"jobs_stopped"`
+	Finally                   *bool    `json:"finally_cleanup_bound"`
+	SourceImmutable           *bool    `json:"source_immutable"`
+	Units                     []string `json:"owned_units"`
+	BackendMemoryMax          *int64   `json:"backend_memory_max"`
+	BrowserMemoryMax          *int64   `json:"browser_memory_max"`
+	RuntimeMax                *int     `json:"runtime_max_seconds"`
+	BrowserMax                *int     `json:"browser_max_seconds"`
+	TunnelCount               *int     `json:"owned_tunnel_count"`
 }
 
 // Written by the reviewed OWNER runner only AFTER coordinator context.close
@@ -891,7 +902,8 @@ func s2JSON(path string, dst any) error {
 	}
 	return nil
 }
-func s2True(p *bool) bool { return p != nil && *p }
+func s2True(p *bool) bool  { return p != nil && *p }
+func s2False(p *bool) bool { return p != nil && !*p }
 
 // Mirrors registryFromProject, no reduced entities/forms/modules.
 func s2Registry(p *project.Project) *obruntime.Registry {
@@ -1042,7 +1054,7 @@ func s2Dependencies(a *project.AppConfig, in s2Input) bool {
 func s2Preflight(in s2Input) (s2Bindings, s2Manifest, string) {
 	var b s2Bindings
 	var m s2Manifest
-	if in.Schema != "onebase.audio.stage2.private/v1" || in.Base != s2Base || in.OriginalParity != "UNKNOWN" || (in.Mode != "strict_false" && in.Mode != "strict_true") {
+	if in.Schema != "onebase.audio.stage2.private/v1" || in.Base != s2Base || in.OriginalParity != "UNKNOWN" || in.ExperimentScope != "controlled_own_synthetic" || (in.Mode != "strict_false" && in.Mode != "strict_true") {
 		return b, m, "mode_provenance"
 	}
 	work := filepath.Clean(in.Work)
@@ -1074,7 +1086,7 @@ func s2Preflight(in s2Input) (s2Bindings, s2Manifest, string) {
 		return b, m, "ownership_or_mode_proof"
 	}
 	var mode s2ModeProof
-	if s2JSON(in.Provenance.Path, &mode) != nil || mode.Schema != "onebase.audio.stage2.mode/v1" || mode.Mode != in.Mode || mode.Original != "UNKNOWN" || mode.Work != in.Work || !s2True(mode.Fresh) || !s2True(mode.Approved) {
+	if s2JSON(in.Provenance.Path, &mode) != nil || mode.Schema != "onebase.audio.stage2.mode/v1" || mode.Mode != in.Mode || mode.Original != "UNKNOWN" || mode.ExperimentScope != in.ExperimentScope || mode.Work != in.Work || !s2True(mode.Fresh) || !s2True(mode.Approved) {
 		return b, m, "mode_provenance_missing"
 	}
 	if in.Copy.SourceDB != s2SourceRoot+"/after-b10.sqlite" || !s2True(in.Copy.Fresh) || !s2True(in.Copy.WALInactive) || !s2True(in.Copy.SourceImmutable) || !s2True(in.Copy.OwnerVerified) {
@@ -1149,18 +1161,21 @@ func s2Preflight(in s2Input) (s2Bindings, s2Manifest, string) {
 	if in.Login.Source.Path != s2LoginSourcePath || in.Login.Source.SHA != s2LoginSourceSHA || !s2True(in.Login.ImportOnly) {
 		return b, m, "login_provenance"
 	}
-	if filepath.Base(in.Login.Adapter.Path) != "stage2_login_coordinator.py" || in.Login.Adapter.SHA != s2CoordinatorSHA || !s2SHA(in.Login.CaptureSHA) {
+	if filepath.Base(in.Login.Adapter.Path) != "stage2_login_coordinator_v2.py" || in.Login.Adapter.SHA != s2CoordinatorSHA || !s2SHA(in.Login.CaptureSHA) {
 		return b, m, "reviewed_login_adapter_missing"
 	}
 	if !s2True(in.Native.Known) || in.Native.Mode != "run" || in.Native.ConfigSource != "file" || in.Native.H2C == nil || *in.Native.H2C || in.Native.StrictLexical == nil {
 		return b, m, "native_options_missing"
 	}
 	s := in.Supervisor
-	if !s2Pinned(s.Proof) || !s2True(s.Namespace) || !s2True(s.NoEgress) || !s2True(s.JobsOff) || !s2True(s.ConnectionsZero) || !s2True(s.FinallyContract) || len(s.Units) != 4 || s.TunnelCount == nil || *s.TunnelCount != 1 {
+	if !s2Pinned(s.Proof) || !s2True(s.Namespace) || !s2True(s.BackendKernelNetDeny) || !s2True(s.JobsOff) || !s2True(s.ConnectionsZero) || !s2True(s.FinallyContract) || len(s.Units) != 4 || s.TunnelCount == nil || *s.TunnelCount != 1 {
 		return b, m, "supervisor_proof"
 	}
+	if s.BrowserNetworkBoundary != "owner_context_loopback_allowlist" || !s2False(s.BrowserOSNetworkIsolated) || s.BrowserRoutingCacheEffect != "disabled_by_context_route" || !s2True(s.BrowserJobBound) {
+		return b, m, "browser_boundary_provenance"
+	}
 	var proof s2SupervisorProof
-	if s2JSON(s.Proof.Path, &proof) != nil || proof.Schema != "onebase.audio.stage2.supervisor/v1" || proof.Work != work || proof.Mode != in.Mode || proof.OwnershipSHA != s2OwnershipSHA || proof.LoginSourceSHA != s2LoginSourceSHA || proof.CoordinatorSHA != s2CoordinatorSHA || proof.CaptureSHA != in.Login.CaptureSHA || proof.Origin != in.Login.Target || !s2True(proof.NativeOptionsReviewed) || !s2True(proof.SourceInactive) || !s2True(proof.Namespace) || !s2True(proof.NoEgress) || !s2True(proof.JobsOff) || !s2True(proof.Finally) || !s2True(proof.SourceImmutable) || !s2Same(proof.Units, s.Units) || !s2Same(proof.BackendMemoryMax, s.BackendMemoryMax) || !s2Same(proof.BrowserMemoryMax, s.BrowserMemoryMax) || !s2Same(proof.RuntimeMax, s.RuntimeMax) || !s2Same(proof.BrowserMax, s.BrowserMax) || !s2Same(proof.TunnelCount, s.TunnelCount) {
+	if s2JSON(s.Proof.Path, &proof) != nil || proof.Schema != "onebase.audio.stage2.supervisor/v1" || proof.Work != work || proof.Mode != in.Mode || proof.ExperimentScope != in.ExperimentScope || proof.OwnershipSHA != s2OwnershipSHA || proof.LoginSourceSHA != s2LoginSourceSHA || proof.CoordinatorSHA != s2CoordinatorSHA || proof.CaptureSHA != in.Login.CaptureSHA || proof.BrowserNetworkBoundary != s.BrowserNetworkBoundary || !s2Same(proof.BrowserOSNetworkIsolated, s.BrowserOSNetworkIsolated) || proof.BrowserRoutingCacheEffect != s.BrowserRoutingCacheEffect || !s2Same(proof.BrowserJobBound, s.BrowserJobBound) || proof.Origin != in.Login.Target || !s2True(proof.NativeOptionsReviewed) || !s2True(proof.SourceInactive) || !s2True(proof.Namespace) || !s2True(proof.BackendKernelNetDeny) || !s2True(proof.JobsOff) || !s2True(proof.Finally) || !s2True(proof.SourceImmutable) || !s2Same(proof.Units, s.Units) || !s2Same(proof.BackendMemoryMax, s.BackendMemoryMax) || !s2Same(proof.BrowserMemoryMax, s.BrowserMemoryMax) || !s2Same(proof.RuntimeMax, s.RuntimeMax) || !s2Same(proof.BrowserMax, s.BrowserMax) || !s2Same(proof.TunnelCount, s.TunnelCount) {
 		return b, m, "supervisor_mapping_gap"
 	}
 	seenUnits := map[string]bool{}
@@ -1487,7 +1502,7 @@ func TestAudioDirtyStage2Private(t *testing.T) {
 	}()
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(listener) }()
-	if e = s2WritePrivate(filepath.Join(in.Work, "ready.json"), map[string]any{"ready": true, "mode": in.Mode, "original_parity": "UNKNOWN", "login_target_bound": true}); e != nil {
+	if e = s2WritePrivate(filepath.Join(in.Work, "ready.json"), map[string]any{"ready": true, "mode": in.Mode, "experiment_scope": in.ExperimentScope, "original_parity": "UNKNOWN", "login_target_bound": true}); e != nil {
 		t.Fatal("stage2_stop:ready_receipt")
 	}
 	// First facts seal ONLY the observer. Keep native backend alive until the
@@ -1574,7 +1589,7 @@ WAIT:
 		status = "OBSERVATION_GAP"
 		globalGap = "unexpected_active_job"
 	}
-	result := map[string]any{"schema": "onebase.audio.stage2.flags/v1", "status": status, "explicit_mode": in.Mode, "original_strict_rls_parity": "UNKNOWN", "queue_configured_workers": qcfg.Workers, "queue_effective_workers": queue.Workers(), "pool_run_called": false, "records": flags, "global_observation_gap": globalGap, "browser_cleanup_confirmed": browserComplete, "pending_requests": pending, "source_unchanged": unchanged, "sdk_changed": false, "cause_claimed": false, "next": "STOP_REVIEW_NO_AUTOFIX"}
+	result := map[string]any{"schema": "onebase.audio.stage2.flags/v1", "status": status, "experiment_scope": in.ExperimentScope, "backend_kernel_net_deny": *in.Supervisor.BackendKernelNetDeny, "browser_network_boundary": in.Supervisor.BrowserNetworkBoundary, "browser_os_network_isolated": *in.Supervisor.BrowserOSNetworkIsolated, "browser_routing_cache_effect": in.Supervisor.BrowserRoutingCacheEffect, "browser_job_bound": *in.Supervisor.BrowserJobBound, "boundary_evidence": "reviewed_owner_supervisor_provenance", "explicit_mode": in.Mode, "original_strict_rls_parity": "UNKNOWN", "queue_configured_workers": qcfg.Workers, "queue_effective_workers": queue.Workers(), "pool_run_called": false, "records": flags, "global_observation_gap": globalGap, "browser_cleanup_confirmed": browserComplete, "pending_requests": pending, "source_unchanged": unchanged, "sdk_changed": false, "cause_claimed": false, "next": "STOP_REVIEW_NO_AUTOFIX"}
 	if e = s2WritePrivate(filepath.Join(in.Work, "flags.json"), result); e != nil {
 		t.Error("stage2_stop:flags_output")
 	}

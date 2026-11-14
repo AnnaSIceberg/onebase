@@ -15,44 +15,50 @@ class CaptureStopped(Exception):
     """Only this closed message may cross the owner callback boundary."""
 
 
-ORIGINS = frozenset(("http://127.0.0.1:19548", "http://127.0.0.1:18548"))
+ORIGINS = frozenset(('http://127.0.0.1:19548', 'http://127.0.0.1:18548'))
+# Canonical frozen metadata names; destination shape does not grant ACL.
+_METADATA_SUBSYSTEMS = frozenset(('Документы', 'Касса', 'КоллЦентр', 'МРМ', 'Мессенджер', 'ОТК', 'Обработки', 'Производство', 'Регистры', 'Склад', 'Справочники'))
 
 
-def _native_entry_url(raw_url, origin):
-    """Pure URL-shape predicate for the native default-login redirect chain.
+def _on_origin(url: str, origin: str) -> bool:
+    parsed = urlsplit(url)
+    return (parsed.scheme+'://'+parsed.netloc == origin
+            and parsed.username is None and parsed.password is None)
 
-    A subsystem comes from the native visible-metadata redirect, not from
-    caller-supplied navigation here. This predicate does not grant its ACL.
-    No network/metadata request and no URL value leaves the owner process.
-    """
+
+def _native_entry_url(url: str, origin: str) -> bool:
+    # Native LoginSubmit -> index/hiddenHomeRedirect -> tabs app shell.
+    # Destination shape is not an authorization token or an RLS bypass.
     try:
-        if (origin not in ORIGINS or not isinstance(raw_url, str) or "#" in raw_url
-                or raw_url != raw_url.strip()
-                or any(ord(char) < 32 or ord(char) == 127 for char in raw_url)):
+        if origin not in ORIGINS or not isinstance(url, str):
             return False
-        current = urlsplit(raw_url)
-        if (current.scheme + "://" + current.netloc != origin
-                or current.username is not None or current.password is not None
-                or current.fragment):
+        if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
             return False
-        if current.path in ("/ui", "/ui/"):
-            return not current.query
-        if current.path != "/ui/app":
+        if not _on_origin(url, origin) or '#' in url:
             return False
-        pairs = parse_qsl(current.query, keep_blank_values=True,
-                          strict_parsing=True, errors="strict", max_num_fields=2)
-        if len(pairs) not in (1, 2) or len({key for key, _ in pairs}) != len(pairs):
+        parsed = urlsplit(url)
+        if parsed.path not in ('/ui', '/ui/', '/ui/app'):
+            return False
+        if not parsed.query:
+            return '?' not in url and parsed.path in ('/ui', '/ui/')
+        raw_pairs = parsed.query.split('&')
+        if any('=' not in pair or pair.split('=', 1)[0] not in ('home', 'subsystem')
+               for pair in raw_pairs):
+            return False
+        pairs = parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True,
+                          max_num_fields=2, separator='&')
+        if len(pairs) != len({key for key, _ in pairs}):
             return False
         query = dict(pairs)
-        if set(query) - {"home", "subsystem"} or query.get("home") != "1":
+        if 'subsystem' in query and query['subsystem'] not in _METADATA_SUBSYSTEMS:
             return False
-        if "subsystem" in query:
-            value = query["subsystem"]
-            if not value or len(value) > 256 or value.strip() != value or not value.isprintable():
-                return False
-        return True
-    except Exception:
-        return False  # no raw URL/parser error crosses the callback boundary
+        if parsed.path == '/ui/app':
+            return (query.get('home') == '1'
+                    and 'home=1' in raw_pairs
+                    and set(query).issubset({'home', 'subsystem'}))
+        return set(query) == {'subsystem'}
+    except (ValueError, UnicodeError, TypeError):
+        return False
 
 
 def capture_authenticated(*, page, context, origin, target_binding) -> None:
