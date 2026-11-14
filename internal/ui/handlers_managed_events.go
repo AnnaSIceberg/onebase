@@ -1595,7 +1595,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		if requestWrites.Load() == writesBefore {
 			storedTP = tpDBBefore
 		}
-		dirty = s.managedCloseStateDirtyWithRows(liveCtx, entity, form, obj, fieldsBefore, tpBefore, storedTP)
+		reason := s.managedCloseStateDirtyReason(liveCtx, entity, form, obj, fieldsBefore, tpBefore, storedTP)
+		dirty = reason != ""
+		logAudioDirtyReason(liveCtx, entity, form, metadata.FormEventType(eventName), reason)
 	}
 	endDirty()
 	if formOpenEvent(elementName, eventName) && !thisObj.saved {
