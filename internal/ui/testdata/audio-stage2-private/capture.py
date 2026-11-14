@@ -6,7 +6,7 @@ No import-time I/O, environment access, tracing, listeners or browser actions.
 """
 from collections.abc import Mapping
 from types import MappingProxyType
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qsl, quote, unquote, urlsplit
 from uuid import UUID
 import time
 
@@ -16,6 +16,43 @@ class CaptureStopped(Exception):
 
 
 ORIGINS = frozenset(("http://127.0.0.1:19548", "http://127.0.0.1:18548"))
+
+
+def _native_entry_url(raw_url, origin):
+    """Pure URL-shape predicate for the native default-login redirect chain.
+
+    A subsystem comes from the native visible-metadata redirect, not from
+    caller-supplied navigation here. This predicate does not grant its ACL.
+    No network/metadata request and no URL value leaves the owner process.
+    """
+    try:
+        if (origin not in ORIGINS or not isinstance(raw_url, str) or "#" in raw_url
+                or raw_url != raw_url.strip()
+                or any(ord(char) < 32 or ord(char) == 127 for char in raw_url)):
+            return False
+        current = urlsplit(raw_url)
+        if (current.scheme + "://" + current.netloc != origin
+                or current.username is not None or current.password is not None
+                or current.fragment):
+            return False
+        if current.path in ("/ui", "/ui/"):
+            return not current.query
+        if current.path != "/ui/app":
+            return False
+        pairs = parse_qsl(current.query, keep_blank_values=True,
+                          strict_parsing=True, errors="strict", max_num_fields=2)
+        if len(pairs) not in (1, 2) or len({key for key, _ in pairs}) != len(pairs):
+            return False
+        query = dict(pairs)
+        if set(query) - {"home", "subsystem"} or query.get("home") != "1":
+            return False
+        if "subsystem" in query:
+            value = query["subsystem"]
+            if not value or len(value) > 256 or value.strip() != value or not value.isprintable():
+                return False
+        return True
+    except Exception:
+        return False  # no raw URL/parser error crosses the callback boundary
 
 
 def capture_authenticated(*, page, context, origin, target_binding) -> None:
@@ -42,8 +79,7 @@ def capture_authenticated(*, page, context, origin, target_binding) -> None:
         ident = target_binding["id"]
         if not isinstance(ident, str) or str(UUID(ident)) != ident:
             raise CaptureStopped("CAPTURE_STOPPED")
-        current = urlsplit(page.url)
-        if current.scheme + "://" + current.netloc != origin or current.path.rstrip("/") != "/ui":
+        if not _native_entry_url(page.url, origin):
             raise CaptureStopped("CAPTURE_STOPPED")
         entity = target_binding["entity"]
         event_path = "/ui/document/" + entity + "/form-event"
