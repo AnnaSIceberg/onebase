@@ -1595,7 +1595,10 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		if requestWrites.Load() == writesBefore {
 			storedTP = tpDBBefore
 		}
-		dirty = s.managedCloseStateDirtyWithRows(liveCtx, entity, form, obj, fieldsBefore, tpBefore, storedTP)
+		diag := newManagedDirtyAllDiagnostic(r, form, metadata.FormEventType(eventName))
+		reason := s.managedCloseStateDirtyReason(liveCtx, entity, form, obj, fieldsBefore, tpBefore, storedTP, diag)
+		dirty = reason != ""
+		diag.finish(liveCtx, dirty)
 	}
 	endDirty()
 	if formOpenEvent(elementName, eventName) && !thisObj.saved {
@@ -1901,15 +1904,30 @@ func (s *Server) managedCloseStateDirtyReason(
 	fieldsBefore map[string]string,
 	tpBefore map[string][]map[string]any,
 	storedTP map[string][]map[string]any,
+	diagnostics ...*managedDirtyAllDiagnostic,
 ) string {
+	var diag *managedDirtyAllDiagnostic
+	if len(diagnostics) > 0 {
+		diag = diagnostics[0]
+	}
+	firstReason := ""
+	hit := func(reason string) bool {
+		if firstReason == "" {
+			firstReason = reason
+		}
+		return diag == nil
+	}
 	if s == nil || s.store == nil || entity == nil || obj == nil || obj.ID == uuid.Nil {
+		diag.failure("record", "", "record-unavailable")
 		return "no-record: объект без id"
 	}
 	persisted, err := s.recordForRequest(ctx, entity, obj.ID)
 	if err != nil {
+		diag.failure("record", "", "record-read-error")
 		return "record-read-error: " + err.Error()
 	}
 	if persisted == nil {
+		diag.failure("record", "", "record-missing")
 		return "record-missing: записи нет в базе"
 	}
 	dialect := s.store.Dialect().Name()
@@ -1922,7 +1940,8 @@ func (s *Server) managedCloseStateDirtyReason(
 	var viewKeys ciIndex
 	for _, field := range entity.Fields {
 		_, stored, _ := ciGet(persisted, persistedKeys, field.Name)
-		liveNorm, storedNorm := tpCellNormStored(field, objectGetIndexed(obj, liveKeys, field.Name), dialect), tpCellNormStored(field, stored, dialect)
+		liveValue := objectGetIndexed(obj, liveKeys, field.Name)
+		liveNorm, storedNorm := tpCellNormStored(field, liveValue, dialect), tpCellNormStored(field, stored, dialect)
 		if liveNorm != storedNorm {
 			// Save restores the form's safe view after writing durable PII.
 			// Build that view only on a difference, without mutating the object.
@@ -1935,7 +1954,10 @@ func (s *Server) managedCloseStateDirtyReason(
 			if liveNorm == tpCellNormStored(field, view, dialect) {
 				continue
 			}
-			return fmt.Sprintf("entity-field %s type=%s live=%s stored=%s", field.Name, field.Type, dirtyValueDigest(liveNorm), dirtyValueDigest(storedNorm))
+			if hit(fmt.Sprintf("entity-field %s type=%s live=%s stored=%s", field.Name, field.Type, dirtyValueDigest(liveNorm), dirtyValueDigest(storedNorm))) {
+				return firstReason
+			}
+			diag.cell("entity", field.Name, -1, field, liveValue, stored, "")
 		}
 	}
 	serviceKeys := []string{"deletion_mark"}
@@ -1957,10 +1979,16 @@ func (s *Server) managedCloseStateDirtyReason(
 		stored, _ := maskCIKeyValue(persisted, name)
 		if name == "parent_id" {
 			if refValueString(live) != refValueString(stored) {
-				return "service-field parent_id"
+				if hit("service-field parent_id") {
+					return firstReason
+				}
+				diag.cell("service", name, -1, metadata.Field{Name: name, Type: metadata.FieldType("reference:" + entity.Name), RefEntity: entity.Name}, live, stored, "")
 			}
 		} else if boolCanon(asBool(live)) != boolCanon(asBool(stored)) {
-			return fmt.Sprintf("service-field %s live=%v stored=%v", name, asBool(live), asBool(stored))
+			if hit(fmt.Sprintf("service-field %s live=%v stored=%v", name, asBool(live), asBool(stored))) {
+				return firstReason
+			}
+			diag.cell("service", name, -1, metadata.Field{Name: name, Type: metadata.FieldTypeBool}, live, stored, "")
 		}
 	}
 	for _, tablePart := range entity.TableParts {
@@ -1970,10 +1998,17 @@ func (s *Server) managedCloseStateDirtyReason(
 			stored, rowsErr = s.store.GetTablePartRows(ctx, entity.Name, tablePart.Name, obj.ID, tablePart)
 		}
 		if rowsErr != nil {
-			return fmt.Sprintf("table-part %s read-error: %v", tablePart.Name, rowsErr)
+			if hit(fmt.Sprintf("table-part %s read-error: %v", tablePart.Name, rowsErr)) {
+				return firstReason
+			}
+			diag.failure("table-part", tablePart.Name, "read-error")
+			continue
 		}
 		if !tpRowsEqualStored(obj.TablePartRows[tablePart.Name], stored, tablePart, dialect) {
-			return fmt.Sprintf("table-part %s live_rows=%d stored_rows=%d", tablePart.Name, len(obj.TablePartRows[tablePart.Name]), len(stored))
+			if hit(fmt.Sprintf("table-part %s live_rows=%d stored_rows=%d", tablePart.Name, len(obj.TablePartRows[tablePart.Name]), len(stored))) {
+				return firstReason
+			}
+			diag.tables("table-part", tablePart, obj.TablePartRows[tablePart.Name], stored, dialect)
 		}
 	}
 	viewFields := formViewStateFields(form, entity)
@@ -1987,10 +2022,17 @@ func (s *Server) managedCloseStateDirtyReason(
 		if strings.EqualFold(attr.TypeRef, "ValueTable") {
 			tp := formAttributeTablePart(attr)
 			if tp == nil {
-				return "form-table " + attr.Name + " без описания колонок"
+				if hit("form-table " + attr.Name + " без описания колонок") {
+					return firstReason
+				}
+				diag.failure("form-table", attr.Name, "unknown-shape")
+				continue
 			}
 			if !tpRowsEqual(obj.TablePartRows[attr.Name], tpBefore[attr.Name], *tp) {
-				return fmt.Sprintf("form-table %s live_rows=%d before_rows=%d", attr.Name, len(obj.TablePartRows[attr.Name]), len(tpBefore[attr.Name]))
+				if hit(fmt.Sprintf("form-table %s live_rows=%d before_rows=%d", attr.Name, len(obj.TablePartRows[attr.Name]), len(tpBefore[attr.Name]))) {
+					return firstReason
+				}
+				diag.tables("form-table", *tp, obj.TablePartRows[attr.Name], tpBefore[attr.Name], "")
 			}
 			continue
 		}
@@ -2004,10 +2046,14 @@ func (s *Server) managedCloseStateDirtyReason(
 			if afterOK {
 				afterCmp = snapshotComparableValue(after)
 			}
-			return fmt.Sprintf("form-attr %s before_present=%t after_present=%t before=%s after=%s", attr.Name, beforeOK, afterOK, dirtyValueDigest(before), dirtyValueDigest(afterCmp))
+			if hit(fmt.Sprintf("form-attr %s before_present=%t after_present=%t before=%s after=%s", attr.Name, beforeOK, afterOK, dirtyValueDigest(before), dirtyValueDigest(afterCmp))) {
+				return firstReason
+			}
+			beforeValue, beforeType := diagnosticSnapshot(before, beforeOK)
+			diag.cell("form-attr", attr.Name, -1, metadata.Field{Name: attr.Name, Type: metadata.FieldType(attr.TypeRef)}, after, beforeValue, beforeType)
 		}
 	}
-	return ""
+	return firstReason
 }
 
 // dirtyValueDigest — значение для журнала без самого значения (ПДн): длина в
