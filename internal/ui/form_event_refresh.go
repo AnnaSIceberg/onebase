@@ -401,13 +401,16 @@ func tpCellValue(row map[string]any, name string) any {
 // бы ложное «пользователь правил грид», и строки ТЧ не перечитывались бы.
 func tpCellNorm(f metadata.Field, v any) string {
 	if ref, ok := v.(*interpreter.Ref); ok {
-		if ref == nil {
+		if ref == nil || ref.UUID == uuid.Nil.String() {
 			return ""
 		}
 		return ref.UUID
 	}
 	if f.RefEntity != "" {
-		if idStr, _, ok := uuidFromValue(v); ok {
+		if idStr, id, ok := uuidFromValue(v); ok {
+			if id == uuid.Nil {
+				return ""
+			}
 			return idStr
 		}
 	}
@@ -434,6 +437,10 @@ func tpCellNorm(f metadata.Field, v any) string {
 		}
 	case metadata.FieldTypeBool:
 		switch t := v.(type) {
+		case nil:
+			// A nullable legacy boolean is displayed and submitted as false.
+			// Comparing it must not mark an untouched form as edited.
+			return boolCanon(false)
 		case bool:
 			return boolCanon(t)
 		case decimal.Decimal:
