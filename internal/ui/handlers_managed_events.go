@@ -1586,7 +1586,12 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// input events; without this signal an unsaved command mutation on a clean
 	// form could be silently discarded by the next Close.
 	endDirty := serverTimingSpan(r.Context(), "dirty")
-	dirty := transientManagedStateDirty(obj, fieldsBefore, tpBefore)
+	comparisonForm := form
+	var audioViewFields map[string]bool
+	if closeInv == nil {
+		comparisonForm, audioViewFields = audioPlaybackComparison(form, entity, elementName, eventName)
+	}
+	dirty := transientAudioPlaybackDirty(obj, fieldsBefore, tpBefore, audioViewFields)
 	if existingRecord || thisObj.saved || (closeInv != nil && closeInv.saved) {
 		// Без записей за время обработчика строки ТЧ в базе — те же, что в
 		// снимке до него: повторно их не читаем.
@@ -1594,7 +1599,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		if requestWrites.Load() == writesBefore {
 			storedTP = tpDBBefore
 		}
-		dirty = s.managedCloseStateDirtyWithRows(liveCtx, entity, form, obj, fieldsBefore, tpBefore, storedTP)
+		dirty = s.managedCloseStateDirtyWithRows(liveCtx, entity, comparisonForm, obj, fieldsBefore, tpBefore, storedTP)
 	}
 	endDirty()
 	if formOpenEvent(elementName, eventName) && !thisObj.saved {
@@ -3181,6 +3186,16 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			runErr = s.interp.Run(decl, thisObj, vars)
 		}
 		runErr = finishDSLExecution(txState, runErr)
+		var audioViewFields map[string]bool
+		if closeInv == nil && eventName == string(metadata.FormEventAudioPlay) {
+			// Parameters remain business inputs even if a same-name form
+			// attribute also happens to be bound to the player.
+			protected := &metadata.Entity{}
+			for _, param := range proc.Params {
+				protected.Fields = append(protected.Fields, metadata.Field{Name: param.Name})
+			}
+			_, audioViewFields = audioPlaybackComparison(form, protected, elementName, eventName)
+		}
 		if runErr != nil {
 			opStatus = operationStatus(opCtx, runErr)
 			resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(false)
@@ -3192,7 +3207,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 				resp.Question = &q
 			}
 			resp.Idle = idle
-			resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
+			resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientAudioPlaybackDirty(obj, fieldsBefore, tablesBefore, audioViewFields))
 			filterDeferredResponse(deferredBaseline, &resp)
 			compactFormCloseDelta(&resp, closeInv)
 			s.finishProcessorCarryEvent(r, proc, form, obj.Fields, carryBefore, deferredBaseline != nil, &resp)
@@ -3213,7 +3228,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		}
 		resp.CloseResultForm = closeResult && resp.OK
 		resp.ChoiceList = choiceItems
-		resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
+		resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientAudioPlaybackDirty(obj, fieldsBefore, tablesBefore, audioViewFields))
 		filterDeferredResponse(deferredBaseline, &resp)
 		compactFormCloseDelta(&resp, closeInv)
 		s.finishProcessorCarryEvent(r, proc, form, obj.Fields, carryBefore, deferredBaseline != nil, &resp)
