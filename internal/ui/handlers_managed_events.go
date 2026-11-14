@@ -1586,11 +1586,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// input events; without this signal an unsaved command mutation on a clean
 	// form could be silently discarded by the next Close.
 	endDirty := serverTimingSpan(r.Context(), "dirty")
-	comparisonForm := form
-	var audioViewFields map[string]bool
-	if closeInv == nil {
-		comparisonForm, audioViewFields = audioPlaybackComparison(form, entity, elementName, eventName)
-	}
+	audioViewFields := audioViewStateFields(form, entity)
 	dirty := transientAudioPlaybackDirty(obj, fieldsBefore, tpBefore, audioViewFields)
 	if existingRecord || thisObj.saved || (closeInv != nil && closeInv.saved) {
 		// Без записей за время обработчика строки ТЧ в базе — те же, что в
@@ -1599,7 +1595,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		if requestWrites.Load() == writesBefore {
 			storedTP = tpDBBefore
 		}
-		dirty = s.managedCloseStateDirtyWithRows(liveCtx, entity, comparisonForm, obj, fieldsBefore, tpBefore, storedTP)
+		dirty = s.managedCloseStateDirtyWithRows(liveCtx, entity, form, obj, fieldsBefore, tpBefore, storedTP)
 	}
 	endDirty()
 	if formOpenEvent(elementName, eventName) && !thisObj.saved {
@@ -1980,8 +1976,12 @@ func (s *Server) managedCloseStateDirtyReason(
 			return fmt.Sprintf("table-part %s live_rows=%d stored_rows=%d", tablePart.Name, len(obj.TablePartRows[tablePart.Name]), len(stored))
 		}
 	}
+	viewFields := audioViewStateFields(form, entity)
 	for _, attr := range form.Attributes {
 		if attr == nil || attr.MainAttribute || entityField(entity, attr.Name) != nil || entityServiceFieldName(attr.Name) {
+			continue
+		}
+		if viewFields[strings.ToLower(strings.TrimSpace(attr.Name))] {
 			continue
 		}
 		if strings.EqualFold(attr.TypeRef, "ValueTable") {
@@ -3186,16 +3186,14 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			runErr = s.interp.Run(decl, thisObj, vars)
 		}
 		runErr = finishDSLExecution(txState, runErr)
-		var audioViewFields map[string]bool
-		if closeInv == nil && eventName == string(metadata.FormEventAudioPlay) {
-			// Parameters remain business inputs even if a same-name form
-			// attribute also happens to be bound to the player.
-			protected := &metadata.Entity{}
-			for _, param := range proc.Params {
-				protected.Fields = append(protected.Fields, metadata.Field{Name: param.Name})
-			}
-			_, audioViewFields = audioPlaybackComparison(form, protected, elementName, eventName)
+		// Parameters remain business inputs even when a same-name form
+		// attribute is bound to the player. Pure display state, however, is
+		// display state during selection and Close as well as explicit Play.
+		protected := &metadata.Entity{}
+		for _, param := range proc.Params {
+			protected.Fields = append(protected.Fields, metadata.Field{Name: param.Name})
 		}
+		audioViewFields := audioViewStateFields(form, protected)
 		if runErr != nil {
 			opStatus = operationStatus(opCtx, runErr)
 			resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(false)

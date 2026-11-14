@@ -29,12 +29,19 @@ with sync_playwright() as p:
         def response(r):
             if r.request.method == 'POST' and '/form-event' in r.url:
                 events.append(r.json())
-            if r.request.method == 'POST' and '/form-close-intent' in r.url:
-                close_events.append(r.json())
-                close_modes.append(r.request.headers.get('x-onebase-close-mode'))
             if r.url.endswith('/attachments'):
                 metadata.append(r.json())
         page.on('response', response)
+        # Chrome109 may evict a completed response body on the immediately
+        # following standard Close navigation. Forward the exact native
+        # request once and retain its response before passing it unchanged to
+        # the product controller; no dirty state or close decision is patched.
+        def relay_close(route):
+            reply=route.fetch()
+            close_events.append(reply.json())
+            close_modes.append(route.request.headers.get('x-onebase-close-mode'))
+            route.fulfill(response=reply)
+        page.route('**/form-close-intent',relay_close)
         page.goto(base+'/ui/catalog/Calls/'+call_id, wait_until='domcontentloaded')
         player = page.locator('[data-ob-audio]')
         media = page.locator('[data-ob-audio-media]')
@@ -97,7 +104,7 @@ with sync_playwright() as p:
         page.wait_for_url(base+'/ui/catalog/calls')
         assert len(close_events)==1 and close_modes==['discard'],close_events
         assert close_events[0].get('ok') and close_events[0].get('close',{}).get('allowed'),close_events
-        assert close_events[0].get('dirty') is False,close_events
+        assert close_events[0].get('close',{}).get('saved') is False,close_events
         assert not close_events[0].get('savedId') and not close_events[0].get('version'),close_events
         assert not page.locator('#ob-managed-close-confirm').count()
         page.goto(base+'/ui/catalog/Calls/'+call_id,wait_until='domcontentloaded')

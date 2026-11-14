@@ -62,6 +62,7 @@ func TestAudioPlayerBrowserHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls.Forms = []*metadata.FormModule{{Name: "Form", Kind: "object", EntityName: calls.Name, LayoutKind: metadata.FormLayoutManaged,
+		Handlers:   map[metadata.FormEventType]string{metadata.FormEventBeforeClose: "ReleaseAudio"},
 		Attributes: []*metadata.FormAttribute{{Name: "Source", TypeRef: "string"}, {Name: "Caption", TypeRef: "string"}, {Name: "Choice", TypeRef: "string"}},
 		Elements: []*metadata.FormElement{
 			{Kind: metadata.FormElementField, Name: "EditableName", DataPath: "Объект.Name"},
@@ -73,12 +74,16 @@ func TestAudioPlayerBrowserHTTP(t *testing.T) {
  Если Объект.Choice = "B" Тогда Объект.Source = "%s"; Объект.Caption = "Call B";
  Иначе Объект.Source = "%s"; Объект.Caption = "Call A"; КонецЕсли;
 КонецПроцедуры
+Процедура ReleaseAudio(Отказ)
+ Объект.Source = ""; Объект.Caption = "No recording";
+КонецПроцедуры
 Процедура SelectB(Элемент)
  ОстановитьАудио("Player"); Объект.Source = ""; Объект.Caption = "Call B"; Объект.Choice = "B";
 КонецПроцедуры
 `, second.ID.String(), first.ID.String())),
 	}}
-	calls.Forms[0].Elements[0].Placement = metadata.FormPlacementHeaderEnd
+	calls.Forms[0].Actions = map[string]*metadata.FormAction{"attachments": {Visible: boolPtr(false)}}
+	calls.Forms[0].Elements[1].Placement = metadata.FormPlacementHeaderEnd
 	router := chi.NewRouter()
 	s.MountStatic(router)
 	s.Mount(router)
