@@ -1,0 +1,64 @@
+diff --git a/internal/dsl/interpreter/maket.go b/internal/dsl/interpreter/maket.go
+index 25a4f3870..5c5deb7c2 100644
+--- a/internal/dsl/interpreter/maket.go
++++ b/internal/dsl/interpreter/maket.go
+@@ -66,6 +66,7 @@ func (m *Макет) getArea(name string) *SpreadsheetDocumentArea {
+ 		return nil
+ 	}
+ 	return &SpreadsheetDocumentArea{
+-		Area: printform.BuildAreaCells(areaDef),
++		Area:      printform.BuildAreaCells(areaDef),
++		colWidths: m.template.ColumnWidthsPx(),
+ 	}
+ }
+diff --git a/internal/dsl/interpreter/spreadsheet_document.go b/internal/dsl/interpreter/spreadsheet_document.go
+index db9d42805..f44034578 100644
+--- a/internal/dsl/interpreter/spreadsheet_document.go
++++ b/internal/dsl/interpreter/spreadsheet_document.go
+@@ -30,6 +30,10 @@ func NewSpreadsheetDocumentCell(text string) *SpreadsheetDocumentCell {
+ type SpreadsheetDocumentArea struct {
+ 	document *SpreadsheetDocument
+ 	Area     *sheet.Area
++	// colWidths — ширины колонок макета (1-based px), из которого взята
++	// область: Вывести переносит их в документ, как 1С переносит ширины
++	// колонок макета.
++	colWidths map[int]float64
+ }
+ 
+ func (a *SpreadsheetDocumentArea) CallMethod(name string, args []any) any {
+@@ -450,6 +454,12 @@ func (d *SpreadsheetDocument) put(args []any) any {
+ 	if !ok {
+ 		return nil
+ 	}
++	// Ширины колонок макета — только незаданные: ШиринаКолонки модуля главнее.
++	for col, px := range area.colWidths {
++		if d.Doc.ColumnWidth(col) <= 0 {
++			d.Doc.SetColumnWidth(col, px)
++		}
++	}
+ 	start := d.Doc.CurrentRow
+ 	d.Doc.Put(area.Area)
+ 	if len(args) > 1 {
+diff --git a/internal/printform/declarative.go b/internal/printform/declarative.go
+index c46d4f6d0..ec39807f2 100644
+--- a/internal/printform/declarative.go
++++ b/internal/printform/declarative.go
+@@ -275,6 +275,18 @@ func BuildAreaCells(area *LayoutArea) *sheet.Area {
+ 	return buildAreaSheet(area, nil, nil, 0, nil)
+ }
+ 
++// ColumnWidthsPx — ширины колонок макета (columns:) в px модели, 1-based;
++// колонки без ширины, auto и проценты пропускаются.
++func (lt *LayoutTemplate) ColumnWidthsPx() map[int]float64 {
++	out := map[int]float64{}
++	for i, c := range lt.Columns {
++		if px, ok := columnWidthPx(c.Width); ok {
++			out[i+1] = px
++		}
++	}
++	return out
++}
++
+ // columnWidthPx конвертирует CSS-ширину колонки в px модели sheet.
+ // Поддержка: "120px"→120, "30mm"→mm→px, число без единиц→px, "auto"/""/"%"→(0,false)
+ // (авто-распределение остатка делает рендер).

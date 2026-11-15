@@ -1,0 +1,10 @@
+{
+  "url": "https://github.com/ivanarama/onebase/pull/2627",
+  "draft": true,
+  "source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+  "runtime": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "head": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+  "status": "LOCAL_GREEN_PG_NATIVE_PENDING",
+  "build_manifest_sha256": "f3cec9f4484f51abbc115e4fae325a6a28155b28a07208a8ae29e1858de98802",
+  "CI_PASS_not_claimed": true
+}

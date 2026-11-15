@@ -1,0 +1,82 @@
+{
+  "runtime": "6b5ffd49cd16636eb186320868f6226f76bea4c3",
+  "source": "fe71da198df9c814b1fc9c527e1eca80f7011104",
+  "base_b23": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source_parent_p1": "d232937812637564c730fbc17a9376d269dc5247",
+  "draft": "https://github.com/ivanarama/onebase/pull/2627",
+  "files": [
+    {
+      "path": "CHANGELOG.md",
+      "runtime_blob_sha256": "cc4ccf4998a5ac02aa38c79b55c03c95b2d7439aa51a301bd071eeb103b625ea",
+      "source_blob_sha256": "10bb914697460da99da16e6b85b579da5215f950e651a6407d6a4e3d24889923",
+      "bytes_runtime": 260829,
+      "bytes_source": 201489,
+      "source_runtime_byte_identical": false
+    },
+    {
+      "path": "internal/dsl/interpreter/maket.go",
+      "runtime_blob_sha256": "2e58204bc4abf8b6a0cf7c9ffdc40f0dfe6aebf0aff44e9b7db78998e8139868",
+      "source_blob_sha256": "2e58204bc4abf8b6a0cf7c9ffdc40f0dfe6aebf0aff44e9b7db78998e8139868",
+      "bytes_runtime": 2701,
+      "bytes_source": 2701,
+      "source_runtime_byte_identical": true
+    },
+    {
+      "path": "internal/dsl/interpreter/spreadsheet_block_output_test.go",
+      "runtime_blob_sha256": "1548eeae7df037e9ecb20ad548fcbdbdb07d3d7abeb5d284389db2d59debaa5a",
+      "source_blob_sha256": "1548eeae7df037e9ecb20ad548fcbdbdb07d3d7abeb5d284389db2d59debaa5a",
+      "bytes_runtime": 2369,
+      "bytes_source": 2369,
+      "source_runtime_byte_identical": true
+    },
+    {
+      "path": "internal/dsl/interpreter/spreadsheet_document.go",
+      "runtime_blob_sha256": "0da390da61aa654a8675732cbc816c7eb6137f7f4c5134dffdd7e218242d22da",
+      "source_blob_sha256": "0da390da61aa654a8675732cbc816c7eb6137f7f4c5134dffdd7e218242d22da",
+      "bytes_runtime": 26671,
+      "bytes_source": 26671,
+      "source_runtime_byte_identical": true
+    },
+    {
+      "path": "internal/printform/declarative.go",
+      "runtime_blob_sha256": "aa7242cd63040eae68a18894bf88ccb5e48eace9825f83079405c78588082828",
+      "source_blob_sha256": "7605a78c58d2a66adf6a76eecc62515ef89ea53f4ea3ce3ddf4e590cb632e331",
+      "bytes_runtime": 12718,
+      "bytes_source": 12755,
+      "source_runtime_byte_identical": false
+    },
+    {
+      "path": "internal/sheet/block_output_test.go",
+      "runtime_blob_sha256": "715d89bdb148c9c4d206dfb475e4c87def907f9c81df8f71f9fd57366b077c0c",
+      "source_blob_sha256": "715d89bdb148c9c4d206dfb475e4c87def907f9c81df8f71f9fd57366b077c0c",
+      "bytes_runtime": 6884,
+      "bytes_source": 6884,
+      "source_runtime_byte_identical": true
+    },
+    {
+      "path": "internal/sheet/sheet.go",
+      "runtime_blob_sha256": "8ba60fe19bcc6ad6eb2aedc208c99e7e72d9289d156157f7ecdd1800fbef4968",
+      "source_blob_sha256": "8ba60fe19bcc6ad6eb2aedc208c99e7e72d9289d156157f7ecdd1800fbef4968",
+      "bytes_runtime": 21548,
+      "bytes_source": 21548,
+      "source_runtime_byte_identical": true
+    },
+    {
+      "path": "internal/ui/tabular_block_output_test.go",
+      "runtime_blob_sha256": "44ecd146cabe56bfb13534908ac6e5700eb96db6ea2f3df2de1aa31b75271564",
+      "source_blob_sha256": "44ecd146cabe56bfb13534908ac6e5700eb96db6ea2f3df2de1aa31b75271564",
+      "bytes_runtime": 3910,
+      "bytes_source": 3910,
+      "source_runtime_byte_identical": true
+    }
+  ],
+  "source_clean": true,
+  "runtime_clean": true,
+  "source_runtime_pushed": true,
+  "tests": "NOT_RUN_SOURCE_ONLY",
+  "conflicts": [
+    "CHANGELOG.md only; both B23 and Append sections preserved"
+  ],
+  "source_prerequisite": "fe71 copies preexisting B23 colWidths carrier+Put inheritance+maket loader+ColumnWidthsPx; runtime6b5 unchanged",
+  "B22_T7_included": false
+}

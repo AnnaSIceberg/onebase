@@ -1,0 +1,12 @@
+{
+  "source_before": "ba3f49a0c9f04da2839f9575ae8467449d903bb3",
+  "source_after": "fe71da198df9c814b1fc9c527e1eca80f7011104",
+  "runtime_unchanged": "6b5ffd49cd16636eb186320868f6226f76bea4c3",
+  "existing_B23_prerequisites": "colWidths field, Put width inheritance, maket loader, exported ColumnWidthsPx copied source only",
+  "source_patch": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-source-prerequisite-exact.patch",
+  "source_patch_sha256": "1c1f96cfb47a0359bc463d87f75d2644a5996e74a3ee37bbc4499242c440ddda",
+  "remaining_native_hunk": "BuildSheet uses ColumnWidthsPx in runtime vs equivalent existing inline loop in source; do not replace runtime",
+  "mapping": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-source-runtime-pins-wip.json",
+  "mapping_sha256": "d08edbd49e86c1c9cc064485682f8eb01ec2fecddce7570e87d43219e0c4d968",
+  "Go_tests": "NOT_RUN"
+}

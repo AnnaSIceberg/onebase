@@ -1,0 +1,15 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b24-tabular-block-output-linux-amd64",
+  "sha256": "650366a8d20fef97116ec57319fa9dd11e3e7afe75ccc8bc518e785973e93e2f",
+  "bytes": 78423283,
+  "runtime": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+  "source_binding": "separate source/runtime pins; per-file mapping recorded",
+  "upstream_inputs": {
+    "accepted_b23": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+    "append_source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+    "delta": "block output cursor only; B22/T7 excluded"
+  },
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-linux-buildinfo.txt",
+  "buildinfo_sha256": "4307c138e620b4cee541f4c3701317b3044305b4860ec881e89007cb909f7395"
+}

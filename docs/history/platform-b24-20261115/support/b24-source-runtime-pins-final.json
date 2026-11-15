@@ -1,0 +1,86 @@
+{
+  "runtime": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+  "base_b23": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source_base": "d232937812637564c730fbc17a9376d269dc5247",
+  "files": [
+    {
+      "path": "CHANGELOG.md",
+      "source_blob_sha256": "10bb914697460da99da16e6b85b579da5215f950e651a6407d6a4e3d24889923",
+      "runtime_blob_sha256": "cc4ccf4998a5ac02aa38c79b55c03c95b2d7439aa51a301bd071eeb103b625ea",
+      "source_runtime_byte_identical": false,
+      "source_bytes": 201489,
+      "runtime_bytes": 260829
+    },
+    {
+      "path": "internal/dsl/interpreter/maket.go",
+      "source_blob_sha256": "2e58204bc4abf8b6a0cf7c9ffdc40f0dfe6aebf0aff44e9b7db78998e8139868",
+      "runtime_blob_sha256": "2e58204bc4abf8b6a0cf7c9ffdc40f0dfe6aebf0aff44e9b7db78998e8139868",
+      "source_runtime_byte_identical": true,
+      "source_bytes": 2701,
+      "runtime_bytes": 2701
+    },
+    {
+      "path": "internal/dsl/interpreter/spreadsheet_block_output_test.go",
+      "source_blob_sha256": "336973167a8011d51268d72d04378ce0cd7be2aa4b758cd040de66712b3d99ce",
+      "runtime_blob_sha256": "336973167a8011d51268d72d04378ce0cd7be2aa4b758cd040de66712b3d99ce",
+      "source_runtime_byte_identical": true,
+      "source_bytes": 2397,
+      "runtime_bytes": 2397
+    },
+    {
+      "path": "internal/dsl/interpreter/spreadsheet_document.go",
+      "source_blob_sha256": "0da390da61aa654a8675732cbc816c7eb6137f7f4c5134dffdd7e218242d22da",
+      "runtime_blob_sha256": "0da390da61aa654a8675732cbc816c7eb6137f7f4c5134dffdd7e218242d22da",
+      "source_runtime_byte_identical": true,
+      "source_bytes": 26671,
+      "runtime_bytes": 26671
+    },
+    {
+      "path": "internal/printform/declarative.go",
+      "source_blob_sha256": "7605a78c58d2a66adf6a76eecc62515ef89ea53f4ea3ce3ddf4e590cb632e331",
+      "runtime_blob_sha256": "aa7242cd63040eae68a18894bf88ccb5e48eace9825f83079405c78588082828",
+      "source_runtime_byte_identical": false,
+      "source_bytes": 12755,
+      "runtime_bytes": 12718
+    },
+    {
+      "path": "internal/sheet/block_output_test.go",
+      "source_blob_sha256": "715d89bdb148c9c4d206dfb475e4c87def907f9c81df8f71f9fd57366b077c0c",
+      "runtime_blob_sha256": "715d89bdb148c9c4d206dfb475e4c87def907f9c81df8f71f9fd57366b077c0c",
+      "source_runtime_byte_identical": true,
+      "source_bytes": 6884,
+      "runtime_bytes": 6884
+    },
+    {
+      "path": "internal/sheet/sheet.go",
+      "source_blob_sha256": "8ba60fe19bcc6ad6eb2aedc208c99e7e72d9289d156157f7ecdd1800fbef4968",
+      "runtime_blob_sha256": "8ba60fe19bcc6ad6eb2aedc208c99e7e72d9289d156157f7ecdd1800fbef4968",
+      "source_runtime_byte_identical": true,
+      "source_bytes": 21548,
+      "runtime_bytes": 21548
+    },
+    {
+      "path": "internal/ui/tabular_block_output_test.go",
+      "source_blob_sha256": "44ecd146cabe56bfb13534908ac6e5700eb96db6ea2f3df2de1aa31b75271564",
+      "runtime_blob_sha256": "44ecd146cabe56bfb13534908ac6e5700eb96db6ea2f3df2de1aa31b75271564",
+      "source_runtime_byte_identical": true,
+      "source_bytes": 3910,
+      "runtime_bytes": 3910
+    }
+  ],
+  "source_clean": true,
+  "runtime_clean": true,
+  "different_files": [
+    "CHANGELOG.md: preserved B23 section",
+    "internal/printform/declarative.go: old source inline column width loop vs existing native helper call"
+  ],
+  "source_prereq_commits": [
+    "fe71da198df9c814b1fc9c527e1eca80f7011104"
+  ],
+  "source_final_test_only_commits": [
+    "918699a709046a339a7b9fdd8cc73dab8ee9e234",
+    "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd"
+  ],
+  "B22_T7_included": false
+}

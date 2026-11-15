@@ -1,0 +1,34 @@
+{
+  "kind": "RO existing B20 native RED baseline; no Go/Chrome/new fixture",
+  "B20_SDK_sha256": "683984d7a6b7342d20124dd295cc94bc8be1f9ee9e38e50efd3404228ca70c07",
+  "B20_runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+  "B23_runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "B20_B23_sheet_go_git_blobs_equal": true,
+  "sheet_go_sha256": "7851cf80223c5072cf1eb411dbe5a9410946fbc5f748a82652f7475fbf5dec2d",
+  "repro_zip_sha256": "a7bcd66c34ed33c7d95db3c1ad5417cdc3121b4ae6d8bfc839dc4f125facd3a6",
+  "old_PDF_sha256": "cf150ff7e2396ed46790dd2ab1d30242a40ecc0bad1d78414727c2aaedf0be24",
+  "old_PDF_text_positions": [
+    {
+      "text": "LEFT-1",
+      "x": 31.18,
+      "y": 801.71
+    },
+    {
+      "text": "LEFT-2",
+      "x": 31.18,
+      "y": 784.04
+    },
+    {
+      "text": "RIGHT-1",
+      "x": 31.18,
+      "y": 766.37
+    },
+    {
+      "text": "RIGHT-2",
+      "x": 31.18,
+      "y": 748.7
+    }
+  ],
+  "RED_right_same_x_below_left": true,
+  "old_artifacts_unchanged": true
+}

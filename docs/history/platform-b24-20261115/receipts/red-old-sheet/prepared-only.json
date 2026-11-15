@@ -1,0 +1,12 @@
+{
+  "state": "PREPARED_NOT_RUN",
+  "frozen_b23": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "sheet_blob_sha256": "7851cf80223c5072cf1eb411dbe5a9410946fbc5f748a82652f7475fbf5dec2d",
+  "overlay": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-red-old-sheet\\overlay.json",
+  "test_roots": [
+    "TestTabularBlockOutput",
+    "TestSpreadsheetBlockOutputDSL",
+    "TestTabularHorizontalBlockHTTPMatrix"
+  ],
+  "not_frozen_SDK_execution": true
+}

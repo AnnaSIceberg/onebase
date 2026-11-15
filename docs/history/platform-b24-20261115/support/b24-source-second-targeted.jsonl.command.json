@@ -1,0 +1,23 @@
+{
+  "cwd": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\tabular-block-output-source",
+  "argv": [
+    "C:\\Users\\a.sevrjukova\\go\\pkg\\mod\\golang.org\\toolchain@v0.0.1-go1.26.11.windows-amd64\\bin\\go.exe",
+    "test",
+    "-count=1",
+    "-p=1",
+    "-json",
+    "./internal/sheet",
+    "./internal/dsl/interpreter",
+    "./internal/ui",
+    "-run",
+    "^(TestTabularBlockOutput|TestSpreadsheetBlockOutputDSL|TestTabularHorizontalBlockHTTPMatrix)$"
+  ],
+  "exit": 1,
+  "start": "2026-11-15T13:07:49.317225+00:00",
+  "end": "2026-11-15T13:08:11.032310+00:00",
+  "sha256": "e5de49e6fd767ff6a868428fe367fa9244b7cd221ce95052787dede9dd5355a4",
+  "toolchain": "go1.26.11 GOMAX2 p1 CGO0",
+  "source": "918699a709046a339a7b9fdd8cc73dab8ee9e234",
+  "runtime": "6cde268179d1d2cb567c1b09a8b205bb424fa2b2",
+  "clean_before_after": true
+}

@@ -1,0 +1,15 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\tabular-block-output-b24-ui-linux-amd64.test",
+  "sha256": "8ea0483a76cac07d977504c73a30dcdab56ac9cc31eaa5bdf5c74496902c75b7",
+  "bytes": 84505821,
+  "runtime": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+  "source_binding": "separate source/runtime pins; per-file mapping recorded",
+  "upstream_inputs": {
+    "accepted_b23": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+    "append_source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+    "delta": "block output cursor only; B22/T7 excluded"
+  },
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-ui_pg-buildinfo.txt",
+  "buildinfo_sha256": "728a2f4563c3d1f90a2ea490c2893cf15260a40e31497a609fe8c0123de0ed6b"
+}
