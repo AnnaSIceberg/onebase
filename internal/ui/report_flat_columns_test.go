@@ -8,7 +8,10 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/report"
+	"github.com/ivantit66/onebase/internal/runtime"
+	"github.com/ivantit66/onebase/internal/storage"
 	"github.com/xuri/excelize/v2"
 	"golang.org/x/net/html"
 )
@@ -85,81 +88,85 @@ func assertFlatReportColumns(t *testing.T, body string, want int) {
 }
 
 func TestReportFlatColumnsHTTP(t *testing.T) {
-	for _, tc := range []struct {
-		name                  string
-		grouped, link, entity bool
-		detailFields          int
-		cols                  int
-	}{
-		{"flat", false, false, false, 0, 1}, {"flat-drilldown", false, true, true, 0, 2}, {"incomplete-drilldown", false, true, false, 0, 1}, {"grouped", true, false, false, 0, 2},
-		{"flat-detail12", false, false, false, 12, 13}, {"grouped-detail12", true, false, false, 12, 14}, {"drilldown-detail12", false, true, true, 12, 14},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			spec := &report.Composition{Detail: true, Measures: []report.Measure{{Field: "Amount"}}}
-			if tc.grouped {
-				spec.Groupings = []string{"Category"}
-			}
-			if tc.link {
-				spec.DetailLink = "LinkID"
-			}
-			if tc.entity {
-				spec.DetailEntity = "Synthetic"
-			}
-			query := "SELECT 'same' AS Category, 'synthetic-id' AS LinkID, 7 AS Amount"
-			for i := 0; i < tc.detailFields; i++ {
-				name := fmt.Sprintf("Field%d", i)
-				query += fmt.Sprintf(", %d AS %s", 100+i, name)
-				spec.DetailFields = append(spec.DetailFields, report.DetailField{Field: name})
-			}
-			rep := &report.Report{Name: "Columns", Query: query, Composition: spec}
-			s := newReportExportTestServer(t, rep)
-			router := chi.NewRouter()
-			router.Get("/ui/report/{name}", s.reportForm)
-			router.Get("/ui/report/{name}/excel", s.reportExcel)
-			get := func(path string) []byte {
-				t.Helper()
-				w := httptest.NewRecorder()
-				router.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
-				if w.Code != 200 {
-					t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		for _, tc := range []struct {
+			name                  string
+			grouped, link, entity bool
+			detailFields          int
+			cols                  int
+		}{
+			{"flat", false, false, false, 0, 1}, {"flat-drilldown", false, true, true, 0, 2}, {"incomplete-drilldown", false, true, false, 0, 1}, {"grouped", true, false, false, 0, 2},
+			{"flat-detail12", false, false, false, 12, 13}, {"grouped-detail12", true, false, false, 12, 14}, {"drilldown-detail12", false, true, true, 12, 14},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				spec := &report.Composition{Detail: true, Measures: []report.Measure{{Field: "Amount"}}}
+				if tc.grouped {
+					spec.Groupings = []string{"Category"}
 				}
-				return w.Body.Bytes()
-			}
-			body := string(get("/ui/report/Columns?__run=1"))
-			assertFlatReportColumns(t, body, tc.cols)
-			if tc.link && tc.entity && !strings.Contains(body, "/ui/document/Synthetic/synthetic-id") {
-				t.Fatal("drilldown lost")
-			}
-			f, err := excelize.OpenReader(bytes.NewReader(get("/ui/report/Columns/excel")))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() {
-				if err := f.Close(); err != nil {
-					t.Error(err)
+				if tc.link {
+					spec.DetailLink = "LinkID"
 				}
-			}()
-			rows, err := f.GetRows(f.GetSheetName(0))
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, row := range rows {
-				if len(row) != tc.cols {
-					t.Fatalf("XLSX width=%d want%d: %v", len(row), tc.cols, rows)
+				if tc.entity {
+					spec.DetailEntity = "Synthetic"
 				}
-			}
-			if rows[0][tc.cols-1] != "Amount" || rows[len(rows)-1][tc.cols-1] != "7" {
-				t.Fatalf("XLSX shifted values: %v", rows)
-			}
-			off := 0
-			if tc.grouped || (tc.link && tc.entity) {
-				off = 1
-			}
-			for i := 0; i < tc.detailFields; i++ {
-				if rows[0][off+i] != fmt.Sprintf("Field%d", i) || rows[len(rows)-1][off+i] != fmt.Sprint(100+i) {
-					t.Fatal("12 detail fields shifted or lost")
+				query := "SELECT 'same' AS Category, 'synthetic-id' AS LinkID, 7 AS Amount"
+				for i := 0; i < tc.detailFields; i++ {
+					name := fmt.Sprintf("Field%d", i)
+					query += fmt.Sprintf(", %d AS %s", 100+i, name)
+					spec.DetailFields = append(spec.DetailFields, report.DetailField{Field: name})
 				}
-			}
-		})
-	}
+				rep := &report.Report{Name: "Columns", Query: query, Composition: spec}
+				registry := runtime.NewRegistry()
+				registry.Load(runtime.LoadOptions{Reports: []*report.Report{rep}})
+				s := &Server{store: db, reg: registry}
+				router := chi.NewRouter()
+				router.Get("/ui/report/{name}", s.reportForm)
+				router.Get("/ui/report/{name}/excel", s.reportExcel)
+				get := func(path string) []byte {
+					t.Helper()
+					w := httptest.NewRecorder()
+					router.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+					if w.Code != 200 {
+						t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
+					}
+					return w.Body.Bytes()
+				}
+				body := string(get("/ui/report/Columns?__run=1"))
+				assertFlatReportColumns(t, body, tc.cols)
+				if tc.link && tc.entity && !strings.Contains(body, "/ui/document/Synthetic/synthetic-id") {
+					t.Fatal("drilldown lost")
+				}
+				f, err := excelize.OpenReader(bytes.NewReader(get("/ui/report/Columns/excel")))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() {
+					if err := f.Close(); err != nil {
+						t.Error(err)
+					}
+				}()
+				rows, err := f.GetRows(f.GetSheetName(0))
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, row := range rows {
+					if len(row) != tc.cols {
+						t.Fatalf("XLSX width=%d want%d: %v", len(row), tc.cols, rows)
+					}
+				}
+				if rows[0][tc.cols-1] != "Amount" || rows[len(rows)-1][tc.cols-1] != "7" {
+					t.Fatalf("XLSX shifted values: %v", rows)
+				}
+				off := 0
+				if tc.grouped || (tc.link && tc.entity) {
+					off = 1
+				}
+				for i := 0; i < tc.detailFields; i++ {
+					if rows[0][off+i] != fmt.Sprintf("Field%d", i) || rows[len(rows)-1][off+i] != fmt.Sprint(100+i) {
+						t.Fatal("12 detail fields shifted or lost")
+					}
+				}
+			})
+		}
+	})
 }
