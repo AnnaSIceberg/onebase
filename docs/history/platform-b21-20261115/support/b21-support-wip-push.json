@@ -1,0 +1,195 @@
+{
+  "branch": "wip/platform-b21-handoff-20261115",
+  "commit": "5b599e4d49ca5821916f458c9774336687ad7c25",
+  "parent": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "files": [
+    {
+      "path": "support/prepare-b21-runtime.py",
+      "bytes": 1246,
+      "sha256": "ad44a09eac4a76d3df3f7c8354fd792afbbe2f1ceda7239a7487a2ba212e3de3"
+    },
+    {
+      "path": "support/resolve-b21-p7-and-apply-p4.py",
+      "bytes": 2564,
+      "sha256": "a064766fd66608ac9ba3862d34e67faee30895f35f26b9413cbbc63573afb457"
+    },
+    {
+      "path": "support/resolve-b21-p4.py",
+      "bytes": 2586,
+      "sha256": "3d1cae64383664f9e2ae09460474989510e9acd01bbc52c8eb7aae0572b7542e"
+    },
+    {
+      "path": "support/fixtures-b21-runtime.py",
+      "bytes": 6282,
+      "sha256": "cf0e8aa86a4b7b0116988a28917c037753edd3321993292be0087011be14c8fa"
+    },
+    {
+      "path": "support/build-b21.py",
+      "bytes": 6401,
+      "sha256": "bc8867365433d9d1238a97d35157eab2891d126dc3385ed21fb1c3bffe614e32"
+    },
+    {
+      "path": "support/b21-native-context-drilldown.py",
+      "bytes": 11549,
+      "sha256": "d742a628fa641261f4b7ae91ce0b5a282d382a7766d7629569379e27ef965673"
+    },
+    {
+      "path": "support/b21-native-context-drilldown-attempt2.py",
+      "bytes": 11918,
+      "sha256": "e7e3bfe3cb85c7ee7b245d9e455a8b29b38d93d602ab566d7a4555e0341f299c"
+    },
+    {
+      "path": "support/b21-native-context-drilldown-attempt3.py",
+      "bytes": 12225,
+      "sha256": "da381dff66c1c017c9ef44f4625847f8477f6ea22ce4929f0f0f1d580bf55cdc"
+    },
+    {
+      "path": "support/finalize-b21-native.py",
+      "bytes": 8767,
+      "sha256": "6ee238e238034d85b0576e902a39e1b8969d99f2dda9a3b1807084fdd473a9fb"
+    },
+    {
+      "path": "support/manifest-1115b21-report-context-drilldown-DEV.json",
+      "bytes": 29730,
+      "sha256": "2de91957641e98920f0b19a1da7007b3521e3dc97858e6634c2988e326b2a5bb"
+    },
+    {
+      "path": "support/manifest-1115b21-report-context-drilldown-DEV-final.json",
+      "bytes": 37578,
+      "sha256": "6f4f74ea7ffd5ef4511a9dc1050b5e8e816f3e8c059ed64c2cb7333f354ca70e"
+    },
+    {
+      "path": "support/b21-local-targeted-summary.json",
+      "bytes": 93744,
+      "sha256": "448902f4ec5a330fd226ba7346342a4102e520b9ec01c99820b5d25d0bc22b43"
+    },
+    {
+      "path": "support/b21-api_pg-expected.json",
+      "bytes": 1398,
+      "sha256": "cceca3983c919666cb366780421a102d02e9b60b8feb42f1a11aecc5b514d6b6"
+    },
+    {
+      "path": "support/b21-ui_pg-expected.json",
+      "bytes": 11909,
+      "sha256": "35105b0c2e1290bffdf492a58bb6ed43967caa872ed1fff38b5be42c1d8b4e7e"
+    },
+    {
+      "path": "support/b21-api_pg-handoff.json",
+      "bytes": 1671,
+      "sha256": "5767e4184ff9cb5bdc94fd8cfd1ef6fa46bf42affff05d3a965e34f7a0796f57"
+    },
+    {
+      "path": "support/b21-ui_pg-handoff.json",
+      "bytes": 1994,
+      "sha256": "cc4b2031ba3e800fbe0b13e8bf72bae048cbed56f4da2f06552cef7d096ec940"
+    },
+    {
+      "path": "support/b21-go-end-processes.json",
+      "bytes": 279,
+      "sha256": "0815a4bc65625864c3a20598f5e895e2ab10ecd4c915080fc170949971f31f54"
+    },
+    {
+      "path": "support/b21-native-cleanup-end.json",
+      "bytes": 306,
+      "sha256": "6e1061b5433164ad53a531168ba0d3b092baa03155e72174968924de6f85fe5e"
+    },
+    {
+      "path": "support/b21-api_pg-artifact.json",
+      "bytes": 830,
+      "sha256": "3f770ecd156b5038d1eaf953d4778a27e76611641743997ad3f998749b6a71a5"
+    },
+    {
+      "path": "support/b21-ui_pg-artifact.json",
+      "bytes": 828,
+      "sha256": "834af58ae459e0cb10a76cd50f1bac542fb5da9a5fcec7990a4dbac2e9246415"
+    },
+    {
+      "path": "support/b21-linux-artifact.json",
+      "bytes": 843,
+      "sha256": "f74f3419a5eb800cafa8c292a10cf2d8ec30760e2f861cb7d313c74bd80dc295"
+    },
+    {
+      "path": "support/b21-windows-artifact.json",
+      "bytes": 851,
+      "sha256": "f03daa81ba6f94f2baa474918d27ead30923a1486bd923e0e9175eb8f074fe5b"
+    },
+    {
+      "path": "support/b21-build-all.log.command.json",
+      "bytes": 1114,
+      "sha256": "69f7e639a53dd465fbd9c90351b71493313389b93f03d1a7a0d07525d65394ce"
+    },
+    {
+      "path": "support/b21-i18n-en.log.command.json",
+      "bytes": 1122,
+      "sha256": "dfeae3eeb913ac287b61224dacbcedff9667b742c0c174e0662a8920dcb70f82"
+    },
+    {
+      "path": "support/b21-api_pg-buildinfo.txt",
+      "bytes": 335,
+      "sha256": "8c451e6abf7e4a8c636e427f2c2117e7258ee8d2c3ba443dab5374d105e16e34"
+    },
+    {
+      "path": "support/b21-ui_pg-buildinfo.txt",
+      "bytes": 333,
+      "sha256": "7436ff1b8d48f795be33ca94adbb553d892fa95717fc8ddd27e6f50b68bb988f"
+    },
+    {
+      "path": "support/b21-linux-buildinfo.txt",
+      "bytes": 3665,
+      "sha256": "ed4ca7f9b81f6035bd42cf59d59ea04790afaa250ddbaa9737538dea4249b705"
+    },
+    {
+      "path": "support/b21-windows-buildinfo.txt",
+      "bytes": 3949,
+      "sha256": "81d6fe39bc55d0b41a44e591fb5776eaff37cd0f5f8a4662b6c87763b5e46f22"
+    },
+    {
+      "path": "receipts/b21-native-context-drilldown-attempt1/receipt-recovered.json",
+      "bytes": 601,
+      "sha256": "e32f5e527f5133d07490eafdcd062139e9d355b9213c2320f93be82beecfee54"
+    },
+    {
+      "path": "receipts/b21-native-context-drilldown-attempt2/receipt.json",
+      "bytes": 3116,
+      "sha256": "df614d2a71e1870c4698c0e38e56335e9198230310dc7e5f1d9f0319c0e63f7d"
+    },
+    {
+      "path": "receipts/b21-native-context-drilldown-attempt2/redirect-server-observation.json",
+      "bytes": 663,
+      "sha256": "aa54315b74f9c2d2d7727788e577af4354673ad78df3a5f10ae5c7763cac4b8b"
+    },
+    {
+      "path": "receipts/b21-native-context-drilldown-attempt3/receipt.json",
+      "bytes": 3292,
+      "sha256": "2646775e3a73ae14c2148c2685562ac5384723d5d06f2e71c114d9f0efbc4daf"
+    },
+    {
+      "path": "reports/20261115-platform-Partners-prebind-B20-source-RO.md",
+      "bytes": 8814,
+      "sha256": "5d3d4e8136f816cd2a013f215243ddd9aab52a012b1c552a6e3a027f9debc52e"
+    },
+    {
+      "path": "reports/20261115-platform-Partners-prebind-B20-source-pins.json",
+      "bytes": 1827,
+      "sha256": "6557ff7794794d44e1a43b2504381ce95104c23c5ef3f60049a0d253dfe7edde"
+    },
+    {
+      "path": "reports/20261115-platform-B21-П4-П7-build-handoff.md",
+      "bytes": 2275,
+      "sha256": "49170f5e87c24a7acbb7e4890e17e76bb37b44fdbf4fc797ea23b19e6f97c60b"
+    },
+    {
+      "path": "reports/20261115-platform-B21-П4-П7-PG-native-PASS.md",
+      "bytes": 3738,
+      "sha256": "b7164c245b352bdd5645b8c26a2a9f81479f741224d84231a2025fd82945a063"
+    },
+    {
+      "path": "reports/20261115-platform-B21-current-state.md",
+      "bytes": 1909,
+      "sha256": "718e42ebee796ce487f80902fdae4a3ee2302993df1783ad03793d36dfc33c99"
+    }
+  ],
+  "scope": "source helpers, metadata, reports, sanitized receipts only; no SDK binaries/DB/password/cookie/customer source fixture/image/export payload",
+  "runtime_worktree_clean": true,
+  "created_utc": "2026-11-15T10:57:12.188215+00:00"
+}
