@@ -1,0 +1,132 @@
+{
+  "source": "2766ef28f587abbfe1334afb53e120b6304cfc2b",
+  "base": "4379007a81d1bfc8751ebcf8dbb1143ba6460ed8",
+  "source_manifest_sha256": "92e97dc5d112f621f4b86ec0eb47ffcdfd65348a8c629afda79ffee02350a995",
+  "all_changed_git_blobs_verified": [
+    {
+      "path": "CHANGELOG.md",
+      "git_blob_sha256": "c3f2de5fe7f13d405c9befc21565639fc9da39a5cfd858b815ca22012c76dbba"
+    },
+    {
+      "path": "docs/features.md",
+      "git_blob_sha256": "169e74c6245cfdcd33a983cb2d3d7eb9dc1714c25de1608590759eab934b5039"
+    },
+    {
+      "path": "docs/report-trusted-context.md",
+      "git_blob_sha256": "1bba66337fc8ef7ae646135547fc2c032ed727a6120397b94a912ba2a5c8c5dc"
+    },
+    {
+      "path": "internal/access/scalar_user_card.go",
+      "git_blob_sha256": "39018918889eca39b9ab1c31a9824f27223a6ad21eb150789c249743525429f7"
+    },
+    {
+      "path": "internal/api/report_context_test.go",
+      "git_blob_sha256": "57f0c356f486eac60c451862d6a6922411973ad75b4df4e4c3a9b6b3a34de706"
+    },
+    {
+      "path": "internal/api/v2.go",
+      "git_blob_sha256": "0b7137169c71a5d91f37e2ec9f458b512e9237a9d0ca000637d5d45d2a90357a"
+    },
+    {
+      "path": "internal/cli/schema.go",
+      "git_blob_sha256": "3e956dc2e9dbd78d1887b006e5d16033681714a01622c7c218863f311878167c"
+    },
+    {
+      "path": "internal/cli/schema_report_context.go",
+      "git_blob_sha256": "b9ff8ead59f163ccde2756a77aabbdc4e5bfba9299661a97e3bc528e7ab7d21e"
+    },
+    {
+      "path": "internal/configcheck/full.go",
+      "git_blob_sha256": "c749e4228525e122e9e08100eada97ee9c3b9868a643bb359b5c5c32ff60f4a9"
+    },
+    {
+      "path": "internal/configcheck/lint.go",
+      "git_blob_sha256": "a17e6d3497dbee1879c4d301283aafc0ed35f083541a007ef7a15abd275f696e"
+    },
+    {
+      "path": "internal/configcheck/report_context.go",
+      "git_blob_sha256": "4ef189025275f66452f0e9ec13c50c8058612be5a680f8100797202a3991c761"
+    },
+    {
+      "path": "internal/configcheck/report_context_test.go",
+      "git_blob_sha256": "dc428fc5c8227de923355ede2b00cc9cc48082a5ceb0dda09a4c2c6a0de129dc"
+    },
+    {
+      "path": "internal/report/context.go",
+      "git_blob_sha256": "687870e335c5299e0430136859bab1718d16e9999055f34ff974b774a502776e"
+    },
+    {
+      "path": "internal/report/context_test.go",
+      "git_blob_sha256": "316d3729f32b37f3f4839aad88420e23957eb4c642b7143d231195cc84f563b1"
+    },
+    {
+      "path": "internal/report/report.go",
+      "git_blob_sha256": "fd74689035936b706c3758530b1cbabec1f4a051170fb67cba09acc877dd2b63"
+    },
+    {
+      "path": "internal/ui/handlers_reports.go",
+      "git_blob_sha256": "3dd8544a8babb8ffe44684810264059b666ec196a418b2878bff995b9970a820"
+    },
+    {
+      "path": "internal/ui/report_context_test.go",
+      "git_blob_sha256": "42ac41b776d3813049ac81e0501a0bafc39812d4ded916794fdff3698acb6e2d"
+    },
+    {
+      "path": "internal/ui/report_settings.go",
+      "git_blob_sha256": "d461d8aad504e9510f9b88925b7ecd8445be3fc9216b4cb5ed4a84c6d103642a"
+    },
+    {
+      "path": "internal/ui/templates.go",
+      "git_blob_sha256": "3a2a8d2babf8e05a1ee46d459ea417c923c8dc544bb5c0246c401c311105c3f4"
+    }
+  ],
+  "additional_anchors": [
+    {
+      "path": "internal/launcher/configurator_report_module.go",
+      "git_blob_sha256": "91fd3ecc589a3d9c03a9e76af78d2f48f9034099f52e84431136615dfdae39f1"
+    },
+    {
+      "path": "internal/launcher/configurator_load.go",
+      "git_blob_sha256": "aeca8e7948597e2c19637d2d92788cdb2df55ad9a2717b53d23f0dacabbf7317"
+    },
+    {
+      "path": "internal/launcher/configurator_types.go",
+      "git_blob_sha256": "cd4fbbd458694f2986fbdb6503fd35628838cad13f76c39b37d7922374b95abc"
+    },
+    {
+      "path": "internal/ui/export_jobs.go",
+      "git_blob_sha256": "f398245a8448a6bae093453349d949b0d196dad388618f8bf6738b79696736f8"
+    },
+    {
+      "path": "internal/storage/user_card.go",
+      "git_blob_sha256": "bcc5fda557a427d6f7acd725a2b1773b4e44c007306d20ce6613f30197ed1a59"
+    },
+    {
+      "path": "internal/access/user_card.go",
+      "git_blob_sha256": "b1eff543910dcc9b181429d70d180fe0a6d40dc1544649e1f22ad113389f16c0"
+    }
+  ],
+  "independent_read_pg": [
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\cc2-task-rest-blocker-20261113\\pg-api-ac2664ff\\receipt.json",
+      "sha256": "b72e268cd4c0efdb75348d19847f1bb71843225752a8e21ccb75d0814ba4a4b3",
+      "counts": {
+        "sqlite": 3,
+        "postgres": 3
+      },
+      "cleanup_exact": true
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\cc2-task-rest-blocker-20261113\\pg-ui-2703f655\\receipt.json",
+      "sha256": "7eaa22c99a515e001d9b0828c1e3e9ac4e045c5a0c7c8f41441fac483dcd673c",
+      "counts": {
+        "sqlite": 6,
+        "postgres": 6
+      },
+      "cleanup_exact": true
+    }
+  ],
+  "go_started": false,
+  "runtime_ported": false,
+  "disposition": "REQUEST_CHANGES_CONFIGURATOR_CONTEXT_LOSS"
+}

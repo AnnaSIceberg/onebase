@@ -1,0 +1,26 @@
+{
+  "scope": "read saved logs only; no test execution by reviewer",
+  "logs": [
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\claude\\C--Users-a-sevrjukova-onebase\\cd50d987-9739-4c93-a5be-68d748529225\\scratchpad\\отчёты-для-analysis\\20261115-130652-platform2-P7-F1-launcher-targeted.jsonl",
+      "sha256": "0389188f18c3ca7d2d88718e1858beabae0fac9f9c485591131e47721e919e79",
+      "leaf_pass": 43,
+      "test_pass_events": 47,
+      "skip": [],
+      "fail_count": 0,
+      "source_binding": "owner reported exact02c; immutable GoEND/source attestation pending"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\claude\\C--Users-a-sevrjukova-onebase\\cd50d987-9739-4c93-a5be-68d748529225\\scratchpad\\отчёты-для-analysis\\20261115-130819-platform2-P7-source-targeted.jsonl",
+      "sha256": "419cd849c8b4ea9d148f6054018eb4ccb801226ab6c2456906fd2c4f6a2bde6b",
+      "leaf_pass": 20,
+      "test_pass_events": 26,
+      "skip": [
+        "TestAPIReportTrustedContextMatrix/postgres",
+        "TestReportTrustedContextHTTPMatrix/postgres"
+      ],
+      "fail_count": 0,
+      "source_binding": "owner reported exact02c; immutable GoEND/source attestation pending"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "head": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+  "base": "2766ef28f587abbfe1334afb53e120b6304cfc2b",
+  "scope": "CODE_ONLY_DELTA_REVIEW; no Go/build/DB/HTTP/Chrome/runtime port",
+  "disposition": "F1/N1 source closed; new tests NOT EXECUTED by reviewer",
+  "files": [
+    {
+      "path": "docs/report-trusted-context.md",
+      "bytes": 5416,
+      "sha256_git_blob": "2bf1fee18d018a8bec2f744c692eb8fa7df4e7ceb231dac83eeff5c45a5f125d"
+    },
+    {
+      "path": "internal/launcher/configurator_load.go",
+      "bytes": 40736,
+      "sha256_git_blob": "9823a5d13d2db76d5d85cf2ffe25bccab83603fdfde00169b533ab8e2de7748a"
+    },
+    {
+      "path": "internal/launcher/configurator_report_context_test.go",
+      "bytes": 8673,
+      "sha256_git_blob": "8346c7f292e34c53fab4a46b656d558ca1b23349f8200fe247738a023f312509"
+    },
+    {
+      "path": "internal/launcher/configurator_report_module.go",
+      "bytes": 11933,
+      "sha256_git_blob": "eaf2f36cdc39c2c059172351ae0edf7a5a594efe5bd054b53982a40035fd4b86"
+    },
+    {
+      "path": "internal/launcher/configurator_tmpl_tree.go",
+      "bytes": 169316,
+      "sha256_git_blob": "00b969217dcbd041e98ad0275fa58e47e6f5db77eb4f35f9ffc8decf80d8fcf1"
+    },
+    {
+      "path": "internal/launcher/configurator_types.go",
+      "bytes": 35601,
+      "sha256_git_blob": "487090759e1758e49d919ec06339e3af70cf91e52289c23d9e0bf25ef2789ffb"
+    }
+  ]
+}
