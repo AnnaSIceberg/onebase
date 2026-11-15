@@ -1,0 +1,15 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b25-tabular-link-color-linux-amd64",
+  "sha256": "992dab86d88332b0bb7f3f985071a84072a1e8f1efa50d14bec48f1964d3f8ec",
+  "bytes": 78423251,
+  "runtime": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+  "source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+  "source_binding": "separate source/runtime pins; per-file mapping recorded",
+  "upstream_inputs": {
+    "accepted_b24": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+    "T7_source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+    "delta": "safe explicit link text color only; B22/T8 excluded"
+  },
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-linux-buildinfo.txt",
+  "buildinfo_sha256": "c840f1c72c0194dff4e9b2da78ff7bd7cdb9fc0c38132d9e1d04e19417760fb1"
+}

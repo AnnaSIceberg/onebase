@@ -1,0 +1,35 @@
+{
+  "runtime": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+  "source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+  "base_b24": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "source_base_b24": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+  "files": [
+    {
+      "path": "CHANGELOG.md",
+      "source_blob_sha256": "7fb492e70daf943f1408c055ecf87ea8abd84016411afd51350de68d96f43082",
+      "runtime_blob_sha256": "bdb329ff787cdeccb0e3625fc6d9cdce859411a21c3ab14fb7dbd198bc93831f",
+      "source_runtime_byte_identical": false
+    },
+    {
+      "path": "internal/sheet/drilldown_color_test.go",
+      "source_blob_sha256": "68bd0257b08ab7504c5eba7a401a3622627cff8e1b3835045ca1864363c6dd7f",
+      "runtime_blob_sha256": "68bd0257b08ab7504c5eba7a401a3622627cff8e1b3835045ca1864363c6dd7f",
+      "source_runtime_byte_identical": true
+    },
+    {
+      "path": "internal/sheet/html.go",
+      "source_blob_sha256": "5953473b66a64201f154d57f31be9e8b3d14415265886b1c93e50e05bb1f7ebe",
+      "runtime_blob_sha256": "5953473b66a64201f154d57f31be9e8b3d14415265886b1c93e50e05bb1f7ebe",
+      "source_runtime_byte_identical": true
+    },
+    {
+      "path": "internal/ui/tabular_color_test.go",
+      "source_blob_sha256": "b696b391e0686d40149cab04e86bd9630e353c1ab6cb11cf437d3ea8bd9b15fb",
+      "runtime_blob_sha256": "b696b391e0686d40149cab04e86bd9630e353c1ab6cb11cf437d3ea8bd9b15fb",
+      "source_runtime_byte_identical": true
+    }
+  ],
+  "source_runtime_clean_pushed": true,
+  "scope": "T7 link color only; B22/T8 excluded",
+  "draft": "https://github.com/ivanarama/onebase/pull/2627"
+}

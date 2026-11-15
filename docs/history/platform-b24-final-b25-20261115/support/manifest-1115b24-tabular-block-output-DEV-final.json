@@ -1,0 +1,785 @@
+{
+  "status": "B24_OWNER_LOCAL_PG_NATIVE_GREEN_ROOT_CANONICAL_PENDING",
+  "created_utc": "2026-11-15T13:29:12.083226+00:00",
+  "runtime": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+  "base_b23": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source_base_p1": "d232937812637564c730fbc17a9376d269dc5247",
+  "draft": "https://github.com/ivanarama/onebase/pull/2627",
+  "B22_T7_TYPEKEY_RKC_E3_included": false,
+  "original_build_manifest": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b24-tabular-block-output-DEV.json",
+    "sha256": "f3cec9f4484f51abbc115e4fae325a6a28155b28a07208a8ae29e1858de98802",
+    "not_retagged": true
+  },
+  "artifacts": {
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b24-tabular-block-output-linux-amd64",
+      "sha256": "650366a8d20fef97116ec57319fa9dd11e3e7afe75ccc8bc518e785973e93e2f",
+      "bytes": 78423283,
+      "runtime": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+      "source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+      "source_binding": "separate source/runtime pins; per-file mapping recorded",
+      "upstream_inputs": {
+        "accepted_b23": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+        "append_source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+        "delta": "block output cursor only; B22/T7 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-linux-buildinfo.txt",
+      "buildinfo_sha256": "4307c138e620b4cee541f4c3701317b3044305b4860ec881e89007cb909f7395"
+    },
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b24-tabular-block-output-windows-amd64.exe",
+      "sha256": "332c29f08ff857da5ed8831572b67dfa86d12d68ea6cb5c71ef5538cf728901e",
+      "bytes": 79405056,
+      "runtime": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+      "source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+      "source_binding": "separate source/runtime pins; per-file mapping recorded",
+      "upstream_inputs": {
+        "accepted_b23": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+        "append_source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+        "delta": "block output cursor only; B22/T7 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-windows-buildinfo.txt",
+      "buildinfo_sha256": "f0a2c9cf89641faf8bd333eaaec0cace7afc587a0c3c636ae4d22715d417903f"
+    },
+    "ui_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\tabular-block-output-b24-ui-linux-amd64.test",
+      "sha256": "8ea0483a76cac07d977504c73a30dcdab56ac9cc31eaa5bdf5c74496902c75b7",
+      "bytes": 84505821,
+      "runtime": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+      "source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+      "source_binding": "separate source/runtime pins; per-file mapping recorded",
+      "upstream_inputs": {
+        "accepted_b23": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+        "append_source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+        "delta": "block output cursor only; B22/T7 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-ui_pg-buildinfo.txt",
+      "buildinfo_sha256": "728a2f4563c3d1f90a2ea490c2893cf15260a40e31497a609fe8c0123de0ed6b"
+    }
+  },
+  "mapping": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-source-runtime-pins-final.json",
+    "sha256": "3e90a69d3fc8272f8602ac5f271cc9a2d181bd9acaabcc49df26b2dc888e0712",
+    "whole_file_equal": 6,
+    "whole_file_total": 8,
+    "differences": "CHANGELOG preserved B23 section; declarative BuildSheet source inline width loop vs preexisting runtime helper call",
+    "runtime_not_replaced_to_force_equal": true
+  },
+  "build_all": {
+    "exit": 0,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-build-all.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "i18n_en": {
+    "exit": 0,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-i18n-en.log",
+    "sha256": "3f1aeb0ee17a5d05b77d2a87ff38017caa0944c969d3eb27ea368ebc603d9cf6"
+  },
+  "source_local": {
+    "leaf_pass": 23,
+    "pg_root_skip": 1,
+    "pg_pass_claimed": false,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-source-third-targeted.jsonl",
+    "sha256": "e375901fab47e0f9a07cd17a0456741deff2303038bee46c0c9468116b326f2d",
+    "retained_failed_fixture_logs": [
+      "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-source-first-targeted.jsonl",
+      "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-source-second-targeted.jsonl"
+    ],
+    "fixture_corrections": "standalone Interpreter.Run needs NewSpreadsheetFunctions and this object binding; no product patch for those failures"
+  },
+  "runtime_local": {
+    "leaf_pass": 304,
+    "local_pg_roots_skipped": 14,
+    "pg_skip_not_pass": true,
+    "summary": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-local-targeted-summary.json",
+    "sha256": "d0d6c9a26121bbc4a885f82f16a01dfadc0faf738fc0ec28441921456759be21"
+  },
+  "RED_old_B23_sheet_overlay": {
+    "leaf_fail": 19,
+    "leaf_pass": 4,
+    "local_pg_skip": 1,
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-red-old-sheet\\receipt.json",
+    "receipt_sha256": "a0bce94f1a41190f281d27759c4d6adcd2b6fcc3823862efa5787b0660469196",
+    "not_frozen_SDK_execution": true
+  },
+  "RO_old_native_RED": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-old-native-append-baseline-ro.json",
+    "sha256": "ed7be7c85b618b95b93d33a6455da6da6d457348398abf3adedaa9f164560e8d"
+  },
+  "independent_PG": {
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\cc2-task-rest-blocker-20261113\\pg-ui-8ea0483a\\receipt.json",
+    "receipt_sha256": "312d6e82674d73511178e8ad59241d655c49a73d81a2c2418969c85588c02f73",
+    "unique_leaf_pass": 220,
+    "sqlite": 110,
+    "postgres": 110,
+    "fail": 0,
+    "skip": 0,
+    "expected_names_exact": true,
+    "cleanup_exact": true,
+    "fingerprint_before_after": "95a93e4bc016ac4a5762f6f53e38e8988d5ae40cbf0155370204c0ad932e7dc4"
+  },
+  "native": {
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-native-block-output-attempt2\\receipt.json",
+    "receipt_sha256": "1abcb2388f639d49a8827e97ccf3ebb1e88b880cb9571b3a29b70c8997e1afdd",
+    "runner": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-native-block-output-attempt2.py",
+    "runner_sha256": "ca2567e693f882f5fd1f7b847f82b5e4a16cbf851ecd92009691cb402547bbe0",
+    "sdk_platform": "windows-amd64",
+    "sdk_sha256": "332c29f08ff857da5ed8831572b67dfa86d12d68ea6cb5c71ef5538cf728901e",
+    "browser": "Chromium109.0.5414.46",
+    "checks_pass": 23,
+    "checks": {
+      "original_repro_ZIP_pinned": true,
+      "repro_path_within_own_config_0": true,
+      "repro_path_within_own_config_1": true,
+      "repro_path_within_own_config_2": true,
+      "repro_path_within_own_config_3": true,
+      "repro_path_within_own_config_4": true,
+      "native_managed_action_HTTP200": true,
+      "native_managed_published_snapshot": true,
+      "KPI-T5-original_XLSX200": true,
+      "KPI-T5-original_PDF200": true,
+      "KPI_XLSX_exact_2x2": true,
+      "KPI_PDF_same_rows_right_of_left": true,
+      "KPI_HTML_all_4_cells": true,
+      "A002_native_viewer": true,
+      "A002-block-minimal_XLSX200": true,
+      "A002-block-minimal_PDF200": true,
+      "A002_header_rows4_5": true,
+      "A002_month_column2": true,
+      "A002_footer_12columns": true,
+      "A002_geometry7x12": true,
+      "A002_PDF_month_right_same_row": true,
+      "A002_PDF_footer_below_body": true,
+      "JS0": true
+    },
+    "page_errors": 0,
+    "scope": "own synthetic admin; original managed KPI-T5 minimal repro + own minimal A002 geometry; NOT full A002 app acceptance",
+    "original_repro_zip_sha256": "a7bcd66c34ed33c7d95db3c1ad5417cdc3121b4ae6d8bfc839dc4f125facd3a6",
+    "original_repro_files_before_after": [
+      {
+        "path": "config/app.yaml",
+        "sha256": "2965dfa40f7a15787d4e22240fb53ac9533186b0b110aa6d6984f9c1ef01003a",
+        "byte_equal_before_after_run": true
+      },
+      {
+        "path": "processors/ТестПрисоединения.yaml",
+        "sha256": "b572194b6789b2b46634619c24f424cf93b7e45e0a7d94b7de7cdef12a269211",
+        "byte_equal_before_after_run": true
+      },
+      {
+        "path": "printforms/тестприсоединения/Проба.layout.yaml",
+        "sha256": "49e3a9cd905a22ab884a6df11270c65e5c3bd2d4ba4823cd4f1296dbcac21080",
+        "byte_equal_before_after_run": true
+      },
+      {
+        "path": "forms/тестприсоединения/объекта.form.os",
+        "sha256": "faada8582d43a89b8aa84b72551f1f6af2dfb6580714db4ff1f269cfa63d1752",
+        "byte_equal_before_after_run": true
+      },
+      {
+        "path": "forms/тестприсоединения/объекта.form.yaml",
+        "sha256": "bc76f71d7fb65b4459de5b5f4a12976f43c58fc8f094dca2a9ec5578719b3f50",
+        "byte_equal_before_after_run": true
+      }
+    ],
+    "exports": {
+      "KPI-T5-original": {
+        "xlsx_sha256": "db71bcaa8279d060eb43aeb035fbbfd61bd415b7499385c348ec8d735d3b3c25",
+        "PDF_sha256": "dc8ba0518ad4a34dd37f432551d2f17e8f174d08ed9dbdaf0552742bfae148f0",
+        "filled_cells": {
+          "A1": "LEFT-1",
+          "B1": "RIGHT-1",
+          "A2": "LEFT-2",
+          "B2": "RIGHT-2"
+        },
+        "PDF_text_positions": [
+          {
+            "text": "LEFT-1",
+            "x": 31.18,
+            "y": 801.71
+          },
+          {
+            "text": "RIGHT-1",
+            "x": 106.18,
+            "y": 801.71
+          },
+          {
+            "text": "LEFT-2",
+            "x": 31.18,
+            "y": 784.04
+          },
+          {
+            "text": "RIGHT-2",
+            "x": 106.18,
+            "y": 784.04
+          }
+        ],
+        "PDF_pages": 1,
+        "snapshot_path": "/ui/tabular/c54000ee-f236-40ae-a8c1-4b9f9b879669",
+        "default_reader": "openpyxl3.1.5 read_only; no reset"
+      },
+      "A002-block-minimal": {
+        "xlsx_sha256": "7a8aa2ccd1f8695047bfb3645c483f2e11a4c17e417047f9880208305e10dda4",
+        "PDF_sha256": "5f7e29d0b674774e4b7d66bad61634e33099ace2ae82db8d31ea3d38ddfc8822",
+        "filled_cells": {
+          "A1": "TITLE",
+          "B1": "TITLE",
+          "C1": "TITLE",
+          "D1": "TITLE",
+          "E1": "TITLE",
+          "F1": "TITLE",
+          "G1": "TITLE",
+          "H1": "TITLE",
+          "I1": "TITLE",
+          "J1": "TITLE",
+          "K1": "TITLE",
+          "L1": "TITLE",
+          "A2": "TITLE",
+          "B2": "TITLE",
+          "C2": "TITLE",
+          "D2": "TITLE",
+          "E2": "TITLE",
+          "F2": "TITLE",
+          "G2": "TITLE",
+          "H2": "TITLE",
+          "I2": "TITLE",
+          "J2": "TITLE",
+          "K2": "TITLE",
+          "L2": "TITLE",
+          "A3": "TITLE",
+          "B3": "TITLE",
+          "C3": "TITLE",
+          "D3": "TITLE",
+          "E3": "TITLE",
+          "F3": "TITLE",
+          "G3": "TITLE",
+          "H3": "TITLE",
+          "I3": "TITLE",
+          "J3": "TITLE",
+          "K3": "TITLE",
+          "L3": "TITLE",
+          "A4": "HEAD",
+          "B4": "HEAD",
+          "C4": "HEAD",
+          "D4": "REASON",
+          "E4": "REASON",
+          "F4": "REASON",
+          "G4": "REASON",
+          "H4": "REASON",
+          "I4": "REASON",
+          "J4": "REASON",
+          "K4": "REASON",
+          "L4": "REASON",
+          "A5": "HEAD",
+          "B5": "HEAD",
+          "C5": "HEAD",
+          "D5": "REASON",
+          "E5": "REASON",
+          "F5": "REASON",
+          "G5": "REASON",
+          "H5": "REASON",
+          "I5": "REASON",
+          "J5": "REASON",
+          "K5": "REASON",
+          "L5": "REASON",
+          "A6": "NAME",
+          "B6": "JAN",
+          "C6": "JAN",
+          "D6": "JAN",
+          "E6": "JAN",
+          "F6": "JAN",
+          "G6": "JAN",
+          "H6": "JAN",
+          "I6": "JAN",
+          "J6": "JAN",
+          "K6": "JAN",
+          "L6": "JAN",
+          "A7": "FOOT",
+          "B7": "FOOT",
+          "C7": "FOOT",
+          "D7": "FOOT",
+          "E7": "FOOT",
+          "F7": "FOOT",
+          "G7": "FOOT",
+          "H7": "FOOT",
+          "I7": "FOOT",
+          "J7": "FOOT",
+          "K7": "FOOT",
+          "L7": "FOOT"
+        },
+        "PDF_text_positions": [
+          {
+            "text": "TITLE",
+            "x": 31.18,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 76.06,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 120.95,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 165.83,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 210.71,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 255.59,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 300.47,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 345.36,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 390.24,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 435.12,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 480.0,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 524.89,
+            "y": 801.71
+          },
+          {
+            "text": "TITLE",
+            "x": 31.18,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 76.06,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 120.95,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 165.83,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 210.71,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 255.59,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 300.47,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 345.36,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 390.24,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 435.12,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 480.0,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 524.89,
+            "y": 784.04
+          },
+          {
+            "text": "TITLE",
+            "x": 31.18,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 76.06,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 120.95,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 165.83,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 210.71,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 255.59,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 300.47,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 345.36,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 390.24,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 435.12,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 480.0,
+            "y": 766.37
+          },
+          {
+            "text": "TITLE",
+            "x": 524.89,
+            "y": 766.37
+          },
+          {
+            "text": "HEAD",
+            "x": 31.18,
+            "y": 748.7
+          },
+          {
+            "text": "HEAD",
+            "x": 76.06,
+            "y": 748.7
+          },
+          {
+            "text": "HEAD",
+            "x": 120.95,
+            "y": 748.7
+          },
+          {
+            "text": "REASON",
+            "x": 165.83,
+            "y": 748.7
+          },
+          {
+            "text": "REASON",
+            "x": 210.71,
+            "y": 748.7
+          },
+          {
+            "text": "REASON",
+            "x": 255.59,
+            "y": 748.7
+          },
+          {
+            "text": "REASON",
+            "x": 300.47,
+            "y": 748.7
+          },
+          {
+            "text": "REASON",
+            "x": 345.36,
+            "y": 748.7
+          },
+          {
+            "text": "REASON",
+            "x": 390.24,
+            "y": 748.7
+          },
+          {
+            "text": "REASON",
+            "x": 435.12,
+            "y": 748.7
+          },
+          {
+            "text": "REASON",
+            "x": 480.0,
+            "y": 748.7
+          },
+          {
+            "text": "REASON",
+            "x": 524.89,
+            "y": 748.7
+          },
+          {
+            "text": "HEAD",
+            "x": 31.18,
+            "y": 731.03
+          },
+          {
+            "text": "HEAD",
+            "x": 76.06,
+            "y": 731.03
+          },
+          {
+            "text": "HEAD",
+            "x": 120.95,
+            "y": 731.03
+          },
+          {
+            "text": "REASON",
+            "x": 165.83,
+            "y": 731.03
+          },
+          {
+            "text": "REASON",
+            "x": 210.71,
+            "y": 731.03
+          },
+          {
+            "text": "REASON",
+            "x": 255.59,
+            "y": 731.03
+          },
+          {
+            "text": "REASON",
+            "x": 300.47,
+            "y": 731.03
+          },
+          {
+            "text": "REASON",
+            "x": 345.36,
+            "y": 731.03
+          },
+          {
+            "text": "REASON",
+            "x": 390.24,
+            "y": 731.03
+          },
+          {
+            "text": "REASON",
+            "x": 435.12,
+            "y": 731.03
+          },
+          {
+            "text": "REASON",
+            "x": 480.0,
+            "y": 731.03
+          },
+          {
+            "text": "REASON",
+            "x": 524.89,
+            "y": 731.03
+          },
+          {
+            "text": "NAME",
+            "x": 31.18,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 76.06,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 120.95,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 165.83,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 210.71,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 255.59,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 300.47,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 345.36,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 390.24,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 435.12,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 480.0,
+            "y": 713.36
+          },
+          {
+            "text": "JAN",
+            "x": 524.89,
+            "y": 713.36
+          },
+          {
+            "text": "FOOT",
+            "x": 31.18,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 76.06,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 120.95,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 165.83,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 210.71,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 255.59,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 300.47,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 345.36,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 390.24,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 435.12,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 480.0,
+            "y": 695.69
+          },
+          {
+            "text": "FOOT",
+            "x": 524.89,
+            "y": 695.69
+          }
+        ],
+        "PDF_pages": 1,
+        "snapshot_path": "/ui/tabular/9918a799-d3e9-4559-b19c-37c05e69dc39",
+        "default_reader": "openpyxl3.1.5 read_only; no reset"
+      }
+    },
+    "screenshots": [
+      {
+        "path": "C:\\Users\\a.sevrjukova\\Desktop\\Присоединить-B24-KPI-A002-native-20261115-platform\\01-original-KPI-managed-2x2.png",
+        "sha256": "6acbe2e76b83de80f64f0280cf1ad04efefae76039dae2b6dea3a47b45628c14",
+        "bytes": 30021,
+        "visually_inspected": true
+      },
+      {
+        "path": "C:\\Users\\a.sevrjukova\\Desktop\\Присоединить-B24-KPI-A002-native-20261115-platform\\02-A002-minimal-geometry.png",
+        "sha256": "668ef3f0ef21ff19c72aab721cebf537195bde74c958e15b4694b38e8c7d16f1",
+        "bytes": 20268,
+        "visually_inspected": true
+      }
+    ],
+    "visual": "KPI2x2 left/right same rows; A002 rows4-5 header, month column2/footer12; inspected own native screenshots",
+    "cleanup": {
+      "context": true,
+      "browser": true,
+      "driver": true,
+      "app": true,
+      "port_closed": true,
+      "tunnel_not_used": true,
+      "own_auth_db_removed": true
+    },
+    "cleanup_receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-native-cleanup-end.json",
+    "cleanup_sha256": "dcf175d2ca57ab3ea813a79cc4ba63efff01038f249be07c73563560e8f280bf",
+    "linux_native_proof": false,
+    "retained_failed_attempt": [
+      {
+        "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-native-block-output-attempt1\\receipt.json",
+        "sha256": "5ff16ec693f4b02593a171819236646257e8d28a07fd164788a79b363a8df9da",
+        "classification": "before Chrome/server, extra synthetic A002 fixture variable И is reserved AND; corrected variable Футер only; native SDK and original ZIP unchanged"
+      }
+    ]
+  },
+  "go_end": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-go-end-processes.json",
+    "sha256": "04ad4bb1b74c1220daec060a6e8fb34046a1c14635e7d01c5f8b9575910ba427",
+    "go_related_count": 0
+  },
+  "backup_before_native": {
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-support-push-before-native.json",
+    "sha256": "6456fa62c940ae55ad6fe51f670df5ffffcbe81440011af621c57d8ee04826ec"
+  },
+  "protected": "B23/B22 artifacts and shared unchanged by platform; no DB copies; root canonical/config acceptance and evening user word separate; known ordinary XLSX A1/nested ACL500/T7/T8 remain separate",
+  "future_1745_checkpoint": "not declared now; fresh push/process facts required then"
+}

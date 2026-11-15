@@ -1,0 +1,118 @@
+{
+  "status": "B25_LOCAL_PG_CODE_GREEN_NATIVE_PENDING_QUEUE",
+  "created_utc": "2026-11-15T13:57:40.176315+00:00",
+  "runtime": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+  "source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+  "base_b24": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "source_base_b24": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+  "draft": "https://github.com/ivanarama/onebase/pull/2627",
+  "B22_T8_included": false,
+  "code_review": "cc2 acknowledged actuala2ba CODEOK",
+  "artifacts": {
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b25-tabular-link-color-linux-amd64",
+      "sha256": "992dab86d88332b0bb7f3f985071a84072a1e8f1efa50d14bec48f1964d3f8ec",
+      "bytes": 78423251,
+      "runtime": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+      "source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+      "source_binding": "separate source/runtime pins; per-file mapping recorded",
+      "upstream_inputs": {
+        "accepted_b24": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+        "T7_source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+        "delta": "safe explicit link text color only; B22/T8 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-linux-buildinfo.txt",
+      "buildinfo_sha256": "c840f1c72c0194dff4e9b2da78ff7bd7cdb9fc0c38132d9e1d04e19417760fb1"
+    },
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b25-tabular-link-color-windows-amd64.exe",
+      "sha256": "b4884534c4357d524acb706e64de8dd1553d140a2935dc0b0690a8d0020ec724",
+      "bytes": 79401984,
+      "runtime": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+      "source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+      "source_binding": "separate source/runtime pins; per-file mapping recorded",
+      "upstream_inputs": {
+        "accepted_b24": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+        "T7_source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+        "delta": "safe explicit link text color only; B22/T8 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-windows-buildinfo.txt",
+      "buildinfo_sha256": "ed6815dcd57814f43b42089aa7732acb7cd2b3cc181d1af677968a84dc63cb9d"
+    },
+    "ui_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\tabular-link-color-b25-ui-linux-amd64.test",
+      "sha256": "4a5d02502bd0456e437e1508f5b48842e3907b38d4a2229372816bc99580497e",
+      "bytes": 84516643,
+      "runtime": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+      "source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+      "source_binding": "separate source/runtime pins; per-file mapping recorded",
+      "upstream_inputs": {
+        "accepted_b24": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+        "T7_source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+        "delta": "safe explicit link text color only; B22/T8 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-ui_pg-buildinfo.txt",
+      "buildinfo_sha256": "6afe5b8cd0567bfce051e01c0224fa51e97b33c45717d4a296dd31c4ee51f05b"
+    }
+  },
+  "mapping": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-source-runtime-pins.json",
+    "sha256": "ae43d027e98f87d3ddd7c07fdf12f97a7e2aeb2b5ff75b225a13508dd478e92e",
+    "product_tests_3wholefiles_byte_equal": true,
+    "CHANGELOG_only_preserves_earlier_runtime_sections": true
+  },
+  "source_local": {
+    "leaf_pass": 16,
+    "pg_root_skip": 1,
+    "pg_pass_not_claimed": true,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-source-second-targeted.jsonl",
+    "sha256": "7aefc3894dd90efb057c89dd589defda4c8a41fc1f09301ec15794c1fbff1aeb",
+    "retained_first_fixture_FAIL": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-source-first-targeted.jsonl",
+    "classification": "test assumed /drilldown; exact existing native contract is /cell?row&col; corrected only assertion"
+  },
+  "runtime_local": {
+    "leaf_pass": 320,
+    "local_pg_roots_skipped": 15,
+    "pg_skips_not_pass": true,
+    "summary": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-local-targeted-summary.json",
+    "sha256": "605de3be44ea5da7be29f5dc247f91972efebe0385347d00fcdd1d4cc45f20e6"
+  },
+  "build_all": {
+    "exit": 0,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-build-all.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "i18n_en": {
+    "exit": 0,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-i18n-en.log",
+    "sha256": "3f1aeb0ee17a5d05b77d2a87ff38017caa0944c969d3eb27ea368ebc603d9cf6"
+  },
+  "independent_pg": {
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\cc2-task-rest-blocker-20261113\\pg-ui-4a5d0250\\receipt.json",
+    "sha256": "10f60519dc5e49c56b7df38fc89cd0dc0f664948665142036a5d5fc2c1a571c0",
+    "unique_leaf_pass": 230,
+    "sqlite": 115,
+    "postgres": 115,
+    "fail": 0,
+    "skip": 0,
+    "expected_names_exact": true,
+    "cleanup_exact": true,
+    "fingerprint_before_after": "95a93e4bc016ac4a5762f6f53e38e8988d5ae40cbf0155370204c0ad932e7dc4",
+    "expected": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-ui_pg-expected.json",
+    "expected_sha256": "834c07b73cfb09ac57c41774053da450afc84e914f1b85709b29f6367013b90c"
+  },
+  "go_end": {
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-go-end-processes.json",
+    "sha256": "2577e469f26d62b0094886d236da87b35ee558504a7917931fa3b1a9eaa1bb5f",
+    "go_related_count": 0
+  },
+  "native": {
+    "status": "PENDING vendorEND→cc2bA002END→root separate colorSTART",
+    "runner": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-native-link-color.py",
+    "runner_sha256": "50448f8df3586b930e57c680979242039218391b7f28f6bce26afbf5ceb18635",
+    "target": "four explicit safe cell colors inherited in computed anchor CSS; default browser link unchanged; same XLSX colors; native protected /cell still redirects",
+    "PDF_color_gate": "not added; same snapshot PDF available only"
+  },
+  "behavior": "safeColor accepted explicit cell TextColor → constant color:inherit on its drilldown anchor; invalid/no color keeps exact old markup; href/target/rel and server ACL unchanged",
+  "protected": "B24 frozen, no shared/DBcopies; no new Go/Chrome until queue; release only evening user word"
+}

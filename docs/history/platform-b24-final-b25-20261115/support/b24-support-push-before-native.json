@@ -1,0 +1,156 @@
+{
+  "branch": "wip/platform-b24-handoff-20261115",
+  "commit": "df981e427ad3506fa5ca171b14c52678ac9137aa",
+  "parent": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "files": [
+    {
+      "path": "support/build-b24.py",
+      "bytes": 6637,
+      "sha256": "fc74a2dd08789303a9d0c418138fe10f878e4172743c613dbf99caafc46c2803"
+    },
+    {
+      "path": "support/b24-source-red-green-driver.py",
+      "bytes": 2916,
+      "sha256": "e58d5114297cdfbe3db3bb4d890004cbd1efbfcc20d6442ba91aaa0b4751dbf5"
+    },
+    {
+      "path": "support/b24-native-block-output.py",
+      "bytes": 9999,
+      "sha256": "19f74e97644959ec6b9d1580b6a1ff5d1b9b0840862bbf32126608b4ae16ef48"
+    },
+    {
+      "path": "support/manifest-1115b24-tabular-block-output-DEV.json",
+      "bytes": 7319,
+      "sha256": "f3cec9f4484f51abbc115e4fae325a6a28155b28a07208a8ae29e1858de98802"
+    },
+    {
+      "path": "support/b24-ui_pg-handoff.json",
+      "bytes": 2124,
+      "sha256": "d69d6a8295eeffb9db7ccacaa4371e3eb896e37d5f6dbcb4f6610e9e335a3e8c"
+    },
+    {
+      "path": "support/b24-ui_pg-expected.json",
+      "bytes": 15871,
+      "sha256": "f06a6c77bec46ce89bfd8c09ce60d22a1c02a553b8b42a190cfdcd1cdaedd3a8"
+    },
+    {
+      "path": "support/b24-ui_pg-artifact.json",
+      "bytes": 869,
+      "sha256": "3d4b9092ee1861a88bb7443d9a95f3aaf8243912b841b5952868370122a04ea6"
+    },
+    {
+      "path": "support/b24-linux-artifact.json",
+      "bytes": 873,
+      "sha256": "b97c83c3838443327db86499b35dbc61f489352e6d04ee15c410123079092aad"
+    },
+    {
+      "path": "support/b24-windows-artifact.json",
+      "bytes": 881,
+      "sha256": "1631389e96c3a2b35a70d650e5d0730141754405125a119ba03d1f6de2021c4c"
+    },
+    {
+      "path": "support/b24-source-runtime-pins-wip.json",
+      "bytes": 3663,
+      "sha256": "d08edbd49e86c1c9cc064485682f8eb01ec2fecddce7570e87d43219e0c4d968"
+    },
+    {
+      "path": "support/b24-source-runtime-pins-final.json",
+      "bytes": 3706,
+      "sha256": "3e90a69d3fc8272f8602ac5f271cc9a2d181bd9acaabcc49df26b2dc888e0712"
+    },
+    {
+      "path": "support/b24-source-native-hunk-mapping.json",
+      "bytes": 946,
+      "sha256": "fb3586bae0083ba7580940d2948e7e896ee29f00f44d3377c6f2ca5ede5a429b"
+    },
+    {
+      "path": "support/b24-source-prerequisite-exact.patch",
+      "bytes": 2766,
+      "sha256": "1c1f96cfb47a0359bc463d87f75d2644a5996e74a3ee37bbc4499242c440ddda"
+    },
+    {
+      "path": "support/b24-go-end-processes.json",
+      "bytes": 263,
+      "sha256": "04ad4bb1b74c1220daec060a6e8fb34046a1c14635e7d01c5f8b9575910ba427"
+    },
+    {
+      "path": "support/b24-old-native-append-baseline-ro.json",
+      "bytes": 1034,
+      "sha256": "ed7be7c85b618b95b93d33a6455da6da6d457348398abf3adedaa9f164560e8d"
+    },
+    {
+      "path": "support/b24-local-targeted-summary.json",
+      "bytes": 61081,
+      "sha256": "d0d6c9a26121bbc4a885f82f16a01dfadc0faf738fc0ec28441921456759be21"
+    },
+    {
+      "path": "support/b24-draft-built-status.json",
+      "bytes": 427,
+      "sha256": "8a8595ec0e0ecda2090ba7480bfeec5ecefe56d1282a22020f992032aa469816"
+    },
+    {
+      "path": "support/b24-source-first-targeted.jsonl.command.json",
+      "bytes": 856,
+      "sha256": "8a13e9c3e3a38c55a11bdf1c113313d967a3b7b71f0a7fd7586cc0cb1d5c0d48"
+    },
+    {
+      "path": "support/b24-source-second-targeted.jsonl.command.json",
+      "bytes": 887,
+      "sha256": "d295515d70492c3427e19dd8cea64dbe2e733bc6eff3ca73e18c2f39c7042a0a"
+    },
+    {
+      "path": "support/b24-source-third-targeted.jsonl.command.json",
+      "bytes": 887,
+      "sha256": "0ceb811f2a3246137077ee175b79aadad25becc6402cb472a87d4a90458f5275"
+    },
+    {
+      "path": "support/b24-build-all.log.command.json",
+      "bytes": 1119,
+      "sha256": "5c56b5cf3168196252ce29e6f785ed72f948b2825ae96dab52b2e45952ff016b"
+    },
+    {
+      "path": "support/b24-i18n-en.log.command.json",
+      "bytes": 1127,
+      "sha256": "6c35a4abcd73164ffa28be4bc3492ae447db50c888386c19e3758a4d13223545"
+    },
+    {
+      "path": "receipts/red-old-sheet/receipt.json",
+      "bytes": 1701,
+      "sha256": "a0bce94f1a41190f281d27759c4d6adcd2b6fcc3823862efa5787b0660469196"
+    },
+    {
+      "path": "receipts/red-old-sheet/prepared-only.json",
+      "bytes": 491,
+      "sha256": "f3c436d3425775799c6d75b302bd0103e796cd7a585c74ce2115f10793edca2b"
+    },
+    {
+      "path": "receipts/red-old-sheet/overlay.json",
+      "bytes": 286,
+      "sha256": "797359726042c4805269a620b97d20ec64d711879e188bf959cd0fa9f8fe1814"
+    },
+    {
+      "path": "reports/20261115-platform-Присоединить-KPI-A002-принято.md",
+      "bytes": 3416,
+      "sha256": "e4f4d696ad21f033eedd0370bafa538f25c0b6652de58c68ad4f9cf0b6b5eb95"
+    },
+    {
+      "path": "reports/20261115-platform-KPI-T7-цвет-ссылки-очередь.md",
+      "bytes": 785,
+      "sha256": "47a404ab3d7adb0354af064ee907691e85fb12b1ce783112ba27ed5da7854922"
+    },
+    {
+      "path": "reports/20261115-platform-B24-PG-prebuilt-ready.md",
+      "bytes": 2039,
+      "sha256": "58e9185084bb34baabfb2683dcce760a51ade3a7a747746b5f29b39fe0a38eb1"
+    },
+    {
+      "path": "reports/20261115-platform-B24-GoEND-build-handoff.md",
+      "bytes": 2365,
+      "sha256": "176982e7b249a1b5d4791a85fe94ddf56bc531c7f72452ab88664d58065a05c9"
+    }
+  ],
+  "created_utc": "2026-11-15T13:22:14.420873+00:00",
+  "scope": "source helpers/manifests/reports/sanitized receipts, no SDK binaries/DB/secrets/exports/images",
+  "state": "Go END; PG/native PENDING; not 17:45 readiness checkpoint",
+  "runtime_clean": true
+}

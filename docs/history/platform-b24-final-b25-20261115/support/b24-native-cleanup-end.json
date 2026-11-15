@@ -1,0 +1,26 @@
+{
+  "created_utc": "2026-11-15T13:26:21.457577+00:00",
+  "status": "PASS_NATIVE_CLEANUP_END",
+  "runtime": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "332c29f08ff857da5ed8831572b67dfa86d12d68ea6cb5c71ef5538cf728901e",
+  "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b24-native-block-output-attempt2\\receipt.json",
+  "receipt_sha256": "1abcb2388f639d49a8827e97ccf3ebb1e88b880cb9571b3a29b70c8997e1afdd",
+  "checks_pass": 23,
+  "page_errors": 0,
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "fresh_cim_go_chrome_driver_count": 0,
+  "go_during_browser": false,
+  "shared_changes": false,
+  "db_copies": 0,
+  "scope": "original perenos KPI managed ZIP unchanged + own minimal A002 geometry, not full A002 application acceptance"
+}

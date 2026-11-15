@@ -1,0 +1,57 @@
+{
+  "status": "FAIL",
+  "runtime": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "source": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+  "base_b23": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "332c29f08ff857da5ed8831572b67dfa86d12d68ea6cb5c71ef5538cf728901e",
+  "checks": {
+    "original_repro_ZIP_pinned": true,
+    "repro_path_within_own_config_0": true,
+    "repro_path_within_own_config_1": true,
+    "repro_path_within_own_config_2": true,
+    "repro_path_within_own_config_3": true,
+    "repro_path_within_own_config_4": true
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "phase": "original-KPI-repro-fixture",
+  "go_started": false,
+  "db_copies": 0,
+  "shared_changes": false,
+  "browser_os_network_isolated": false,
+  "browser_request_boundary": "exact own loopback context allowlist",
+  "original_repro_files": [
+    {
+      "path": "config/app.yaml",
+      "sha256": "2965dfa40f7a15787d4e22240fb53ac9533186b0b110aa6d6984f9c1ef01003a"
+    },
+    {
+      "path": "processors/ТестПрисоединения.yaml",
+      "sha256": "b572194b6789b2b46634619c24f424cf93b7e45e0a7d94b7de7cdef12a269211"
+    },
+    {
+      "path": "printforms/тестприсоединения/Проба.layout.yaml",
+      "sha256": "49e3a9cd905a22ab884a6df11270c65e5c3bd2d4ba4823cd4f1296dbcac21080"
+    },
+    {
+      "path": "forms/тестприсоединения/объекта.form.os",
+      "sha256": "faada8582d43a89b8aa84b72551f1f6af2dfb6580714db4ff1f269cfa63d1752"
+    },
+    {
+      "path": "forms/тестприсоединения/объекта.form.yaml",
+      "sha256": "bc76f71d7fb65b4459de5b5f4a12976f43c58fc8f094dca2a9ec5578719b3f50"
+    }
+  ],
+  "failure_type": "RuntimeError",
+  "failure_line": 16,
+  "failed_check": null,
+  "page_errors": 0
+}

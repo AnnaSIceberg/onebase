@@ -1,0 +1,15 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\tabular-link-color-b25-ui-linux-amd64.test",
+  "sha256": "4a5d02502bd0456e437e1508f5b48842e3907b38d4a2229372816bc99580497e",
+  "bytes": 84516643,
+  "runtime": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+  "source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+  "source_binding": "separate source/runtime pins; per-file mapping recorded",
+  "upstream_inputs": {
+    "accepted_b24": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+    "T7_source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+    "delta": "safe explicit link text color only; B22/T8 excluded"
+  },
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-ui_pg-buildinfo.txt",
+  "buildinfo_sha256": "6afe5b8cd0567bfce051e01c0224fa51e97b33c45717d4a296dd31c4ee51f05b"
+}
