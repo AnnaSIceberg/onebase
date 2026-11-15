@@ -1,0 +1,8 @@
+{
+  "source_test_only_head": "0594980b4de75fac38c44b7023624c79688d566d",
+  "parent_source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+  "accepted_runtime_unchanged": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+  "scope": "4 test files only, Close error handling",
+  "gates": "gofmt/diffcheck only; no localGo/native/SDK; CI future",
+  "no_retag": true
+}
