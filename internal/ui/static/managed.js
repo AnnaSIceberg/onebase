@@ -1944,6 +1944,7 @@ window.obManagedApplyHints = obManagedApplyHints;
         }
       }
       if (data.question && !beforePostSnapshot(snapshot)) {
+        if (window.obOpenTabularQuestion && window.obOpenTabularQuestion(data.question, elementName, snapshot.eventName, extraParams, fireFormEvent)) return;
         if (window.obOpenQuestion) window.obOpenQuestion(data.question, elementName);
         return;
       }
