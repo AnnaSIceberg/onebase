@@ -43,14 +43,18 @@ func measureCellForExcel(v any, m report.Measure) any {
 // Значения показателей передаются как float64, чтобы Excel видел числа, а не текст.
 func composedRows(res *compose.Result, spec *report.Composition) (headers []string, rows [][]any) {
 	headers = make([]string, 0, 1+len(spec.DetailFields)+len(spec.Measures))
-	headers = append(headers, strings.Join(spec.Groupings, " / "))
+	labelCols := 0
+	if composedLabelColumn(spec) {
+		headers = append(headers, strings.Join(spec.Groupings, " / "))
+		labelCols = 1
+	}
 	for _, d := range spec.DetailFields {
 		headers = append(headers, detailFieldTitle(d))
 	}
 	for _, m := range spec.Measures {
 		headers = append(headers, measureTitle(m))
 	}
-	sink := &excelComposeSink{spec: spec, colCount: 1 + len(spec.DetailFields) + len(spec.Measures)}
+	sink := &excelComposeSink{spec: spec, colCount: labelCols + len(spec.DetailFields) + len(spec.Measures)}
 	walkComposed(res, spec, sink)
 	return headers, sink.rows
 }
@@ -72,8 +76,11 @@ func (e *excelComposeSink) row(label string, vals map[string]any) {
 // строки детализации; у групп и итогов эти колонки пусты).
 func (e *excelComposeSink) rowWithDetail(label string, detail, vals map[string]any) {
 	r := make([]any, e.colCount)
-	r[0] = label
-	off := 1
+	off := 0
+	if composedLabelColumn(e.spec) {
+		r[0] = label
+		off = 1
+	}
 	for i, d := range e.spec.DetailFields {
 		if detail == nil {
 			continue
