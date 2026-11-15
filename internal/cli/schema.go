@@ -205,6 +205,7 @@ func allSchemas() map[string]map[string]any {
 			"options":             arrayOf(stringSchema("Значение")),
 			"period_end":          boolSchema("Для type: date — использовать конец выбранного дня (23:59:59)"),
 			"choice_show_deleted": boolSchema("Показывать в выборе элементы, помеченные на удаление: true — показывать, false — скрывать. По умолчанию при вводе данных скрыты, в параметрах отчётов и отборах списков показаны с отметкой"),
+			"context": reportContextSchema(),
 		},
 	}
 	// Параметр ОБРАБОТКИ знает обязательность, параметр отчёта — нет
