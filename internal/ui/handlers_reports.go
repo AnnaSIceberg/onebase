@@ -256,7 +256,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		if variantErr == nil && strings.TrimSpace(resultQuery) == "" {
 			if err := s.runTabularReport(w, r.WithContext(opCtx), rep, queryValues, nil); err != nil {
 				opStatus = "error"
-				http.Error(w, s.errText(r, err), 500)
+				http.Error(w, s.errText(r, err), reportResultErrorStatus(err))
 			}
 			return
 		}
@@ -357,7 +357,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		}
 		if err := s.runTabularReport(w, r.WithContext(opCtx), rep, queryValues, rows); err != nil {
 			opStatus = "error"
-			http.Error(w, s.errText(r, err), 500)
+			http.Error(w, s.errText(r, err), reportResultErrorStatus(err))
 		}
 		return
 	}
