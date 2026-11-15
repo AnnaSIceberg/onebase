@@ -46,6 +46,7 @@ import (
 
 // formEventResponse — структура ответа JSON.
 type formEventResponse struct {
+	TabularDocuments map[string]string `json:"tabularDocuments,omitempty"`
 	AudioStops      []string                    `json:"audioStops,omitempty"`
 	UICommands      []uiResponseCommand         `json:"uiCommands,omitempty"`
 	RefreshLive     bool                        `json:"refreshLive,omitempty"`
@@ -1236,6 +1237,14 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	defer rollbackDSLExecution(txState)
 	isNewForHandler := strings.TrimSpace(r.FormValue("_id")) == "" && (closeInv == nil || !closeInv.saved)
 	thisObj := s.newFormObjectThisLive(dslCtx, txState, obj, entity, form, isNewForHandler)
+	thisObj.layouts = &tabularLayouts{s: s, owner: entity.Name}
+	installTabularLayouts(vars, thisObj.layouts)
+	if eventName == string(metadata.FormEventDrilldown) {
+		if err := s.addTabularDrilldownVars(r, tabularScope{Kind: string(entity.Kind), Name: entity.Name, ID: rawID}, form, elementName, vars); err != nil {
+			respondJSON(enc, formEventResponse{Error: err.Error()})
+			return
+		}
+	}
 	thisObj.xdtoFormSnapshot = true
 	if isNewForHandler {
 		// Объект.Записать() из обработчика — ещё один путь записи нового объекта:
@@ -1663,6 +1672,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	filterDeferredResponse(deferredBaseline, &resp)
+	if closeInv == nil && resp.OK {
+		s.attachTabularResults(w, r, tabularScope{Kind: string(entity.Kind), Name: entity.Name, ID: rawID, Form: form.Name}, thisObj, &resp)
+	}
 	compactFormCloseDelta(&resp, closeInv)
 	if closeInv == nil {
 		attachUIResponseCommands(r, &resp, requestWrites.Load() > writesBefore)
@@ -3079,6 +3091,14 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
 		defer rollbackDSLExecution(txState)
 		thisObj := s.newFormObjectThisLive(dslCtx, txState, obj, virtEntity, form, false)
+		thisObj.layouts = &tabularLayouts{s: s, owner: proc.Name}
+		installTabularLayouts(vars, thisObj.layouts)
+		if eventName == string(metadata.FormEventDrilldown) {
+			if err := s.addTabularDrilldownVars(r, tabularScope{Kind: "processor", Name: proc.Name}, form, elementName, vars); err != nil {
+				respondJSON(enc, formEventResponse{Error: err.Error()})
+				return
+			}
+		}
 		vars["Объект"] = thisObj
 		vars["ЭтотОбъект"] = thisObj
 		vars["Параметры"] = thisObj
@@ -3274,6 +3294,9 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		resp.ChoiceList = choiceItems
 		resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedFormDirty(obj, fieldsBefore, tablesBefore, audioViewFields))
 		filterDeferredResponse(deferredBaseline, &resp)
+		if closeInv == nil && resp.OK {
+			s.attachTabularResults(w, r, tabularScope{Kind: "processor", Name: proc.Name, Form: form.Name}, thisObj, &resp)
+		}
 		compactFormCloseDelta(&resp, closeInv)
 		s.finishProcessorCarryEvent(r, proc, form, obj.Fields, carryBefore, deferredBaseline != nil, &resp)
 		if closeInv == nil {

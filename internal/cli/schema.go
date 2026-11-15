@@ -489,7 +489,7 @@ func allSchemas() map[string]map[string]any {
 			"type":                 "object",
 			"required":             []string{"name"},
 			"additionalProperties": true,
-			"properties": map[string]any{"name": stringSchema("Имя"), "title": stringSchema("Синоним"), "params": arrayOf(param), "query": stringSchema("Текст запроса"), "chart_proc": stringSchema("Процедура диаграммы"), "composition": map[string]any{"type": "object"}, "variants": arrayOf(map[string]any{
+			"properties": map[string]any{"name": stringSchema("Имя"), "title": stringSchema("Синоним"), "params": arrayOf(param), "query": stringSchema("Текст запроса"), "chart_proc": stringSchema("Процедура диаграммы"), "result_proc": stringSchema("Функция результата ТабличныйДокумент"), "composition": map[string]any{"type": "object"}, "variants": arrayOf(map[string]any{
 				"type": "object", "required": []string{"name"}, "properties": map[string]any{
 					"name": stringSchema("Имя варианта"), "query": stringSchema("Запрос варианта; пусто — основной"), "composition": map[string]any{"type": "object"},
 					"filters": arrayOf(map[string]any{"type": "object", "required": []string{"field", "op", "value"}, "properties": map[string]any{

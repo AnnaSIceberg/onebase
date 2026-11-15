@@ -89,9 +89,11 @@ const (
 	// ИмяСобытия, Параметр, Источник; изменения применяются к форме как после
 	// любого события — без записи и без закрытия.
 	FormEventNotify FormEventType = "ОбработкаОповещения" // NotificationProcessing
+	FormEventDrilldown FormEventType = "ОбработкаРасшифровки"
 )
 
 var knownFormEventTypes = map[FormEventType]bool{
+	FormEventDrilldown: true,
 	FormEventAudioPlay: true, FormEventOnOpen: true, FormEventAfterOpen: true, FormEventOnReadAtServer: true, FormEventOnCreateAtServer: true,
 	FormEventBeforeWrite: true, FormEventOnWrite: true, FormEventAfterWrite: true,
 	FormEventBeforeClose: true, FormEventOnClose: true, FormEventOnActivate: true,
@@ -150,6 +152,7 @@ type FormElementType string
 const FormElementAudio FormElementType = "Аудиоплеер"
 
 const FormEventAudioPlay FormEventType = "Воспроизведение"
+const FormElementSpreadsheet FormElementType = "ПолеТабличногоДокумента"
 
 const (
 	FormElementField      FormElementType = "ПолеВвода"      // InputField
@@ -181,7 +184,8 @@ const (
 // Держится рядом с константами FormElementType: добавляя новый вид, впиши его
 // сюда, иначе configcheck пометит его как неизвестный (см. CheckFormElementKind).
 var knownFormElementTypes = map[FormElementType]bool{
-	FormElementField: true, FormElementLabel: true, FormElementButton: true,
+	FormElementSpreadsheet: true,
+	FormElementField:       true, FormElementLabel: true, FormElementButton: true,
 	FormElementTable: true, FormElementGroupBox: true, FormElementPage: true,
 	FormElementPages: true, FormElementCheckbox: true, FormElementSwitch: true,
 	FormElementInputList: true, FormElementDatePicker: true, FormElementFormField: true,

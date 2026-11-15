@@ -500,6 +500,7 @@ type cfgReport struct {
 	Titles      map[string]string
 	Query       string
 	ChartProc   string
+	ResultProc  string
 	ChartSource string
 	Params      []cfgParam
 	Composition *report.Composition // пред-заполнение конструктора компоновки (план 59)

@@ -1855,6 +1855,7 @@ window.obManagedApplyHints = obManagedApplyHints;
         // controlState — как в обычной ветке: ввод, сделанный пока шёл запрос,
         // эхо отправленного значения не затирает.
         if (data.values) applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
+        if (window.obApplyTabularDocuments) window.obApplyTabularDocuments(data.tabularDocuments);
         if (window.obApplyConcealed) window.obApplyConcealed(data.revealed, form, data.values || {});
         (data.messages || []).forEach(obFlashMessage);
         if (data.error) flash(data.error, 'err');
@@ -1896,6 +1897,7 @@ window.obManagedApplyHints = obManagedApplyHints;
       window.obManagedApplyHints(data.values);
       // hint_from формы обработки: реквизита подсказки нет в values.
       window.obManagedApplyHints(data.elementStates && data.elementStates.hints);
+        if (window.obApplyTabularDocuments) window.obApplyTabularDocuments(data.tabularDocuments);
         applyChoiceList(elementName, data.choiceList);
         if (window.obAudioApply) window.obAudioApply(data);
         applyFormTables(data.formTables);
@@ -1981,6 +1983,7 @@ window.obManagedApplyHints = obManagedApplyHints;
     }
   }
 
+  if(window.obBindTabularHost)window.obBindTabularHost(fireFormEvent);
   function fireFormEvent(elementName, eventName, extraParams, pickerRequest, beforePostOwner){
 	pickerRequest = pickerRequest || (window.obPickerRequest ? window.obPickerRequest() : null);
 	if (formEventWriteUnknown || manualReconcileRequired) {

@@ -739,6 +739,9 @@ var processorServiceFields = []string{
 	"_notify_id",
 	"_idle_proc",
 	"_idle_token",
+	"_tabular_token",
+	"_tabular_row",
+	"_tabular_col",
 }
 
 func processorParamPresenceName(params []processorpkg.Param, name string) string {

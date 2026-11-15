@@ -115,6 +115,11 @@ const tplManagedForm = `
     <div class="ob-view-text-value" data-ob-value="{{$fn}}" style="font-size:{{if eq $el.View "text-strong"}}16px;font-weight:700{{else}}14px{{end}};color:#1e293b;white-space:pre-wrap;overflow-wrap:anywhere">{{$v}}</div>
     <input type="hidden" name="{{$fn}}" value="{{$v}}">
   </div>
+{{else if eq (str $el.Kind) "ПолеТабличногоДокумента"}}
+  <div class="form-group" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}>
+    <iframe data-ob-tabular-field="{{dpField $el.DataPath}}" title="{{fieldTitleRU $el.TitleMap (dpField $el.DataPath)}}" style="width:100%;height:480px;border:1px solid #cbd5e1" hidden></iframe>
+  </div>
+  <script src="/static/tabular.js"></script>
 {{else if eq (str $el.Kind) "ПолеВвода"}}
   {{$fn := dpField $el.DataPath}}
   {{$f := fieldByName $ctx.Entity $fn}}

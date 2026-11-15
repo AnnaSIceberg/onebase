@@ -27,6 +27,8 @@ var dateInputJS []byte
 
 //go:embed static/report-controls.js
 var reportControlsJS []byte
+//go:embed static/tabular.js
+var tabularJS []byte
 
 //go:embed static/query-builder.js
 var queryBuilderJS []byte
@@ -43,6 +45,7 @@ var (
 
 	dateInputJSETag          = assetETag(dateInputJS)
 	reportControlsJSETag     = assetETag(reportControlsJS)
+	tabularJSETag = assetETag(tabularJS)
 	queryBuilderJSETag       = assetETag(queryBuilderJS)
 	settingsNavigationJSETag = assetETag(settingsNavigationJS)
 )
@@ -85,6 +88,7 @@ func mountStatic(r chi.Router) {
 	r.Get("/static/report-controls.js", func(w http.ResponseWriter, req *http.Request) {
 		serveAppJS(w, req, reportControlsJS, reportControlsJSETag)
 	})
+	r.Get("/static/tabular.js", func(w http.ResponseWriter, r *http.Request) { serveAppJS(w, r, tabularJS, tabularJSETag) })
 	r.Get("/static/settings-navigation.js", func(w http.ResponseWriter, req *http.Request) {
 		serveAppJS(w, req, settingsNavigationJS, settingsNavigationJSETag)
 	})
