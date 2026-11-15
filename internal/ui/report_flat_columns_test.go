@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -87,9 +88,11 @@ func TestReportFlatColumnsHTTP(t *testing.T) {
 	for _, tc := range []struct {
 		name                  string
 		grouped, link, entity bool
+		detailFields          int
 		cols                  int
 	}{
-		{"flat", false, false, false, 1}, {"flat-drilldown", false, true, true, 2}, {"incomplete-drilldown", false, true, false, 1}, {"grouped", true, false, false, 2},
+		{"flat", false, false, false, 0, 1}, {"flat-drilldown", false, true, true, 0, 2}, {"incomplete-drilldown", false, true, false, 0, 1}, {"grouped", true, false, false, 0, 2},
+		{"flat-detail12", false, false, false, 12, 13}, {"grouped-detail12", true, false, false, 12, 14}, {"drilldown-detail12", false, true, true, 12, 14},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			spec := &report.Composition{Detail: true, Measures: []report.Measure{{Field: "Amount"}}}
@@ -102,7 +105,13 @@ func TestReportFlatColumnsHTTP(t *testing.T) {
 			if tc.entity {
 				spec.DetailEntity = "Synthetic"
 			}
-			rep := &report.Report{Name: "Columns", Query: "SELECT 'same' AS Category, 'synthetic-id' AS LinkID, 7 AS Amount", Composition: spec}
+			query := "SELECT 'same' AS Category, 'synthetic-id' AS LinkID, 7 AS Amount"
+			for i := 0; i < tc.detailFields; i++ {
+				name := fmt.Sprintf("Field%d", i)
+				query += fmt.Sprintf(", %d AS %s", 100+i, name)
+				spec.DetailFields = append(spec.DetailFields, report.DetailField{Field: name})
+			}
+			rep := &report.Report{Name: "Columns", Query: query, Composition: spec}
 			s := newReportExportTestServer(t, rep)
 			router := chi.NewRouter()
 			router.Get("/ui/report/{name}", s.reportForm)
@@ -141,6 +150,15 @@ func TestReportFlatColumnsHTTP(t *testing.T) {
 			}
 			if rows[0][tc.cols-1] != "Amount" || rows[len(rows)-1][tc.cols-1] != "7" {
 				t.Fatalf("XLSX shifted values: %v", rows)
+			}
+			off := 0
+			if tc.grouped || (tc.link && tc.entity) {
+				off = 1
+			}
+			for i := 0; i < tc.detailFields; i++ {
+				if rows[0][off+i] != fmt.Sprintf("Field%d", i) || rows[len(rows)-1][off+i] != fmt.Sprint(100+i) {
+					t.Fatal("12 detail fields shifted or lost")
+				}
 			}
 		})
 	}
