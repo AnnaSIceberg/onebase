@@ -1,0 +1,34 @@
+{
+  "branch": "wip/platform-b24-final-b25-handoff-20261115",
+  "commit": "aca34d5d88b382e9a36802a70f303681a0415199",
+  "parent": "42f5572475296f7c5a38450fdd9a33a8779dede3",
+  "files": [
+    {
+      "path": "support/reboot-stale-source-backup.json",
+      "bytes": 5039,
+      "sha256": "9f375bc70aa06a50261b968737c3d1968e6f8f824f4fae1adac8892e555dcf5c"
+    },
+    {
+      "path": "support/reboot-precheck-worktrees-1730.json",
+      "bytes": 14025,
+      "sha256": "6b19f00769609623e60f575b64d5e01c1b07903d0e33e537c04464b77e59c7ae"
+    },
+    {
+      "path": "support/reboot-own-temp-cleanup.json",
+      "bytes": 2610,
+      "sha256": "fbe0c8d8c0ca3a94136cac58cf31dc1b8993bb43839d44e754fece4b35ee7a6d"
+    },
+    {
+      "path": "support/support-1728-push.json",
+      "bytes": 1357,
+      "sha256": "1563f3218759974f26ee09c1e40a47ebc33e3947dcca8b331188c968705a1576"
+    },
+    {
+      "path": "support/backup-stale-own-source-checkpoint.py",
+      "bytes": 1738,
+      "sha256": "48b79b01f76c7a016d61cfe3e105e51e8597ca1adde03858cbd67ecd538a69b5"
+    }
+  ],
+  "created_utc": "2026-11-15T14:33:20.019915+00:00",
+  "scope": "metadata/source reports only; no SDK/DB/secrets/payloads"
+}
