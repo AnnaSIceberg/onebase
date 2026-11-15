@@ -382,7 +382,16 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 	if comp != nil {
 		detailLinkCol = comp.DetailLink
 	}
-	s.resolveUUIDsInReport(opCtx, rows, detailLinkCol)
+	var drilldowns *reportDrilldownRenderer
+	if len(rep.Drilldowns) > 0 {
+		if err := reportpkg.ValidateDrilldowns(rep, s.reg); err != nil {
+			opStatus = "error"
+			http.Error(w, "invalid report drilldown metadata", http.StatusBadRequest)
+			return
+		}
+		drilldowns = &reportDrilldownRenderer{rep: rep, rowTitle: s.tr(s.resolveLang(r), "Действия")}
+	}
+	s.resolveUUIDsInReport(opCtx, rows, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
 
 	// Пользовательские отборы применяются к строкам до компоновки (план 70).
 	if comp != nil && settings != nil && len(settings.Filters) > 0 {
@@ -450,7 +459,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		}
 		s.render(w, r, "page-report", map[string]any{
 			"Report":             rep,
-			"ComposedHTML":       renderComposedTable(res, comp),
+			"ComposedHTML":       renderComposedTable(res, comp, drilldowns),
 			"Capped":             res.Capped,
 			"ComposeWarnings":    res.Warnings,
 			"ChartOption":        chartOption,
@@ -477,6 +486,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		"Report":             rep,
 		"Cols":               cols,
 		"Rows":               rows,
+		"Drilldowns":         drilldowns,
 		"ParamValues":        paramValues,
 		"ChartOption":        chartOption,
 		"ReportParams":       reportParams,
@@ -529,10 +539,13 @@ func (s *Server) runChartProc(ctx context.Context, rep *reportpkg.Report, rows [
 // resolveUUIDsInReport replaces UUID-looking strings in report rows with entity
 // display names. skipCol (если непустой) исключается из подстановки — нужен для
 // колонки detail_link, где UUID должен остаться для ссылки на документ (issue #87).
-func (s *Server) resolveUUIDsInReport(ctx context.Context, rows []map[string]any, skipCol string) {
+func (s *Server) resolveUUIDsInReport(ctx context.Context, rows []map[string]any, skipCols ...string) {
 	uuidToLabel := make(map[string]string)
 	for _, row := range rows {
-		for _, v := range row {
+		for col, v := range row {
+			if reportColumnSkipped(col, skipCols) && !(len(skipCols) > 0 && strings.EqualFold(col, skipCols[0])) {
+				continue
+			}
 			if str, ok := v.(string); ok {
 				if _, err := uuid.Parse(str); err == nil {
 					uuidToLabel[str] = ""
@@ -554,7 +567,7 @@ func (s *Server) resolveUUIDsInReport(ctx context.Context, rows []map[string]any
 			}
 		}
 	}
-	applyResolvedLabels(rows, uuidToLabel, skipCol)
+	applyResolvedLabels(rows, uuidToLabel, skipCols...)
 }
 
 // applyResolvedLabels подставляет наименования вместо UUID в строках отчёта,
@@ -563,13 +576,13 @@ func (s *Server) resolveUUIDsInReport(ctx context.Context, rows []map[string]any
 // /ui/.../<имя> вместо /<uuid> и ломается (issue #87). Имя колонки сравнивается
 // регистронезависимо: колонки запроса приходят в нижнем регистре, а detail_link
 // в composition — в исходном.
-func applyResolvedLabels(rows []map[string]any, uuidToLabel map[string]string, skipCol string) {
+func applyResolvedLabels(rows []map[string]any, uuidToLabel map[string]string, skipCols ...string) {
 	for _, row := range rows {
 		for col, v := range row {
-			if skipCol != "" && strings.EqualFold(col, skipCol) {
+			if reportColumnSkipped(col, skipCols) {
 				// UUID остаётся для ссылки, а представление кладём рядом: то же
 				// поле может быть и колонкой detail_fields, где нужен текст.
-				if str, ok := v.(string); ok {
+				if str, ok := v.(string); ok && len(skipCols) > 0 && strings.EqualFold(col, skipCols[0]) {
 					if label, found := uuidToLabel[str]; found && label != "" {
 						row[reportDetailLinkLabelKey] = label
 					}
@@ -782,7 +795,7 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 	if comp != nil {
 		detailLinkCol = comp.DetailLink
 	}
-	s.resolveUUIDsInReport(ctx, data, detailLinkCol)
+	s.resolveUUIDsInReport(ctx, data, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
 
 	// Пользовательские отборы (план 70) — до компоновки, как в runReport.
 	if comp != nil && settings != nil && len(settings.Filters) > 0 {

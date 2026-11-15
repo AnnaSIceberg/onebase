@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dbtest"
+	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
@@ -32,23 +34,30 @@ func TestReportTrustedContextHTTPMatrix(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		department := &metadata.Entity{Name: "ContextDepartment", Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: "Name", Type: metadata.FieldTypeString}}}
+		unitID, otherUnitID := uuid.New(), uuid.New()
 		card := &metadata.Entity{Name: "ContextStaff", Kind: metadata.KindCatalog, Fields: []metadata.Field{
-			{Name: "Account", Type: "reference:_users", RefEntity: "_users"}, {Name: "Department", Type: metadata.FieldTypeString},
+			{Name: "Account", Type: "reference:_users", RefEntity: "_users"}, {Name: "Department", Type: "reference:ContextDepartment", RefEntity: "ContextDepartment"},
 		}}
 		row := &metadata.Entity{Name: "ContextEntry", Kind: metadata.KindCatalog, Fields: []metadata.Field{
-			{Name: "Name", Type: metadata.FieldTypeString}, {Name: "Owner", Type: metadata.FieldTypeString}, {Name: "Department", Type: metadata.FieldTypeString},
+			{Name: "Name", Type: metadata.FieldTypeString}, {Name: "Owner", Type: metadata.FieldTypeString}, {Name: "Department", Type: "reference:ContextDepartment", RefEntity: "ContextDepartment"},
 		}}
-		if err := db.Migrate(ctx, []*metadata.Entity{card, row}); err != nil {
+		if err := db.Migrate(ctx, []*metadata.Entity{department, card, row}); err != nil {
 			t.Fatal(err)
 		}
+		for _, id := range []uuid.UUID{unitID, otherUnitID} {
+			if err := db.Upsert(ctx, department.Name, id, map[string]any{"Name": "synthetic unit"}, department); err != nil {
+				t.Fatal(err)
+			}
+		}
 		cardID := uuid.New()
-		if err := db.Upsert(ctx, card.Name, cardID, map[string]any{"Account": user.ID, "Department": "OWN_UNIT"}, card); err != nil {
+		if err := db.Upsert(ctx, card.Name, cardID, map[string]any{"Account": user.ID, "Department": unitID.String()}, card); err != nil {
 			t.Fatal(err)
 		}
 		for _, data := range []map[string]any{
-			{"Name": "VISIBLE_CONTEXT_ROW", "Owner": user.Login, "Department": "OWN_UNIT"},
-			{"Name": "FOREIGN_USER_ROW", "Owner": "bob", "Department": "OWN_UNIT"},
-			{"Name": "FOREIGN_UNIT_ROW", "Owner": user.Login, "Department": "OTHER_UNIT"},
+			{"Name": "VISIBLE_CONTEXT_ROW", "Owner": user.Login, "Department": unitID.String()},
+			{"Name": "FOREIGN_USER_ROW", "Owner": "bob", "Department": unitID.String()},
+			{"Name": "FOREIGN_UNIT_ROW", "Owner": user.Login, "Department": otherUnitID.String()},
 		} {
 			if err := db.Upsert(ctx, row.Name, uuid.New(), data, row); err != nil {
 				t.Fatal(err)
@@ -56,13 +65,14 @@ func TestReportTrustedContextHTTPMatrix(t *testing.T) {
 		}
 		rep := &reportpkg.Report{Name: "TrustedContext", Query: `ВЫБРАТЬ Name ИЗ Справочник.ContextEntry ГДЕ Owner=&Actor И Department=&Unit`, Params: []reportpkg.Param{
 			{Name: "Actor", Type: "string", Context: &reportpkg.ParamContext{User: "login"}},
-			{Name: "Unit", Type: "string", Context: &reportpkg.ParamContext{UserCard: &auth.UserCardSource{Catalog: card.Name, AccountField: "Account", Field: "Department"}}},
+			{Name: "Unit", Type: "reference:ContextDepartment", Context: &reportpkg.ParamContext{UserCard: &auth.UserCardSource{Catalog: card.Name, AccountField: "Account", Field: "Department"}}},
 		}}
 		user.IsAdmin = false
-		user.Roles = []*auth.Role{{Name: "ContextRunner", Permissions: auth.Permission{Reports: map[string][]string{rep.Name: {"run"}}, Catalogs: map[string][]string{row.Name: {"read"}}}}}
+		user.Roles = []*auth.Role{{Name: "ContextRunner", Permissions: auth.Permission{Reports: map[string][]string{rep.Name: {"run"}}, Catalogs: map[string][]string{row.Name: {"read"}, department.Name: {"read"}}}}}
 		reg := runtime.NewRegistry()
-		reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{card, row}, Reports: []*reportpkg.Report{rep}})
+		reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{department, card, row}, Reports: []*reportpkg.Report{rep}})
 		s := &Server{store: db, reg: reg, interp: interpreter.New(), lockMgr: runtime.NewLockManager(), messages: NewMessageStore(), ops: newOperationLimiter()}
+		s.entitySvc = s.newEntityService(nil)
 		t.Cleanup(s.Close)
 		request := func(method, target string, form url.Values) *http.Request {
 			r := reqWithChi(method, target, form, map[string]string{"name": rep.Name, "format": "excel"})
@@ -74,7 +84,14 @@ func TestReportTrustedContextHTTPMatrix(t *testing.T) {
 				t.Fatal("report context did not constrain actual rows")
 			}
 		}
-		spoof := url.Values{"Actor": {"bob"}, "actor": {"bob"}, "Unit": {"OTHER_UNIT"}}
+		spoof := url.Values{"Actor": {"bob"}, "actor": {"bob"}, "Unit": {otherUnitID.String()}}
+		bound, err := reportpkg.ResolveContextParams(auth.ContextWithUser(ctx, user), rep, map[string]any{"Unit": otherUnitID.String()}, reg, db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if actual, ok := bound["Unit"].(uuid.UUID); !ok || actual != unitID {
+			t.Fatalf("native card reference was reparsed/lost: %T", bound["Unit"])
+		}
 		t.Run("post-spoof", func(t *testing.T) {
 			w := httptest.NewRecorder()
 			s.reportRun(w, request("POST", "/ui/report/TrustedContext", spoof))
@@ -152,8 +169,65 @@ func TestReportTrustedContextHTTPMatrix(t *testing.T) {
 				time.Sleep(time.Millisecond * 10)
 			}
 		})
+		t.Run("variant-context", func(t *testing.T) {
+			rep.Variants = []reportpkg.ReportVariant{{Name: "scoped", Query: rep.Query, Filters: []reportpkg.VariantFilter{{Field: "name", Op: "eq", Value: "VISIBLE_CONTEXT_ROW"}}}}
+			defer func() { rep.Variants = nil }()
+			w := httptest.NewRecorder()
+			s.reportForm(w, request("GET", "/ui/report/TrustedContext?__run=1&__variant=scoped&"+spoof.Encode(), nil))
+			if w.Code != http.StatusOK {
+				t.Fatal(w.Code)
+			}
+			assertRows(w.Body.String())
+		})
+		for _, mode := range []string{"queryless-result-proc", "query-result-proc"} {
+			t.Run(mode, func(t *testing.T) {
+				oldQuery := rep.Query
+				rep.ResultProc = "BuildContext"
+				if mode == "queryless-result-proc" {
+					rep.Query = ""
+				}
+				defer func() { rep.Query = oldQuery; rep.ResultProc = "" }()
+				s.reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{department, card, row}, Reports: []*reportpkg.Report{rep}, Programs: map[string]*ast.Program{rep.Name: mustParse(t, `Функция BuildContext()
+ Д=Новый ТабличныйДокумент;
+ Д.Ячейка(1,1).Текст=Строка(Параметры.Unit);
+ Д.Ячейка(2,1).Текст=Параметры.Actor;
+ Д.Ячейка(3,1).Значение=Результат.Количество();
+ Возврат Д;
+ КонецФункции`)}})
+				s.interp.LookupProc = s.reg.GetModuleProc
+				for _, method := range []string{http.MethodGet, http.MethodPost} {
+					target := "/ui/report/" + rep.Name
+					form := spoof
+					if method == http.MethodGet {
+						target += "?__run=1&" + spoof.Encode()
+						form = nil
+					}
+					response := tabularHTTP(s, user, "context-result-session", method, target, form)
+					if response.Code != http.StatusSeeOther {
+						t.Fatalf("result binding:%d %s", response.Code, response.Body.String())
+					}
+					result := s.tabularResults.items[strings.TrimPrefix(response.Header().Get("Location"), "/ui/tabular/")]
+					if result == nil || result.doc.GetCell(0, 0).Text != unitID.String() || result.doc.GetCell(1, 0).Text != user.Login {
+						t.Fatal("result_proc used client or missing context")
+					}
+					wantRows := "1"
+					if mode == "queryless-result-proc" {
+						wantRows = "0"
+					}
+					if fmt.Sprint(result.doc.GetCell(2, 0).Value) != wantRows {
+						t.Fatalf("result rows %v", result.doc.GetCell(2, 0).Value)
+					}
+					if view := tabularHTTP(s, user, "context-result-session", http.MethodGet, response.Header().Get("Location"), nil); view.Code != http.StatusOK {
+						t.Fatal("bound viewer inaccessible")
+					}
+					if xlsx := tabularHTTP(s, user, "context-result-session", http.MethodGet, response.Header().Get("Location")+"/xlsx", nil); xlsx.Code != http.StatusOK {
+						t.Fatal("bound snapshot export inaccessible")
+					}
+				}
+			})
+		}
 		t.Run("ambiguous-card-refused", func(t *testing.T) {
-			if err := db.Upsert(ctx, card.Name, uuid.New(), map[string]any{"Account": user.ID, "Department": "OTHER_UNIT"}, card); err != nil {
+			if err := db.Upsert(ctx, card.Name, uuid.New(), map[string]any{"Account": user.ID, "Department": otherUnitID.String()}, card); err != nil {
 				t.Fatal(err)
 			}
 			w := httptest.NewRecorder()

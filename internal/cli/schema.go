@@ -205,7 +205,7 @@ func allSchemas() map[string]map[string]any {
 			"options":             arrayOf(stringSchema("Значение")),
 			"period_end":          boolSchema("Для type: date — использовать конец выбранного дня (23:59:59)"),
 			"choice_show_deleted": boolSchema("Показывать в выборе элементы, помеченные на удаление: true — показывать, false — скрывать. По умолчанию при вводе данных скрыты, в параметрах отчётов и отборах списков показаны с отметкой"),
-			"context": reportContextSchema(),
+			"context":             reportContextSchema(),
 		},
 	}
 	// Параметр ОБРАБОТКИ знает обязательность, параметр отчёта — нет
@@ -490,7 +490,7 @@ func allSchemas() map[string]map[string]any {
 			"type":                 "object",
 			"required":             []string{"name"},
 			"additionalProperties": true,
-			"properties": map[string]any{"name": stringSchema("Имя"), "title": stringSchema("Синоним"), "params": arrayOf(param), "query": stringSchema("Текст запроса"), "chart_proc": stringSchema("Процедура диаграммы"), "result_proc": stringSchema("Функция результата ТабличныйДокумент"), "composition": map[string]any{"type": "object"}, "variants": arrayOf(map[string]any{
+			"properties": map[string]any{"drilldowns": reportDrilldownSchema(), "name": stringSchema("Имя"), "title": stringSchema("Синоним"), "params": arrayOf(param), "query": stringSchema("Текст запроса"), "chart_proc": stringSchema("Процедура диаграммы"), "result_proc": stringSchema("Функция результата ТабличныйДокумент"), "composition": map[string]any{"type": "object"}, "variants": arrayOf(map[string]any{
 				"type": "object", "required": []string{"name"}, "properties": map[string]any{
 					"name": stringSchema("Имя варианта"), "query": stringSchema("Запрос варианта; пусто — основной"), "composition": map[string]any{"type": "object"},
 					"filters": arrayOf(map[string]any{"type": "object", "required": []string{"field", "op", "value"}, "properties": map[string]any{
