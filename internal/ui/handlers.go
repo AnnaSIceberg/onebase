@@ -347,7 +347,20 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	if err != nil {
 		return nil, err
 	}
+	endList := serverTimingSpan(ctx, "reference.list."+refEntity.Name)
 	rows, err := s.store.List(ctx, refEntity.Name, refEntity, params)
+	endList()
+	if len(rows) > 0 {
+		st, _ := ctx.Value(serverTimingKey{}).(*serverTiming)
+		if st != nil {
+			st.mu.Lock()
+			if st.counts == nil {
+				st.counts = map[string]int{}
+			}
+			st.counts["rows."+refEntity.Name] += len(rows)
+			st.mu.Unlock()
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +381,9 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	}
 	// choice_row_style: оформление строк выбора (по реквизитам строки и
 	// текущему пользователю) — до сжатия строк до id/_label.
+	endStyle := serverTimingSpan(ctx, "reference.style."+refEntity.Name)
 	s.applyChoiceRowStyles(ctx, refEntity, rows)
+	endStyle()
 	return rows, nil
 }
 

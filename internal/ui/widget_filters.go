@@ -148,6 +148,7 @@ func (s *Server) filterControls(ctx context.Context, lang string, w *metadata.Wi
 // RLS-aware опций сущности; выбранное значение, не попавшее в страницу,
 // дозапрашивается отдельно и не раскрывает недоступные записи.
 func (s *Server) referenceFilterOptions(ctx context.Context, lang string, f metadata.WidgetFilter, currentID string, runner *widget.Runner) ([]widget.FilterOption, error) {
+	defer serverTimingSpan(ctx, "reference."+f.ReferenceEntity())()
 	entity := s.reg.GetEntity(f.ReferenceEntity())
 	if entity == nil {
 		return nil, nil

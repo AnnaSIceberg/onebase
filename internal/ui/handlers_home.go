@@ -174,6 +174,7 @@ func (s *Server) hiddenHomeRedirect(r *http.Request, base string) (string, bool)
 }
 
 func (s *Server) homeDashboardData(r *http.Request) map[string]any {
+	defer serverTimingSpan(r.Context(), "dashboard")()
 	hp := s.effectiveHomePage(r.URL.Query().Get("subsystem"))
 	// Соблюдение настроенных рядов (WYSIWYG) включается явно через layout: rows.
 	honor := hp != nil && hp.Layout == "rows"
@@ -203,9 +204,13 @@ func (s *Server) homeDashboardData(r *http.Request) map[string]any {
 		// Фильтры полной страницы (план 182D): URL-значения применяются к данным
 		// толерантно — мусор трактуется как пустой отбор, страница не ломается.
 		// Иначе после F5 контролы заполнены, а строки неотфильтрованы.
+		endRun := serverTimingSpan(r.Context(), "run."+wMeta.Name)
 		res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: lenientWidgetFilterParams(r, wMeta)})
+		endRun()
 		res.Title = wMeta.DisplayTitle(lang)
+		endDecorate := serverTimingSpan(r.Context(), "decorate."+wMeta.Name)
 		s.decorateRefreshResult(r, wMeta, &res, runner)
+		endDecorate()
 		return res
 	}
 	hiddenByPanel := s.hiddenOnHomeBySidePanel(r)
@@ -270,7 +275,9 @@ func (s *Server) decorateRefreshResult(r *http.Request, wMeta *metadata.Widget, 
 	if res == nil || res.AccessDenied {
 		return
 	}
+	endWidths := serverTimingSpan(r.Context(), "widths."+res.Name)
 	s.prepareWidgetColumnWidths(r, res)
+	endWidths()
 
 	if res != nil && wMeta != nil {
 		res.Background = csssafe.Color(wMeta.Background)

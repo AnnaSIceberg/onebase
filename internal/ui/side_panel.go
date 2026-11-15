@@ -65,6 +65,7 @@ func sidePanelRolesMatch(sp *metadata.HomeSidePanel, user *auth.User) bool {
 // sidePanelData — карточка виджета панели тем же путём, что карточка главной
 // (Runner + decorateRefreshResult: обновление по refresh_on, кнопка ↻).
 func (s *Server) sidePanelData(r *http.Request) map[string]any {
+	defer serverTimingSpan(r.Context(), "sidepanel")()
 	sp, wMeta := s.sidePanelFor(r)
 	if sp == nil {
 		return nil
