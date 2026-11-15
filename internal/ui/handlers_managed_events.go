@@ -1240,7 +1240,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	thisObj.layouts = &tabularLayouts{s: s, owner: entity.Name}
 	installTabularLayouts(vars, thisObj.layouts)
 	if eventName == string(metadata.FormEventDrilldown) {
-		if err := s.addTabularDrilldownVars(r, tabularScope{Kind: string(entity.Kind), Name: entity.Name, ID: rawID}, form, elementName, vars); err != nil {
+		if err := s.addTabularDrilldownVars(r, tabularScope{Kind: string(entity.Kind), Name: entity.Name, ID: rawID}, form, elementName, vars, thisObj.refResolver); err != nil {
 			respondJSON(enc, formEventResponse{Error: err.Error()})
 			return
 		}
@@ -3094,7 +3094,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		thisObj.layouts = &tabularLayouts{s: s, owner: proc.Name}
 		installTabularLayouts(vars, thisObj.layouts)
 		if eventName == string(metadata.FormEventDrilldown) {
-			if err := s.addTabularDrilldownVars(r, tabularScope{Kind: "processor", Name: proc.Name}, form, elementName, vars); err != nil {
+			if err := s.addTabularDrilldownVars(r, tabularScope{Kind: "processor", Name: proc.Name}, form, elementName, vars, thisObj.refResolver); err != nil {
 				respondJSON(enc, formEventResponse{Error: err.Error()})
 				return
 			}
