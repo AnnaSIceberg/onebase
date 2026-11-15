@@ -1,0 +1,561 @@
+{
+  "status": "B21_DEV_BUILD_LOCAL_GREEN_INDEPENDENT_PG_AND_NATIVE_PENDING",
+  "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source_binding": "combined runtime integration source tree; upstream source heads are separate accepted inputs",
+  "base_b20": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+  "upstream_inputs": {
+    "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+    "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+    "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+  },
+  "branch": "feature/reports-p4-p7-b21-runtime-20261115",
+  "pushed": true,
+  "artifacts": {
+    "api_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-p4-p7-b21-api-linux-amd64.test",
+      "sha256": "8f3025dc0df9e43923761fda9f8c995399ce0745d302b0b2daacaa402b728bc9",
+      "bytes": 63505388,
+      "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+        "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+        "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-api_pg-buildinfo.txt",
+      "buildinfo_sha256": "8c451e6abf7e4a8c636e427f2c2117e7258ee8d2c3ba443dab5374d105e16e34",
+      "embedded_vcs_revision_present": false,
+      "revision_binding": "clean combined runtime source tree + command receipts + artifact SHA; do not invent .test VCS revision"
+    },
+    "ui_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-p4-p7-b21-ui-linux-amd64.test",
+      "sha256": "e07da9bd2419585c4c94b4303b49e5ca1632570db5322d375b93f7b80da74f66",
+      "bytes": 84439231,
+      "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+        "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+        "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-ui_pg-buildinfo.txt",
+      "buildinfo_sha256": "7436ff1b8d48f795be33ca94adbb553d892fa95717fc8ddd27e6f50b68bb988f",
+      "embedded_vcs_revision_present": false,
+      "revision_binding": "clean combined runtime source tree + command receipts + artifact SHA; do not invent .test VCS revision"
+    },
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b21-report-context-drilldown-linux-amd64",
+      "sha256": "881d78ad9d6d37916350b6bca099a8e7b9208f14a35b8f742f7e3776c92f300a",
+      "bytes": 78406461,
+      "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+        "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+        "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-linux-buildinfo.txt",
+      "buildinfo_sha256": "ed4ca7f9b81f6035bd42cf59d59ea04790afaa250ddbaa9737538dea4249b705",
+      "embedded_vcs_revision_present": false,
+      "revision_binding": "clean combined runtime source tree + command receipts + artifact SHA; do not invent .test VCS revision"
+    },
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b21-report-context-drilldown-windows-amd64.exe",
+      "sha256": "e9bbbce60ce5b67e1867c0087eda77897b8e6ec540638bd8164814127bf6eb06",
+      "bytes": 79383040,
+      "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+        "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+        "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-windows-buildinfo.txt",
+      "buildinfo_sha256": "81d6fe39bc55d0b41a44e591fb5776eaff37cd0f5f8a4662b6c87763b5e46f22",
+      "embedded_vcs_revision_present": false,
+      "revision_binding": "clean combined runtime source tree + command receipts + artifact SHA; do not invent .test VCS revision"
+    }
+  },
+  "local_tests": {
+    "pass_leaf": 383,
+    "pg_root_skip": 14,
+    "pg_skip_not_pass": true,
+    "summary": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-local-targeted-summary.json",
+    "summary_sha256": "448902f4ec5a330fd226ba7346342a4102e520b9ec01c99820b5d25d0bc22b43"
+  },
+  "build_all": {
+    "exit": 0,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-build-all.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "i18n_en": {
+    "exit": 0,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-i18n-en.log",
+    "sha256": "3f1aeb0ee17a5d05b77d2a87ff38017caa0944c969d3eb27ea368ebc603d9cf6"
+  },
+  "expected": {
+    "api_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-api_pg-expected.json",
+      "sha256": "cceca3983c919666cb366780421a102d02e9b60b8feb42f1a11aecc5b514d6b6",
+      "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+        "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+        "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+      },
+      "regex": "^(TestAPIReportTrustedContextMatrix|TestReportVariantDataMatrix)$",
+      "roots": [
+        "TestAPIReportTrustedContextMatrix",
+        "TestReportVariantDataMatrix"
+      ],
+      "expected_subtests": [
+        "TestAPIReportTrustedContextMatrix/postgres/reference-join-read-denied",
+        "TestAPIReportTrustedContextMatrix/postgres/spoof-0",
+        "TestAPIReportTrustedContextMatrix/postgres/spoof-1",
+        "TestAPIReportTrustedContextMatrix/postgres/spoof-2",
+        "TestAPIReportTrustedContextMatrix/postgres/spoof-3",
+        "TestAPIReportTrustedContextMatrix/sqlite/reference-join-read-denied",
+        "TestAPIReportTrustedContextMatrix/sqlite/spoof-0",
+        "TestAPIReportTrustedContextMatrix/sqlite/spoof-1",
+        "TestAPIReportTrustedContextMatrix/sqlite/spoof-2",
+        "TestAPIReportTrustedContextMatrix/sqlite/spoof-3",
+        "TestReportVariantDataMatrix/postgres",
+        "TestReportVariantDataMatrix/sqlite"
+      ],
+      "expected_total": 12,
+      "sqlite": 6,
+      "postgres": 6,
+      "local_pg_status": "SKIP_NOT_PASS"
+    },
+    "ui_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-ui_pg-expected.json",
+      "sha256": "35105b0c2e1290bffdf492a58bb6ed43967caa872ed1fff38b5be42c1d8b4e7e",
+      "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+        "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+        "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+      },
+      "regex": "^(TestTabularPayloadHTTPMatrix|TestTabularLayoutReportHTTPMatrix|TestTabularReportResultHTTPMatrix|TestTabularManagedFieldHTTPMatrix|TestTabularDrilldownHTTPMatrix|TestTabularSizeHTTPMatrix|TestReportFlatColumnsHTTP|TestTabularAutoScaleHTTPMatrix|TestTabularQueryInputLimitHTTPMatrix|TestTabularXLSXDimensionHTTPMatrix|TestReportTrustedContextHTTPMatrix|TestReportTypedDrilldownHTTPMatrix)$",
+      "roots": [
+        "TestTabularPayloadHTTPMatrix",
+        "TestTabularLayoutReportHTTPMatrix",
+        "TestTabularReportResultHTTPMatrix",
+        "TestTabularManagedFieldHTTPMatrix",
+        "TestTabularDrilldownHTTPMatrix",
+        "TestTabularSizeHTTPMatrix",
+        "TestReportFlatColumnsHTTP",
+        "TestTabularAutoScaleHTTPMatrix",
+        "TestTabularQueryInputLimitHTTPMatrix",
+        "TestTabularXLSXDimensionHTTPMatrix",
+        "TestReportTrustedContextHTTPMatrix",
+        "TestReportTypedDrilldownHTTPMatrix"
+      ],
+      "expected_subtests": [
+        "TestReportFlatColumnsHTTP/postgres/drilldown-detail12",
+        "TestReportFlatColumnsHTTP/postgres/flat",
+        "TestReportFlatColumnsHTTP/postgres/flat-detail12",
+        "TestReportFlatColumnsHTTP/postgres/flat-drilldown",
+        "TestReportFlatColumnsHTTP/postgres/grouped",
+        "TestReportFlatColumnsHTTP/postgres/grouped-detail12",
+        "TestReportFlatColumnsHTTP/postgres/incomplete-drilldown",
+        "TestReportFlatColumnsHTTP/sqlite/drilldown-detail12",
+        "TestReportFlatColumnsHTTP/sqlite/flat",
+        "TestReportFlatColumnsHTTP/sqlite/flat-detail12",
+        "TestReportFlatColumnsHTTP/sqlite/flat-drilldown",
+        "TestReportFlatColumnsHTTP/sqlite/grouped",
+        "TestReportFlatColumnsHTTP/sqlite/grouped-detail12",
+        "TestReportFlatColumnsHTTP/sqlite/incomplete-drilldown",
+        "TestReportTrustedContextHTTPMatrix/postgres/ambiguous-card-refused",
+        "TestReportTrustedContextHTTPMatrix/postgres/background-excel-spoof",
+        "TestReportTrustedContextHTTPMatrix/postgres/excel-spoof",
+        "TestReportTrustedContextHTTPMatrix/postgres/get-spoof",
+        "TestReportTrustedContextHTTPMatrix/postgres/pdf-spoof",
+        "TestReportTrustedContextHTTPMatrix/postgres/post-spoof",
+        "TestReportTrustedContextHTTPMatrix/postgres/query-result-proc",
+        "TestReportTrustedContextHTTPMatrix/postgres/queryless-result-proc",
+        "TestReportTrustedContextHTTPMatrix/postgres/variant-context",
+        "TestReportTrustedContextHTTPMatrix/sqlite/ambiguous-card-refused",
+        "TestReportTrustedContextHTTPMatrix/sqlite/background-excel-spoof",
+        "TestReportTrustedContextHTTPMatrix/sqlite/excel-spoof",
+        "TestReportTrustedContextHTTPMatrix/sqlite/get-spoof",
+        "TestReportTrustedContextHTTPMatrix/sqlite/pdf-spoof",
+        "TestReportTrustedContextHTTPMatrix/sqlite/post-spoof",
+        "TestReportTrustedContextHTTPMatrix/sqlite/query-result-proc",
+        "TestReportTrustedContextHTTPMatrix/sqlite/queryless-result-proc",
+        "TestReportTrustedContextHTTPMatrix/sqlite/variant-context",
+        "TestReportTypedDrilldownHTTPMatrix/postgres/composed",
+        "TestReportTypedDrilldownHTTPMatrix/postgres/flat",
+        "TestReportTypedDrilldownHTTPMatrix/postgres/flat12-detail-fields",
+        "TestReportTypedDrilldownHTTPMatrix/postgres/forged-row-id",
+        "TestReportTypedDrilldownHTTPMatrix/postgres/forged-selector",
+        "TestReportTypedDrilldownHTTPMatrix/postgres/invalid-id-and-index",
+        "TestReportTypedDrilldownHTTPMatrix/postgres/live-rights-revoked",
+        "TestReportTypedDrilldownHTTPMatrix/postgres/report-run-revoked",
+        "TestReportTypedDrilldownHTTPMatrix/sqlite/composed",
+        "TestReportTypedDrilldownHTTPMatrix/sqlite/flat",
+        "TestReportTypedDrilldownHTTPMatrix/sqlite/flat12-detail-fields",
+        "TestReportTypedDrilldownHTTPMatrix/sqlite/forged-row-id",
+        "TestReportTypedDrilldownHTTPMatrix/sqlite/forged-selector",
+        "TestReportTypedDrilldownHTTPMatrix/sqlite/invalid-id-and-index",
+        "TestReportTypedDrilldownHTTPMatrix/sqlite/live-rights-revoked",
+        "TestReportTypedDrilldownHTTPMatrix/sqlite/report-run-revoked",
+        "TestTabularAutoScaleHTTPMatrix/postgres/kpi-63",
+        "TestTabularAutoScaleHTTPMatrix/postgres/kpi-67",
+        "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-63",
+        "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-67",
+        "TestTabularDrilldownHTTPMatrix/postgres/denied-target",
+        "TestTabularDrilldownHTTPMatrix/postgres/typed-form-event",
+        "TestTabularDrilldownHTTPMatrix/postgres/typed-link",
+        "TestTabularDrilldownHTTPMatrix/postgres/wrong-cell",
+        "TestTabularDrilldownHTTPMatrix/postgres/wrong-session",
+        "TestTabularDrilldownHTTPMatrix/postgres/wrong-token",
+        "TestTabularDrilldownHTTPMatrix/sqlite/denied-target",
+        "TestTabularDrilldownHTTPMatrix/sqlite/typed-form-event",
+        "TestTabularDrilldownHTTPMatrix/sqlite/typed-link",
+        "TestTabularDrilldownHTTPMatrix/sqlite/wrong-cell",
+        "TestTabularDrilldownHTTPMatrix/sqlite/wrong-session",
+        "TestTabularDrilldownHTTPMatrix/sqlite/wrong-token",
+        "TestTabularLayoutReportHTTPMatrix/postgres",
+        "TestTabularLayoutReportHTTPMatrix/sqlite",
+        "TestTabularManagedFieldHTTPMatrix/postgres",
+        "TestTabularManagedFieldHTTPMatrix/sqlite",
+        "TestTabularPayloadHTTPMatrix/postgres/callback-copy",
+        "TestTabularPayloadHTTPMatrix/postgres/current-rls-denied",
+        "TestTabularPayloadHTTPMatrix/postgres/expired",
+        "TestTabularPayloadHTTPMatrix/postgres/export-does-not-call",
+        "TestTabularPayloadHTTPMatrix/postgres/foreign-session",
+        "TestTabularPayloadHTTPMatrix/postgres/nested-roundtrip",
+        "TestTabularPayloadHTTPMatrix/postgres/question-answer",
+        "TestTabularPayloadHTTPMatrix/postgres/question-current-rls-denied",
+        "TestTabularPayloadHTTPMatrix/postgres/tampered-client-data",
+        "TestTabularPayloadHTTPMatrix/postgres/wrong-cell",
+        "TestTabularPayloadHTTPMatrix/sqlite/callback-copy",
+        "TestTabularPayloadHTTPMatrix/sqlite/current-rls-denied",
+        "TestTabularPayloadHTTPMatrix/sqlite/expired",
+        "TestTabularPayloadHTTPMatrix/sqlite/export-does-not-call",
+        "TestTabularPayloadHTTPMatrix/sqlite/foreign-session",
+        "TestTabularPayloadHTTPMatrix/sqlite/nested-roundtrip",
+        "TestTabularPayloadHTTPMatrix/sqlite/question-answer",
+        "TestTabularPayloadHTTPMatrix/sqlite/question-current-rls-denied",
+        "TestTabularPayloadHTTPMatrix/sqlite/tampered-client-data",
+        "TestTabularPayloadHTTPMatrix/sqlite/wrong-cell",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/below-boundary",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/disabled",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/exact-boundary",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/limit-hit",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/module-must-not-run",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/no-stale-viewer",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/ordinary-disabled",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/ordinary-warning",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/below-boundary",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/disabled",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/exact-boundary",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/limit-hit",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/module-must-not-run",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/no-stale-viewer",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/ordinary-disabled",
+        "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/ordinary-warning",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/below-boundary",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/disabled",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/exact-boundary",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/limit-hit",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/module-must-not-run",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/no-stale-viewer",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-disabled",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-warning",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/below-boundary",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/disabled",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/exact-boundary",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/limit-hit",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/module-must-not-run",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/no-stale-viewer",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-disabled",
+        "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-warning",
+        "TestTabularReportResultHTTPMatrix/postgres/expired",
+        "TestTabularReportResultHTTPMatrix/postgres/foreign-session",
+        "TestTabularReportResultHTTPMatrix/postgres/foreign-user",
+        "TestTabularReportResultHTTPMatrix/postgres/metadata-reloaded",
+        "TestTabularReportResultHTTPMatrix/postgres/revoked-role",
+        "TestTabularReportResultHTTPMatrix/postgres/same-instance-export",
+        "TestTabularReportResultHTTPMatrix/sqlite/expired",
+        "TestTabularReportResultHTTPMatrix/sqlite/foreign-session",
+        "TestTabularReportResultHTTPMatrix/sqlite/foreign-user",
+        "TestTabularReportResultHTTPMatrix/sqlite/metadata-reloaded",
+        "TestTabularReportResultHTTPMatrix/sqlite/revoked-role",
+        "TestTabularReportResultHTTPMatrix/sqlite/same-instance-export",
+        "TestTabularSizeHTTPMatrix/postgres/combined-payload-bytes",
+        "TestTabularSizeHTTPMatrix/postgres/control-1308",
+        "TestTabularSizeHTTPMatrix/postgres/kpi-53893",
+        "TestTabularSizeHTTPMatrix/postgres/max-100000",
+        "TestTabularSizeHTTPMatrix/postgres/over-bytes",
+        "TestTabularSizeHTTPMatrix/postgres/over-cells",
+        "TestTabularSizeHTTPMatrix/postgres/over-columns",
+        "TestTabularSizeHTTPMatrix/postgres/over-header",
+        "TestTabularSizeHTTPMatrix/postgres/over-rectangle",
+        "TestTabularSizeHTTPMatrix/postgres/over-rows",
+        "TestTabularSizeHTTPMatrix/sqlite/combined-payload-bytes",
+        "TestTabularSizeHTTPMatrix/sqlite/control-1308",
+        "TestTabularSizeHTTPMatrix/sqlite/kpi-53893",
+        "TestTabularSizeHTTPMatrix/sqlite/max-100000",
+        "TestTabularSizeHTTPMatrix/sqlite/over-bytes",
+        "TestTabularSizeHTTPMatrix/sqlite/over-cells",
+        "TestTabularSizeHTTPMatrix/sqlite/over-columns",
+        "TestTabularSizeHTTPMatrix/sqlite/over-header",
+        "TestTabularSizeHTTPMatrix/sqlite/over-rectangle",
+        "TestTabularSizeHTTPMatrix/sqlite/over-rows",
+        "TestTabularXLSXDimensionHTTPMatrix/postgres/autoscale",
+        "TestTabularXLSXDimensionHTTPMatrix/postgres/collapsed",
+        "TestTabularXLSXDimensionHTTPMatrix/postgres/empty",
+        "TestTabularXLSXDimensionHTTPMatrix/postgres/kpi-53893",
+        "TestTabularXLSXDimensionHTTPMatrix/postgres/merged-span",
+        "TestTabularXLSXDimensionHTTPMatrix/postgres/offset",
+        "TestTabularXLSXDimensionHTTPMatrix/postgres/styled-tail",
+        "TestTabularXLSXDimensionHTTPMatrix/sqlite/autoscale",
+        "TestTabularXLSXDimensionHTTPMatrix/sqlite/collapsed",
+        "TestTabularXLSXDimensionHTTPMatrix/sqlite/empty",
+        "TestTabularXLSXDimensionHTTPMatrix/sqlite/kpi-53893",
+        "TestTabularXLSXDimensionHTTPMatrix/sqlite/merged-span",
+        "TestTabularXLSXDimensionHTTPMatrix/sqlite/offset",
+        "TestTabularXLSXDimensionHTTPMatrix/sqlite/styled-tail"
+      ],
+      "expected_total": 166,
+      "sqlite": 83,
+      "postgres": 83,
+      "local_pg_status": "SKIP_NOT_PASS"
+    }
+  },
+  "pg_status": "PENDING root exact prebuilt API12+UI166; source PG18/14 not substituted",
+  "native_status": "PENDING separate Chrome slot; Windows and Linux proofs must remain separate",
+  "mandatory_runtime_tests": [
+    "native DB UUID user_card UI/API/export and queryless/query result_proc; malformed/foreign spoof ignored; reference join read denial retained",
+    "native configurator F1 file+SQLite configDB roundtrip context preserved; types/name readonly; unsafe change refused",
+    "P4 flat/composed/DetailFields12 and row actions; current RBAC/RLS/blob/attachment checks; protected native redirects",
+    "P2 variant queries/filters; P3 DetailFields/rowWithDetail/flat12 labels",
+    "P1 payload/question and snapshot ownership/ACL; B19 input truncation fail-closed; B20 XLSX used range"
+  ],
+  "retained_failed_attempts": [
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-new-targeted-attempt1.jsonl",
+      "sha256": "ac8622096346799255930fbed496ff2b948fa3ffab36018efe654674b9bd2f9e",
+      "classification": "new test adapter Cell->GetCell and missing target-read permission for compiler implicit reference JOIN; no product guard loosened; explicit join-read denied regression added"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-new-targeted-attempt2.jsonl",
+      "sha256": "60461f5891b76fad523dedb3143374e02dbf400dcdb515e8a2286947eb335e1c",
+      "classification": "corrected targeted GREEN before final variant cases; final pinned gates authoritative"
+    }
+  ],
+  "protected_paths_byte_equal_to_b20": [
+    "internal/sheet",
+    "internal/printform",
+    "internal/query",
+    "internal/ui/tabular_result.go",
+    "internal/ui/handlers_events.go",
+    "internal/ui/handlers_entity.go"
+  ],
+  "changed_files": [
+    {
+      "path": "CHANGELOG.md",
+      "sha256_git_blob": "dabe27789c6119da2f5f0c87fdd6aa8d9ca099547f2e1dd4e2d0f5b93160a989",
+      "bytes": 259448
+    },
+    {
+      "path": "docs/features.md",
+      "sha256_git_blob": "1d491f4dd109723197cd193519b1b3174ff3bf8b93649cc1d263fc6ac9f41169",
+      "bytes": 775639
+    },
+    {
+      "path": "docs/report-trusted-context.md",
+      "sha256_git_blob": "2bf1fee18d018a8bec2f744c692eb8fa7df4e7ceb231dac83eeff5c45a5f125d",
+      "bytes": 5416
+    },
+    {
+      "path": "docs/report-typed-drilldowns.md",
+      "sha256_git_blob": "fdeb48559aa7383e7d9db954e61e409b9a3bce180f224ae3e6da96c79b32d910",
+      "bytes": 6070
+    },
+    {
+      "path": "internal/access/scalar_user_card.go",
+      "sha256_git_blob": "39018918889eca39b9ab1c31a9824f27223a6ad21eb150789c249743525429f7",
+      "bytes": 1189
+    },
+    {
+      "path": "internal/api/report_context_test.go",
+      "sha256_git_blob": "ab112ebc38aee954196e035fa24b914bf6d549188e46430695de46f9c1887bb8",
+      "bytes": 6267
+    },
+    {
+      "path": "internal/api/v2.go",
+      "sha256_git_blob": "33e0db7a0d10127a48021c6d70bb21f43176bbbadb5924b83d6176418dcac92d",
+      "bytes": 49472
+    },
+    {
+      "path": "internal/cli/schema.go",
+      "sha256_git_blob": "7467e3a68bf45e75dd239b9d779bdfd789761b712d854ccfe10cba754e916bec",
+      "bytes": 48635
+    },
+    {
+      "path": "internal/cli/schema_report_context.go",
+      "sha256_git_blob": "b9ff8ead59f163ccde2756a77aabbdc4e5bfba9299661a97e3bc528e7ab7d21e",
+      "bytes": 1008
+    },
+    {
+      "path": "internal/cli/schema_report_drilldown.go",
+      "sha256_git_blob": "39f3c9ba3966b0b30b9c9675adba4e64597beb13a0d9ab26ab4aac58dc557d39",
+      "bytes": 938
+    },
+    {
+      "path": "internal/configcheck/full.go",
+      "sha256_git_blob": "92a702de60946d3c137fb0823815641c9beb6e3a697fd651344545129af9c906",
+      "bytes": 9638
+    },
+    {
+      "path": "internal/configcheck/lint.go",
+      "sha256_git_blob": "2ea3bcdc0188b4f049a2eed0606832be2872914d8003c8b2df05d74b5d8a6eab",
+      "bytes": 94034
+    },
+    {
+      "path": "internal/configcheck/report_context.go",
+      "sha256_git_blob": "4ef189025275f66452f0e9ec13c50c8058612be5a680f8100797202a3991c761",
+      "bytes": 691
+    },
+    {
+      "path": "internal/configcheck/report_context_test.go",
+      "sha256_git_blob": "dc428fc5c8227de923355ede2b00cc9cc48082a5ceb0dda09a4c2c6a0de129dc",
+      "bytes": 2006
+    },
+    {
+      "path": "internal/configcheck/report_drilldown.go",
+      "sha256_git_blob": "27fd2f7ce82bf873df1aa71017c5d7de3d0878eebd09c86b0e5c7cbe0bbce431",
+      "bytes": 552
+    },
+    {
+      "path": "internal/launcher/configurator_load.go",
+      "sha256_git_blob": "7eb2e7e8287416fdb6a23fe9c0be31f2f5f26b71d4ba6a0d88febfeba0a6ff19",
+      "bytes": 40764
+    },
+    {
+      "path": "internal/launcher/configurator_report_context_test.go",
+      "sha256_git_blob": "8346c7f292e34c53fab4a46b656d558ca1b23349f8200fe247738a023f312509",
+      "bytes": 8673
+    },
+    {
+      "path": "internal/launcher/configurator_report_module.go",
+      "sha256_git_blob": "ae1ad04794710c3512414287e5d2aa40904bb23be76d677de94830277d91a1fc",
+      "bytes": 12413
+    },
+    {
+      "path": "internal/launcher/configurator_tmpl_tree.go",
+      "sha256_git_blob": "6089e53580d04a6628022e9913d850ecb8b3f94111b7d0224a115324ad34834b",
+      "bytes": 169840
+    },
+    {
+      "path": "internal/launcher/configurator_types.go",
+      "sha256_git_blob": "301368d4833d07833197376ca07ced1d1ca49bd8e4f5b40d34efe07f6a1b9a41",
+      "bytes": 36512
+    },
+    {
+      "path": "internal/report/context.go",
+      "sha256_git_blob": "687870e335c5299e0430136859bab1718d16e9999055f34ff974b774a502776e",
+      "bytes": 5287
+    },
+    {
+      "path": "internal/report/context_test.go",
+      "sha256_git_blob": "316d3729f32b37f3f4839aad88420e23957eb4c642b7143d231195cc84f563b1",
+      "bytes": 3727
+    },
+    {
+      "path": "internal/report/drilldown.go",
+      "sha256_git_blob": "a4b4343bd7c410385122de8956163b53d28a6a1fd7d80bb635ef153926cd90df",
+      "bytes": 3454
+    },
+    {
+      "path": "internal/report/drilldown_test.go",
+      "sha256_git_blob": "5a0611f6f08d6cbeb4f555bd1a9b41d75a0803046e05ba68f6ebc023c5a3ea29",
+      "bytes": 2424
+    },
+    {
+      "path": "internal/report/report.go",
+      "sha256_git_blob": "8f16d095db1eabdc77c58a0c56f18e60f3547264a750df984b125381b9201548",
+      "bytes": 11042
+    },
+    {
+      "path": "internal/ui/handlers_reports.go",
+      "sha256_git_blob": "22aa1042d565e1e4d50c61e658efcbbe981d8a7ffaa67649ed2893b40daf9023",
+      "bytes": 34011
+    },
+    {
+      "path": "internal/ui/report_compose_render.go",
+      "sha256_git_blob": "8b82886038d3ba91d3b236a024f83ccfa8ca8101a8d30641fbf3ef3e1ead9358",
+      "bytes": 17949
+    },
+    {
+      "path": "internal/ui/report_context_test.go",
+      "sha256_git_blob": "4e0caa05f795c73b120d73bdb3972ed42fd2f29765d3d5d14dd5376326d761e6",
+      "bytes": 10244
+    },
+    {
+      "path": "internal/ui/report_drilldown.go",
+      "sha256_git_blob": "30db9418d5262630abdf21ba399dc9b2eb3fcc95cfc12eb41f9d9adf2942f4cd",
+      "bytes": 4546
+    },
+    {
+      "path": "internal/ui/report_drilldown_test.go",
+      "sha256_git_blob": "3c51602fcc30885744200e5c3955c9e04d653746a7a84ee6d918ca8b3575c968",
+      "bytes": 10391
+    },
+    {
+      "path": "internal/ui/report_settings.go",
+      "sha256_git_blob": "c531d88bd96d0457768de10daf447bbf891f892deeece349d44dd5ea7ee052e1",
+      "bytes": 26989
+    },
+    {
+      "path": "internal/ui/server.go",
+      "sha256_git_blob": "0f8e72870f684a4e4ae4001407a3f963efb67a79e9496b4027432f8ad9eb2ba5",
+      "bytes": 38665
+    },
+    {
+      "path": "internal/ui/templates.go",
+      "sha256_git_blob": "07131aaa0521c4c141e917876200ad8950959f61a53a9a6ba3954204108d9d72",
+      "bytes": 313699
+    }
+  ],
+  "frozen_b20_verified": [
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b20-xlsx-dimension-DEV-final.json",
+      "sha256": "f03a5d04a473f2978927bbc32485bc8b4ba422bb4d117be40b408d8fb6b8946b"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b20-xlsx-dimension-linux-amd64",
+      "sha256": "185925eff94b53424eb2a5e2c08d62bb98222b900d35d5761d313d0f914d559a"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b20-xlsx-dimension-windows-amd64.exe",
+      "sha256": "683984d7a6b7342d20124dd295cc94bc8be1f9ee9e38e50efd3404228ca70c07"
+    }
+  ],
+  "go_end": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-go-end-processes.json",
+    "sha256": "0815a4bc65625864c3a20598f5e895e2ab10ecd4c915080fc170949971f31f54",
+    "count": 0,
+    "explicit": true
+  },
+  "scope": {
+    "sdk": "DEV only",
+    "shared_changes": false,
+    "db_copies": 0,
+    "Chrome_started": false,
+    "release": "prepare NOT execute before evening user instruction; :8444 B18 untouched",
+    "after_release_ownership": "platform2 handles ACL403vs500 and ordinary-report XLSXdimension separately; not included"
+  }
+}

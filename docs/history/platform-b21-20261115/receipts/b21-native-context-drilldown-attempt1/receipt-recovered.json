@@ -1,0 +1,17 @@
+{
+  "status": "FAIL_SETUP_BEFORE_SERVER_CHROME",
+  "SDK_UNCHANGED": true,
+  "failure_class": "own fixture SQL reference names: account/department instead of physical account_id/department_id",
+  "original_exception_not_recorded": true,
+  "cleanup_fault": "fixture SQLite connection not closed on error, now original Python process exited and RO helper closed",
+  "server_started": false,
+  "browser_started": false,
+  "go_started": false,
+  "cleanup": {
+    "app_not_started": true,
+    "port_closed": true,
+    "db_removed": true,
+    "tunnel_not_used": true
+  },
+  "db_copies": 0
+}

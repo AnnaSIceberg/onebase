@@ -1,0 +1,2034 @@
+{
+  "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "upstream_inputs": {
+    "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+    "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+    "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+  },
+  "runs": [
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-report-full.jsonl",
+      "sha256": "830d40dae8128f9c4fd15618fbfb7dbf58fc1547f86fc7bc15ffbd1daad801a4",
+      "counts": {
+        "pass": 219
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestActiveComposition",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseAppearance",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseAppearanceCollapseTo",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseAppearanceDefault",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseComposition",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseMeasureAlign",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseNoComposition",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseNoVariants",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_bool_\u2014_\u043f\u0440\u043e\u0447\u0435\u0435_\u043b\u043e\u0436\u043d\u043e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_bool_\u2014_\u0448\u0438\u0440\u043e\u043a\u0438\u0439_\u043d\u0430\u0431\u043e\u0440",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_boolean_\u2014_\u0442\u043e\u0442_\u0436\u0435_\u043d\u0430\u0431\u043e\u0440",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_datetime_\u0441_\u0441\u0435\u043a\u0443\u043d\u0434\u0430\u043c\u0438",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_select_\u2014_\u0441\u0442\u0440\u043e\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u0434\u0430\u0442\u0430_\u0440\u0430\u0437\u0431\u0438\u0440\u0430\u0435\u0442\u0441\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u0438\u043c\u044f_datetime_\u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0443\u0435\u0442\u0441\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u0438\u043c\u044f_\u0442\u0438\u043f\u0430_\u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0443\u0435\u0442\u0441\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u043d\u0435\u0433\u043e\u0434\u043d\u0430\u044f_\u0434\u0430\u0442\u0430_\u2014_\u043e\u0448\u0438\u0431\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u043d\u0435\u0433\u043e\u0434\u043d\u043e\u0435_\u0447\u0438\u0441\u043b\u043e_\u2014_\u043e\u0448\u0438\u0431\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u043d\u0435\u0433\u043e\u0434\u043d\u044b\u0439_datetime_\u2014_\u043e\u0448\u0438\u0431\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439_\u0442\u0438\u043f_\u2014_\u0441\u0442\u0440\u043e\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u043f\u0443\u0441\u0442\u0430\u044f_\u0434\u0430\u0442\u0430_\u2014_nil",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u043f\u0443\u0441\u0442\u043e\u0439_BOOL_\u2014_nil",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u043f\u0443\u0441\u0442\u043e\u0439_boolean_\u2014_nil",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u043f\u0443\u0441\u0442\u043e\u0439_\u0442\u043e\u0447\u043d\u044b\u0439_bool_\u2014_\u041b\u043e\u0436\u044c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/api:_\u0447\u0438\u0441\u043b\u043e_\u0440\u0430\u0437\u0431\u0438\u0440\u0430\u0435\u0442\u0441\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_bool_\u2014_yes_\u043d\u0435_\u0441\u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_bool_\u2014_\u0443\u0437\u043a\u0438\u0439_\u043d\u0430\u0431\u043e\u0440",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_boolean_\u043d\u0435_\u044f\u0432\u043b\u044f\u0435\u0442\u0441\u044f_bool",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_datetime_\u0431\u0435\u0437_\u0441\u0435\u043a\u0443\u043d\u0434",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_datetime_\u043f\u0440\u0438\u043d\u0438\u043c\u0430\u0435\u0442_\u043e\u0434\u043d\u0443_\u0434\u0430\u0442\u0443",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_datetime_\u0441_\u0441\u0435\u043a\u0443\u043d\u0434\u0430\u043c\u0438",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_select_\u2014_\u0441\u0442\u0440\u043e\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_\u0434\u0430\u0442\u0430_\u0440\u0430\u0437\u0431\u0438\u0440\u0430\u0435\u0442\u0441\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_\u0438\u043c\u044f_\u0442\u0438\u043f\u0430_\u0441\u0440\u0430\u0432\u043d\u0438\u0432\u0430\u0435\u0442\u0441\u044f_\u0441\u0442\u0440\u043e\u0433\u043e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_\u043d\u0435\u0433\u043e\u0434\u043d\u0430\u044f_\u0434\u0430\u0442\u0430_\u2014_\u043e\u0448\u0438\u0431\u043a\u0430_\u0432\u044b\u0437\u044b\u0432\u0430\u044e\u0449\u0435\u043c\u0443",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_\u043d\u0435\u0433\u043e\u0434\u043d\u044b\u0439_datetime_\u2014_\u043e\u0448\u0438\u0431\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_\u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439_\u0442\u0438\u043f_\u2014_\u0441\u0442\u0440\u043e\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_\u043f\u0443\u0441\u0442\u0430\u044f_\u0434\u0430\u0442\u0430_\u2014_nil",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_\u043f\u0443\u0441\u0442\u043e\u0439_datetime_\u2014_nil",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_\u043f\u0443\u0441\u0442\u043e\u0439_\u0442\u043e\u0447\u043d\u044b\u0439_bool_\u2014_\u041b\u043e\u0436\u044c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_\u0441\u0441\u044b\u043b\u043a\u0430_\u2014_\u0441\u0442\u0440\u043e\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue/\u0444\u043e\u0440\u043c\u0430:_\u0447\u0438\u0441\u043b\u043e_\u043e\u0441\u0442\u0430\u0451\u0442\u0441\u044f_\u0441\u0442\u0440\u043e\u043a\u043e\u0439",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseParamValue_PeriodEnd",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseUserSettingsEmpty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseVariants",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportContextYAML",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportTrustedContext/missing-actor",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportTrustedContext/missing-card",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportTrustedContext/reader-error",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportTypedDrilldownMetadata/binary-owner-override",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportTypedDrilldownMetadata/dynamic",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportTypedDrilldownMetadata/entity",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportTypedDrilldownMetadata/image",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportTypedDrilldownMetadata/unbound-dynamic",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportTypedDrilldownMetadata/unknown-entity",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportTypedDrilldownMetadata/url",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportVariantQueryBindingsAreIsolated",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestUserSettingsRoundTrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParse",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseAbsentAndEmpty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseAppearance",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseAppearanceCollapseTo",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseAppearanceGarbageLines",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseAppearanceOnlyCleared",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseColumns",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseColumnsOnlyPreserved",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseCondOnlyPreserved",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseDefaultColors",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseDetailLink",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseDetailLinkEmpty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseMeasureAlignFormat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseMeasureAlignFormatEmpty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParseMeasureExpr",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParsePartialDefaultColor",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compform",
+          "name": "TestParse_\u041f\u0440\u043e\u043f\u0443\u0441\u043a\u0438\u0412\u0418\u043d\u0434\u0435\u043a\u0441\u0430\u0445\u041d\u0435\u041e\u0431\u0440\u044b\u0432\u0430\u044e\u0442\u0420\u0430\u0437\u0431\u043e\u0440",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestAggregates",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplyFilters",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplyFiltersEdgeCases",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestComposeCrossNaNInfNoPanic",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestComposeFieldsCaseInsensitive",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestComposeNaNInfNoPanic",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestComposeWarning_ConditionError",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestComposeWarning_MeasureError",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestConditionalAndCap",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestConditionalOnGroups",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestConditionalOnGroups_GroupingFieldVisible",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCountDistinctGroupsAxesAndGrand",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCountDistinctIdentityAndNull",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCrossBasic",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCrossCap",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCrossCellStyles",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCrossColumnsSorted",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCrossDistinctMeasureSameField",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCrossExprMeasure",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCrossNestedRows",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCrossRowsSorted",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestCrossWarnings",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestDependencyDiscoveryStopsBeforeOversizedFormulaScan",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestExportToDecimal_Bytes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestExprMeasure",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestExprMeasureCycle",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestExprMeasureNested",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestExprMeasureOrderIndependent",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestFlatDetailsWithoutGrouping",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestFormatNumber",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestGroupByByteSliceKeyNoPanic",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestGroupByDecimalKey",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestGroupByMixedNumericKey",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestNestedAndDetails",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestRelativeMeasureColumns",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestRelativeMeasureGrand",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestRelativeMeasureZeroAndLegacyName",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestReportDecimalBoundsApplyBeforeAggregation",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestReportDecimalBoundsCoverGroupingSortingAndFilters",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestReportDecimalConversionSupportsAllowedScalarTypes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestSingleGrouping",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestSort",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestSortGroupsNilSubtotalLast",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvalNumDoesNotExportUnsafeDecimalText",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_NormalExpression",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u0430\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439_\u0430\u043b\u0438\u0430\u0441_\u0434\u0430\u0442\u044b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u0430\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439_\u0430\u043b\u0438\u0430\u0441_\u0441\u0442\u0440\u043e\u043a\u0438",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u0430\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u0432\u0435\u0440\u0445\u043d\u0438\u0439_\u0440\u0435\u0433\u0438\u0441\u0442\u0440",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u0434\u0430\u0442\u044b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u043b\u0438\u0442\u0435\u0440\u0430\u043b\u044b_\u0434\u0430\u0442",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u043c\u0430\u0442\u0435\u043c\u0430\u0442\u0438\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u0441\u043c\u0435\u0448\u0430\u043d\u043d\u044b\u0439_\u0440\u0435\u0433\u0438\u0441\u0442\u0440",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u0441\u0442\u0440\u043e\u043a\u0438",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u0444\u043e\u0440\u043c\u0430\u0442",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0410\u0440\u0438\u0444\u043c\u0435\u0442\u0438\u043a\u0430\u0421\u0442\u0440\u043e\u043a\u0438\u0414\u0430\u0442\u044b\u0420\u0430\u0431\u043e\u0442\u0430\u044e\u0442/\u0447\u0442\u0435\u043d\u0438\u0435_\u043f\u043e\u043b\u044f_\u042d\u0442\u043e\u0442\u041e\u0431\u044a\u0435\u043a\u0442",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0413\u0440\u0430\u043d\u0438\u0446\u0430DecimalExpansion\u041e\u0441\u0442\u0430\u0451\u0442\u0441\u044f\u0420\u0430\u0431\u043e\u0447\u0435\u0439",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041a\u043e\u043c\u043f\u043e\u043d\u043e\u0432\u043a\u0430\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0430\u0435\u0442\u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u043c\u041f\u0440\u0430\u0432\u0438\u043b\u043e\u043c\u041f\u043e\u0441\u043b\u0435\u0417\u0430\u043f\u0440\u0435\u0442\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044f\u041d\u0435\u041c\u043e\u0436\u0435\u0442\u041f\u043e\u0434\u043c\u0435\u043d\u0438\u0442\u044c\u0420\u0430\u0437\u0440\u0435\u0448\u0451\u043d\u043d\u044b\u0439Builtin",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041d\u0435\u0412\u044b\u0437\u044b\u0432\u0430\u0435\u0442\u0417\u0430\u0446\u0438\u043a\u043b\u0435\u043d\u043d\u0443\u044e\u0424\u0443\u043d\u043a\u0446\u0438\u044e\u041a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041e\u0433\u0440\u0430\u043d\u0438\u0447\u0438\u0432\u0430\u0435\u0442\u0421\u043b\u043e\u0436\u043d\u043e\u0441\u0442\u044cAST",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041e\u043f\u0430\u0441\u043d\u044b\u0435\u041a\u043e\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u044e\u0442\u0441\u044f\u0414\u043e\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f/\u0432\u044b\u0447\u0438\u0441\u043b\u0438\u0442\u044c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041e\u043f\u0430\u0441\u043d\u044b\u0435\u041a\u043e\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u044e\u0442\u0441\u044f\u0414\u043e\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f/\u0438\u0441\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041e\u043f\u0430\u0441\u043d\u044b\u0435\u041a\u043e\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u044e\u0442\u0441\u044f\u0414\u043e\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f/\u043c\u0435\u0442\u043e\u0434_\u043e\u0431\u044a\u0435\u043a\u0442\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041e\u043f\u0430\u0441\u043d\u044b\u0435\u041a\u043e\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u044e\u0442\u0441\u044f\u0414\u043e\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f/\u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f_\u0444\u0443\u043d\u043a\u0446\u0438\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041e\u043f\u0430\u0441\u043d\u044b\u0435\u041a\u043e\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u044e\u0442\u0441\u044f\u0414\u043e\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f/\u043f\u043e\u043f\u044b\u0442\u043a\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041e\u043f\u0430\u0441\u043d\u044b\u0435\u041a\u043e\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u044e\u0442\u0441\u044f\u0414\u043e\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f/\u043f\u0440\u0438\u0441\u0432\u0430\u0438\u0432\u0430\u043d\u0438\u0435",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041e\u043f\u0430\u0441\u043d\u044b\u0435\u041a\u043e\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u044e\u0442\u0441\u044f\u0414\u043e\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f/\u0441\u043e\u0437\u0434\u0430\u043d\u0438\u0435_\u043e\u0431\u044a\u0435\u043a\u0442\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041e\u043f\u0430\u0441\u043d\u044b\u0435\u041a\u043e\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u044e\u0442\u0441\u044f\u0414\u043e\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f/\u0446\u0438\u043a\u043b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041e\u0448\u0438\u0431\u043a\u0430\u041f\u0440\u0430\u0432\u0438\u043b\u0430\u041d\u0435\u041c\u0435\u043d\u044f\u0435\u0442\u041f\u043e\u0440\u044f\u0434\u043e\u043a\u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0445\u041f\u0440\u0430\u0432\u0438\u043b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041f\u0440\u043e\u043f\u0443\u0449\u0435\u043d\u043d\u044b\u0439\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u041d\u0430\u0437\u0432\u0430\u043d\u041d\u0430\u042f\u0437\u044b\u043a\u0435\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041f\u0440\u043e\u0444\u0438\u043b\u044c\u0417\u0430\u043f\u0440\u0435\u0449\u0430\u0435\u0442\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e\u0441\u0442\u0438/HTTP-\u0437\u0430\u043f\u0440\u043e\u0441",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041f\u0440\u043e\u0444\u0438\u043b\u044c\u0417\u0430\u043f\u0440\u0435\u0449\u0430\u0435\u0442\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e\u0441\u0442\u0438/\u0432\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0439_\u0444\u0430\u0439\u043b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041f\u0440\u043e\u0444\u0438\u043b\u044c\u0417\u0430\u043f\u0440\u0435\u0449\u0430\u0435\u0442\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e\u0441\u0442\u0438/\u043a\u0430\u0442\u0430\u043b\u043e\u0433_\u0432\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0445_\u0444\u0430\u0439\u043b\u043e\u0432",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041f\u0440\u043e\u0444\u0438\u043b\u044c\u0417\u0430\u043f\u0440\u0435\u0449\u0430\u0435\u0442\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e\u0441\u0442\u0438/\u043a\u043e\u043c\u0430\u043d\u0434\u0430_\u041e\u0421",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041f\u0440\u043e\u0444\u0438\u043b\u044c\u0417\u0430\u043f\u0440\u0435\u0449\u0430\u0435\u0442\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e\u0441\u0442\u0438/\u043f\u043e\u0438\u0441\u043a_\u0444\u0430\u0439\u043b\u043e\u0432",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u041f\u0440\u043e\u0444\u0438\u043b\u044c\u0417\u0430\u043f\u0440\u0435\u0449\u0430\u0435\u0442\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e\u0441\u0442\u0438/\u0440\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u043a\u0430_\u0441\u0435\u043a\u0440\u0435\u0442\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0421\u0442\u0440\u043e\u043a\u0430\u041d\u0435\u041c\u043e\u0436\u0435\u0442\u041f\u043e\u0434\u043c\u0435\u043d\u0438\u0442\u044c\u0427\u0438\u0441\u0442\u044b\u0439BuiltinReadOnly\u041a\u043e\u043b\u0431\u044d\u043a\u043e\u043c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0421\u0442\u0440\u043e\u043a\u0430\u041d\u0435\u041c\u043e\u0436\u0435\u0442\u041f\u043e\u0434\u043c\u0435\u043d\u0438\u0442\u044c\u0427\u0438\u0441\u0442\u044b\u0439Builtin\u041a\u043e\u043b\u0431\u044d\u043a\u043e\u043c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0424\u043e\u0440\u043c\u0443\u043b\u0430\u041d\u0435\u041c\u043e\u0436\u0435\u0442\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c\u0421\u0442\u0440\u043e\u043a\u0443\u041e\u0442\u0447\u0451\u0442\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0427\u0438\u0441\u0442\u044b\u0435Builtins\u0411\u0435\u0437\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u043e\u0432\u041d\u0435\u041f\u0430\u043d\u0438\u043a\u0443\u044e\u0442",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0427\u0438\u0441\u0442\u044b\u0435Builtins\u041d\u0435\u041e\u0431\u0445\u043e\u0434\u044f\u0442ResourceLimits\u041e\u0433\u0440\u043e\u043c\u043d\u043e\u0439\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c\u044e/1e10001_>_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0427\u0438\u0441\u0442\u044b\u0435Builtins\u041d\u0435\u041e\u0431\u0445\u043e\u0434\u044f\u0442ResourceLimits\u041e\u0433\u0440\u043e\u043c\u043d\u043e\u0439\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c\u044e/\u041e\u043a\u0440(1,_10001)_=_1",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0427\u0438\u0441\u0442\u044b\u0435Builtins\u041d\u0435\u041e\u0431\u0445\u043e\u0434\u044f\u0442ResourceLimits\u041e\u0433\u0440\u043e\u043c\u043d\u043e\u0439\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c\u044e/\u041e\u043a\u0440(1,_\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c)_=_1",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0427\u0438\u0441\u0442\u044b\u0435Builtins\u041d\u0435\u041e\u0431\u0445\u043e\u0434\u044f\u0442ResourceLimits\u041e\u0433\u0440\u043e\u043c\u043d\u043e\u0439\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c\u044e/\u0421\u0443\u043c\u043c\u0430_>_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0427\u0438\u0441\u0442\u044b\u0435Builtins\u041d\u0435\u041e\u0431\u0445\u043e\u0434\u044f\u0442ResourceLimits\u041e\u0433\u0440\u043e\u043c\u043d\u043e\u0439\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c\u044e/\u0424\u043e\u0440\u043c\u0430\u0442(1,_\"\u0427\u0414\u0426=10001\")_<>_\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0427\u0438\u0441\u0442\u044b\u0435Builtins\u041d\u0435\u041e\u0431\u0445\u043e\u0434\u044f\u0442ResourceLimits\u041e\u0433\u0440\u043e\u043c\u043d\u043e\u0439\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c\u044e/\u0424\u043e\u0440\u043c\u0430\u0442(1,_\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430)_<>_\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0427\u0438\u0441\u0442\u044b\u0435Builtins\u041d\u0435\u041e\u0431\u0445\u043e\u0434\u044f\u0442ResourceLimits\u041e\u0433\u0440\u043e\u043c\u043d\u043e\u0439\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c\u044e/\u0427\u0438\u0441\u043b\u043e(\"1e10001\")_>_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestEvaluator_\u0427\u0438\u0441\u0442\u044b\u0435Builtins\u041d\u0435\u041e\u0431\u0445\u043e\u0434\u044f\u0442ResourceLimits\u041e\u0433\u0440\u043e\u043c\u043d\u043e\u0439\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c\u044e/\u0427\u0438\u0441\u043b\u043e(\u0422\u0435\u043a\u0441\u0442)_>_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestForbiddenFormulaExprDescription_\u041d\u0435\u0420\u0430\u0441\u043a\u0440\u044b\u0432\u0430\u0435\u0442\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439\u0422\u0438\u043f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalBuiltinsRejectNumericTextBeforeExpansion/AmountInWords(Text,_\"rub\")_<>_\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalBuiltinsRejectNumericTextBeforeExpansion/Int(Text)_=_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalBuiltinsRejectNumericTextBeforeExpansion/Max(Text,_1)_=_1",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalBuiltinsRejectNumericTextBeforeExpansion/Round(Text,_0)_=_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalOperatorsRejectUnsafeOperandsAndResults/-Text_=_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalOperatorsRejectUnsafeOperandsAndResults/Text_%_2_>_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalOperatorsRejectUnsafeOperandsAndResults/Text_*_1_>_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalOperatorsRejectUnsafeOperandsAndResults/Text_+_0_>_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalOperatorsRejectUnsafeOperandsAndResults/Text_-_0_>_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalOperatorsRejectUnsafeOperandsAndResults/Text_/_1_>_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaDecimalOperatorsRejectUnsafeOperandsAndResults/Text_>_0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatPreservesSafeNumericText/Format(\"1.005\",_\"\u0427\u0413=0;\u0427\u0414\u0426=2\")_=_\"1.01\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatPreservesSafeNumericText/\u0421\u0442\u0440\u0414\u043b\u0438\u043d\u0430(\u0424\u043e\u0440\u043c\u0430\u0442(\"1e-4096\",_\"\u0427\u0413=0\"))_=_4098",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatPreservesSafeNumericText/\u0424\u043e\u0440\u043c\u0430\u0442(\"-1.005\",_\"\u0427\u0413=0;\u0427\u0414\u0426=2\")_=_\"-1.01\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatPreservesSafeNumericText/\u0424\u043e\u0440\u043c\u0430\u0442(\"1e-4096\",_\"\u0427\u0413=0;\u0427\u0414\u0426=2\")_=_\"0.00\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatPreservesSafeNumericText/\u0424\u043e\u0440\u043c\u0430\u0442(\"21.50\",_\"\u0427\u0413=0\")_=_\"21.5\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatPreservesSafeNumericText/\u0424\u043e\u0440\u043c\u0430\u0442(\"\u0442\u0435\u043a\u0441\u0442\",_\"\")_=_\"\u0442\u0435\u043a\u0441\u0442\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/coefficient/Format/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/coefficient/Format/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/coefficient/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/coefficient/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/decimal_only/Format/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/decimal_only/Format/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/decimal_only/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/decimal_only/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/default_exponent/Format/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/default_exponent/Format/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/default_exponent/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/default_exponent/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/numeric_text_length/Format/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/numeric_text_length/Format/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/numeric_text_length/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/numeric_text_length/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/stricter_string_bound/Format/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/stricter_string_bound/Format/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/stricter_string_bound/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/stricter_string_bound/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/string_only/Format/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/string_only/Format/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/string_only/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaFormatRejectsNumericTextBeforeDecimalExpansion/string_only/\u0424\u043e\u0440\u043c\u0430\u0442/\u0427\u0413=0;\u0427\u0414\u0426=2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaRowBindingsAcceptAndEvaluatePassiveScalars",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaRowBindingsRejectHostValuesWithoutCallingThem/stringer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaRowBindingsRejectHostValuesWithoutCallingThem/this",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaRowBindingsRejectHostValuesWithoutCallingThem/typed_slice",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaSourcePrechecksRunBeforeRecursiveParserAndCacheFailures/bytes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaSourcePrechecksRunBeforeRecursiveParserAndCacheFailures/depth",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaSourcePrechecksRunBeforeRecursiveParserAndCacheFailures/tokens",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaStringExpansionIsPreflighted/binary_concat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaStringExpansionIsPreflighted/cascading_template",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaStringExpansionIsPreflighted/join_separators",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaStringExpansionIsPreflighted/replace",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestFormulaStringExpansionIsPreflighted/split_cardinality",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/expreval",
+          "name": "TestPureFormulaWhitelist_\u0412\u0441\u0435\u0418\u043c\u0435\u043d\u0430\u0417\u0430\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u044b",
+          "result": "pass"
+        }
+      ]
+    },
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-config-launcher.jsonl",
+      "sha256": "4be423a9e2b14c8a97f4a133ed120217c3e4b5d7acdfd1af9395bcd214b84efe",
+      "counts": {
+        "pass": 62
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/configcheck",
+          "name": "TestCheckReportTrustedContext/card",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/configcheck",
+          "name": "TestCheckReportTrustedContext/default-fallback",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/configcheck",
+          "name": "TestCheckReportTrustedContext/id",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/configcheck",
+          "name": "TestCheckReportTrustedContext/login",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/configcheck",
+          "name": "TestCheckReportTrustedContext/missing-card",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/configcheck",
+          "name": "TestCheckReportTrustedContext/unknown-source",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/configcheck",
+          "name": "TestCheckReportTrustedContext/wrong-card-type",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ChoiceShowDeletedRoundTrip/database/delete-all",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ChoiceShowDeletedRoundTrip/database/rename-delete-add",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ChoiceShowDeletedRoundTrip/database/reorder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ChoiceShowDeletedRoundTrip/database/title",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ChoiceShowDeletedRoundTrip/file/delete-all",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ChoiceShowDeletedRoundTrip/file/rename-delete-add",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ChoiceShowDeletedRoundTrip/file/reorder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ChoiceShowDeletedRoundTrip/file/title",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/database/case-only",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/database/delete-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/database/duplicate-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/database/forged-context",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/database/rename-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/database/reorder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/database/title-query",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/database/type-change-chart-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/database/type-change-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/file/case-only",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/file/delete-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/file/duplicate-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/file/forged-context",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/file/rename-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/file/reorder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/file/title-query",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/file/type-change-chart-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_ContextRoundTrip/file/type-change-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_DatetimeRoundTrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_DefaultRoundTrip/database/delete-all",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_DefaultRoundTrip/database/rename-delete",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_DefaultRoundTrip/database/reorder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_DefaultRoundTrip/database/title",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_DefaultRoundTrip/file/delete-all",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_DefaultRoundTrip/file/rename-delete",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_DefaultRoundTrip/file/reorder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_DefaultRoundTrip/file/title",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_GapKeepsLaterParams",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_LabelsStayWithTheirParam",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_OptionsRoundTrip/database/delete-all",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_OptionsRoundTrip/database/rename-delete-add",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_OptionsRoundTrip/database/reorder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_OptionsRoundTrip/database/title",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_OptionsRoundTrip/file/delete-all",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_OptionsRoundTrip/file/rename-delete-add",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_OptionsRoundTrip/file/reorder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_OptionsRoundTrip/file/title",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_PeriodEndRoundTrip/database/delete-all",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_PeriodEndRoundTrip/database/rename-delete-add",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_PeriodEndRoundTrip/database/reorder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_PeriodEndRoundTrip/database/title",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_PeriodEndRoundTrip/file/delete-all",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_PeriodEndRoundTrip/file/rename-delete-add",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_PeriodEndRoundTrip/file/reorder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_PeriodEndRoundTrip/file/title",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_PreservesTitles",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/launcher",
+          "name": "TestConfiguratorSaveReport_SparseParamIndexIsSaved",
+          "result": "pass"
+        }
+      ]
+    },
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-api_pg-targeted.jsonl",
+      "sha256": "7bf435f297ef7b644353d7c39d04f101af30618fa5c1a6724f440f59e346dd9f",
+      "counts": {
+        "pass": 6,
+        "skip": 2
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/sqlite/reference-join-read-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/sqlite/spoof-0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/sqlite/spoof-1",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/sqlite/spoof-2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/sqlite/spoof-3",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestReportVariantDataMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestReportVariantDataMatrix/sqlite",
+          "result": "pass"
+        }
+      ]
+    },
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-ui_pg-targeted.jsonl",
+      "sha256": "d6b930e80d226ab9a2373717e40d1bb4f7535555fd9aa74980d42e5dd47e0389",
+      "counts": {
+        "pass": 96,
+        "skip": 12
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestApplyResolvedLabelsNoSkip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestApplyResolvedLabelsSkipCaseInsensitive",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestApplyResolvedLabelsSkipsDetailLinkColumn",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedAppearance",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedCollapseNegativeAndConditional",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedCollapseToOne",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedCollapseToZero",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedNoCollapseByDefault",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedTable",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/drilldown-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat-drilldown",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/grouped",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/grouped-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/incomplete-drilldown",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/ambiguous-card-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/background-excel-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/excel-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/get-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/pdf-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/post-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/query-result-proc",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/queryless-result-proc",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/variant-context",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/composed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/flat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/flat12-detail-fields",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/forged-row-id",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/forged-selector",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/invalid-id-and-index",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/live-rights-revoked",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/report-run-revoked",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportVariantDataScreenAndExports",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-63",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-67",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/denied-target",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/typed-form-event",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/typed-link",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-cell",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-token",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularLayoutReportHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularLayoutReportHTTPMatrix/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularManagedFieldHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularManagedFieldHTTPMatrix/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/callback-copy",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/current-rls-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/expired",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/export-does-not-call",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/foreign-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/nested-roundtrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/question-answer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/question-current-rls-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/tampered-client-data",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/wrong-cell",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/below-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/exact-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/limit-hit",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/module-must-not-run",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/no-stale-viewer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-warning",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/below-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/exact-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/limit-hit",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/module-must-not-run",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/no-stale-viewer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-warning",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/expired",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/foreign-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/foreign-user",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/metadata-reloaded",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/revoked-role",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/same-instance-export",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/combined-payload-bytes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/control-1308",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/kpi-53893",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/max-100000",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-bytes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-cells",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-columns",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-header",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-rectangle",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-rows",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/autoscale",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/collapsed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/kpi-53893",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/merged-span",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/offset",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/styled-tail",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestWriteDetailLink",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestWriteDetailLinkCaseInsensitive",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestWriteDetailLinkNoEntity",
+          "result": "pass"
+        }
+      ]
+    }
+  ]
+}

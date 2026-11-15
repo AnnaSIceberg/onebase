@@ -1,0 +1,9 @@
+C:\Users\a.sevrjukova\AppData\Local\Temp\platform-help-admin-20261111\reports-p4-p7-b21-api-linux-amd64.test: go1.26.11
+	path	github.com/ivantit66/onebase/internal/api.test
+	mod	github.com/ivantit66/onebase	(devel)	
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=0
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1

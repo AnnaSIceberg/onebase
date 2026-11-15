@@ -1,0 +1,15 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-p4-p7-b21-ui-linux-amd64.test",
+  "sha256": "e07da9bd2419585c4c94b4303b49e5ca1632570db5322d375b93f7b80da74f66",
+  "bytes": 84439231,
+  "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source_binding": "combined runtime integration tree",
+  "upstream_inputs": {
+    "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+    "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+    "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+  },
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-ui_pg-buildinfo.txt",
+  "buildinfo_sha256": "7436ff1b8d48f795be33ca94adbb553d892fa95717fc8ddd27e6f50b68bb988f"
+}

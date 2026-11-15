@@ -1,0 +1,31 @@
+{
+  "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source_binding": "combined runtime integration source tree; separate upstream_inputs",
+  "upstream_inputs": {
+    "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+    "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+    "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+  },
+  "argv": [
+    "C:\\Users\\a.sevrjukova\\go\\pkg\\mod\\golang.org\\toolchain@v0.0.1-go1.26.11.windows-amd64\\bin\\go.exe",
+    "run",
+    "-p=1",
+    "./tools/i18ncheck"
+  ],
+  "env": {
+    "GOTOOLCHAIN": "local",
+    "pinned_go": "1.26.11",
+    "GOMAXPROCS": "2",
+    "CGO_ENABLED": "0",
+    "GOOS": "windows",
+    "GOARCH": "amd64",
+    "GOFLAGS": "-p=1"
+  },
+  "exit": 0,
+  "start": "2026-11-15T10:36:19.763250+00:00",
+  "end": "2026-11-15T10:36:22.755914+00:00",
+  "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-i18n-en.log",
+  "sha256": "3f1aeb0ee17a5d05b77d2a87ff38017caa0944c969d3eb27ea368ebc603d9cf6",
+  "clean_before_after": true
+}

@@ -1,0 +1,50 @@
+{
+  "source": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+  "scope": "SOURCE_ONLY_NO_DB_NO_GO_NO_DDL_EXECUTION",
+  "files": [
+    {
+      "path": "internal/storage/predefined.go",
+      "sha256_git_blob": "1da1ea7873b54ad39076cabec6eba89204a750152f2e21ef8c6da58d50ac8064"
+    },
+    {
+      "path": "internal/storage/migrate.go",
+      "sha256_git_blob": "101cd2d493869415d98b3471d230d82d8a599ada906c245caf5167dfa18cdfd2"
+    },
+    {
+      "path": "internal/storage/dialect.go",
+      "sha256_git_blob": "21eae688fde30163b676f8ab7cea527785560cc69eb98da16826ed5102d95c08"
+    },
+    {
+      "path": "internal/storage/ddl.go",
+      "sha256_git_blob": "af021f6fe4fe6a9998bfcc31dda3f5257fdb3a9735c381ca1361d0c1b615747f"
+    },
+    {
+      "path": "internal/storage/migration_lock.go",
+      "sha256_git_blob": "d203f0bd5ed57d61efd74c816c48b203706ccb910fa5a334447a2136c2e5a9c7"
+    },
+    {
+      "path": "internal/storage/legacy_idents.go",
+      "sha256_git_blob": "49aa37a9014d1301510c97c729fd11c0580783bb2e2040608e2092d177eb35b1"
+    },
+    {
+      "path": "internal/cli/migrate.go",
+      "sha256_git_blob": "5f2cf385d69c5e57ad2008fdfec585b5ee8f4cbe18d8e0d8780206ad5a0a51b3"
+    },
+    {
+      "path": "internal/cli/run.go",
+      "sha256_git_blob": "78e0bbbda7b637dede84d89c2aadcb72e653ca69533dc1a6052ebb21889b172e"
+    },
+    {
+      "path": "internal/cli/deploy.go",
+      "sha256_git_blob": "e2006d20ee43168432ff7a9766fe09801817e4ea331fada37f73d35fc2280f56"
+    },
+    {
+      "path": "internal/metadata/types.go",
+      "sha256_git_blob": "c5b8d2cb458565243e98ae0b32c4b6146b391d3e3caddd8e4b6c0d51ed21583d"
+    },
+    {
+      "path": "internal/metadata/sqlident.go",
+      "sha256_git_blob": "33402bbdfdfb9ac42007f89498263dcba591c62755eed30742e11c8f0d100e47"
+    }
+  ]
+}

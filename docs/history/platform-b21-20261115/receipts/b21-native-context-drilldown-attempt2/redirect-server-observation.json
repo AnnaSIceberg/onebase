@@ -1,0 +1,35 @@
+{
+  "scope": "own synthetic retained server HTTP log only; no values/UUID/URI",
+  "entries": [
+    {
+      "route_class": "drilldown",
+      "status": 303,
+      "method": "GET"
+    },
+    {
+      "route_class": "entity",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "route_class": "entity",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "route_class": "drilldown",
+      "status": 303,
+      "method": "GET"
+    },
+    {
+      "route_class": "entity",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "route_class": "entity",
+      "status": 200,
+      "method": "GET"
+    }
+  ]
+}

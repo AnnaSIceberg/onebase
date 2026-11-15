@@ -1,0 +1,15 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b21-report-context-drilldown-windows-amd64.exe",
+  "sha256": "e9bbbce60ce5b67e1867c0087eda77897b8e6ec540638bd8164814127bf6eb06",
+  "bytes": 79383040,
+  "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source_binding": "combined runtime integration tree",
+  "upstream_inputs": {
+    "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+    "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+    "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+  },
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-windows-buildinfo.txt",
+  "buildinfo_sha256": "81d6fe39bc55d0b41a44e591fb5776eaff37cd0f5f8a4662b6c87763b5e46f22"
+}

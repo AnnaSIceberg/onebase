@@ -1,0 +1,92 @@
+{
+  "status": "FAIL",
+  "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "upstream_inputs": {
+    "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+    "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+    "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+  },
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "e9bbbce60ce5b67e1867c0087eda77897b8e6ec540638bd8164814127bf6eb06",
+  "checks": {
+    "context_native_http200": true,
+    "context_actual_own_rows": true,
+    "context_inputs_absent": true,
+    "queryless_native_viewer": true,
+    "queryless_server_uuid_and_actor": true,
+    "queryless_default_reader_exact_bound_values": true,
+    "typed_native_http200": true,
+    "flat12_no_service_column": true,
+    "flat12_two_typed_actions": true,
+    "flat12_own_context": true,
+    "typed_actions_fixed_server_route": true,
+    "typed_0_native_redirect_target": true,
+    "typed_0_native_entity_loaded": true,
+    "typed_1_native_redirect_target": true,
+    "typed_1_native_entity_loaded": true,
+    "typed_route_authorized_303": false
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "phase": "typed-flat12",
+  "db_copies": 0,
+  "shared_changes": false,
+  "go_started": false,
+  "browser_os_network_isolated": false,
+  "browser_request_boundary": "own context exact loopback origin allowlist",
+  "source_fixture_files": [
+    {
+      "path": "catalogs\\B21Department.yaml",
+      "sha256": "54f30b0503acad7d59e172f3c41a53f23bc2190d1fe205a1be872cb4aad72a2e"
+    },
+    {
+      "path": "catalogs\\B21Entry.yaml",
+      "sha256": "567fa05e063dc35940677568808d883f6d251fe4795ccc434699617af57873fe"
+    },
+    {
+      "path": "catalogs\\B21Staff.yaml",
+      "sha256": "d951d358885848e0d1be7cc71f14b4919fe2ae901c37a7b9aee90c46f3f9cd8c"
+    },
+    {
+      "path": "config\\app.yaml",
+      "sha256": "8172c8c7aba6f36df9ac599c62da348f7078d287d821a1719c2430c3f3dde7e3"
+    },
+    {
+      "path": "reports\\B21Context.yaml",
+      "sha256": "d147b337fe344244c89ff15e91a5d7ed92bdbfcfc3c1565011ac86196fab2853"
+    },
+    {
+      "path": "reports\\B21Result.yaml",
+      "sha256": "2b44c83e5c06eac60ad2252c8740aba939218a3f1f5946b0fa31b6f2e14517ac"
+    },
+    {
+      "path": "reports\\B21Typed.yaml",
+      "sha256": "8b81238e007afc64ca7ee6793a11af87eeefc96c917a1213a84e11b484ef2286"
+    },
+    {
+      "path": "src\\B21Result.rep.os",
+      "sha256": "5b0e45020654b3c495790e4615c3c3c65ab9b10fbfe2fc502f17c21e4f7d0dc0"
+    }
+  ],
+  "browser_version": "109.0.5414.46",
+  "xlsx": {
+    "sha256": "80fde2cfb460719f5f0c6126eee9858125a2427466cbac0607314ff0567efcad",
+    "bytes": 6265,
+    "rows": 2,
+    "reader": "3.1.5",
+    "read_only": true,
+    "reset_dimensions_called": false
+  },
+  "failure_type": "AssertionError",
+  "failed_check": "typed_route_authorized_303",
+  "failure_line": 11,
+  "page_errors": 0
+}

@@ -1,0 +1,15 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b21-report-context-drilldown-linux-amd64",
+  "sha256": "881d78ad9d6d37916350b6bca099a8e7b9208f14a35b8f742f7e3776c92f300a",
+  "bytes": 78406461,
+  "runtime": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "source_binding": "combined runtime integration tree",
+  "upstream_inputs": {
+    "p4": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+    "p7": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+    "base_b20_source": "d232937812637564c730fbc17a9376d269dc5247"
+  },
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b21-linux-buildinfo.txt",
+  "buildinfo_sha256": "ed4ca7f9b81f6035bd42cf59d59ea04790afaa250ddbaa9737538dea4249b705"
+}
