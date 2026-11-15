@@ -1,0 +1,46 @@
+{
+    "timestamp":  "2026-11-15T17:32:34.9559180+03:00",
+    "items":  [
+                  {
+                      "name":  "b13-bid-dirty-diagnostic",
+                      "head":  "d7d3c0e542f81b1a5038a0b0681bb897ff9e13aa",
+                      "removed":  true,
+                      "tracked_git_blob_bytes":  55150512,
+                      "pre_removal":  "clean/pushed-ref/process-use0/no-reparse/root-boundary guards passed in prior command"
+                  },
+                  {
+                      "name":  "b14-alldiff-diagnostic",
+                      "head":  "e769d877969efdc6a6e02362f6ed4e7650ab3ed7",
+                      "removed":  true,
+                      "tracked_git_blob_bytes":  55174672,
+                      "pre_removal":  "clean/pushed-ref/process-use0/no-reparse/root-boundary guards passed in prior command"
+                  },
+                  {
+                      "name":  "audio-dirty-diagnostic-f49",
+                      "head":  "6b34ca82935da6009296b5b09c4996faadef9396",
+                      "removed":  true,
+                      "tracked_git_blob_bytes":  55154087,
+                      "pre_removal":  "clean/pushed-ref/process-use0/no-reparse/root-boundary guards passed in prior command"
+                  },
+                  {
+                      "name":  "b14-reference-dirty-runtime",
+                      "head":  "3701a9aefd3f7dadb05577f2891758778f152688",
+                      "removed":  true,
+                      "tracked_git_blob_bytes":  55159044,
+                      "pre_removal":  "clean/pushed-ref/process-use0/no-reparse/root-boundary guards passed in prior command"
+                  },
+                  {
+                      "name":  "audio-dirty-stage2-private",
+                      "head":  "ff0518fdd3b50f23bc20dee8976d8538b40d4bdf",
+                      "removed":  true,
+                      "tracked_git_blob_bytes":  55248832,
+                      "pre_removal":  "clean/pushed-ref/process-use0/no-reparse/root-boundary guards passed in prior command"
+                  }
+              ],
+    "removed_tracked_blob_bytes":  275887147,
+    "disk_freed_exact_bytes":  null,
+    "free_after":  6479859712,
+    "receipt_recovered":  true,
+    "limitation":  "Removal completed for all5; final receipt formatting failed in previous command. Exact file_bytes/free_before not retained; tracked Git blob byte sum is a source-size proxy, not physical disk-free delta.",
+    "scope":  "5 obsolete own diagnostic worktrees only; all refs/commits/SDK/evidence preserved"
+}

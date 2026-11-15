@@ -1,0 +1,104 @@
+{
+  "created_utc": "2026-11-15T14:31:04.983338+00:00",
+  "items": [
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\audio-compact-source",
+      "old_head": "e00bc0183a59c665ca9eb273f63e349318865fae",
+      "backup_head": "e00bc0183a59c665ca9eb273f63e349318865fae",
+      "backup_branch": "wip/platform-reboot-20261115/audio-compact-source",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    },
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\current-reference-source",
+      "old_head": "81f7062a07b490bf7912f35bc93b7c52c71ab13e",
+      "backup_head": "81f7062a07b490bf7912f35bc93b7c52c71ab13e",
+      "backup_branch": "wip/platform-reboot-20261115/current-reference-source",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    },
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reference-dirty-source",
+      "old_head": "3bf94b741388b0c506af5ca80ef0050a1d3400a1",
+      "backup_head": "3bf94b741388b0c506af5ca80ef0050a1d3400a1",
+      "backup_branch": "wip/platform-reboot-20261115/reference-dirty-source",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    },
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shell-perf-1111f-compare",
+      "old_head": "3d36423bac8b705bc098194c2b0a7fac28fa9835",
+      "backup_head": "13bf51c7628e00b9885b07f907edb76822b737e9",
+      "backup_branch": "wip/platform-reboot-20261115/shell-perf-1111f-compare",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    },
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shell-perf-hotfix",
+      "old_head": "f4fb2db8024da7f8ffaa24404708f6b796355635",
+      "backup_head": "f4fb2db8024da7f8ffaa24404708f6b796355635",
+      "backup_branch": "wip/platform-reboot-20261115/shell-perf-hotfix",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    },
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shell-perf-real",
+      "old_head": "bd3735753240acf80b6800632c6773217eceaa3f",
+      "backup_head": "0d514de1422d5c3d1b93e59b3c74aa85a27252a0",
+      "backup_branch": "wip/platform-reboot-20261115/shell-perf-real",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    },
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\audio-dirty-stage2-private",
+      "old_head": "ff0518fdd3b50f23bc20dee8976d8538b40d4bdf",
+      "backup_head": "ff0518fdd3b50f23bc20dee8976d8538b40d4bdf",
+      "backup_branch": "wip/platform-reboot-20261115/audio-dirty-stage2-private",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    },
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\audio-service-dirty-runtime",
+      "old_head": "608933d12fb58eea4c54d016e7b7761323d2c2a1",
+      "backup_head": "608933d12fb58eea4c54d016e7b7761323d2c2a1",
+      "backup_branch": "wip/platform-reboot-20261115/audio-service-dirty-runtime",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    },
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b14-alldiff-diagnostic",
+      "old_head": "e769d877969efdc6a6e02362f6ed4e7650ab3ed7",
+      "backup_head": "e769d877969efdc6a6e02362f6ed4e7650ab3ed7",
+      "backup_branch": "wip/platform-reboot-20261115/b14-alldiff-diagnostic",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    },
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b14-reference-dirty-runtime",
+      "old_head": "3701a9aefd3f7dadb05577f2891758778f152688",
+      "backup_head": "3701a9aefd3f7dadb05577f2891758778f152688",
+      "backup_branch": "wip/platform-reboot-20261115/b14-reference-dirty-runtime",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    },
+    {
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b15-current-reference-runtime",
+      "old_head": "ca1b348eee1fbd86a044e3f967368056c0cbc270",
+      "backup_head": "ca1b348eee1fbd86a044e3f967368056c0cbc270",
+      "backup_branch": "wip/platform-reboot-20261115/b15-current-reference-runtime",
+      "remote_exact": true,
+      "clean": true,
+      "scope": "archival source only; excluded B25"
+    }
+  ]
+}

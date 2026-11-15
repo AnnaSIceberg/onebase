@@ -1,0 +1,36 @@
+{
+  "branch": "wip/platform-b24-final-b25-handoff-20261115",
+  "commit": "42f5572475296f7c5a38450fdd9a33a8779dede3",
+  "parent": "8493bf91c38036ff99d701b68922b0f6268bfde5",
+  "files": [
+    {
+      "path": "support/b25-source-CI-RO-status.json",
+      "bytes": 9122,
+      "sha256": "12e0f4e2ab6aa41bfe4900046d4fd7c15578a0844ece67d7c636099e1f0b09f4"
+    },
+    {
+      "path": "support/b25-source-CI-lint-RO.log",
+      "bytes": 37929,
+      "sha256": "c8f475b24351360a808d6338284fa6bb834af37d1f34acc77f8a1fe4c4f5661b"
+    },
+    {
+      "path": "support/source-ci-close-only-wip.json",
+      "bytes": 364,
+      "sha256": "cf60236fe8961fe0db3951cd3b9c510b6324f14b7ad5f4194333aa9680ef09f6"
+    },
+    {
+      "path": "support/push-platform-reboot-support.py",
+      "bytes": 2125,
+      "sha256": "3cdaae93bab5f5a685acf630bbb893dc45eb4f8aa83f0d9c3194c3d83c657af4"
+    },
+    {
+      "path": "reports/20261115-platform-1728-B25-freeze-и-CI-test-WIP.md",
+      "bytes": 2238,
+      "sha256": "eb46d85427d50229a52815462e0b5c2ddf62ea2e637c3292a791dfec28f65755"
+    }
+  ],
+  "created_utc": "2026-11-15T14:27:39.237955+00:00",
+  "push": "elevated native Git success after unelevated credential-helper Windows mapping failure",
+  "remote_verified": true,
+  "scope": "metadata/source reports only; no SDK/DB/secrets/payloads"
+}
