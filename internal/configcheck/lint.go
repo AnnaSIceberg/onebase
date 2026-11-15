@@ -524,7 +524,7 @@ func reportYAMLSchema() *yamlLintSchema {
 		// ключ разрешён: иначе линт ругался бы на работающую возможность.
 		"params":      seq(with(obj("name", "type", "label", "options", "default", "period_end", "choice_show_deleted"), map[string]*yamlLintSchema{"labels": freeMap()})),
 		"composition": composition,
-		"variants":    seq(with(obj("name"), map[string]*yamlLintSchema{"composition": composition})),
+		"variants":    seq(with(obj("name", "query"), map[string]*yamlLintSchema{"composition": composition, "filters": seq(obj("field", "op", "value"))})),
 	})
 }
 

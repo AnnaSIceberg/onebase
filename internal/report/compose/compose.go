@@ -36,6 +36,7 @@ const (
 type Result struct {
 	Columns  []string       `json:"columns"`
 	Groups   []*Group       `json:"groups"`
+	Details  []DetailRow    `json:"details,omitempty"` // flat composition without a synthetic group
 	Grand    map[string]any `json:"grand"`
 	RowCount int            `json:"row_count"`
 	Capped   bool           `json:"capped"`
@@ -95,8 +96,11 @@ func ComposeN(rows []Row, spec report.Composition, ev Evaluator, maxRows int) (*
 		res.RowCount = maxRows
 	}
 	wc := &warnCollector{}
-	res.Groups = buildGroups(rows, spec, 0, ev, wc)
+	if len(spec.Groupings) == 0 && spec.Detail {
+		res.Details = buildDetails(rows, spec, ev, wc)
+	}
 	res.Grand = aggregate(rows, spec.Measures, ev, wc)
+	res.Groups = buildGroups(rows, spec, 0, ev, wc, res.Grand)
 	res.Warnings = wc.msgs
 	return res, nil
 }
@@ -163,7 +167,7 @@ func alignRowKeys(rows []Row, spec report.Composition) []Row {
 	return out
 }
 
-func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, wc *warnCollector) []*Group {
+func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, wc *warnCollector, grand Row) []*Group {
 	if level >= len(spec.Groupings) {
 		return nil
 	}
@@ -183,7 +187,7 @@ func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, w
 			Field:     field,
 			Key:       k,
 			Count:     len(buckets[k]),
-			Subtotals: aggregate(buckets[k], spec.Measures, ev, wc),
+			Subtotals: aggregateContext(buckets[k], spec.Measures, ev, wc, measureContext{grand: grand}),
 		}
 		// Условное оформление группы/подытога вычисляется по её подытогам плюс
 		// собственному полю группировки (field→Key) — чтобы правило вида
@@ -196,7 +200,7 @@ func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, w
 		styleRow[field] = gr.Key
 		gr.Styles = evalStyles(styleRow, spec, ev, wc)
 		if level+1 < len(spec.Groupings) {
-			gr.Children = buildGroups(buckets[k], spec, level+1, ev, wc)
+			gr.Children = buildGroups(buckets[k], spec, level+1, ev, wc, grand)
 		} else if spec.Detail {
 			gr.Details = buildDetails(buckets[k], spec, ev, wc)
 		}
@@ -409,14 +413,19 @@ func GroupByField(rows []Row, spec report.Composition, field string, ev Evaluato
 		buckets[k] = append(buckets[k], r)
 	}
 	subtotals = make(map[any]map[string]any, len(buckets))
+	grand := aggregate(rows, spec.Measures, ev, nil)
 	for k, rs := range buckets {
 		// Предупреждения уже собраны основным проходом Compose — здесь nil-приёмник.
-		subtotals[k] = aggregate(rs, spec.Measures, ev, nil)
+		subtotals[k] = aggregateContext(rs, spec.Measures, ev, nil, measureContext{grand: grand})
 	}
 	return keys, subtotals
 }
 
 func aggregate(rows []Row, measures []report.Measure, ev Evaluator, wc *warnCollector) map[string]any {
+	return aggregateContext(rows, measures, ev, wc, measureContext{grandSelf: true})
+}
+
+func aggregateContext(rows []Row, measures []report.Measure, ev Evaluator, wc *warnCollector, ctx measureContext) map[string]any {
 	out := map[string]any{}
 	// Первый проход: обычные показатели (не вычисляемые).
 	for _, m := range measures {
@@ -442,7 +451,12 @@ func aggregate(rows []Row, measures []report.Measure, ev Evaluator, wc *warnColl
 			out[m.Field] = nil
 			continue
 		}
-		d, ok, err := ev.EvalNum(m.Expr, out)
+		bindings, available := contextBindings(m.Expr, out, measures, ctx)
+		if !available {
+			out[m.Field] = nil
+			continue
+		}
+		d, ok, err := ev.EvalNum(m.Expr, bindings)
 		switch {
 		case err != nil:
 			// Runtime-ошибка (не синтаксис — тот ловит onebase check): показываем
@@ -469,8 +483,10 @@ func orderExprMeasures(measures []report.Measure) (order []int, cyclic []int) {
 	// Имена приводим к нижнему регистру: интерпретатор разрешает идентификаторы
 	// регистронезависимо, поэтому и зависимости между Expr должны определяться так.
 	exprFields := map[string]bool{}
+	allFields := map[string]bool{}
 	var idxs []int
 	for i, m := range measures {
+		allFields[strings.ToLower(m.Field)] = true
 		if m.Expr != "" {
 			exprFields[strings.ToLower(m.Field)] = true
 			idxs = append(idxs, i)
@@ -481,7 +497,7 @@ func orderExprMeasures(measures []report.Measure) (order []int, cyclic []int) {
 	}
 	deps := make(map[int]map[string]bool, len(idxs))
 	for _, i := range idxs {
-		deps[i] = exprIdentDeps(measures[i].Expr, exprFields, strings.ToLower(measures[i].Field))
+		deps[i] = exprIdentDeps(measures[i].Expr, exprFields, strings.ToLower(measures[i].Field), allFields)
 	}
 	resolved := map[string]bool{}
 	remaining := append([]int(nil), idxs...)
@@ -519,8 +535,12 @@ func orderExprMeasures(measures []report.Measure) (order []int, cyclic []int) {
 // Используем лексер DSL, чтобы брать идентификаторы по-токенно (а не подстрокой),
 // сравниваем регистронезависимо (как интерпретатор) и исключаем сам показатель
 // (self уже в нижнем регистре) — самоссылка не создаёт зависимости.
-func exprIdentDeps(expr string, exprFields map[string]bool, self string) map[string]bool {
+func exprIdentDeps(expr string, exprFields map[string]bool, self string, fieldSets ...map[string]bool) map[string]bool {
 	deps := map[string]bool{}
+	allFields := exprFields
+	if len(fieldSets) > 0 {
+		allFields = fieldSets[0]
+	}
 	// Keep dependency discovery bounded before expreval gets its chance to
 	// reject the formula. These values intentionally mirror expreval's source
 	// gate; an over-limit expression will later surface as the formula error.
@@ -537,6 +557,11 @@ func exprIdentDeps(expr string, exprFields map[string]bool, self string) map[str
 			continue
 		}
 		lit := strings.ToLower(t.Literal)
+		if !allFields[lit] {
+			if scope, field, ok := report.MeasureReference(lit); ok && scope != "previous" {
+				lit = field
+			}
+		}
 		if lit != self && exprFields[lit] {
 			deps[lit] = true
 		}
@@ -547,6 +572,32 @@ func exprIdentDeps(expr string, exprFields map[string]bool, self string) map[str
 func aggMeasure(rows []Row, m report.Measure) any {
 	if m.Agg == "count" {
 		return int64(len(rows))
+	}
+	if m.Agg == "count_distinct" {
+		seen := make(map[string]struct{})
+		for _, row := range rows {
+			v := row[m.Field]
+			if v == nil {
+				continue
+			}
+			// Text stays text, including the empty string. Database byte strings
+			// share text identity; numeric driver types share decimal identity.
+			var key string
+			switch x := v.(type) {
+			case string:
+				key = "text:" + x
+			case []byte:
+				key = "text:" + string(x)
+			default:
+				if d, ok := toDecimal(v); ok {
+					key = "number:" + d.String()
+				} else {
+					key = fmt.Sprintf("%T:%v", v, v)
+				}
+			}
+			seen[key] = struct{}{}
+		}
+		return int64(len(seen))
 	}
 	var acc, mn, mx decimal.Decimal
 	cnt := 0
