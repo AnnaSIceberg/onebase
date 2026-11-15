@@ -233,6 +233,19 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 	}
 	rs := s.reportSettingsForRequest(r, rep)
 	settings := rs.Settings
+	if rep.ResultProc != "" {
+		if raw, present := requestFormValue(r, "__settings"); present {
+			explicit, err := reportpkg.ParseSourceSettings(raw)
+			if err != nil {
+				opStatus = "error"
+				http.Error(w, s.errText(r, err), http.StatusBadRequest)
+				return
+			}
+			if explicit != nil {
+				settings = reportSettingsWithRequestVariant(r, explicit)
+			}
+		}
+	}
 	activePreset := activeReportPreset(presets, rs.ActivePresetID)
 	if settings != nil {
 		variant = settings.Variant
@@ -271,6 +284,11 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 	if rep.ResultProc != "" {
 		resultQuery, _, variantErr := rep.QueryForVariant(variant, queryValues)
 		if variantErr == nil && strings.TrimSpace(resultQuery) == "" {
+			if settings != nil && len(settings.Filters) > 0 {
+				opStatus = "error"
+				http.Error(w, "source filters cannot be applied to a queryless result_proc", http.StatusUnprocessableEntity)
+				return
+			}
 			if err := s.runTabularReport(w, r.WithContext(opCtx), rep, queryValues, nil); err != nil {
 				opStatus = "error"
 				http.Error(w, s.errText(r, err), 500)
@@ -371,6 +389,15 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 			opStatus = "limited"
 			http.Error(w, s.tr(s.resolveLang(r), "Табличный документ не сформирован: входной запрос превысил report_max_rows. Уточните параметры отчёта."), http.StatusUnprocessableEntity)
 			return
+		}
+		if settings != nil && len(settings.Filters) > 0 {
+			var filterErr error
+			rows, filterErr = compose.ApplySourceFilters(rows, settings.Filters, cols)
+			if filterErr != nil {
+				opStatus = "error"
+				http.Error(w, s.errText(r, filterErr), http.StatusBadRequest)
+				return
+			}
 		}
 		if err := s.runTabularReport(w, r.WithContext(opCtx), rep, queryValues, rows); err != nil {
 			opStatus = "error"
