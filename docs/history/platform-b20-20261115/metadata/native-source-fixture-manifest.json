@@ -1,0 +1,46 @@
+{
+  "files": [
+    {
+      "path": "config\\app.yaml",
+      "bytes": 35,
+      "sha256": "a0061b16a0f3594d1b2f7cd0abf0e41c094edfd3390a6fbec6d36320e385a314"
+    },
+    {
+      "path": "forms\\кпиразмер\\объекта.form.os",
+      "bytes": 2792,
+      "sha256": "718925581e5c953866e456148706643553a17efa920f899c50e7581749af69e7"
+    },
+    {
+      "path": "forms\\кпиразмер\\объекта.form.yaml",
+      "bytes": 1296,
+      "sha256": "85f6e057839a35932fb6b8a2337ccde9a943e82f1b3423858cedcabe27b4a5ae"
+    },
+    {
+      "path": "printforms\\КПИРазмер\\ТаблицаРИ.layout.yaml",
+      "bytes": 136350,
+      "sha256": "512146a7d06cb1f18da1091e4019261656a7e474fc01a28670153223d0bed1a1"
+    },
+    {
+      "path": "processors\\КПИРазмер.yaml",
+      "bytes": 111,
+      "sha256": "8cdec880c5507bcb2d60dd50035d735b27d69c86d3f448e169ae64a450b0ed18"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2653,
+      "sha256": "2cd0b5239229b95ad9b69bd40468dff19512e3a5f0ae781538f8a7db74b43ce9"
+    },
+    {
+      "path": "shape.json",
+      "bytes": 390,
+      "sha256": "e67596340168241f6babb0d3687b0aac23aea85b1aff6d9280c7526c4ea2712e"
+    },
+    {
+      "path": "src\\кпиразмер.proc.os",
+      "bytes": 141,
+      "sha256": "aa96ab77e3af9c18cb11358f2c379697a0028fcc442bd8af1ddd8e32d174a5b6"
+    }
+  ],
+  "provided_layout_hash": "512146a7d06cb1f18da1091e4019261656a7e474fc01a28670153223d0bed1a1",
+  "scope": "source-only copy plus additive own synthetic buttons; no source DB copied"
+}

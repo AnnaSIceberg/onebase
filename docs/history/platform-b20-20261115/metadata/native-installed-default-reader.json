@@ -1,0 +1,231 @@
+{
+  "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+  "executable": "C:\\Python314\\python.exe",
+  "openpyxl": "3.1.5",
+  "module": "C:\\Users\\a.sevrjukova\\AppData\\Roaming\\Python\\Python314\\site-packages\\openpyxl\\__init__.py",
+  "read_only_default": true,
+  "reset_dimensions_called": false,
+  "forced_iteration_bounds": false,
+  "files": [
+    {
+      "file": "auto51-b20.xlsx",
+      "bytes": 17225,
+      "sha256": "a4cf170225e4e3cc84cb37168c01bd0c947b0019884efb3ff2889d3a91094460",
+      "normal": {
+        "rows": 51,
+        "columns": 67,
+        "max_row": 51,
+        "positions": 3417,
+        "nonempty_values": 141,
+        "value_types": {
+          "str": 141
+        }
+      },
+      "default_read_only": {
+        "rows": 51,
+        "columns": 67,
+        "max_row": 51,
+        "positions": 3417,
+        "nonempty_values": 141,
+        "value_types": {
+          "str": 141
+        }
+      },
+      "filled_coordinates_and_typed_values_equal": true,
+      "counts_equal": true,
+      "empty_document_no_values_exception": false
+    },
+    {
+      "file": "collapsed-b20.xlsx",
+      "bytes": 6308,
+      "sha256": "34ac9a99491f111b78a684da9c59a800ec19ea12e557706862e3abee7f66ecb9",
+      "normal": {
+        "rows": 3,
+        "columns": 4,
+        "max_row": 3,
+        "positions": 12,
+        "nonempty_values": 12,
+        "value_types": {
+          "str": 12
+        }
+      },
+      "default_read_only": {
+        "rows": 3,
+        "columns": 4,
+        "max_row": 3,
+        "positions": 12,
+        "nonempty_values": 12,
+        "value_types": {
+          "str": 12
+        }
+      },
+      "filled_coordinates_and_typed_values_equal": true,
+      "counts_equal": true,
+      "empty_document_no_values_exception": false
+    },
+    {
+      "file": "empty-b20.xlsx",
+      "bytes": 5698,
+      "sha256": "a0e85d5689aacbabd92ffc67719deaf5b53bb3547686b40bb1260c63c34726da",
+      "normal": {
+        "rows": 0,
+        "columns": 1,
+        "max_row": 1,
+        "positions": 0,
+        "nonempty_values": 0,
+        "value_types": {}
+      },
+      "default_read_only": {
+        "rows": 0,
+        "columns": 1,
+        "max_row": 1,
+        "positions": 0,
+        "nonempty_values": 0,
+        "value_types": {}
+      },
+      "filled_coordinates_and_typed_values_equal": true,
+      "counts_equal": true,
+      "empty_document_no_values_exception": false
+    },
+    {
+      "file": "large53893-b20.xlsx",
+      "bytes": 147018,
+      "sha256": "a967f66261881646c8497f4bcd30f28d824890af75c4f207b4b90205abefec28",
+      "normal": {
+        "rows": 830,
+        "columns": 67,
+        "max_row": 830,
+        "positions": 55610,
+        "nonempty_values": 141,
+        "value_types": {
+          "str": 141
+        }
+      },
+      "default_read_only": {
+        "rows": 830,
+        "columns": 67,
+        "max_row": 830,
+        "positions": 55610,
+        "nonempty_values": 141,
+        "value_types": {
+          "str": 141
+        }
+      },
+      "filled_coordinates_and_typed_values_equal": true,
+      "counts_equal": true,
+      "empty_document_no_values_exception": false
+    },
+    {
+      "file": "plain-b20.xlsx",
+      "bytes": 5863,
+      "sha256": "0eecc47eea97324cace0d212f5cd6da9182c6149226cfe3b557a79263664390d",
+      "normal": {
+        "rows": 1,
+        "columns": 1,
+        "max_row": 1,
+        "positions": 1,
+        "nonempty_values": 1,
+        "value_types": {
+          "int": 1
+        }
+      },
+      "default_read_only": {
+        "rows": 1,
+        "columns": 1,
+        "max_row": 1,
+        "positions": 1,
+        "nonempty_values": 1,
+        "value_types": {
+          "int": 1
+        }
+      },
+      "filled_coordinates_and_typed_values_equal": true,
+      "counts_equal": true,
+      "empty_document_no_values_exception": false
+    },
+    {
+      "file": "span-b20.xlsx",
+      "bytes": 6260,
+      "sha256": "3a64b57b54a69048d38c632cb008a0dd82c3c0af4ede4bbf48f41f76ee6b3128",
+      "normal": {
+        "rows": 5,
+        "columns": 8,
+        "max_row": 5,
+        "positions": 40,
+        "nonempty_values": 1,
+        "value_types": {
+          "str": 1
+        }
+      },
+      "default_read_only": {
+        "rows": 5,
+        "columns": 8,
+        "max_row": 5,
+        "positions": 40,
+        "nonempty_values": 1,
+        "value_types": {
+          "str": 1
+        }
+      },
+      "filled_coordinates_and_typed_values_equal": true,
+      "counts_equal": true,
+      "empty_document_no_values_exception": false
+    },
+    {
+      "file": "sparse-b20.xlsx",
+      "bytes": 5870,
+      "sha256": "26f386b43b3d6a6bf7bf0ede6ed981e5ec7be9d10eb74e4d502674c89c63e25b",
+      "normal": {
+        "rows": 830,
+        "columns": 67,
+        "max_row": 830,
+        "positions": 55610,
+        "nonempty_values": 1,
+        "value_types": {
+          "int": 1
+        }
+      },
+      "default_read_only": {
+        "rows": 830,
+        "columns": 67,
+        "max_row": 830,
+        "positions": 55610,
+        "nonempty_values": 1,
+        "value_types": {
+          "int": 1
+        }
+      },
+      "filled_coordinates_and_typed_values_equal": true,
+      "counts_equal": true,
+      "empty_document_no_values_exception": false
+    },
+    {
+      "file": "styled-b20.xlsx",
+      "bytes": 5915,
+      "sha256": "bc66452aec1066cbf5163a9b8be39fc1f00552a664688f8e8b8d2c440e8f53cd",
+      "normal": {
+        "rows": 830,
+        "columns": 67,
+        "max_row": 830,
+        "positions": 55610,
+        "nonempty_values": 1,
+        "value_types": {
+          "int": 1
+        }
+      },
+      "default_read_only": {
+        "rows": 830,
+        "columns": 67,
+        "max_row": 830,
+        "positions": 55610,
+        "nonempty_values": 1,
+        "value_types": {
+          "int": 1
+        }
+      },
+      "filled_coordinates_and_typed_values_equal": true,
+      "counts_equal": true,
+      "empty_document_no_values_exception": false
+    }
+  ]
+}

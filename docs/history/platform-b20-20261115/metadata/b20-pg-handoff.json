@@ -1,0 +1,21 @@
+{
+  "status": "IMMUTABLE_PREBUILT_ONLY_PG_PENDING",
+  "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+  "source": "d232937812637564c730fbc17a9376d269dc5247",
+  "base_b19": "cd9910c81fd7812874b9ca2cafa1870857abee5e",
+  "artifact": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-kpi-p1-b20-ui-linux-amd64.test",
+    "sha256": "bc57b62a65da525421bfdfb3b29bf4db804cee80a5c42875f25cf6cb4c8ef498",
+    "bytes": 84280676,
+    "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+    "source": "d232937812637564c730fbc17a9376d269dc5247",
+    "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-ui_pg-buildinfo.txt",
+    "buildinfo_sha256": "c28c79951c28a82d6f781e15056137feb961046d93e53ed70d9b8768a2ff3d91"
+  },
+  "expected": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-ui-pg-expected.json",
+  "expected_sha256": "b198511f12bf26782e08a6d7aa5abba69e71831771b74ac1da231c46dc4f2abc",
+  "regex": "^(TestTabularPayloadHTTPMatrix|TestTabularLayoutReportHTTPMatrix|TestTabularReportResultHTTPMatrix|TestTabularManagedFieldHTTPMatrix|TestTabularDrilldownHTTPMatrix|TestTabularSizeHTTPMatrix|TestReportFlatColumnsHTTP|TestTabularAutoScaleHTTPMatrix|TestTabularQueryInputLimitHTTPMatrix|TestTabularXLSXDimensionHTTPMatrix)$",
+  "expected_total": 132,
+  "sdk_status": "NOT_BUILT_YET",
+  "go_window": "STILL_ACTIVE_UNTIL_EXPLICIT_END"
+}

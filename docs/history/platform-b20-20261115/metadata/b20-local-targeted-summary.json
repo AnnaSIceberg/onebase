@@ -1,0 +1,1154 @@
+{
+  "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+  "source": "d232937812637564c730fbc17a9376d269dc5247",
+  "runs": [
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-sheet-printform-full.jsonl",
+      "sha256": "e190d9b674c919f7c5f5d6809a484822ce806ed258d234341533b7967b880e45",
+      "all_named_counts": {
+        "pass": 150
+      },
+      "leaf_counts": {
+        "pass": 142
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestArchiveCoverExampleRenderSmoke",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildAreaCellsRowSpanShift",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildAreaCellsTwoLevelHeader",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildSheetBasic",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildSheetColumnWidths",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildSheetDefaultSequence",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildSheetEndToEnd",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildSheetHeaderArea",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildSheetNonRichFieldStaysText",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildSheetRichTextField",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildSheetRichTextFieldDefenseInDepth",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestBuildSheetRowExpansion",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_Binding",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_Columns",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_FooterHr",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_Header",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_MarshalRoundTrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_MoneyMappedToNumber",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_NilTable",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_RendersViaBuildSheet",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_TableAreas",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_Title",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestConvertLegacy_Totals",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestDecimalValuesFormatAndSum",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestInterpolateText",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestIsLayoutV2/areas_как_значение_строки,_не_ключ_—_не_v2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestIsLayoutV2/legacy_mapping-areas_(НЕ_top-level_v2-маркер)_всё_равно_areas_→_v2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestIsLayoutV2/legacy_с_table/title",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestIsLayoutV2/v2_с_top-level_areas",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestIsLayoutV2/пустой",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestIsRichTextField",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLayoutAcceptsRealExample",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLayoutAreaCaseInsensitive",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLayoutFormatReachesTabularExport",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLayoutLegacyMappingOrder",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLayoutPageMarginsBinding",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLayoutPageRoundTrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLayoutRoundTrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLayoutUnderlineHairPropagation",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirBindingPrefixes///_Catalog:_Клиент",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirBindingPrefixes///_Document:_Invoice",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirBindingPrefixes///_Документ:_РеализацияТоваров",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirBindingPrefixes///_Источник:_Клиент",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirBindingPrefixes///_Объект:_Клиент",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirBindingPrefixes///_Печатает_карточку_клиента",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirBindingPrefixes///_СПРАВОЧНИК:_Клиент",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirBindingPrefixes///_Справочник:_Клиент",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirBindingPrefixes///_документ:_РеализацияТоваров",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirBindingPrefixes///_справочник:_Клиент",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirPairedLayoutNotStandalone",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirStandaloneLayout",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirSubfolderBindingWins",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestLoadDirSubfolderStandaloneLayout",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestMigratedExamples_RenderSmoke/ПриходнаяНакладная.layout.yaml",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestMigratedExamples_RenderSmoke/счёт_фактура.layout.yaml",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestPreviewHTMLEscapesText",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestPreviewHTMLNewFields",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestPreviewHTMLSanitizesInlineCSS",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestResolveExprConstant",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestResolveExprRefDisplay",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestResolveExprRootEntityQualifier",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestResolveExprRow",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestResolveExprSimpleField",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestResolveExprSubField",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestResolveExprTotal",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestResolveValueWithFormat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestRichTextFields",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/printform",
+          "name": "TestSumColumnMemoized",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestClassifyPicture",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestColumnWidthsClampedToUsable",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestCustomFormatMM",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDecodeDataURIImage",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXDimension/autoscale",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXDimension/collapsed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXDimension/dense",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXDimension/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXDimension/format-maps-only",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXDimension/kpi-53893",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXDimension/merge-span",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXDimension/single",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXDimension/sparse-offset",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXDimension/styled-tail",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestDocumentXLSXKeepsLayoutStyles",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestHTMLIgnoresUnsafePicture",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestHTMLNoRichCSSWithoutRich",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestHTMLRendersPicture",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestHTMLRichHTMLNotEscaped",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestHTMLStyleNoAttributeBreak",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestHTMLStyleValidColorPassthrough",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFAutoPageBreakOnHeight",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFCustomPageSizeAffectsPagination",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFCustomPageSizeMediaBox",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFEmbedsCyrillicFontNotTransliterated",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFEmbedsPicture",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFFragmentedRichHTML/1",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFFragmentedRichHTML/2000",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFGeneratesValidHeader",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFNarrowCellFitsTextWithoutSecondMargin/1456",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFNarrowCellFitsTextWithoutSecondMargin/8_22",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFNarrowCellFitsTextWithoutSecondMargin/8_22_8_22",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFNarrowCellFitsTextWithoutSecondMargin/ОТ",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFPageBreakAddsPage",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFParsesWithFpdf",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFRepeatHeaderOnSecondPage",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFRichBrokenHTMLSurvives",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFRichFragmentedHTML",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFRichHTMLDoesNotPanic",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFRichWithImageLargerThanWithout",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFSpansDoNotPanic",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFSubsetSize",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFTwoDistinctPicturesSameLength",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPDFUnsupportedPictureNoCrash",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPageSizeMM",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestParseHexColor",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestParseRichHTMLBlocks",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestParseRichHTMLImage",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestPictureCacheName",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestRepeatHeaderHeightNotMinRow",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestResolveColumnWidthsMM",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestResolveFontMapping",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestRowHeightFitsCyrillicWrap",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestSafeColor",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestSafeFontFamily",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularAutoScaleKeepsExplicitBreaksAndRepeatHeader",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularAutoScaleWideKPI/63",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularAutoScaleWideKPI/67",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularExportPDFFormatsAndPrintsCollapsedRows",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularExportXLSXCollapsedParentWins",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularExportXLSXViewAndFormats",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularNumericFormats/decimal",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularNumericFormats/group",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularNumericFormats/optional",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularNumericFormats/percent",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularNumericFormats/round-negative",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularNumericFormats/round-positive",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularNumericFormats/separators",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularNumericFormats/zero-empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularNumericFormats/zero-label",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularSnapshotDetached",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestTabularUnderlineHairExports",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestWrapTextWithFonts",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/sheet",
+          "name": "TestXLSXColor",
+          "result": "pass"
+        }
+      ]
+    },
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-interpreter-xlsx.jsonl",
+      "sha256": "0828d5dba4c85206a782da64c99b754464bf4bcc5467c31dfbbf3286ce502b28",
+      "all_named_counts": {
+        "pass": 4
+      },
+      "leaf_counts": {
+        "pass": 4
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestMaketFormatReachesTabularExport",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestSpreadsheetXLSXAttachmentIsWorkbook",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestSpreadsheetXLSXBase64Export",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestSpreadsheetXLSXFromLayoutKeepsTemplate",
+          "result": "pass"
+        }
+      ]
+    },
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-ui-targeted.jsonl",
+      "sha256": "699025ae95489f23df87b347febb6c081450b862888e696aebdebf1f057207de",
+      "all_named_counts": {
+        "pass": 86,
+        "skip": 10
+      },
+      "leaf_counts": {
+        "pass": 66,
+        "skip": 10
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/drilldown-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat-drilldown",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/grouped",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/grouped-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/incomplete-drilldown",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-63",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-67",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/denied-target",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/typed-form-event",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/typed-link",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-cell",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-token",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularLayoutReportHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularLayoutReportHTTPMatrix/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularManagedFieldHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularManagedFieldHTTPMatrix/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/callback-copy",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/current-rls-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/expired",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/export-does-not-call",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/foreign-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/nested-roundtrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/question-answer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/question-current-rls-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/tampered-client-data",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/wrong-cell",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/below-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/exact-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/limit-hit",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/module-must-not-run",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/no-stale-viewer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-warning",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/below-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/exact-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/limit-hit",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/module-must-not-run",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/no-stale-viewer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-warning",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/expired",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/foreign-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/foreign-user",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/metadata-reloaded",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/revoked-role",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/same-instance-export",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/combined-payload-bytes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/control-1308",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/kpi-53893",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/max-100000",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-bytes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-cells",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-columns",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-header",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-rectangle",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-rows",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/autoscale",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/collapsed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/kpi-53893",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/merged-span",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/offset",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/styled-tail",
+          "result": "pass"
+        }
+      ]
+    }
+  ]
+}

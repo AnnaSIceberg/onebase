@@ -1,0 +1,142 @@
+{
+  "status": "PASS",
+  "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+  "source": "d232937812637564c730fbc17a9376d269dc5247",
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "683984d7a6b7342d20124dd295cc94bc8be1f9ee9e38e50efd3404228ca70c07",
+  "browser": "Chromium109",
+  "checks": {
+    "provided_layout_exact": true,
+    "provided_module_unchanged_since_B18": true,
+    "large53893_native_ok": true,
+    "large53893_actual_dimension": true,
+    "large53893_clean": true,
+    "large_full_styled_rectangle": true,
+    "plain_native_ok": true,
+    "plain_actual_dimension": true,
+    "plain_clean": true,
+    "empty_native_ok": true,
+    "empty_actual_dimension": true,
+    "empty_clean": true,
+    "auto51_native_ok": true,
+    "auto51_actual_dimension": true,
+    "auto51_clean": true,
+    "auto51_full_styled_rectangle": true,
+    "sparse_native_ok": true,
+    "sparse_actual_dimension": true,
+    "sparse_clean": true,
+    "span_native_ok": true,
+    "span_actual_dimension": true,
+    "span_clean": true,
+    "styled_native_ok": true,
+    "styled_actual_dimension": true,
+    "styled_clean": true,
+    "collapsed_native_ok": true,
+    "collapsed_actual_dimension": true,
+    "collapsed_clean": true,
+    "collapsed_marker_preserved": true,
+    "installed_default_reader_exit0": true,
+    "eight_new_exports_default_reader": true,
+    "all_filled_coordinates_and_typed_values_equal_normal": true,
+    "all_nonempty_default_counts_equal_normal": true,
+    "JS0": true
+  },
+  "cases": {
+    "large53893": {
+      "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\large53893-b20.xlsx",
+      "sha256": "a967f66261881646c8497f4bcd30f28d824890af75c4f207b4b90205abefec28",
+      "bytes": 147018,
+      "dimension": "A1:BO830",
+      "xml_rows": 830,
+      "xml_cells": 55610,
+      "merges": 1655
+    },
+    "plain": {
+      "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\plain-b20.xlsx",
+      "sha256": "0eecc47eea97324cace0d212f5cd6da9182c6149226cfe3b557a79263664390d",
+      "bytes": 5863,
+      "dimension": "A1",
+      "xml_rows": 1,
+      "xml_cells": 1,
+      "merges": 0
+    },
+    "empty": {
+      "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\empty-b20.xlsx",
+      "sha256": "a0e85d5689aacbabd92ffc67719deaf5b53bb3547686b40bb1260c63c34726da",
+      "bytes": 5698,
+      "dimension": "A1",
+      "xml_rows": 0,
+      "xml_cells": 0,
+      "merges": 0
+    },
+    "auto51": {
+      "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\auto51-b20.xlsx",
+      "sha256": "a4cf170225e4e3cc84cb37168c01bd0c947b0019884efb3ff2889d3a91094460",
+      "bytes": 17225,
+      "dimension": "A1:BO51",
+      "xml_rows": 51,
+      "xml_cells": 3417,
+      "merges": 97
+    },
+    "sparse": {
+      "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\sparse-b20.xlsx",
+      "sha256": "26f386b43b3d6a6bf7bf0ede6ed981e5ec7be9d10eb74e4d502674c89c63e25b",
+      "bytes": 5870,
+      "dimension": "A1:BO830",
+      "xml_rows": 1,
+      "xml_cells": 1,
+      "merges": 0
+    },
+    "span": {
+      "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\span-b20.xlsx",
+      "sha256": "3a64b57b54a69048d38c632cb008a0dd82c3c0af4ede4bbf48f41f76ee6b3128",
+      "bytes": 6260,
+      "dimension": "A1:H5",
+      "xml_rows": 3,
+      "xml_cells": 15,
+      "merges": 1
+    },
+    "styled": {
+      "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\styled-b20.xlsx",
+      "sha256": "bc66452aec1066cbf5163a9b8be39fc1f00552a664688f8e8b8d2c440e8f53cd",
+      "bytes": 5915,
+      "dimension": "A1:BO830",
+      "xml_rows": 2,
+      "xml_cells": 2,
+      "merges": 0
+    },
+    "collapsed": {
+      "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\collapsed-b20.xlsx",
+      "sha256": "34ac9a99491f111b78a684da9c59a800ec19ea12e557706862e3abee7f66ecb9",
+      "bytes": 6308,
+      "dimension": "A1:D3",
+      "xml_rows": 3,
+      "xml_cells": 12,
+      "merges": 0
+    }
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "phase": "installed-default-reader",
+  "db_copies": 0,
+  "go_started": false,
+  "shared_changes": false,
+  "browser_os_network_isolated": false,
+  "browser_request_boundary": "context own loopback allowlist",
+  "old_B18_exports_rewritten": false,
+  "browser_version": "109.0.5414.46",
+  "installed_reader_receipt": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\installed-default-reader.json",
+    "sha256": "6f5b1306f34e17387bef240b4179144a6f9966dcac9183bb342a4108f5247d36",
+    "version": "3.1.5",
+    "default_without_reset": true
+  },
+  "page_errors": 0
+}

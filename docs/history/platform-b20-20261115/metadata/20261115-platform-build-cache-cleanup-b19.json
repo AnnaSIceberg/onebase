@@ -1,0 +1,21 @@
+﻿{
+    "kind":  "authorized reproducible build cache cleanup only",
+    "start_utc":  "2026-11-15T08:28:45.0692689Z",
+    "end_utc":  "2026-11-15T08:28:50.4603357Z",
+    "pinned_go":  "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+    "toolchain":  "go1.26.11",
+    "command":  "go clean -cache",
+    "cache_path":  "C:\\Users\\a.sevrjukova\\AppData\\Local\\go-build",
+    "go_before":  0,
+    "go_after":  0,
+    "cache_bytes_before":  4185073618,
+    "cache_bytes_after":  228,
+    "removed_file_bytes":  4185073390,
+    "free_C_before":  1561022464,
+    "free_C_after":  5753634816,
+    "modcache_touched":  false,
+    "sdk_touched":  false,
+    "sources_touched":  false,
+    "databases_touched":  false,
+    "receipts_touched":  false
+}

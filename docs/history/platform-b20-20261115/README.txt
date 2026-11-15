@@ -1,0 +1,1 @@
+B20 support backup: code/metadata/reports only. No DB, cookies, credentials, binaries, raw server logs, customer layouts, screenshots or XLSX payloads. Product source is the parent commit. This WIP branch is not a release or merge request.

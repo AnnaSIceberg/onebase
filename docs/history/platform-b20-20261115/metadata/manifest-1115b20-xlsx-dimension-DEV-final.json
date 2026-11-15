@@ -1,0 +1,484 @@
+{
+  "status": "B20_COMBINED_LOCAL_PG_WINDOWS_NATIVE_DEFAULT_READER_GREEN_NOT_DEPLOYED",
+  "created_utc": "2026-11-15T09:24:09.568090+00:00",
+  "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+  "source": "d232937812637564c730fbc17a9376d269dc5247",
+  "base_b19": "cd9910c81fd7812874b9ca2cafa1870857abee5e",
+  "original_build_manifest": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b20-xlsx-dimension-DEV.json",
+    "sha256": "f98dd30ec8e75e71e6120f5b6551307d18c3aef473101a85f491b5bb7003c5af",
+    "unchanged": true
+  },
+  "artifacts": {
+    "ui_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-kpi-p1-b20-ui-linux-amd64.test",
+      "sha256": "bc57b62a65da525421bfdfb3b29bf4db804cee80a5c42875f25cf6cb4c8ef498",
+      "bytes": 84280676,
+      "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+      "source": "d232937812637564c730fbc17a9376d269dc5247",
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-ui_pg-buildinfo.txt",
+      "buildinfo_sha256": "c28c79951c28a82d6f781e15056137feb961046d93e53ed70d9b8768a2ff3d91",
+      "embedded_vcs_revision_present": false,
+      "revision_binding": "Exact clean source/runtime, argv/env command receipts and artifact SHA; embedded VCS not invented"
+    },
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b20-xlsx-dimension-linux-amd64",
+      "sha256": "185925eff94b53424eb2a5e2c08d62bb98222b900d35d5761d313d0f914d559a",
+      "bytes": 78324402,
+      "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+      "source": "d232937812637564c730fbc17a9376d269dc5247",
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-linux-buildinfo.txt",
+      "buildinfo_sha256": "a6909bc3ee84f8c5fd9a91b4e57e15608447f4dcd74cd8c08f0ed3886d7b6a4b",
+      "embedded_vcs_revision_present": false,
+      "revision_binding": "Exact clean source/runtime, argv/env command receipts and artifact SHA; embedded VCS not invented"
+    },
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b20-xlsx-dimension-windows-amd64.exe",
+      "sha256": "683984d7a6b7342d20124dd295cc94bc8be1f9ee9e38e50efd3404228ca70c07",
+      "bytes": 79300096,
+      "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+      "source": "d232937812637564c730fbc17a9376d269dc5247",
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-windows-buildinfo.txt",
+      "buildinfo_sha256": "1df219ba633e57c08df03440dbc5590b121f0f66caa2f21bc3964178f78b425e",
+      "embedded_vcs_revision_present": false,
+      "revision_binding": "Exact clean source/runtime, argv/env command receipts and artifact SHA; embedded VCS not invented"
+    }
+  },
+  "tests": {
+    "source": {
+      "pass": 17,
+      "local_pg_skip": 1,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-source-dimension-v1.jsonl",
+      "sha256": "da7adbea42d09a1924cc67af01534e100317de6608eff446f14efa771a6ee10d"
+    },
+    "red_old_writer": {
+      "old_source": "815e1505f504659fedea159fd186eeff3ab36d33",
+      "expected_failures": 7,
+      "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-red-old-xlsx\\receipt.json",
+      "sha256": "cfbf43cc8532c097c90087abcaa0d9c3a28629ea10f36fb1bd8f9e43b651ac2e",
+      "not_frozen_sdk_execution": true
+    },
+    "runtime_local": {
+      "leaf_pass": 212,
+      "fail": 0,
+      "local_pg_root_skip": 10,
+      "summary": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-local-targeted-summary.json",
+      "sha256": "3ac40b2e5c6fa9f672351ab429b1b91dcc16fcd756b75ba48a58f763919b21ef"
+    },
+    "pg": {
+      "sqlite": 66,
+      "postgres": 66,
+      "total": 132,
+      "fail": 0,
+      "skip": 0,
+      "expectednames_all_matched": true,
+      "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\cc2-task-rest-blocker-20261113\\pg-ui-bc57b62a\\receipt.json",
+      "sha256": "a7d1bf16b6ed62913e20b05bde838b3b85c680778fcd40a29cd65ae43a2f4812",
+      "cleanup_exact": true
+    },
+    "build_all": {
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-build-all.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "i18n_en": {
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-i18n-en.log",
+      "sha256": "3f1aeb0ee17a5d05b77d2a87ff38017caa0944c969d3eb27ea368ebc603d9cf6"
+    },
+    "unrelated_api_repeated": false
+  },
+  "native": {
+    "platform": "windows-amd64",
+    "sdk_sha256": "683984d7a6b7342d20124dd295cc94bc8be1f9ee9e38e50efd3404228ca70c07",
+    "browser_version": "109.0.5414.46",
+    "checks_pass": 34,
+    "checks_fail": 0,
+    "page_errors": 0,
+    "cases": {
+      "large53893": {
+        "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\large53893-b20.xlsx",
+        "sha256": "a967f66261881646c8497f4bcd30f28d824890af75c4f207b4b90205abefec28",
+        "bytes": 147018,
+        "dimension": "A1:BO830",
+        "xml_rows": 830,
+        "xml_cells": 55610,
+        "merges": 1655
+      },
+      "plain": {
+        "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\plain-b20.xlsx",
+        "sha256": "0eecc47eea97324cace0d212f5cd6da9182c6149226cfe3b557a79263664390d",
+        "bytes": 5863,
+        "dimension": "A1",
+        "xml_rows": 1,
+        "xml_cells": 1,
+        "merges": 0
+      },
+      "empty": {
+        "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\empty-b20.xlsx",
+        "sha256": "a0e85d5689aacbabd92ffc67719deaf5b53bb3547686b40bb1260c63c34726da",
+        "bytes": 5698,
+        "dimension": "A1",
+        "xml_rows": 0,
+        "xml_cells": 0,
+        "merges": 0
+      },
+      "auto51": {
+        "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\auto51-b20.xlsx",
+        "sha256": "a4cf170225e4e3cc84cb37168c01bd0c947b0019884efb3ff2889d3a91094460",
+        "bytes": 17225,
+        "dimension": "A1:BO51",
+        "xml_rows": 51,
+        "xml_cells": 3417,
+        "merges": 97
+      },
+      "sparse": {
+        "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\sparse-b20.xlsx",
+        "sha256": "26f386b43b3d6a6bf7bf0ede6ed981e5ec7be9d10eb74e4d502674c89c63e25b",
+        "bytes": 5870,
+        "dimension": "A1:BO830",
+        "xml_rows": 1,
+        "xml_cells": 1,
+        "merges": 0
+      },
+      "span": {
+        "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\span-b20.xlsx",
+        "sha256": "3a64b57b54a69048d38c632cb008a0dd82c3c0af4ede4bbf48f41f76ee6b3128",
+        "bytes": 6260,
+        "dimension": "A1:H5",
+        "xml_rows": 3,
+        "xml_cells": 15,
+        "merges": 1
+      },
+      "styled": {
+        "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\styled-b20.xlsx",
+        "sha256": "bc66452aec1066cbf5163a9b8be39fc1f00552a664688f8e8b8d2c440e8f53cd",
+        "bytes": 5915,
+        "dimension": "A1:BO830",
+        "xml_rows": 2,
+        "xml_cells": 2,
+        "merges": 0
+      },
+      "collapsed": {
+        "file": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\collapsed-b20.xlsx",
+        "sha256": "34ac9a99491f111b78a684da9c59a800ec19ea12e557706862e3abee7f66ecb9",
+        "bytes": 6308,
+        "dimension": "A1:D3",
+        "xml_rows": 3,
+        "xml_cells": 12,
+        "merges": 0
+      }
+    },
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\receipt.json",
+    "receipt_sha256": "d2bb0d9f15cd9b863432ec338b4b0e318986827d983a2523e4fe40a918b111a4",
+    "source_fixture_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\source-fixture-manifest.json",
+    "source_fixture_manifest_sha256": "1e53f00dbd3fa18fee5616f192ff99198769a0262796939a090d821562e65b07",
+    "runner": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension.py",
+    "runner_sha256": "55d14c0de96bd035605d7b49c3d9c80140e6797bfb6f22290f3155024b6b6c58",
+    "screens": [
+      {
+        "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\auto51.png",
+        "sha256": "95efce09482754be5e49519fdc6843cf3595b9de2d36403f9d1a7f3712a451d1",
+        "bytes": 52286,
+        "desktop": "C:\\Users\\a.sevrjukova\\Desktop\\ТабДок-B20-XLSX-dimension-20261115\\auto51.png"
+      },
+      {
+        "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\collapsed.png",
+        "sha256": "5024744a4b82bdd60c3518241e27e7e837319fe55988f78a76c2ec86e06d0954",
+        "bytes": 35604,
+        "desktop": "C:\\Users\\a.sevrjukova\\Desktop\\ТабДок-B20-XLSX-dimension-20261115\\collapsed.png"
+      },
+      {
+        "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\large53893.png",
+        "sha256": "603810cca2c870ed0b7b667ff29d33bd0eb831cd9e9f873ce20a2b2d33b2565d",
+        "bytes": 52207,
+        "desktop": "C:\\Users\\a.sevrjukova\\Desktop\\ТабДок-B20-XLSX-dimension-20261115\\large53893.png"
+      },
+      {
+        "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\span.png",
+        "sha256": "48e47caac1fbc028e8e16c083427c9fadf27fdb2c3d433cfb95ecd940fa634f8",
+        "bytes": 35939,
+        "desktop": "C:\\Users\\a.sevrjukova\\Desktop\\ТабДок-B20-XLSX-dimension-20261115\\span.png"
+      }
+    ],
+    "no_linux_browser_proof_claimed": true,
+    "no_old_proof_retag": true
+  },
+  "installed_reader": {
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-dimension-attempt1\\installed-default-reader.json",
+    "receipt_sha256": "6f5b1306f34e17387bef240b4179144a6f9966dcac9183bb342a4108f5247d36",
+    "script": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-installed-xlsx-reader.py",
+    "script_sha256": "da0a76741336d929a8ac6a26c95d832ab4e1457f8e4b9fb6945d62065f4e6ad0",
+    "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+    "executable": "C:\\Python314\\python.exe",
+    "version": "3.1.5",
+    "files": [
+      {
+        "file": "auto51-b20.xlsx",
+        "bytes": 17225,
+        "sha256": "a4cf170225e4e3cc84cb37168c01bd0c947b0019884efb3ff2889d3a91094460",
+        "normal": {
+          "rows": 51,
+          "columns": 67,
+          "max_row": 51,
+          "positions": 3417,
+          "nonempty_values": 141,
+          "value_types": {
+            "str": 141
+          }
+        },
+        "default_read_only": {
+          "rows": 51,
+          "columns": 67,
+          "max_row": 51,
+          "positions": 3417,
+          "nonempty_values": 141,
+          "value_types": {
+            "str": 141
+          }
+        },
+        "filled_coordinates_and_typed_values_equal": true,
+        "counts_equal": true,
+        "empty_document_no_values_exception": false
+      },
+      {
+        "file": "collapsed-b20.xlsx",
+        "bytes": 6308,
+        "sha256": "34ac9a99491f111b78a684da9c59a800ec19ea12e557706862e3abee7f66ecb9",
+        "normal": {
+          "rows": 3,
+          "columns": 4,
+          "max_row": 3,
+          "positions": 12,
+          "nonempty_values": 12,
+          "value_types": {
+            "str": 12
+          }
+        },
+        "default_read_only": {
+          "rows": 3,
+          "columns": 4,
+          "max_row": 3,
+          "positions": 12,
+          "nonempty_values": 12,
+          "value_types": {
+            "str": 12
+          }
+        },
+        "filled_coordinates_and_typed_values_equal": true,
+        "counts_equal": true,
+        "empty_document_no_values_exception": false
+      },
+      {
+        "file": "empty-b20.xlsx",
+        "bytes": 5698,
+        "sha256": "a0e85d5689aacbabd92ffc67719deaf5b53bb3547686b40bb1260c63c34726da",
+        "normal": {
+          "rows": 0,
+          "columns": 1,
+          "max_row": 1,
+          "positions": 0,
+          "nonempty_values": 0,
+          "value_types": {}
+        },
+        "default_read_only": {
+          "rows": 0,
+          "columns": 1,
+          "max_row": 1,
+          "positions": 0,
+          "nonempty_values": 0,
+          "value_types": {}
+        },
+        "filled_coordinates_and_typed_values_equal": true,
+        "counts_equal": true,
+        "empty_document_no_values_exception": false
+      },
+      {
+        "file": "large53893-b20.xlsx",
+        "bytes": 147018,
+        "sha256": "a967f66261881646c8497f4bcd30f28d824890af75c4f207b4b90205abefec28",
+        "normal": {
+          "rows": 830,
+          "columns": 67,
+          "max_row": 830,
+          "positions": 55610,
+          "nonempty_values": 141,
+          "value_types": {
+            "str": 141
+          }
+        },
+        "default_read_only": {
+          "rows": 830,
+          "columns": 67,
+          "max_row": 830,
+          "positions": 55610,
+          "nonempty_values": 141,
+          "value_types": {
+            "str": 141
+          }
+        },
+        "filled_coordinates_and_typed_values_equal": true,
+        "counts_equal": true,
+        "empty_document_no_values_exception": false
+      },
+      {
+        "file": "plain-b20.xlsx",
+        "bytes": 5863,
+        "sha256": "0eecc47eea97324cace0d212f5cd6da9182c6149226cfe3b557a79263664390d",
+        "normal": {
+          "rows": 1,
+          "columns": 1,
+          "max_row": 1,
+          "positions": 1,
+          "nonempty_values": 1,
+          "value_types": {
+            "int": 1
+          }
+        },
+        "default_read_only": {
+          "rows": 1,
+          "columns": 1,
+          "max_row": 1,
+          "positions": 1,
+          "nonempty_values": 1,
+          "value_types": {
+            "int": 1
+          }
+        },
+        "filled_coordinates_and_typed_values_equal": true,
+        "counts_equal": true,
+        "empty_document_no_values_exception": false
+      },
+      {
+        "file": "span-b20.xlsx",
+        "bytes": 6260,
+        "sha256": "3a64b57b54a69048d38c632cb008a0dd82c3c0af4ede4bbf48f41f76ee6b3128",
+        "normal": {
+          "rows": 5,
+          "columns": 8,
+          "max_row": 5,
+          "positions": 40,
+          "nonempty_values": 1,
+          "value_types": {
+            "str": 1
+          }
+        },
+        "default_read_only": {
+          "rows": 5,
+          "columns": 8,
+          "max_row": 5,
+          "positions": 40,
+          "nonempty_values": 1,
+          "value_types": {
+            "str": 1
+          }
+        },
+        "filled_coordinates_and_typed_values_equal": true,
+        "counts_equal": true,
+        "empty_document_no_values_exception": false
+      },
+      {
+        "file": "sparse-b20.xlsx",
+        "bytes": 5870,
+        "sha256": "26f386b43b3d6a6bf7bf0ede6ed981e5ec7be9d10eb74e4d502674c89c63e25b",
+        "normal": {
+          "rows": 830,
+          "columns": 67,
+          "max_row": 830,
+          "positions": 55610,
+          "nonempty_values": 1,
+          "value_types": {
+            "int": 1
+          }
+        },
+        "default_read_only": {
+          "rows": 830,
+          "columns": 67,
+          "max_row": 830,
+          "positions": 55610,
+          "nonempty_values": 1,
+          "value_types": {
+            "int": 1
+          }
+        },
+        "filled_coordinates_and_typed_values_equal": true,
+        "counts_equal": true,
+        "empty_document_no_values_exception": false
+      },
+      {
+        "file": "styled-b20.xlsx",
+        "bytes": 5915,
+        "sha256": "bc66452aec1066cbf5163a9b8be39fc1f00552a664688f8e8b8d2c440e8f53cd",
+        "normal": {
+          "rows": 830,
+          "columns": 67,
+          "max_row": 830,
+          "positions": 55610,
+          "nonempty_values": 1,
+          "value_types": {
+            "int": 1
+          }
+        },
+        "default_read_only": {
+          "rows": 830,
+          "columns": 67,
+          "max_row": 830,
+          "positions": 55610,
+          "nonempty_values": 1,
+          "value_types": {
+            "int": 1
+          }
+        },
+        "filled_coordinates_and_typed_values_equal": true,
+        "counts_equal": true,
+        "empty_document_no_values_exception": false
+      }
+    ],
+    "default_without_reset_or_forced_bounds": true,
+    "normal_vs_default_all_counts_and_filled_typed_coordinates_equal": true,
+    "empty_exception_used": false,
+    "compatibility_scope": "Only checked openpyxl3.1.5 read_only/normal; Excel/LibreOffice/other readers UNKNOWN. Generated KPI geometry, not business numeric parity."
+  },
+  "cleanup": {
+    "explicit_browser_END": true,
+    "processes": {
+      "utc": "2026-11-15T09:21:17.3008734Z",
+      "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+      "sdk_sha256": "683984d7a6b7342d20124dd295cc94bc8be1f9ee9e38e50efd3404228ca70c07",
+      "go_process_count": 0,
+      "chrome_process_count": 0,
+      "driver_process_count": 0,
+      "own_playwright_driver_count": 0,
+      "own_app_closed": true,
+      "own_port": 18570,
+      "own_port_closed": true,
+      "tunnel_used": false,
+      "db_copies": 0,
+      "shared_changed": false,
+      "CFreeBytes": 14586699776
+    },
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-native-cleanup-end.json",
+    "sha256": "471f6c6dffc6e0d6a16082603727e2613b2f9fb426e221371da1affb9563cb60",
+    "own_auth_db_removed": true
+  },
+  "old_B18_exports_verified_unchanged": [
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b18-native-kpi-attempt3\\large53893.xlsx",
+      "sha256": "42abc18833d24177d2dddaceeedc6504193c2384dfc7421e571ba5231158a492"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b18-native-kpi-attempt3\\auto51.xlsx",
+      "sha256": "4c8a8d5a6bfac929fe367905456c02ac3e2cc1ee4cf94d61957451234e8bedc2"
+    }
+  ],
+  "scope": {
+    "db_copies": 0,
+    "shared_changed_by_platform": false,
+    "release_execution": false,
+    "live8444": "B18 remains; B20 preparation only until evening instruction",
+    "B19_intermediate_not_deployed": true,
+    "P4_P7": "platform2 source separately; not included",
+    "source_runtime_pushed": true,
+    "ready_for_final_candidate_integration": "Preserve exact tested B20 base; only subsequently reviewed changes in a new immutable candidate"
+  }
+}

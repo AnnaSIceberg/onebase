@@ -1,0 +1,357 @@
+{
+  "utc": "2026-11-15T08:49:43.376591+00:00",
+  "status": "CLEANUP_COMPLETED_RECEIPT_RECOVERED",
+  "reason_receipt_recovered": "Authorized removal completed, then PowerShell Measure-Object could not read bytes on OrderedDictionary. No deletion repeated. Names/sizes recovered from pre-delete tool inventory; original hashes linked from retained manifests where available.",
+  "primary_removed_count": 26,
+  "primary_removed_bytes": 2039156075,
+  "primary_files": [
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-kpi-p1-b17-ui-linux-amd64.test",
+      "bytes": 84196181,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "441d97a56ea5a488232c7e5dc3c657316b40ca58dea0037e8ff61a63576869f6",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b17-kpi-tabular-DEV-final.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-p1-b16-ui-portable-linux-amd64.test",
+      "bytes": 84146453,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "008f992a06f1be23f6b07994637bc74688ef469e1cf4d9d6c99f7711b404577c",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b16-tabular-reports-DEV-final.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-p1-b16-ui-linux-amd64.test",
+      "bytes": 84133773,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "686358cd3aff79311524d9118c5321c721b5397df8a285ee1ac1b217d15e68a7",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b16-tabular-reports-DEV.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\audio-dirty-stage2-ff0518fd-linux-amd64.test",
+      "bytes": 83981027,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "ae8b7baa73878f9bad8a25062a0fb76bc75c53648c9998935623f58b4ec0760a",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-audio-dirty-stage2-ff0518fd-compile-only.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\current-reference-b15-linux-amd64.test",
+      "bytes": 83903864,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "d15d0bfacbcee6c68ba32fe52a70d126c97e66829d18b1879b1a324bd5719588",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-b15-reference-pg.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reference-dirty-b14-linux-amd64.test",
+      "bytes": 83804900,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "ea81a976d5cbe0bb5fca5350ad92a2f7bc26ba984a352fad55fb7370a467c222",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-b14-reference-pg-final.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\audio-diag-f49-stage1-linux.test",
+      "bytes": 83782465,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "6481459382761defbd34346ef57d0bc6817dac46be9cfb40977cfee6e7236d85",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-audio-diag-f49-stage1.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\form-dirty-defaults-b13-linux-amd64.test",
+      "bytes": 83752582,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "631e09a9db10af3feeec229999b2fd1483cb8c8f4be8933ed85867d1d15ff8ea",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b13-form-dirty-defaults-DEV.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\audio-viewstate-1114b10-final-ui-linux.test",
+      "bytes": 83727586,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "8d5c6d3bb0c8854e08f3eb3ce4607a5f7441cec7b22b503af38ec6d66dfd5eac",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1114b10-audio-viewstate-dev.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b17-kpi-tabular-windows-amd64.exe",
+      "bytes": 79289344,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "8f10286624fd6dd6fc558c09bcf2ff4003ce44669b7e29b527cf0d5844b74dfd",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b17-kpi-tabular-DEV-final.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b16-tabular-reports-windows-amd64.exe",
+      "bytes": 79259136,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "aa72311dca267b66f8ae354c88205c1ed9191ee33c86fa456813d93825e05f55",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b17-kpi-tabular-DEV-final.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b15-current-reference-windows-amd64.exe",
+      "bytes": 79106048,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "b50695d27a8b47134c6a5b33cc795e88d50746a0d90f557e10382b7054e9df8c",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b15-current-reference-DEV.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b14-reference-dirty-windows-amd64.exe",
+      "bytes": 79063040,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "75c6fc705f79df3c790742edb656d398f89db7e53e43ac0376f1133df70e47c8",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b14-reference-dirty-DEV.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b13-form-dirty-defaults-windows-amd64.exe",
+      "bytes": 79060992,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "28d0f9613193998fd71b3aa67a7c3d1f14c82bd60b843bba748832a571d34b66",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b13-form-dirty-defaults-DEV.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b17-kpi-tabular-linux-amd64",
+      "bytes": 78312262,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "244565637761ba3aadfffa7c1e532654332e056ccfe3b0f0dfb04bdc3c4bdf8f",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b17-kpi-tabular-DEV-final.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b16-tabular-reports-linux-amd64",
+      "bytes": 78282155,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "6918eb814d4c82666e21b6145a5ebadd399dce865a1d2160c5b75d8a2fcc6e8b",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b17-kpi-tabular-DEV-final.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b15-current-reference-linux-amd64",
+      "bytes": 78128686,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "fbbc190d8bb8685fc76b0884a5e8d69a28a262fe3c3935cb3f9b1e92da801ead",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b15-current-reference-DEV.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b14-alldiff-diagnostic-linux-amd64",
+      "bytes": 78113859,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "a0605ad7a476ff16cb4ef5366ea58bed90ab0a7e3451347117b121540e9f7809",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-b14-alldiff-diagnostic.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1114b12-audio-dirty-diagnostic-linux-amd64",
+      "bytes": 78090981,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "cac941d9594400124631aa4da7c95de253c3e74ea509c7d0696ae370e81427c5",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1114b12-audio-dirty-diagnostic.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b13-bid-dirty-diagnostic-linux-amd64",
+      "bytes": 78089251,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "181e6da08c1233e66091ab5021d86b5fe949d725fef4fe0148edcc2e25cdc102",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-b13-bid-dirty-diagnostic.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b14-reference-dirty-linux-amd64",
+      "bytes": 78088665,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "fa9bd856ad762e48a7decd9ca601e811c801810eacd32cd68cbda1689fbf3825",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b14-reference-dirty-DEV.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1114b11-audio-service-state-linux-amd64",
+      "bytes": 78084928,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "253e0ed9102dfe6e930e9dd0e6fa698c36b69b187af1826e2c5d7860ffb0e1a8",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1114b11-audio-service-state-DEV.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b13-form-dirty-defaults-linux-amd64",
+      "bytes": 78083865,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "43947b0d6b90b1c03cba63f84109e08f00d29007a58b7fe5a7efd054fc9dfd37",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b13-form-dirty-defaults-DEV.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-p2p3p5p6-b16-api-linux-amd64.test",
+      "bytes": 63371342,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "68f5a79878da77eea7be7c15863643f5513e7ee1af90909d0718ad7454d3847d",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b16-tabular-reports-DEV.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1114b10-audio-viewstate-final-windows-amd64.exe",
+      "bytes": 61160960,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "0634b25122b93b475562ad0056fbf8a886615e7122509cf31e0e8dd33b9af4ac",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1114b10-audio-viewstate-dev.json",
+        "not_recomputed_after_deletion": true
+      }
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1114b10-audio-viewstate-final-linux-amd64",
+      "bytes": 60141730,
+      "missing_after": true,
+      "archived_hash": {
+        "sha256": "199b661d7408b9737873f37ed6eac346e49d456489810d78e83e23105d5af08f",
+        "source_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1114b10-audio-viewstate-dev.json",
+        "not_recomputed_after_deletion": true
+      }
+    }
+  ],
+  "extra_old_directories": [
+    {
+      "path": "C:/Users/a.sevrjukova/AppData/Local/Temp/onebase-2558-codex",
+      "before_bytes": 1124559140,
+      "after_bytes": 1067023652
+    },
+    {
+      "path": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-result-form-20261111",
+      "before_bytes": 416063074,
+      "after_bytes": 260925976
+    }
+  ],
+  "extra_directories_scope": "Only untracked MZ/ELF outputs removed. Sources/receipts/directories retained.",
+  "total_removed_bytes_from_inventory_and_tree_deltas": 2251828661,
+  "total_removed_GiB": 2.0971788661554456,
+  "C_free_observed_after": 16233959424,
+  "free_space_change_not_attributed_wholly_to_this_agent": true,
+  "protected_preserved": [
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b18-kpi-size-scale-DEV-final.json",
+      "bytes": 25809,
+      "sha256": "3b84fec1a3c39c076a3e89e36f32b0a6baaecb37a74aa44da2732f1cb6ef5a05"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b19-tabular-input-limit-DEV.json",
+      "bytes": 15619,
+      "sha256": "94054e97d5cf6c879e6c7b9fc302a43f88a623096450a72962a5468e59837662"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b19-tabular-input-limit-DEV-final.json",
+      "bytes": 11311,
+      "sha256": "9eb4279b2f015c82b8b6063d72d420ac1388e26571d5f0a0ad6d6a318498e85e"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b18-kpi-size-scale-linux-amd64",
+      "bytes": 78319306,
+      "sha256": "24897fe0c06347704440982007e8ccac9a8550165fd2fb2b6b6cc2cd153e10d4"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b18-kpi-size-scale-windows-amd64.exe",
+      "bytes": 79299072,
+      "sha256": "a03f0edec3e125be33179fadec260a3e7a990b6ca5216e0af9a8847786bcfa35"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b19-tabular-input-limit-linux-amd64",
+      "bytes": 78320370,
+      "sha256": "3f55a5a0d7bfb83a1ce8d69609f1b27abd1ce1f77c100708650d1bd847490b20"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b19-tabular-input-limit-windows-amd64.exe",
+      "bytes": 79300096,
+      "sha256": "da985170e49b24242cbb65cb6fb091a35e9c9992a8a13397d7437f02b763d60e"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-kpi-p1-b18-ui-linux-amd64.test",
+      "bytes": 84245560,
+      "sha256": "fcbad6244ac5016fbf776aa74cb585f5c66a6f682c3bd8ad2b76f18016b2c10e"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-kpi-p1-b19-ui-linux-amd64.test",
+      "bytes": 84265342,
+      "sha256": "82f3879356c79fff52adb69620eddea3030205c59d045716af56e91b7624c32f"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1113b7-rest-guard-linux-amd64",
+      "bytes": 60121250,
+      "sha256": "01c91f79322458bc507e7253751540fa26061a99fef715b81dd5e85f9a80935a"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1113b7-rest-guard-windows-amd64.exe",
+      "bytes": 61140992,
+      "sha256": "cfe89953629668a454985c71e5b2db440df23169a34b422e923db14c026e7e6d"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1114b8-effective-rights-linux-amd64",
+      "bytes": 60125346,
+      "sha256": "ae180431bf99112ce68c367ffb5337224023fd881a0e93eba837cd7eaabae376"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1114b8-effective-rights-windows-amd64.exe",
+      "bytes": 61147136,
+      "sha256": "612846dfa8aa6bebfd24f436fbeeeaa912299ccabc2d274204f411f0599d4f57"
+    }
+  ],
+  "B18_B19_source_runtime_unchanged": true,
+  "production_bb0269_6efa_not_in_selection": true,
+  "no_recursive_delete": true,
+  "no_process_stopped": true
+}

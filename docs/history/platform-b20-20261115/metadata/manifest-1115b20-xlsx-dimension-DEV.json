@@ -1,0 +1,301 @@
+{
+  "status": "B20_COMBINED_DEV_LOCAL_PG_GREEN_NATIVE_READER_PENDING",
+  "created_utc": "2026-11-15T09:16:03.981596+00:00",
+  "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+  "source": "d232937812637564c730fbc17a9376d269dc5247",
+  "base_b19": "cd9910c81fd7812874b9ca2cafa1870857abee5e",
+  "runtime_branch": "fix/xlsx-used-range-runtime-20261115",
+  "source_branch": "fix/xlsx-used-range-20261115",
+  "source_draft": "https://github.com/ivanarama/onebase/pull/2627",
+  "artifacts": {
+    "ui_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-kpi-p1-b20-ui-linux-amd64.test",
+      "sha256": "bc57b62a65da525421bfdfb3b29bf4db804cee80a5c42875f25cf6cb4c8ef498",
+      "bytes": 84280676,
+      "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+      "source": "d232937812637564c730fbc17a9376d269dc5247",
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-ui_pg-buildinfo.txt",
+      "buildinfo_sha256": "c28c79951c28a82d6f781e15056137feb961046d93e53ed70d9b8768a2ff3d91",
+      "embedded_vcs_revision_present": false,
+      "revision_binding": "Exact clean source/runtime, argv/env command receipts and artifact SHA; embedded VCS not invented"
+    },
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b20-xlsx-dimension-linux-amd64",
+      "sha256": "185925eff94b53424eb2a5e2c08d62bb98222b900d35d5761d313d0f914d559a",
+      "bytes": 78324402,
+      "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+      "source": "d232937812637564c730fbc17a9376d269dc5247",
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-linux-buildinfo.txt",
+      "buildinfo_sha256": "a6909bc3ee84f8c5fd9a91b4e57e15608447f4dcd74cd8c08f0ed3886d7b6a4b",
+      "embedded_vcs_revision_present": false,
+      "revision_binding": "Exact clean source/runtime, argv/env command receipts and artifact SHA; embedded VCS not invented"
+    },
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b20-xlsx-dimension-windows-amd64.exe",
+      "sha256": "683984d7a6b7342d20124dd295cc94bc8be1f9ee9e38e50efd3404228ca70c07",
+      "bytes": 79300096,
+      "runtime": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+      "source": "d232937812637564c730fbc17a9376d269dc5247",
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-windows-buildinfo.txt",
+      "buildinfo_sha256": "1df219ba633e57c08df03440dbc5590b121f0f66caa2f21bc3964178f78b425e",
+      "embedded_vcs_revision_present": false,
+      "revision_binding": "Exact clean source/runtime, argv/env command receipts and artifact SHA; embedded VCS not invented"
+    }
+  },
+  "combined_fix": {
+    "result_proc_input_limit": "B19 retained: truncated positive-limit input HTTP422 before module/new snapshot; ordinary warning/zero unchanged",
+    "xlsx_dimension": "SetSheetDimension before WriteToBuffer: A1:last from 0-based inclusive ContentBounds + spans/style-only cells; empty/single A1; row-height/column-width maps alone excluded",
+    "outline": "same dimension preserved through existing ZIP outline pass",
+    "protected": "same typed values/styles/numeric formats/print settings/snapshot/rights and budgets",
+    "compatibility_scope": "ZIP regression PASS; default installed openpyxl3.1.5 read_only gate still pending on new SDK exports; other readers not claimed"
+  },
+  "tests": {
+    "source": {
+      "pass": 17,
+      "local_pg_skip": 1,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-source-dimension-v1.jsonl",
+      "sha256": "da7adbea42d09a1924cc67af01534e100317de6608eff446f14efa771a6ee10d"
+    },
+    "red_old_writer": {
+      "old_source": "815e1505f504659fedea159fd186eeff3ab36d33",
+      "expected_failures": 7,
+      "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-red-old-xlsx\\receipt.json",
+      "sha256": "cfbf43cc8532c097c90087abcaa0d9c3a28629ea10f36fb1bd8f9e43b651ac2e",
+      "not_frozen_sdk_execution": true
+    },
+    "runtime_local": {
+      "leaf_pass": 212,
+      "fail": 0,
+      "local_pg_root_skip": 10,
+      "summary": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-local-targeted-summary.json",
+      "sha256": "3ac40b2e5c6fa9f672351ab429b1b91dcc16fcd756b75ba48a58f763919b21ef"
+    },
+    "pg": {
+      "sqlite": 66,
+      "postgres": 66,
+      "total": 132,
+      "fail": 0,
+      "skip": 0,
+      "expectednames_all_matched": true,
+      "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\cc2-task-rest-blocker-20261113\\pg-ui-bc57b62a\\receipt.json",
+      "sha256": "a7d1bf16b6ed62913e20b05bde838b3b85c680778fcd40a29cd65ae43a2f4812",
+      "cleanup_exact": true
+    },
+    "build_all": {
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-build-all.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "i18n_en": {
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-i18n-en.log",
+      "sha256": "3f1aeb0ee17a5d05b77d2a87ff38017caa0944c969d3eb27ea368ebc603d9cf6"
+    },
+    "unrelated_api_repeated": false
+  },
+  "expected": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-ui-pg-expected.json",
+    "sha256": "b198511f12bf26782e08a6d7aa5abba69e71831771b74ac1da231c46dc4f2abc",
+    "regex": "^(TestTabularPayloadHTTPMatrix|TestTabularLayoutReportHTTPMatrix|TestTabularReportResultHTTPMatrix|TestTabularManagedFieldHTTPMatrix|TestTabularDrilldownHTTPMatrix|TestTabularSizeHTTPMatrix|TestReportFlatColumnsHTTP|TestTabularAutoScaleHTTPMatrix|TestTabularQueryInputLimitHTTPMatrix|TestTabularXLSXDimensionHTTPMatrix)$",
+    "names": [
+      "TestReportFlatColumnsHTTP/postgres/drilldown-detail12",
+      "TestReportFlatColumnsHTTP/postgres/flat",
+      "TestReportFlatColumnsHTTP/postgres/flat-detail12",
+      "TestReportFlatColumnsHTTP/postgres/flat-drilldown",
+      "TestReportFlatColumnsHTTP/postgres/grouped",
+      "TestReportFlatColumnsHTTP/postgres/grouped-detail12",
+      "TestReportFlatColumnsHTTP/postgres/incomplete-drilldown",
+      "TestReportFlatColumnsHTTP/sqlite/drilldown-detail12",
+      "TestReportFlatColumnsHTTP/sqlite/flat",
+      "TestReportFlatColumnsHTTP/sqlite/flat-detail12",
+      "TestReportFlatColumnsHTTP/sqlite/flat-drilldown",
+      "TestReportFlatColumnsHTTP/sqlite/grouped",
+      "TestReportFlatColumnsHTTP/sqlite/grouped-detail12",
+      "TestReportFlatColumnsHTTP/sqlite/incomplete-drilldown",
+      "TestTabularAutoScaleHTTPMatrix/postgres/kpi-63",
+      "TestTabularAutoScaleHTTPMatrix/postgres/kpi-67",
+      "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-63",
+      "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-67",
+      "TestTabularDrilldownHTTPMatrix/postgres/denied-target",
+      "TestTabularDrilldownHTTPMatrix/postgres/typed-form-event",
+      "TestTabularDrilldownHTTPMatrix/postgres/typed-link",
+      "TestTabularDrilldownHTTPMatrix/postgres/wrong-cell",
+      "TestTabularDrilldownHTTPMatrix/postgres/wrong-session",
+      "TestTabularDrilldownHTTPMatrix/postgres/wrong-token",
+      "TestTabularDrilldownHTTPMatrix/sqlite/denied-target",
+      "TestTabularDrilldownHTTPMatrix/sqlite/typed-form-event",
+      "TestTabularDrilldownHTTPMatrix/sqlite/typed-link",
+      "TestTabularDrilldownHTTPMatrix/sqlite/wrong-cell",
+      "TestTabularDrilldownHTTPMatrix/sqlite/wrong-session",
+      "TestTabularDrilldownHTTPMatrix/sqlite/wrong-token",
+      "TestTabularLayoutReportHTTPMatrix/postgres",
+      "TestTabularLayoutReportHTTPMatrix/sqlite",
+      "TestTabularManagedFieldHTTPMatrix/postgres",
+      "TestTabularManagedFieldHTTPMatrix/sqlite",
+      "TestTabularPayloadHTTPMatrix/postgres/callback-copy",
+      "TestTabularPayloadHTTPMatrix/postgres/current-rls-denied",
+      "TestTabularPayloadHTTPMatrix/postgres/expired",
+      "TestTabularPayloadHTTPMatrix/postgres/export-does-not-call",
+      "TestTabularPayloadHTTPMatrix/postgres/foreign-session",
+      "TestTabularPayloadHTTPMatrix/postgres/nested-roundtrip",
+      "TestTabularPayloadHTTPMatrix/postgres/question-answer",
+      "TestTabularPayloadHTTPMatrix/postgres/question-current-rls-denied",
+      "TestTabularPayloadHTTPMatrix/postgres/tampered-client-data",
+      "TestTabularPayloadHTTPMatrix/postgres/wrong-cell",
+      "TestTabularPayloadHTTPMatrix/sqlite/callback-copy",
+      "TestTabularPayloadHTTPMatrix/sqlite/current-rls-denied",
+      "TestTabularPayloadHTTPMatrix/sqlite/expired",
+      "TestTabularPayloadHTTPMatrix/sqlite/export-does-not-call",
+      "TestTabularPayloadHTTPMatrix/sqlite/foreign-session",
+      "TestTabularPayloadHTTPMatrix/sqlite/nested-roundtrip",
+      "TestTabularPayloadHTTPMatrix/sqlite/question-answer",
+      "TestTabularPayloadHTTPMatrix/sqlite/question-current-rls-denied",
+      "TestTabularPayloadHTTPMatrix/sqlite/tampered-client-data",
+      "TestTabularPayloadHTTPMatrix/sqlite/wrong-cell",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/below-boundary",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/disabled",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/exact-boundary",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/limit-hit",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/module-must-not-run",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/no-stale-viewer",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/ordinary-disabled",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/GET/ordinary-warning",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/below-boundary",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/disabled",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/exact-boundary",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/limit-hit",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/module-must-not-run",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/no-stale-viewer",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/ordinary-disabled",
+      "TestTabularQueryInputLimitHTTPMatrix/postgres/POST/ordinary-warning",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/below-boundary",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/disabled",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/exact-boundary",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/limit-hit",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/module-must-not-run",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/no-stale-viewer",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-disabled",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-warning",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/below-boundary",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/disabled",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/exact-boundary",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/limit-hit",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/module-must-not-run",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/no-stale-viewer",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-disabled",
+      "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-warning",
+      "TestTabularReportResultHTTPMatrix/postgres/expired",
+      "TestTabularReportResultHTTPMatrix/postgres/foreign-session",
+      "TestTabularReportResultHTTPMatrix/postgres/foreign-user",
+      "TestTabularReportResultHTTPMatrix/postgres/metadata-reloaded",
+      "TestTabularReportResultHTTPMatrix/postgres/revoked-role",
+      "TestTabularReportResultHTTPMatrix/postgres/same-instance-export",
+      "TestTabularReportResultHTTPMatrix/sqlite/expired",
+      "TestTabularReportResultHTTPMatrix/sqlite/foreign-session",
+      "TestTabularReportResultHTTPMatrix/sqlite/foreign-user",
+      "TestTabularReportResultHTTPMatrix/sqlite/metadata-reloaded",
+      "TestTabularReportResultHTTPMatrix/sqlite/revoked-role",
+      "TestTabularReportResultHTTPMatrix/sqlite/same-instance-export",
+      "TestTabularSizeHTTPMatrix/postgres/combined-payload-bytes",
+      "TestTabularSizeHTTPMatrix/postgres/control-1308",
+      "TestTabularSizeHTTPMatrix/postgres/kpi-53893",
+      "TestTabularSizeHTTPMatrix/postgres/max-100000",
+      "TestTabularSizeHTTPMatrix/postgres/over-bytes",
+      "TestTabularSizeHTTPMatrix/postgres/over-cells",
+      "TestTabularSizeHTTPMatrix/postgres/over-columns",
+      "TestTabularSizeHTTPMatrix/postgres/over-header",
+      "TestTabularSizeHTTPMatrix/postgres/over-rectangle",
+      "TestTabularSizeHTTPMatrix/postgres/over-rows",
+      "TestTabularSizeHTTPMatrix/sqlite/combined-payload-bytes",
+      "TestTabularSizeHTTPMatrix/sqlite/control-1308",
+      "TestTabularSizeHTTPMatrix/sqlite/kpi-53893",
+      "TestTabularSizeHTTPMatrix/sqlite/max-100000",
+      "TestTabularSizeHTTPMatrix/sqlite/over-bytes",
+      "TestTabularSizeHTTPMatrix/sqlite/over-cells",
+      "TestTabularSizeHTTPMatrix/sqlite/over-columns",
+      "TestTabularSizeHTTPMatrix/sqlite/over-header",
+      "TestTabularSizeHTTPMatrix/sqlite/over-rectangle",
+      "TestTabularSizeHTTPMatrix/sqlite/over-rows",
+      "TestTabularXLSXDimensionHTTPMatrix/postgres/autoscale",
+      "TestTabularXLSXDimensionHTTPMatrix/postgres/collapsed",
+      "TestTabularXLSXDimensionHTTPMatrix/postgres/empty",
+      "TestTabularXLSXDimensionHTTPMatrix/postgres/kpi-53893",
+      "TestTabularXLSXDimensionHTTPMatrix/postgres/merged-span",
+      "TestTabularXLSXDimensionHTTPMatrix/postgres/offset",
+      "TestTabularXLSXDimensionHTTPMatrix/postgres/styled-tail",
+      "TestTabularXLSXDimensionHTTPMatrix/sqlite/autoscale",
+      "TestTabularXLSXDimensionHTTPMatrix/sqlite/collapsed",
+      "TestTabularXLSXDimensionHTTPMatrix/sqlite/empty",
+      "TestTabularXLSXDimensionHTTPMatrix/sqlite/kpi-53893",
+      "TestTabularXLSXDimensionHTTPMatrix/sqlite/merged-span",
+      "TestTabularXLSXDimensionHTTPMatrix/sqlite/offset",
+      "TestTabularXLSXDimensionHTTPMatrix/sqlite/styled-tail"
+    ]
+  },
+  "changed_files": [
+    {
+      "path": "CHANGELOG.md",
+      "git_blob_content_sha256": "da4a0069229893fdf33559c7b417ad1d0c95680581407ce44306e0eb1fcd2bfe",
+      "bytes": 257589
+    },
+    {
+      "path": "internal/sheet/xlsx.go",
+      "git_blob_content_sha256": "8eee77c1ef2670b5456a2e23e1348f998b00e5d419f3ba481ab87675464e9775",
+      "bytes": 14942
+    },
+    {
+      "path": "internal/sheet/xlsx_dimension_test.go",
+      "git_blob_content_sha256": "487523f1cae05112737579663ab005dd1e7ce9103b2bf94edce85d561bc5f690",
+      "bytes": 4267
+    },
+    {
+      "path": "internal/ui/tabular_xlsx_dimension_test.go",
+      "git_blob_content_sha256": "ea52f6abd67e288ffd0f605b5b5bac36e630ae2ba11ee190cedcf810e148d7ce",
+      "bytes": 4819
+    }
+  ],
+  "frozen_verified": [
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b19-tabular-input-limit-DEV.json",
+      "sha256": "94054e97d5cf6c879e6c7b9fc302a43f88a623096450a72962a5468e59837662"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b19-tabular-input-limit-DEV-final.json",
+      "sha256": "9eb4279b2f015c82b8b6063d72d420ac1388e26571d5f0a0ad6d6a318498e85e"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b19-tabular-input-limit-linux-amd64",
+      "sha256": "3f55a5a0d7bfb83a1ce8d69609f1b27abd1ce1f77c100708650d1bd847490b20"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b19-tabular-input-limit-windows-amd64.exe",
+      "sha256": "da985170e49b24242cbb65cb6fb091a35e9c9992a8a13397d7437f02b763d60e"
+    },
+    {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b18-kpi-size-scale-linux-amd64",
+      "sha256": "24897fe0c06347704440982007e8ccac9a8550165fd2fb2b6b6cc2cd153e10d4"
+    }
+  ],
+  "go_end": {
+    "explicit": true,
+    "processes": 0,
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b20-go-end-processes.json",
+    "sha256": "59a4578947cad13862d9ff369d9df2b27211998ddd65a49d8b2de71dc19f6922"
+  },
+  "native_reader_gate": {
+    "status": "PENDING_SEPARATE_BROWSER_SLOT",
+    "interpreter": "C:/Python314/python.exe",
+    "expected_openpyxl": "3.1.5",
+    "must_use_default_read_only_without_reset_or_forced_bounds": true,
+    "old_B18_XLSX_rewritten": false
+  },
+  "scope": {
+    "db_copies": 0,
+    "shared_changed": false,
+    "config_changed": false,
+    "release_execution": false,
+    "live8444": "B18 remains; B19 intermediate NOT DEPLOYED; root controls next acceptance",
+    "P4_P7": "platform2 owns separate source; not included in B20",
+    "freeze": "by17:30, reboot checkpoint17:45; no execution without evening instruction"
+  }
+}
