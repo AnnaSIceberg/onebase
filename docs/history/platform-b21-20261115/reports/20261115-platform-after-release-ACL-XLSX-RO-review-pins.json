@@ -1,0 +1,28 @@
+{
+  "scope": "CODE_ONLY_AFTER_RELEASE_NO_GO_NO_EXECUTION_NOT_B21",
+  "manifest_sha256": "698e39d0782aaa05bb72f856e1f79f11437997c695d8d8c2edb2c67b3f07460d",
+  "disposition": "NO_NEW_SOURCE_BLOCKER_TESTS_NOT_EXECUTED",
+  "verified": [
+    {
+      "item": "acl",
+      "head": "a00d323898c6ca40ab093eca8319dae812faf90e",
+      "file_count": 6,
+      "clean": true,
+      "all_git_blob_sha256_match": true
+    },
+    {
+      "item": "ordinary_xlsx",
+      "head": "db1b058739a594bcf21e29c3327cdff3440c4dfc",
+      "file_count": 4,
+      "clean": true,
+      "all_git_blob_sha256_match": true
+    },
+    {
+      "item": "runtime_wip",
+      "head": "19abe9ccf8481aa414a7b7e3c2f49854dc426afd",
+      "file_count": 8,
+      "clean": true,
+      "all_git_blob_sha256_match": true
+    }
+  ]
+}
