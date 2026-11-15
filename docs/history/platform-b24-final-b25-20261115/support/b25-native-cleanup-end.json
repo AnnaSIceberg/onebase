@@ -1,0 +1,25 @@
+{
+  "created_utc": "2026-11-15T14:04:29.989095+00:00",
+  "status": "NATIVE_PASS_CLEANUP_END",
+  "runtime": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+  "source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "b4884534c4357d524acb706e64de8dd1553d140a2935dc0b0690a8d0020ec724",
+  "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b25-native-link-color-attempt1\\receipt.json",
+  "receipt_sha256": "712a31154cae8fd6a2cd78d5f84cb744d731be867498b509b8c6bed7c0bf7a24",
+  "checks_pass": 24,
+  "page_errors": 0,
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "own_Go_Chrome_driver_count": 0,
+  "shared_changes": false,
+  "db_copies": 0,
+  "PDF_color_not_claimed": true
+}

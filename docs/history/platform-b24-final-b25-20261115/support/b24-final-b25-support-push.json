@@ -1,0 +1,125 @@
+{
+  "branch": "wip/platform-b24-final-b25-handoff-20261115",
+  "commit": "3091b452956aa4600c89df5e04a66a987bb44fec",
+  "parent": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+  "files": [
+    {
+      "path": "support/manifest-1115b24-tabular-block-output-DEV-final.json",
+      "bytes": 25034,
+      "sha256": "5e1464a411de4e12bb334f539a66c59663a9b2df9d34d73010ae30ea0a0ee944"
+    },
+    {
+      "path": "support/b24-native-block-output-attempt2.py",
+      "bytes": 10007,
+      "sha256": "ca2567e693f882f5fd1f7b847f82b5e4a16cbf851ecd92009691cb402547bbe0"
+    },
+    {
+      "path": "support/b24-native-cleanup-end.json",
+      "bytes": 1046,
+      "sha256": "dcf175d2ca57ab3ea813a79cc4ba63efff01038f249be07c73563560e8f280bf"
+    },
+    {
+      "path": "support/b24-support-push-before-native.json",
+      "bytes": 5717,
+      "sha256": "6456fa62c940ae55ad6fe51f670df5ffffcbe81440011af621c57d8ee04826ec"
+    },
+    {
+      "path": "support/build-b25.py",
+      "bytes": 6673,
+      "sha256": "c1a43ba8163783b53aba32dc7285419ead18d7e32830dbd3a0d16c7946343ffa"
+    },
+    {
+      "path": "support/b25-native-link-color.py",
+      "bytes": 8823,
+      "sha256": "50448f8df3586b930e57c680979242039218391b7f28f6bce26afbf5ceb18635"
+    },
+    {
+      "path": "support/manifest-1115b25-tabular-link-color-DEV.json",
+      "bytes": 6921,
+      "sha256": "3d9b8ae4009f8c1524d5bbbf0ae6bd56377def981157de4626a1a2535ff4f1c2"
+    },
+    {
+      "path": "support/b25-source-runtime-pins.json",
+      "bytes": 1619,
+      "sha256": "ae43d027e98f87d3ddd7c07fdf12f97a7e2aeb2b5ff75b225a13508dd478e92e"
+    },
+    {
+      "path": "support/b25-source.patch",
+      "bytes": 11592,
+      "sha256": "28ed4f49bdb202f4b744844d250ea7a143a93ce0ca818cc505b86bc3659ee302"
+    },
+    {
+      "path": "support/b25-source-product-tests.patch",
+      "bytes": 9821,
+      "sha256": "c2625cb2c54a5480eceedd4e8f656962e291fa22c79ff27bcb0c27b0aa5fa399"
+    },
+    {
+      "path": "support/b25-local-targeted-summary.json",
+      "bytes": 64249,
+      "sha256": "605de3be44ea5da7be29f5dc247f91972efebe0385347d00fcdd1d4cc45f20e6"
+    },
+    {
+      "path": "support/b25-ui_pg-handoff.json",
+      "bytes": 2170,
+      "sha256": "8746c00b2399a651e0373742841e84d75658450f4a2099c80a60dbe07cf45daf"
+    },
+    {
+      "path": "support/b25-ui_pg-expected.json",
+      "bytes": 16549,
+      "sha256": "834c07b73cfb09ac57c41774053da450afc84e914f1b85709b29f6367013b90c"
+    },
+    {
+      "path": "support/b25-ui_pg-artifact.json",
+      "bytes": 873,
+      "sha256": "43afa6c04b03ccdcdd87b99261e38478daaf4160cee257e28620d7bbf0a3b47a"
+    },
+    {
+      "path": "support/b25-linux-artifact.json",
+      "bytes": 877,
+      "sha256": "c1a0244858b768a41209a6be8051258311ae75578b84c63e4e39d118a1de7dcd"
+    },
+    {
+      "path": "support/b25-windows-artifact.json",
+      "bytes": 885,
+      "sha256": "ad919d6223ec27b26d4eb841dbe020830e367a5dbb44f3ba2460a9979eba93a0"
+    },
+    {
+      "path": "support/b25-go-end-processes.json",
+      "bytes": 263,
+      "sha256": "2577e469f26d62b0094886d236da87b35ee558504a7917931fa3b1a9eaa1bb5f"
+    },
+    {
+      "path": "receipts/b24-native-block-output-attempt1/receipt.json",
+      "bytes": 2014,
+      "sha256": "5ff16ec693f4b02593a171819236646257e8d28a07fd164788a79b363a8df9da"
+    },
+    {
+      "path": "receipts/b24-native-block-output-attempt2/receipt.json",
+      "bytes": 14194,
+      "sha256": "1abcb2388f639d49a8827e97ccf3ebb1e88b880cb9571b3a29b70c8997e1afdd"
+    },
+    {
+      "path": "reports/20261115-platform-B24-Присоединить-PG-native-PASS.md",
+      "bytes": 4320,
+      "sha256": "1de78a7a8d611b9ce217d9d91693895047263b2ab05b635f5f00bd48e41e796f"
+    },
+    {
+      "path": "reports/20261115-platform-B25-T7-GoEND-PG-handoff.md",
+      "bytes": 1712,
+      "sha256": "21fcd7e4a693176c2b8badef044f7e5e4ab9aba232d76729a9172293226c06d9"
+    },
+    {
+      "path": "reports/20261115-platform-KPI-T7-цвет-ссылки-очередь.md",
+      "bytes": 785,
+      "sha256": "47a404ab3d7adb0354af064ee907691e85fb12b1ce783112ba27ed5da7854922"
+    },
+    {
+      "path": "reports/20261115-platform-KPI-T8-книга-очередь.md",
+      "bytes": 1146,
+      "sha256": "d0e5b14a87ff6644e92d59da5fb188306792e1a36f13ca370a562547a0832c65"
+    }
+  ],
+  "created_utc": "2026-11-15T13:58:59.448049+00:00",
+  "scope": "helper source/manifests/reports/sanitized own receipts, no SDK binaries/DB/passwords/cookies/images/exports",
+  "state": "Go END, B25 PG230/code GREEN, native pending queue; NOT 17:45 fresh checkpoint"
+}

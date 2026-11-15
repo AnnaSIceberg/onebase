@@ -1,0 +1,121 @@
+{
+  "status": "PASS",
+  "runtime": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+  "source": "a2ba78f8174c0bc26e5724b293408de25047a323",
+  "base_b24": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "b4884534c4357d524acb706e64de8dd1553d140a2935dc0b0690a8d0020ec724",
+  "checks": {
+    "native_readonly_snapshot": true,
+    "RED_text": true,
+    "RED_protected_attrs": true,
+    "RED_computed_color": true,
+    "ORANGE_text": true,
+    "ORANGE_protected_attrs": true,
+    "ORANGE_computed_color": true,
+    "YELLOW_text": true,
+    "YELLOW_protected_attrs": true,
+    "YELLOW_computed_color": true,
+    "GREEN_text": true,
+    "GREEN_protected_attrs": true,
+    "GREEN_computed_color": true,
+    "DEFAULT_text": true,
+    "DEFAULT_protected_attrs": true,
+    "DEFAULT_native_link_unchanged": true,
+    "same_snapshot_XLSX200": true,
+    "RED_XLSX_color_unchanged": true,
+    "ORANGE_XLSX_color_unchanged": true,
+    "YELLOW_XLSX_color_unchanged": true,
+    "GREEN_XLSX_color_unchanged": true,
+    "native_protected_link_still303": true,
+    "same_snapshot_PDF200": true,
+    "JS0": true
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "phase": "native-generate",
+  "go_started": false,
+  "db_copies": 0,
+  "shared_changes": false,
+  "browser_os_network_isolated": false,
+  "browser_request_boundary": "exact own loopback context allowlist",
+  "fixture_files": [
+    {
+      "path": "catalogs\\OwnColorMaster.yaml",
+      "sha256": "05dac0db3f05db0e4292d060a8ca49e7f17093d6be6ab1838734e3f0aba88e8d"
+    },
+    {
+      "path": "config\\app.yaml",
+      "sha256": "cc28e1350c0fc21dca1e824d507847b6fa8d642c240a8768f4ac5c3b77bc1f2a"
+    },
+    {
+      "path": "reports\\OwnColor.yaml",
+      "sha256": "cfe6c5fbe3f560c8209d275d7c5e373a2268ae36c79bbb9a9db493e205b18a0f"
+    },
+    {
+      "path": "roles\\OwnColorReader.yaml",
+      "sha256": "d9f2d5550280d3c87dea31f6e85c5af6e7e72ff5fda6ddf879661a19dff43375"
+    },
+    {
+      "path": "src\\OwnColor.rep.os",
+      "sha256": "51a2a7aa86813944da1b60c5b668efe3817f9d993fe7df40445d20df602c54a8"
+    }
+  ],
+  "browser_version": "109.0.5414.46",
+  "computed_links": [
+    {
+      "text": "RED",
+      "color": "rgb(255, 0, 0)",
+      "style": "color:inherit",
+      "parentColor": "rgb(255, 0, 0)",
+      "href": "/ui/tabular/20f0c795-b46f-42f6-b688-ba1695afae5e/cell?row=0&col=0",
+      "target": "_blank",
+      "rel": "noopener"
+    },
+    {
+      "text": "ORANGE",
+      "color": "rgb(255, 153, 0)",
+      "style": "color:inherit",
+      "parentColor": "rgb(255, 153, 0)",
+      "href": "/ui/tabular/20f0c795-b46f-42f6-b688-ba1695afae5e/cell?row=1&col=0",
+      "target": "_blank",
+      "rel": "noopener"
+    },
+    {
+      "text": "YELLOW",
+      "color": "rgb(163, 163, 0)",
+      "style": "color:inherit",
+      "parentColor": "rgb(163, 163, 0)",
+      "href": "/ui/tabular/20f0c795-b46f-42f6-b688-ba1695afae5e/cell?row=2&col=0",
+      "target": "_blank",
+      "rel": "noopener"
+    },
+    {
+      "text": "GREEN",
+      "color": "rgb(0, 128, 0)",
+      "style": "color:inherit",
+      "parentColor": "rgb(0, 128, 0)",
+      "href": "/ui/tabular/20f0c795-b46f-42f6-b688-ba1695afae5e/cell?row=3&col=0",
+      "target": "_blank",
+      "rel": "noopener"
+    },
+    {
+      "text": "DEFAULT",
+      "color": "rgb(0, 0, 238)",
+      "style": null,
+      "parentColor": "rgb(0, 0, 0)",
+      "href": "/ui/tabular/20f0c795-b46f-42f6-b688-ba1695afae5e/cell?row=4&col=0",
+      "target": "_blank",
+      "rel": "noopener"
+    }
+  ],
+  "PDF_color_not_claimed": "same model/export available; no separate PDF color parser gate added",
+  "page_errors": 0
+}
