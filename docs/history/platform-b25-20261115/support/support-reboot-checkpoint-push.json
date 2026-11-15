@@ -1,0 +1,44 @@
+{
+  "branch": "wip/platform-b24-final-b25-handoff-20261115",
+  "commit": "728483f3caaa86671ab13e4c5e966653bf211bef",
+  "parent": "aca34d5d88b382e9a36802a70f303681a0415199",
+  "files": [
+    {
+      "path": "support/reboot-fresh-worktrees.json",
+      "bytes": 19189,
+      "sha256": "dc97b7a12e6663aaab3dda1b771c7555825aec5a04e6b6026d0e4955abf63156"
+    },
+    {
+      "path": "support/reboot-fresh-processes.json",
+      "bytes": 411,
+      "sha256": "957c398be5f2415a73911daa9b09bb0318d18e1061ea0f4838055566f8a2c04c"
+    },
+    {
+      "path": "support/reboot-own-temp-cleanup.json",
+      "bytes": 2610,
+      "sha256": "fbe0c8d8c0ca3a94136cac58cf31dc1b8993bb43839d44e754fece4b35ee7a6d"
+    },
+    {
+      "path": "support/reboot-stale-source-backup.json",
+      "bytes": 5039,
+      "sha256": "9f375bc70aa06a50261b968737c3d1968e6f8f824f4fae1adac8892e555dcf5c"
+    },
+    {
+      "path": "support/support-1733-push.json",
+      "bytes": 1218,
+      "sha256": "3663c7da13f87e35b5eeda25026ab7c41d6230d6dfabf14144c7a29f55372805"
+    },
+    {
+      "path": "support/fresh-reboot-worktrees.py",
+      "bytes": 2758,
+      "sha256": "0e7eee460f36b90c380578b8cf7f689b92b12d741cf772d9d0361271ed31a8e2"
+    },
+    {
+      "path": "reports/20261115-platform-1735-reboot-checkpoint.md",
+      "bytes": 3149,
+      "sha256": "03c31c10b84a80da2fda57bc0c296cc0ca9a32e9af1e7bd86b83ec4d453c30ae"
+    }
+  ],
+  "created_utc": "2026-11-15T14:36:04.638627+00:00",
+  "scope": "metadata/source reports only; no SDK/DB/secrets/payloads"
+}

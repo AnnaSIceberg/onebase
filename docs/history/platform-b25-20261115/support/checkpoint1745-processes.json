@@ -1,0 +1,22 @@
+{
+    "timestamp":  "2026-11-15T17:44:57.0642248+03:00",
+    "go_compile_link_asm_cgo_vet_count":  0,
+    "chrome_driver_count":  0,
+    "own_app_count":  0,
+    "own_helper_python_node_ssh_count":  0,
+    "own_listen_port_count":  0,
+    "own_ports_checked":  [
+                              18572,
+                              18574,
+                              18576,
+                              18578,
+                              18582
+                          ],
+    "own_tunnel_count":  0,
+    "units_scope":  "Current own B25 native was Windows app, no Linux/systemd unit created; app now OFF; no foreign services touched",
+    "free_C_bytes":  7157751808,
+    "stop_count":  0,
+    "reboot":  false,
+    "shared_mutation":  false,
+    "ready":  true
+}

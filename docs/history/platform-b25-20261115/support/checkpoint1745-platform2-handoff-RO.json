@@ -1,0 +1,61 @@
+{
+  "timestamp_utc": "2026-11-15T14:43:59.801515+00:00",
+  "scope": "read-only saved sources/ref backup verification; NOT platform2 live checkpoint/IPC",
+  "items": [
+    {
+      "worktree": "platform2-report-context",
+      "head": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+      "expected_head": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+      "expected_matches": true,
+      "clean": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/report-trusted-context-20261115"
+      ]
+    },
+    {
+      "worktree": "platform2-report-drilldown",
+      "head": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+      "expected_head": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+      "expected_matches": true,
+      "clean": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/report-typed-drilldown-20261115"
+      ]
+    },
+    {
+      "worktree": "platform2-report-acl-source",
+      "head": "a00d323898c6ca40ab093eca8319dae812faf90e",
+      "expected_head": "a00d323898c6ca40ab093eca8319dae812faf90e",
+      "expected_matches": true,
+      "clean": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/report-result-access-status-20261115",
+        "refs/heads/wip/platform2-report-result-access-status-20261115"
+      ]
+    },
+    {
+      "worktree": "platform2-list-xlsx-source",
+      "head": "db1b058739a594bcf21e29c3327cdff3440c4dfc",
+      "expected_head": "db1b058739a594bcf21e29c3327cdff3440c4dfc",
+      "expected_matches": true,
+      "clean": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/list-xlsx-used-range-20261115",
+        "refs/heads/wip/platform2-list-xlsx-used-range-20261115"
+      ]
+    },
+    {
+      "worktree": "platform2-after-release-runtime",
+      "head": "19abe9ccf8481aa414a7b7e3c2f49854dc426afd",
+      "expected_head": "19abe9ccf8481aa414a7b7e3c2f49854dc426afd",
+      "expected_matches": true,
+      "clean": true,
+      "exact_remote_refs": [
+        "refs/heads/experiment/platform2-after-release-reports-20261115",
+        "refs/heads/wip/platform2-after-release-reports-20261115"
+      ]
+    }
+  ],
+  "herdr_restart": false,
+  "agent_contact": "No current separate channel, platform2 absent per root"
+}

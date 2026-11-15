@@ -1,0 +1,460 @@
+{
+  "created_utc": "2026-11-15T14:44:35.671738+00:00",
+  "owned_worktrees": [
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/audio-cancel-runtime",
+      "head": "02f807e79ceaf793b9ccf14c2d659ccd41186043",
+      "branch": "refs/heads/fix/audio-pending-play-cancel-20261113",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/audio-pending-play-cancel-20261113"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/audio-compact-source",
+      "head": "e00bc0183a59c665ca9eb273f63e349318865fae",
+      "branch": "refs/heads/fix/audio-playback-viewstate-source-20261114",
+      "clean": true,
+      "current_branch_remote_exact": false,
+      "exact_remote_refs": [
+        "refs/heads/wip/platform-reboot-20261115/audio-compact-source"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/current-reference-source",
+      "head": "81f7062a07b490bf7912f35bc93b7c52c71ab13e",
+      "branch": "refs/heads/fix/current-reference-display-source-20261115",
+      "clean": true,
+      "current_branch_remote_exact": false,
+      "exact_remote_refs": [
+        "refs/heads/feature/managed-audio-player-20261113",
+        "refs/heads/wip/platform-reboot-20261115/current-reference-source"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/effective-rights-source",
+      "head": "0ed6ef6bd5503639b0c6eb8a1e2fd37afa305703",
+      "branch": "refs/heads/feature/effective-access-predicate-20261113",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/effective-access-predicate-20261113"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/igor-image-upstream",
+      "head": "720374ce9471c3f3ce475bb3d0e0d8fc48eb490a",
+      "branch": "refs/heads/fix/form-image-attribute-upstream-20261113",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/form-image-attribute-upstream-20261113"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/integration",
+      "head": "ee372668429258c42484081f251e995741242fd4",
+      "branch": "refs/heads/experiment/help-admin-1110f-20261111",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/experiment/help-admin-1110f-20261111"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/listset",
+      "head": "7110f5b7df8ff6f95dd7a433aa9e350710ea9168",
+      "branch": "refs/heads/feature/list-settings-20261112",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/list-settings-20261112"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/otk",
+      "head": "0e58cdf82f731fa928f04b72157ff74cd6569ba1",
+      "branch": "refs/heads/experiment/otk-engine-1112",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/experiment/otk-engine-1112"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/reference-dirty-source",
+      "head": "3bf94b741388b0c506af5ca80ef0050a1d3400a1",
+      "branch": "refs/heads/fix/reference-dirty-identity-source-20261115",
+      "clean": true,
+      "current_branch_remote_exact": false,
+      "exact_remote_refs": [
+        "refs/heads/wip/platform-reboot-20261115/reference-dirty-source"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/rel-e",
+      "head": "069b60bd3a92145baa5c902232e310696d775738",
+      "branch": "refs/heads/experiment/release-1112e",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/experiment/release-1112e"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/report-tabular-result-source",
+      "head": "d232937812637564c730fbc17a9376d269dc5247",
+      "branch": "refs/heads/fix/xlsx-used-range-20261115",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/xlsx-used-range-20261115"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/rest-partial-source",
+      "head": "f64f09ca8073b079ba166f6b068fb394cd785bd7",
+      "branch": "refs/heads/fix/rest-partial-update-state-20261113",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/rest-partial-update-state-20261113"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/result-capability-source",
+      "head": "75edd7df142e94471504faa2c6c2b22f5658c8f6",
+      "branch": "refs/heads/feature/result-capability-reader-20261113",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/result-capability-reader-20261113"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/result-context-source",
+      "head": "cc4003ce9f856e1597d80b59a4ebbe59102b26e3",
+      "branch": "refs/heads/feature/result-context-readonly-20261113",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/result-context-readonly-20261113"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/rowact",
+      "head": "8bccf9340329853ad29f1d0285010bfef7b3fea8",
+      "branch": "refs/heads/fix/grid-row-activate-after-reload-20261112",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/grid-row-activate-after-reload-20261112"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/scoped-list-source",
+      "head": "6db6e009b11b4795abb2da5c5f5f487b09ca4103",
+      "branch": "refs/heads/feature/scoped-list-controls-20261113",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/scoped-list-controls-20261113"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/shell-perf-1111f-compare",
+      "head": "13bf51c7628e00b9885b07f907edb76822b737e9",
+      "branch": "refs/heads/wip/platform-reboot-20261115/shell-perf-1111f-compare",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/wip/platform-reboot-20261115/shell-perf-1111f-compare"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/shell-perf-hotfix",
+      "head": "f4fb2db8024da7f8ffaa24404708f6b796355635",
+      "branch": "refs/heads/fix/shell-denied-widget-presentation-1113",
+      "clean": true,
+      "current_branch_remote_exact": false,
+      "exact_remote_refs": [
+        "refs/heads/wip/platform-reboot-20261115/shell-perf-hotfix"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/shell-perf-real",
+      "head": "0d514de1422d5c3d1b93e59b3c74aa85a27252a0",
+      "branch": "refs/heads/wip/platform-reboot-20261115/shell-perf-real",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/wip/platform-reboot-20261115/shell-perf-real"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/shell-perf-source",
+      "head": "9bd46a1699bea1b97041a3391ffbe88da9cb4dba",
+      "branch": "refs/heads/fix/hidden-widget-presentation-20261113",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/hidden-widget-presentation-20261113"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/sidepanel",
+      "head": "3843ecfe1d889d57b3fd1ed1364d7d6b765c6f46",
+      "branch": "refs/heads/feature/shell-side-panel-20261112",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/shell-side-panel-20261112"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/sse-reconnect-source",
+      "head": "896b55041a96df7ba62f02de2fe1e6e0529f3eee",
+      "branch": "refs/heads/fix/sse-reconnect-after-502-20261113",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/sse-reconnect-after-502-20261113"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/tabular-block-output-source",
+      "head": "6a7d082bdfab850a1d6b79b182bb4b7e9f64a0fd",
+      "branch": "refs/heads/fix/tabular-block-output-20261115",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/tabular-block-output-20261115"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/tabular-link-color-source",
+      "head": "a2ba78f8174c0bc26e5724b293408de25047a323",
+      "branch": "refs/heads/fix/tabular-drilldown-link-color-20261115",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/report-tabular-result-20261114",
+        "refs/heads/fix/tabular-drilldown-link-color-20261115"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/tabular-source-ci-close",
+      "head": "0594980b4de75fac38c44b7023624c79688d566d",
+      "branch": "refs/heads/test/tabular-xlsx-close-errors-20261115",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/test/tabular-xlsx-close-errors-20261115"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/task-appearance",
+      "head": "7e3cff7e1bd42fe00f69d55693211fb78c9a7583",
+      "branch": "refs/heads/feature/task-widget-appearance-20261112",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/task-widget-appearance-20261112"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/topbar",
+      "head": "cf572d0133a3ebd07ae8e97eb584fd5d3fefe069",
+      "branch": "refs/heads/feature/subsystems-in-topbar-20261112",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/subsystems-in-topbar-20261112"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/tp-ro",
+      "head": "01f4b62f451714ade4f6cc48c4020583da65909b",
+      "branch": "refs/heads/fix/tablepart-column-readonly-when-20261112",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/tablepart-column-readonly-when-20261112"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/upstream",
+      "head": "e5447bf9dfc2f2c1e168c0fff67d8164fc2f47e3",
+      "branch": "refs/heads/feature/help-admin-only-20261111",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/help-admin-only-20261111"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/variant-query",
+      "head": "8b533dce3bc6776fe71ef1f7f4b76f94488ea908",
+      "branch": "refs/heads/feature/report-variant-query-filters-20261112",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/report-variant-query-filters-20261112"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/build-source-ui1113b-shared",
+      "head": "f49a9e0bfd2eb5184ce9e13e583a5a163e967534",
+      "branch": "refs/heads/fix/audio-playback-viewstate-runtime-20261114",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/audio-playback-viewstate-runtime-20261114"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/audio-service-dirty-runtime",
+      "head": "608933d12fb58eea4c54d016e7b7761323d2c2a1",
+      "branch": "refs/heads/fix/audio-service-state-dirty-20261114",
+      "clean": true,
+      "current_branch_remote_exact": false,
+      "exact_remote_refs": [
+        "refs/heads/experiment/platform-audio-dirty-b13-20261115",
+        "refs/heads/wip/platform-reboot-20261115/audio-service-dirty-runtime"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/b15-current-reference-runtime",
+      "head": "ca1b348eee1fbd86a044e3f967368056c0cbc270",
+      "branch": "refs/heads/fix/b15-current-reference-display-20261115",
+      "clean": true,
+      "current_branch_remote_exact": false,
+      "exact_remote_refs": [
+        "refs/heads/experiment/platform-b15-current-reference-20261115",
+        "refs/heads/wip/platform-reboot-20261115/b15-current-reference-runtime"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/report-source-filters-b23-runtime",
+      "head": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "branch": "refs/heads/fix/report-result-source-filters-b23-20261115",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/report-result-source-filters-b23-20261115"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/report-tabular-result-runtime",
+      "head": "e6cb9a375b0bae15a430ae93b0913c02938bb45e",
+      "branch": "refs/heads/fix/xlsx-used-range-runtime-20261115",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/xlsx-used-range-runtime-20261115"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/reports-after-release-b22-runtime",
+      "head": "a1ac5b8af8624b05c81bf8f074555578bb3df52e",
+      "branch": "refs/heads/test/b22-malformed-query-fixture-20261115",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/test/b22-malformed-query-fixture-20261115"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/reports-p4-p7-b21-runtime",
+      "head": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+      "branch": "refs/heads/feature/reports-p4-p7-b21-runtime-20261115",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/feature/reports-p4-p7-b21-runtime-20261115"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/tabular-block-output-runtime",
+      "head": "f1a2855d592701bb1f498115c43af68ccef38ee7",
+      "branch": "refs/heads/fix/tabular-block-output-runtime-20261115",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/tabular-block-output-runtime-20261115"
+      ],
+      "remote_backup_exact": true
+    },
+    {
+      "worktree": "C:/Users/a.sevrjukova/AppData/Local/Temp/platform-help-admin-20261111/tabular-link-color-runtime",
+      "head": "ab0511ff927b29475af07b80501a71a4519e1bc7",
+      "branch": "refs/heads/fix/tabular-drilldown-link-color-runtime-20261115",
+      "clean": true,
+      "current_branch_remote_exact": true,
+      "exact_remote_refs": [
+        "refs/heads/fix/tabular-drilldown-link-color-runtime-20261115"
+      ],
+      "remote_backup_exact": true
+    }
+  ],
+  "count": 39,
+  "all_clean": true,
+  "all_heads_exact_on_fork": true,
+  "active_three_current_branches_exact": true,
+  "artifacts_unchanged": [
+    {
+      "file": "onebase-1115b25-tabular-link-color-linux-amd64",
+      "bytes": 78423251,
+      "sha256": "992dab86d88332b0bb7f3f985071a84072a1e8f1efa50d14bec48f1964d3f8ec"
+    },
+    {
+      "file": "onebase-1115b25-tabular-link-color-windows-amd64.exe",
+      "bytes": 79401984,
+      "sha256": "b4884534c4357d524acb706e64de8dd1553d140a2935dc0b0690a8d0020ec724"
+    },
+    {
+      "file": "manifest-1115b25-tabular-link-color-DEV-final.json",
+      "bytes": 12231,
+      "sha256": "fa4a4577d92f224f17093917e5ed771ea1b2ec48440e30c71951377b10c15c34"
+    }
+  ],
+  "support_remote": "728483f3caaa86671ab13e4c5e966653bf211bef"
+}
