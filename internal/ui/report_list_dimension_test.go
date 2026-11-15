@@ -47,7 +47,7 @@ func TestOrdinaryReportXLSXUsedRangeMatrix(t *testing.T) {
 		t.Cleanup(s.Close)
 		router := chi.NewRouter()
 		s.Mount(router)
-		check := func(data []byte, mode string) {
+		check := func(t *testing.T, data []byte, mode string) {
 			t.Helper()
 			z, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 			if err != nil {
@@ -114,7 +114,7 @@ func TestOrdinaryReportXLSXUsedRangeMatrix(t *testing.T) {
 			if w.Code != 200 {
 				t.Fatalf("export HTTP%d %s", w.Code, w.Body.String())
 			}
-			check(w.Body.Bytes(), "direct")
+			check(t, w.Body.Bytes(), "direct")
 		})
 		t.Run("background", func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -127,7 +127,7 @@ func TestOrdinaryReportXLSXUsedRangeMatrix(t *testing.T) {
 			for {
 				j, ok := s.exportJobStore().get(jobID)
 				if ok && j.Status == exportJobDone {
-					check(j.Data, "background")
+					check(t, j.Data, "background")
 					return
 				}
 				if ok && j.Status == exportJobError {
