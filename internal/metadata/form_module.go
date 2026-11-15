@@ -88,7 +88,7 @@ const (
 	// состоянии формы, с несохранёнными правками, и получает переменные
 	// ИмяСобытия, Параметр, Источник; изменения применяются к форме как после
 	// любого события — без записи и без закрытия.
-	FormEventNotify FormEventType = "ОбработкаОповещения" // NotificationProcessing
+	FormEventNotify    FormEventType = "ОбработкаОповещения" // NotificationProcessing
 	FormEventDrilldown FormEventType = "ОбработкаРасшифровки"
 )
 

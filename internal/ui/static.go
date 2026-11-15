@@ -27,6 +27,7 @@ var dateInputJS []byte
 
 //go:embed static/report-controls.js
 var reportControlsJS []byte
+
 //go:embed static/tabular.js
 var tabularJS []byte
 
@@ -45,7 +46,7 @@ var (
 
 	dateInputJSETag          = assetETag(dateInputJS)
 	reportControlsJSETag     = assetETag(reportControlsJS)
-	tabularJSETag = assetETag(tabularJS)
+	tabularJSETag            = assetETag(tabularJS)
 	queryBuilderJSETag       = assetETag(queryBuilderJS)
 	settingsNavigationJSETag = assetETag(settingsNavigationJS)
 )

@@ -41,7 +41,7 @@ type Report struct {
 	Params      []Param           `yaml:"params"`
 	Query       string            `yaml:"query"`
 	ChartProc   string            `yaml:"chart_proc"`
-	ResultProc string `yaml:"result_proc,omitempty"`
+	ResultProc  string            `yaml:"result_proc,omitempty"`
 	Composition *Composition      `yaml:"composition"` // nil = плоская таблица (старое поведение)
 	Variants    []ReportVariant   `yaml:"variants"`    // именованные компоновки и источники данных
 	// OutputFormat — предпочтительный формат выгрузки отчёта (issue #218): пусто|html

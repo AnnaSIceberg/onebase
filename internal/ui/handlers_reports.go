@@ -252,12 +252,15 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		queryValues[p.Name] = v
 	}
 	if rep.ResultProc != "" {
-        resultQuery, _, variantErr := rep.QueryForVariant(variant,queryValues)
-        if variantErr == nil && strings.TrimSpace(resultQuery)=="" {
-            if err := s.runTabularReport(w,r.WithContext(opCtx),rep,queryValues,nil); err != nil {opStatus="error";http.Error(w,s.errText(r,err),500)}
-            return
-        }
-    }
+		resultQuery, _, variantErr := rep.QueryForVariant(variant, queryValues)
+		if variantErr == nil && strings.TrimSpace(resultQuery) == "" {
+			if err := s.runTabularReport(w, r.WithContext(opCtx), rep, queryValues, nil); err != nil {
+				opStatus = "error"
+				http.Error(w, s.errText(r, err), 500)
+			}
+			return
+		}
+	}
 	compiled, err := s.compileReportVariantQuery(opCtx, rep, variant, queryValues)
 	reportParams := s.buildReportParams(opCtx, s.resolveLang(r), rep.Params, paramValues)
 	if err != nil {

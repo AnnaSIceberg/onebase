@@ -46,20 +46,20 @@ import (
 
 // formEventResponse — структура ответа JSON.
 type formEventResponse struct {
-	TabularDocuments map[string]string `json:"tabularDocuments,omitempty"`
-	AudioStops      []string                    `json:"audioStops,omitempty"`
-	UICommands      []uiResponseCommand         `json:"uiCommands,omitempty"`
-	RefreshLive     bool                        `json:"refreshLive,omitempty"`
-	ResultForm      *resultFormPayload          `json:"resultForm,omitempty"`
-	CloseResultForm bool                        `json:"closeResultForm,omitempty"`
-	FormTitle       *string                     `json:"formTitle,omitempty"`
-	OK              bool                        `json:"ok"`
-	Values          map[string]any              `json:"values,omitempty"`
-	Revealed        []string                    `json:"revealed,omitempty"`
-	Deferred        bool                        `json:"deferred,omitempty"`
-	TableParts      map[string][]map[string]any `json:"tableparts,omitempty"`
-	FormTables      map[string][]map[string]any `json:"formTables,omitempty"`
-	ConditionalCSS  string                      `json:"conditionalCss"`
+	TabularDocuments map[string]string           `json:"tabularDocuments,omitempty"`
+	AudioStops       []string                    `json:"audioStops,omitempty"`
+	UICommands       []uiResponseCommand         `json:"uiCommands,omitempty"`
+	RefreshLive      bool                        `json:"refreshLive,omitempty"`
+	ResultForm       *resultFormPayload          `json:"resultForm,omitempty"`
+	CloseResultForm  bool                        `json:"closeResultForm,omitempty"`
+	FormTitle        *string                     `json:"formTitle,omitempty"`
+	OK               bool                        `json:"ok"`
+	Values           map[string]any              `json:"values,omitempty"`
+	Revealed         []string                    `json:"revealed,omitempty"`
+	Deferred         bool                        `json:"deferred,omitempty"`
+	TableParts       map[string][]map[string]any `json:"tableparts,omitempty"`
+	FormTables       map[string][]map[string]any `json:"formTables,omitempty"`
+	ConditionalCSS   string                      `json:"conditionalCss"`
 	// ElementStates — состояние элементов с условиями readonly_when/hidden_when,
 	// пересчитанное по полям записи ПОСЛЕ обработчика. Без него запрет,
 	// зависящий от состояния объекта, появлялся бы только после перезагрузки
