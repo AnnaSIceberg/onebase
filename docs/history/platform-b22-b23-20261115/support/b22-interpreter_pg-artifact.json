@@ -1,0 +1,22 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-after-release-b22-interpreter-linux-amd64.test",
+  "sha256": "5b0fe874e47e8d167a97008d01c16aebfb7df526cc1258deaa2ee39e6c39a590",
+  "bytes": 46535367,
+  "runtime": "1496c60ccad535d722bb1d83d2694d7d81bfbded",
+  "source": "1496c60ccad535d722bb1d83d2694d7d81bfbded",
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b22-interpreter_pg-buildinfo.txt",
+  "buildinfo_sha256": "20b3ab0ba5921842fd9afcb70d6ad7216221343936b71a3575298d56d33788d2",
+  "argv": [
+    "C:\\Users\\a.sevrjukova\\go\\pkg\\mod\\golang.org\\toolchain@v0.0.1-go1.26.11.windows-amd64\\bin\\go.exe",
+    "test",
+    "-c",
+    "-p=1",
+    "-o",
+    "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-after-release-b22-interpreter-linux-amd64.test",
+    "./internal/dsl/interpreter"
+  ],
+  "exit": 0,
+  "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b22-interpreter_pg-build.log",
+  "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "clean_before_after": true
+}

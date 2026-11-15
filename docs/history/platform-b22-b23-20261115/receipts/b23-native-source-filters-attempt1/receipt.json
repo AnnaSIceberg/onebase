@@ -1,0 +1,54 @@
+{
+  "status": "FAIL",
+  "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "base_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "36405653a12e8732f2cce90222537e3681f206fb34818fa33f44f76fb1861fc7",
+  "checks": {},
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "phase": "prepare",
+  "go_started": false,
+  "db_copies": 0,
+  "shared_changes": false,
+  "browser_os_network_isolated": false,
+  "browser_request_boundary": "exact own loopback context allowlist",
+  "fixture_files": [
+    {
+      "path": "catalogs\\B23Source.yaml",
+      "sha256": "a0c297610dd4bdbc7f2eea3755963b9ca5dd77ea7b5fdd23b4a03794650d7a58"
+    },
+    {
+      "path": "config\\app.yaml",
+      "sha256": "515184abf97edc9a9cb12970f86e5b488d381ad093092513f4e386c4898c1b0e"
+    },
+    {
+      "path": "reports\\B23Ordinary.yaml",
+      "sha256": "14f68eb45417285178e9378a8158645c0396b503fd2498cdb0ab879433beb867"
+    },
+    {
+      "path": "reports\\B23Tabular.yaml",
+      "sha256": "f62f5bcfa49d6026df0239d83386638786ffcd98f7d55638e5b805c969ca5149"
+    },
+    {
+      "path": "roles\\B23Reader.yaml",
+      "sha256": "389b5b810a0195f91b36ca9077cd633615cb1473941dac7289e9263d8bd3913e"
+    },
+    {
+      "path": "src\\B23Tabular.rep.os",
+      "sha256": "2557ee252bb71bd6776ce9896a6a7f5468412ac2c08999e194ba53990563ff5d"
+    }
+  ],
+  "failure_type": "RuntimeError",
+  "failure_line": 16,
+  "failed_check": null,
+  "page_errors": 0
+}

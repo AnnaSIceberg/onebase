@@ -1,0 +1,249 @@
+{
+  "status": "B23_OWNER_LOCAL_PG_NATIVE_GREEN_DEV_HANDOFF_ONLY",
+  "created_utc": "2026-11-15T12:24:19.415581+00:00",
+  "original_build_manifest": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b23-report-source-filters-DEV.json",
+    "sha256": "3bce035c7d44f9c63e123c8f65f13a5ea5e7e5c1fdaad3017a5396f2fab09205",
+    "not_retagged": true
+  },
+  "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "base_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "b22_included": false,
+  "draft": "https://github.com/AnnaSIceberg/onebase/pull/5",
+  "artifacts": {
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b23-report-source-filters-linux-amd64",
+      "sha256": "92cf861981ade515e1f254fbce1c7a17e9b1ac3b9bf51807c31a2bb7ef861180",
+      "bytes": 78427316,
+      "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+        "delta": "__settings.filters source datafix only; B22 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-linux-buildinfo.txt",
+      "buildinfo_sha256": "53ad8e6cbe8f704c76d2dd8370e63dd2f98551bc335b89d18404e4684b81f78c"
+    },
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b23-report-source-filters-windows-amd64.exe",
+      "sha256": "36405653a12e8732f2cce90222537e3681f206fb34818fa33f44f76fb1861fc7",
+      "bytes": 79407616,
+      "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+        "delta": "__settings.filters source datafix only; B22 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-windows-buildinfo.txt",
+      "buildinfo_sha256": "db950e901b9d4a0114e6d4bae4e20dd55de171d489ec7ede6a5d668e873146fd"
+    },
+    "ui_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-source-filters-b23-ui-linux-amd64.test",
+      "sha256": "0a8948fdb17dad5ca2cee92a07e3797d4f5f62bc8e678f410fc4f5f327b628b2",
+      "bytes": 84497918,
+      "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+        "delta": "__settings.filters source datafix only; B22 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-ui_pg-buildinfo.txt",
+      "buildinfo_sha256": "ab8e3327985831f7c053e856d424eb459055e914c0eca81dab34e494513dc656"
+    },
+    "api_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-source-filters-b23-api-linux-amd64.test",
+      "sha256": "da6a6559e54a4b8573bf237d204b70314da8912de9becf612641ae0141896298",
+      "bytes": 63583808,
+      "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+        "delta": "__settings.filters source datafix only; B22 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-api_pg-buildinfo.txt",
+      "buildinfo_sha256": "2c27599fb3d6814b71f4f8ef943eb1051c93102c2d654f7023ebd910056cdc42"
+    }
+  },
+  "source_pins": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-source-pins.json",
+    "sha256": "032d5431f6a56c6344283c9d7e5b0e6003a3e043bd9f84596bc9212d06db4018"
+  },
+  "local": {
+    "leaf_pass": 156,
+    "fail": 0,
+    "pg_roots_skipped": 16,
+    "pg_skip_not_pass": true,
+    "summary": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-local-targeted-summary.json",
+    "sha256": "ae937ec217c6372c9274f51ed5dc0137f02be2117fb82c92e6330d4dc7d77cd9"
+  },
+  "build_all": {
+    "exit": 0,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-build-all.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "i18n_en": {
+    "exit": 0,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-i18n-en.log",
+    "sha256": "3f1aeb0ee17a5d05b77d2a87ff38017caa0944c969d3eb27ea368ebc603d9cf6"
+  },
+  "independent_pg": {
+    "ui": {
+      "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\cc2-task-rest-blocker-20261113\\pg-ui-0a8948fd\\receipt.json",
+      "sha256": "c4e7f233210bb1f334d2c2b79e43698e820de0d9b20efa24f91545699836f8e4",
+      "unique_leaf_pass": 212,
+      "sqlite": 106,
+      "postgres": 106,
+      "fail": 0,
+      "skip": 0,
+      "expected_names_exact": true,
+      "cleanup_exact": true
+    },
+    "api": {
+      "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\cc2-task-rest-blocker-20261113\\pg-api-da6a6559\\receipt.json",
+      "sha256": "c4384a2ea85e04803cea7fdd783465211d0140145f8abd356f05e9732803ad73",
+      "unique_leaf_pass": 42,
+      "sqlite": 21,
+      "postgres": 21,
+      "fail": 0,
+      "skip": 0,
+      "expected_names_exact": true,
+      "cleanup_exact": true
+    }
+  },
+  "pg_total": 254,
+  "native": {
+    "sdk_platform": "windows-amd64",
+    "sdk_sha256": "36405653a12e8732f2cce90222537e3681f206fb34818fa33f44f76fb1861fc7",
+    "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+    "browser": "Chromium109.0.5414.46",
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-native-source-filters-attempt2\\receipt.json",
+    "receipt_sha256": "86e2db2037e7250cca7600cf41c82f176c1f99ab2cec4bec42ab16f72cf1bcf6",
+    "runner": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-native-source-filters-attempt2.py",
+    "runner_sha256": "bf64267234ad44f48bc27e6b3cc6a151460707d87874c70b0c19148cfb4724cc",
+    "checks_pass": 22,
+    "checks": {
+      "ordinary_same_filter_ALPHA_only": true,
+      "native_Generate_full2": true,
+      "unfiltered_xlsx200": true,
+      "unfiltered_xlsx_filtered": true,
+      "unfiltered_pdf200": true,
+      "unfiltered_pdf_filtered": true,
+      "native_GET_filtered1": true,
+      "filtered-get_xlsx200": true,
+      "filtered-get_xlsx_filtered": true,
+      "filtered-get_pdf200": true,
+      "filtered-get_pdf_filtered": true,
+      "public_POST_filtered_snapshot303": true,
+      "public_POST_viewer_filtered1": true,
+      "filtered-post_xlsx200": true,
+      "filtered-post_xlsx_filtered": true,
+      "filtered-post_pdf200": true,
+      "filtered-post_pdf_filtered": true,
+      "P2_variant_AND_user_filter": true,
+      "REST_filtered200": true,
+      "REST_filtered_total1_rows1": true,
+      "unsupported_filter_no_snapshot_HTTP400": true,
+      "JS0": true
+    },
+    "page_errors": 0,
+    "cleanup": {
+      "context": true,
+      "browser": true,
+      "driver": true,
+      "app": true,
+      "port_closed": true,
+      "tunnel_not_used": true,
+      "own_auth_db_removed": true
+    },
+    "cleanup_receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-native-cleanup-end.json",
+    "cleanup_sha256": "cef8875e9ead89ec7086b9cf0a4b697e21de25bb185134f003ad1d3f21c72b58",
+    "screenshots": [
+      {
+        "path": "C:\\Users\\a.sevrjukova\\Desktop\\Отборы-ТабДок-B23-native-20261115-platform\\01-ordinary-alpha.png",
+        "sha256": "ee2c965af7d14d14774f2b404f6ce4dc7fd43e8591e6e56106e31c4b07f4b5d4",
+        "bytes": 41772
+      },
+      {
+        "path": "C:\\Users\\a.sevrjukova\\Desktop\\Отборы-ТабДок-B23-native-20261115-platform\\02-tabular-alpha-snapshot.png",
+        "sha256": "ba0597232d1e017c3873d34e0cb4e024715fd2eaf2da38aab8357a3534964f7c",
+        "bytes": 11716
+      },
+      {
+        "path": "C:\\Users\\a.sevrjukova\\Desktop\\Отборы-ТабДок-B23-native-20261115-platform\\03-p2-filtered-viewer.png",
+        "sha256": "ba0597232d1e017c3873d34e0cb4e024715fd2eaf2da38aab8357a3534964f7c",
+        "bytes": 11716
+      }
+    ],
+    "exports": {
+      "unfiltered": {
+        "xlsx_sha256": "c80c6d7ccd802a57fbb0662b4987f02419abe230e2c19bb8be92025a7b477431",
+        "xlsx_values": [
+          "COUNT:2",
+          "ALPHA",
+          "1",
+          "BETA",
+          "2"
+        ],
+        "pdf_sha256": "45f70cd7f51d23171729163d207f9ff3cfb1f97634e08c8cd8576f851bee876e",
+        "pdf_pages": 1,
+        "same_snapshot_path": "/ui/tabular/e734ca2d-30b0-4150-b14a-c1d08b2ed89b"
+      },
+      "filtered-get": {
+        "xlsx_sha256": "18967b8d000498c27487407341a3ae0bde19bb27271cc63c12d368d7b18434db",
+        "xlsx_values": [
+          "COUNT:1",
+          "ALPHA",
+          "1"
+        ],
+        "pdf_sha256": "a08332f9136dfb11ad94209499a03ba5dc64be2fecfc8546e0b354694ba44931",
+        "pdf_pages": 1,
+        "same_snapshot_path": "/ui/tabular/73b48481-2d75-4abe-8c3d-eec11855dda5"
+      },
+      "filtered-post": {
+        "xlsx_sha256": "18967b8d000498c27487407341a3ae0bde19bb27271cc63c12d368d7b18434db",
+        "xlsx_values": [
+          "COUNT:1",
+          "ALPHA",
+          "1"
+        ],
+        "pdf_sha256": "1db8333fcab9a13938c9b3a2b6581dc2dc1042e727c4e890036ff5b8241b25e3",
+        "pdf_pages": 1,
+        "same_snapshot_path": "/ui/tabular/ca2a799b-3560-4b5e-bfff-05dab3bdcb33"
+      }
+    },
+    "linux_native_proof": false,
+    "scope": "own nonadmin synthetic; no real profiles, no DB copies/shared changes; native Generate unfiltered, native GET filtered, public POST filtered, same-snapshot XLSX/default openpyxl and PDF/pypdf text, REST source filter before pagination",
+    "retained_failed_attempts": [
+      {
+        "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-native-source-filters-attempt1\\receipt.json",
+        "sha256": "1c4ddccd1a9d17e14bb854c57b4c833248454c4d0d1ef07c51b8e591c4274e39",
+        "classification": "fixture bootstrap missing required first admin; before Chrome/HTTP; SDK unchanged; corrected first admin + tested nonadmin"
+      }
+    ]
+  },
+  "limits": {
+    "queryless_with_filters": "HTTP422; no module/snapshot",
+    "bad_settings_unknown_field_operator": "HTTP400; no unfiltered fallback",
+    "report_max_rows": "unchanged; truncated input refusal before user filters",
+    "REST_user_filters": "complete source within existing1000 max, else422 before pagination",
+    "references": "existing query projection unchanged; raw UUID .Ссылка matched by identity; no new catalog label reads",
+    "ordinary_UI": "previous policy unchanged"
+  },
+  "known_unchanged": {
+    "ordinary_report_XLSX_dimension": "B21 known A1 issue unchanged; not included B22 writer; no ordinary XLSX default-reader claim",
+    "result_proc_nested_ACL_500": "B21 known after-release ACL issue unchanged; B22 excluded",
+    "P1_horizontal_attach": "new perenos T5 source repro queued after B23; not included",
+    "source_budget": "B19 fail-closed unchanged",
+    "deployment": "not deployed by platform; cc2 exact acceptance + evening user word required"
+  },
+  "go_end": {
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-go-end-processes.json",
+    "sha256": "37509ffaf9a6bd3f75b88e2d80fc4b0b222aa3054fb1dd2c06d53e0fd8b6f277"
+  },
+  "future_checkpoint": "17:45 fresh push/process readiness required, not declared by this handoff"
+}

@@ -1,0 +1,112 @@
+{
+  "status": "PASS",
+  "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "base_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "36405653a12e8732f2cce90222537e3681f206fb34818fa33f44f76fb1861fc7",
+  "checks": {
+    "ordinary_same_filter_ALPHA_only": true,
+    "native_Generate_full2": true,
+    "unfiltered_xlsx200": true,
+    "unfiltered_xlsx_filtered": true,
+    "unfiltered_pdf200": true,
+    "unfiltered_pdf_filtered": true,
+    "native_GET_filtered1": true,
+    "filtered-get_xlsx200": true,
+    "filtered-get_xlsx_filtered": true,
+    "filtered-get_pdf200": true,
+    "filtered-get_pdf_filtered": true,
+    "public_POST_filtered_snapshot303": true,
+    "public_POST_viewer_filtered1": true,
+    "filtered-post_xlsx200": true,
+    "filtered-post_xlsx_filtered": true,
+    "filtered-post_pdf200": true,
+    "filtered-post_pdf_filtered": true,
+    "P2_variant_AND_user_filter": true,
+    "REST_filtered200": true,
+    "REST_filtered_total1_rows1": true,
+    "unsupported_filter_no_snapshot_HTTP400": true,
+    "JS0": true
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "phase": "invalid-filter-denial",
+  "go_started": false,
+  "db_copies": 0,
+  "shared_changes": false,
+  "browser_os_network_isolated": false,
+  "browser_request_boundary": "exact own loopback context allowlist",
+  "fixture_files": [
+    {
+      "path": "catalogs\\B23Source.yaml",
+      "sha256": "a0c297610dd4bdbc7f2eea3755963b9ca5dd77ea7b5fdd23b4a03794650d7a58"
+    },
+    {
+      "path": "config\\app.yaml",
+      "sha256": "515184abf97edc9a9cb12970f86e5b488d381ad093092513f4e386c4898c1b0e"
+    },
+    {
+      "path": "reports\\B23Ordinary.yaml",
+      "sha256": "14f68eb45417285178e9378a8158645c0396b503fd2498cdb0ab879433beb867"
+    },
+    {
+      "path": "reports\\B23Tabular.yaml",
+      "sha256": "f62f5bcfa49d6026df0239d83386638786ffcd98f7d55638e5b805c969ca5149"
+    },
+    {
+      "path": "roles\\B23Reader.yaml",
+      "sha256": "389b5b810a0195f91b36ca9077cd633615cb1473941dac7289e9263d8bd3913e"
+    },
+    {
+      "path": "src\\B23Tabular.rep.os",
+      "sha256": "2557ee252bb71bd6776ce9896a6a7f5468412ac2c08999e194ba53990563ff5d"
+    }
+  ],
+  "browser_version": "109.0.5414.46",
+  "exports": {
+    "unfiltered": {
+      "xlsx_sha256": "c80c6d7ccd802a57fbb0662b4987f02419abe230e2c19bb8be92025a7b477431",
+      "xlsx_values": [
+        "COUNT:2",
+        "ALPHA",
+        "1",
+        "BETA",
+        "2"
+      ],
+      "pdf_sha256": "45f70cd7f51d23171729163d207f9ff3cfb1f97634e08c8cd8576f851bee876e",
+      "pdf_pages": 1,
+      "same_snapshot_path": "/ui/tabular/e734ca2d-30b0-4150-b14a-c1d08b2ed89b"
+    },
+    "filtered-get": {
+      "xlsx_sha256": "18967b8d000498c27487407341a3ae0bde19bb27271cc63c12d368d7b18434db",
+      "xlsx_values": [
+        "COUNT:1",
+        "ALPHA",
+        "1"
+      ],
+      "pdf_sha256": "a08332f9136dfb11ad94209499a03ba5dc64be2fecfc8546e0b354694ba44931",
+      "pdf_pages": 1,
+      "same_snapshot_path": "/ui/tabular/73b48481-2d75-4abe-8c3d-eec11855dda5"
+    },
+    "filtered-post": {
+      "xlsx_sha256": "18967b8d000498c27487407341a3ae0bde19bb27271cc63c12d368d7b18434db",
+      "xlsx_values": [
+        "COUNT:1",
+        "ALPHA",
+        "1"
+      ],
+      "pdf_sha256": "1db8333fcab9a13938c9b3a2b6581dc2dc1042e727c4e890036ff5b8241b25e3",
+      "pdf_pages": 1,
+      "same_snapshot_path": "/ui/tabular/ca2a799b-3560-4b5e-bfff-05dab3bdcb33"
+    }
+  },
+  "page_errors": 0
+}

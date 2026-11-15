@@ -1,0 +1,30 @@
+{
+  "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source_binding": "combined runtime integration source tree; separate upstream_inputs",
+  "upstream_inputs": {
+    "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+    "delta": "__settings.filters source datafix only; B22 excluded"
+  },
+  "argv": [
+    "C:\\Users\\a.sevrjukova\\go\\pkg\\mod\\golang.org\\toolchain@v0.0.1-go1.26.11.windows-amd64\\bin\\go.exe",
+    "build",
+    "-p=1",
+    "./..."
+  ],
+  "env": {
+    "GOTOOLCHAIN": "go1.26.11",
+    "pinned_go": "1.26.11",
+    "GOMAXPROCS": "2",
+    "CGO_ENABLED": "0",
+    "GOOS": "windows",
+    "GOARCH": "amd64",
+    "GOFLAGS": "-p=1"
+  },
+  "exit": 0,
+  "start": "2026-11-15T12:12:38.280377+00:00",
+  "end": "2026-11-15T12:14:01.533280+00:00",
+  "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-build-all.log",
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "clean_before_after": true
+}

@@ -1,0 +1,118 @@
+{
+  "status": "LOCAL_GREEN_UI_PG_GREEN_API_PG_AND_NATIVE_PENDING",
+  "created_utc": "2026-11-15T12:20:33.139976+00:00",
+  "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source_binding": "combined runtime integration tree, exact B21 + source-filter datafix only",
+  "base_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "b22_included": false,
+  "draft": "https://github.com/AnnaSIceberg/onebase/pull/5",
+  "source_pins": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-source-pins.json",
+    "sha256": "032d5431f6a56c6344283c9d7e5b0e6003a3e043bd9f84596bc9212d06db4018"
+  },
+  "artifacts": {
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b23-report-source-filters-linux-amd64",
+      "sha256": "92cf861981ade515e1f254fbce1c7a17e9b1ac3b9bf51807c31a2bb7ef861180",
+      "bytes": 78427316,
+      "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+        "delta": "__settings.filters source datafix only; B22 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-linux-buildinfo.txt",
+      "buildinfo_sha256": "53ad8e6cbe8f704c76d2dd8370e63dd2f98551bc335b89d18404e4684b81f78c"
+    },
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b23-report-source-filters-windows-amd64.exe",
+      "sha256": "36405653a12e8732f2cce90222537e3681f206fb34818fa33f44f76fb1861fc7",
+      "bytes": 79407616,
+      "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+        "delta": "__settings.filters source datafix only; B22 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-windows-buildinfo.txt",
+      "buildinfo_sha256": "db950e901b9d4a0114e6d4bae4e20dd55de171d489ec7ede6a5d668e873146fd"
+    },
+    "ui_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-source-filters-b23-ui-linux-amd64.test",
+      "sha256": "0a8948fdb17dad5ca2cee92a07e3797d4f5f62bc8e678f410fc4f5f327b628b2",
+      "bytes": 84497918,
+      "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+        "delta": "__settings.filters source datafix only; B22 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-ui_pg-buildinfo.txt",
+      "buildinfo_sha256": "ab8e3327985831f7c053e856d424eb459055e914c0eca81dab34e494513dc656"
+    },
+    "api_pg": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-source-filters-b23-api-linux-amd64.test",
+      "sha256": "da6a6559e54a4b8573bf237d204b70314da8912de9becf612641ae0141896298",
+      "bytes": 63583808,
+      "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+      "source_binding": "combined runtime integration tree",
+      "upstream_inputs": {
+        "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+        "delta": "__settings.filters source datafix only; B22 excluded"
+      },
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-api_pg-buildinfo.txt",
+      "buildinfo_sha256": "2c27599fb3d6814b71f4f8ef943eb1051c93102c2d654f7023ebd910056cdc42"
+    }
+  },
+  "local": {
+    "leaf_pass": 156,
+    "fail": 0,
+    "pg_roots_skipped": 16,
+    "pg_skip_not_pass": true,
+    "summary": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-local-targeted-summary.json",
+    "sha256": "ae937ec217c6372c9274f51ed5dc0137f02be2117fb82c92e6330d4dc7d77cd9"
+  },
+  "build_all": {
+    "exit": 0,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-build-all.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "i18n_en": {
+    "exit": 0,
+    "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-i18n-en.log",
+    "sha256": "3f1aeb0ee17a5d05b77d2a87ff38017caa0944c969d3eb27ea368ebc603d9cf6"
+  },
+  "pg_ui": {
+    "status": "ROOT_INDEPENDENT_PASS",
+    "leaf": 212,
+    "sqlite": 106,
+    "postgres": 106,
+    "fail": 0,
+    "skip": 0,
+    "receipt_sha256": "c4e7f233210bb1f334d2c2b79e43698e820de0d9b20efa24f91545699836f8e4",
+    "cleanup_exact": true
+  },
+  "pg_api": {
+    "status": "PENDING_ROOT_RUN",
+    "expected": 42
+  },
+  "native": {
+    "status": "PENDING_SLOT",
+    "runner": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-native-source-filters.py",
+    "runner_sha256": "aeb512bf24d80a30b41bee056a07d3506511bce3a5ab5432981f8bdf31066d2c"
+  },
+  "limits": {
+    "queryless_with_filters": "HTTP422; no module/snapshot",
+    "bad_settings_unknown_field_operator": "HTTP400; no unfiltered fallback",
+    "report_max_rows": "unchanged; truncated input refusal before user filters",
+    "REST_user_filters": "complete source within existing1000 max, else422 before pagination",
+    "references": "existing query projection unchanged; raw UUID .Ссылка matched by identity; no new catalog label reads",
+    "ordinary_UI": "previous policy unchanged"
+  },
+  "deployment": "handoff only; no shared changes; cc2 acceptance + evening user word required"
+}

@@ -1,0 +1,25 @@
+{
+  "time_utc": "2026-11-15T12:23:15.086435+00:00",
+  "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "36405653a12e8732f2cce90222537e3681f206fb34818fa33f44f76fb1861fc7",
+  "checks": 22,
+  "status": "PASS",
+  "page_errors": 0,
+  "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-native-source-filters-attempt2\\receipt.json",
+  "receipt_sha256": "86e2db2037e7250cca7600cf41c82f176c1f99ab2cec4bec42ab16f72cf1bcf6",
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "fresh_cim_go_chrome_driver_count": 0,
+  "go_during_browser": false,
+  "shared_changes": false,
+  "db_copies": 0
+}

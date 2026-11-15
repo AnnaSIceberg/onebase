@@ -1,0 +1,14 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b23-report-source-filters-linux-amd64",
+  "sha256": "92cf861981ade515e1f254fbce1c7a17e9b1ac3b9bf51807c31a2bb7ef861180",
+  "bytes": 78427316,
+  "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source_binding": "combined runtime integration tree",
+  "upstream_inputs": {
+    "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+    "delta": "__settings.filters source datafix only; B22 excluded"
+  },
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-linux-buildinfo.txt",
+  "buildinfo_sha256": "53ad8e6cbe8f704c76d2dd8370e63dd2f98551bc335b89d18404e4684b81f78c"
+}

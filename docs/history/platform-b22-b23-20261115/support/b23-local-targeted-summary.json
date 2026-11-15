@@ -1,0 +1,899 @@
+{
+  "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "upstream_inputs": {
+    "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+    "delta": "__settings.filters source datafix only; B22 excluded"
+  },
+  "runs": [
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-compose-targeted.jsonl",
+      "sha256": "164119d95444ac44d9b291db7e4b9810dbd913eec8371ddbdda18bd3726a92b5",
+      "counts": {
+        "pass": 16
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestParseUserSettingsEmpty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestReportVariantQueryBindingsAreIsolated",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report",
+          "name": "TestUserSettingsRoundTrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplyFilters",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplyFiltersEdgeCases",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/alpha",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/contains",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/empty-reference",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/empty-result",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/numeric",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/ref-contains",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/ref-display-label",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/reference",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/reference-ne",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/unknown-field",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/report/compose",
+          "name": "TestApplySourceFilters/unknown-op",
+          "result": "pass"
+        }
+      ]
+    },
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-ui_pg-targeted.jsonl",
+      "sha256": "f781cc9fe01a1e6380fdb97096e8d6ed153ad30275eeb88b56d1e265531fc98d",
+      "counts": {
+        "pass": 119,
+        "skip": 13
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestApplyResolvedLabelsNoSkip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestApplyResolvedLabelsSkipCaseInsensitive",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestApplyResolvedLabelsSkipsDetailLinkColumn",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedAppearance",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedCollapseNegativeAndConditional",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedCollapseToOne",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedCollapseToZero",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedNoCollapseByDefault",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedTable",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/drilldown-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat-drilldown",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/grouped",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/grouped-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/incomplete-drilldown",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/case-field",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/default-preset-alpha",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/get-alpha",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/malformed-settings",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/masked",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/no-composition",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/numeric",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/post-alpha",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/preset-alpha",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/query-budget",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/queryless-filter",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/queryless-no-filter",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/reference",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/reference-label",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/settings-too-large",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/source-read-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/unfiltered",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/unknown-field",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/unsupported-op",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/variant-budget",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/variant-conflict",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultSourceFiltersHTTPMatrix/sqlite/variant-filter",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/ambiguous-card-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/background-excel-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/excel-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/get-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/pdf-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/post-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/query-result-proc",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/queryless-result-proc",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/variant-context",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/composed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/flat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/flat12-detail-fields",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/forged-row-id",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/forged-selector",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/invalid-id-and-index",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/live-rights-revoked",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/report-run-revoked",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportVariantDataScreenAndExports",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-63",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-67",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/denied-target",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/typed-form-event",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/typed-link",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-cell",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-token",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularLayoutReportHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularLayoutReportHTTPMatrix/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularManagedFieldHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularManagedFieldHTTPMatrix/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/callback-copy",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/current-rls-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/expired",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/export-does-not-call",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/foreign-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/nested-roundtrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/question-answer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/question-current-rls-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/tampered-client-data",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/wrong-cell",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/below-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/exact-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/limit-hit",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/module-must-not-run",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/no-stale-viewer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-warning",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/below-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/exact-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/limit-hit",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/module-must-not-run",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/no-stale-viewer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-warning",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/expired",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/foreign-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/foreign-user",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/metadata-reloaded",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/revoked-role",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/same-instance-export",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/combined-payload-bytes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/control-1308",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/kpi-53893",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/max-100000",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-bytes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-cells",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-columns",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-header",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-rectangle",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-rows",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/autoscale",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/collapsed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/kpi-53893",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/merged-span",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/offset",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/styled-tail",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestWriteDetailLink",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestWriteDetailLinkCaseInsensitive",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestWriteDetailLinkNoEntity",
+          "result": "pass"
+        }
+      ]
+    },
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-api_pg-targeted.jsonl",
+      "sha256": "d4d75fb4ec7a2688760d2d081002a9a5f04ea0fc06af0b6cb4d37aa2ee10efca",
+      "counts": {
+        "pass": 21,
+        "skip": 3
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/alpha",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/case-field",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/composed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/invalid-json",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/invalid-op",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/masked",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/numeric",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/oversize",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/page-after-filter",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/source-budget-refusal",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/source-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/unknown-field",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/variant",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportSourceFiltersMatrix/sqlite/variant-conflict",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/sqlite/reference-join-read-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/sqlite/spoof-0",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/sqlite/spoof-1",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/sqlite/spoof-2",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestAPIReportTrustedContextMatrix/sqlite/spoof-3",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestReportVariantDataMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/api",
+          "name": "TestReportVariantDataMatrix/sqlite",
+          "result": "pass"
+        }
+      ]
+    }
+  ]
+}

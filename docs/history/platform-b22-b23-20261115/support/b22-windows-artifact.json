@@ -1,0 +1,15 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1115b22-report-acl-list-xlsx-windows-amd64.exe",
+  "sha256": "8ee6d46c2665bee1eba4388e5d4d6a433d9603058286a05683874717c51fbd2f",
+  "bytes": 79395328,
+  "runtime": "1496c60ccad535d722bb1d83d2694d7d81bfbded",
+  "source": "1496c60ccad535d722bb1d83d2694d7d81bfbded",
+  "source_binding": "combined runtime integration tree",
+  "upstream_inputs": {
+    "acl": "a00d323898c6ca40ab093eca8319dae812faf90e",
+    "ordinary_xlsx": "db1b058739a594bcf21e29c3327cdff3440c4dfc",
+    "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08"
+  },
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b22-windows-buildinfo.txt",
+  "buildinfo_sha256": "e29da32f261024e8c963748acc03ce30bf0ff7d8fd753466e314b6240c5233bc"
+}

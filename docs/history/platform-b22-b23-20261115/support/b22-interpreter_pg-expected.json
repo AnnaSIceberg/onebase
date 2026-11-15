@@ -1,0 +1,22 @@
+{
+  "runtime": "1496c60ccad535d722bb1d83d2694d7d81bfbded",
+  "source": "1496c60ccad535d722bb1d83d2694d7d81bfbded",
+  "regex": "^(TestQueryUnloadMatchesOneCIdiom|TestQueryUnloadReturnsIndependentCollection|TestQueryUnloadCopyIsIndependentUnderMutations)$",
+  "roots": [
+    "TestQueryUnloadMatchesOneCIdiom",
+    "TestQueryUnloadReturnsIndependentCollection",
+    "TestQueryUnloadCopyIsIndependentUnderMutations"
+  ],
+  "expected_subtests": [
+    "TestQueryUnloadCopyIsIndependentUnderMutations/postgres",
+    "TestQueryUnloadCopyIsIndependentUnderMutations/sqlite",
+    "TestQueryUnloadMatchesOneCIdiom/postgres",
+    "TestQueryUnloadMatchesOneCIdiom/sqlite",
+    "TestQueryUnloadReturnsIndependentCollection/postgres",
+    "TestQueryUnloadReturnsIndependentCollection/sqlite"
+  ],
+  "expected_total": 6,
+  "sqlite": 3,
+  "postgres": 3,
+  "source_binding": "B22 combined integration tree; QueryUnload prior localPG SKIP retained"
+}

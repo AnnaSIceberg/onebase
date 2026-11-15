@@ -1,0 +1,56 @@
+{
+  "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "base_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "clean": true,
+  "fork_pushed": true,
+  "draft": "https://github.com/AnnaSIceberg/onebase/pull/5",
+  "delta_files": [
+    {
+      "path": "CHANGELOG.md",
+      "bytes": 259951,
+      "git_blob_sha256": "058bffb70e4073efe8f95e6e384a00149f2115a33595fd99dcaf58fb3b441a3b"
+    },
+    {
+      "path": "docs/report-result-source-filters.md",
+      "bytes": 2806,
+      "git_blob_sha256": "579f160dc783e0b541892728b8ac0dd56c6ea8929ffd3297e402d5e4f187829e"
+    },
+    {
+      "path": "internal/api/report_source_filters_test.go",
+      "bytes": 6008,
+      "git_blob_sha256": "673a2e2a327381d6efd591c3a8754f370e54e9a620f499143333de43c8c9d563"
+    },
+    {
+      "path": "internal/api/v2.go",
+      "bytes": 51971,
+      "git_blob_sha256": "8452a45babf27926ed292e7d21c50b3f9ad61c29a789c68c9944f099d7b8d4a1"
+    },
+    {
+      "path": "internal/report/compose/source_filters.go",
+      "bytes": 2855,
+      "git_blob_sha256": "9d9d98df8c4e0ddf629f48c7fec85cd2b8a730e2042a9319dc1344c077533214"
+    },
+    {
+      "path": "internal/report/compose/source_filters_test.go",
+      "bytes": 2060,
+      "git_blob_sha256": "e0c4bf2ca2abf564d6685aef5f26893f05f626d96c3238de75f73eade7dd68f3"
+    },
+    {
+      "path": "internal/report/source_settings.go",
+      "bytes": 557,
+      "git_blob_sha256": "9d383d3ad0b33d5f6b2d1a76dee16a455642b0a9ad363d0d38408593abe8f592"
+    },
+    {
+      "path": "internal/ui/handlers_reports.go",
+      "bytes": 34866,
+      "git_blob_sha256": "f82006ae338d189d1dc1fae2baefbac074af2547affbcc526331c32b03d08c71"
+    },
+    {
+      "path": "internal/ui/report_source_filters_test.go",
+      "bytes": 9668,
+      "git_blob_sha256": "4726a34b175bd2116c106a6ccc8cdae84bb353b423d5009dca9fe0777474666f"
+    }
+  ],
+  "b22_included": false
+}

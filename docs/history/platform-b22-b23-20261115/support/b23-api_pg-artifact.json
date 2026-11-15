@@ -1,0 +1,14 @@
+{
+  "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\reports-source-filters-b23-api-linux-amd64.test",
+  "sha256": "da6a6559e54a4b8573bf237d204b70314da8912de9becf612641ae0141896298",
+  "bytes": 63583808,
+  "runtime": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source": "4fbee90500a26f9bc59336e0ae0453027fd941ea",
+  "source_binding": "combined runtime integration tree",
+  "upstream_inputs": {
+    "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+    "delta": "__settings.filters source datafix only; B22 excluded"
+  },
+  "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b23-api_pg-buildinfo.txt",
+  "buildinfo_sha256": "2c27599fb3d6814b71f4f8ef943eb1051c93102c2d654f7023ebd910056cdc42"
+}

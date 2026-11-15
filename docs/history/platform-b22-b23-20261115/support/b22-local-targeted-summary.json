@@ -1,0 +1,2516 @@
+{
+  "runtime": "1496c60ccad535d722bb1d83d2694d7d81bfbded",
+  "source": "1496c60ccad535d722bb1d83d2694d7d81bfbded",
+  "upstream_inputs": {
+    "acl": "a00d323898c6ca40ab093eca8319dae812faf90e",
+    "ordinary_xlsx": "db1b058739a594bcf21e29c3327cdff3440c4dfc",
+    "accepted_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08"
+  },
+  "runs": [
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b22-interpreter-excel-targeted.jsonl",
+      "sha256": "5d43144c7e557a6bd59aa5192c1a85273358e2644f77268a7080b9197472cf9f",
+      "counts": {
+        "pass": 372,
+        "skip": 3
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSLError_UserMessage_omitsFileLine",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_FindDisallowedXMLCharacters",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_RaiseAlias\u0411\u0435\u0437\u0421\u043a\u043e\u0431\u043e\u043a\u0420\u0430\u0431\u043e\u0442\u0430\u0435\u0442",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_ReadXML_NameAttrsText",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_ReadXML_Windows1251",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_UTF8\u0422\u0440\u0435\u0442\u0438\u0439\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_WriteXML_FromStructure",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XMLStringAndValue",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XMLTypeOf",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XMLUndefinedRejectsAmbiguousInput/empty_type",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XMLUndefinedRejectsAmbiguousInput/missing_value",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XMLUndefinedRejectsAmbiguousInput/non-empty_value",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XMLUndefinedRejectsAmbiguousInput/whitespace_value",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XMLUndefinedRoundTripAliases/english",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XMLUndefinedRoundTripAliases/russian",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/broken_UTF8",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-00",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-01",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-02",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-03",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-04",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-05",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-06",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-07",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-08",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-09",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-0a",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-0b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-0c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-0d",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-0e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-0f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-10",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-11",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-13",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-14",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-15",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-16",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-17",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-18",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-19",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-1a",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-1b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-1c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-1d",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-1e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-1f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-20",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-21",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-22",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-23",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-24",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-25",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-26",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-27",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-28",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-29",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-2a",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-2b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-2c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-2d",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-2e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-2f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-30",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-31",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-32",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-33",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-34",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-35",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-36",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-37",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-38",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-39",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-3a",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-3b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-3c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-3d",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-3e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-3f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-40",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-41",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-42",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-43",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-44",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-45",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-46",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-47",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-48",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-49",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-4a",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-4b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-4c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-4d",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-4e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-4f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-50",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-51",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-52",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-53",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-54",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-55",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-56",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-57",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-58",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-59",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-5a",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-5b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-5c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-5d",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-5e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-5f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-60",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-61",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-62",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-63",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-64",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-65",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-66",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-67",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-68",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-69",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-6a",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-6b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-6c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-6d",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-6e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-6f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-70",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-71",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-72",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-73",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-74",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-75",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-76",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-77",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-78",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-79",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-7a",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-7b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-7c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-7d",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-7e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/byte-7f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/control_after_long_prefix",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/forbidden_Unicode",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/literal_replacement",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/long_ASCII",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeCharacters/mixed_Unicode",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/UTF8_error_precedes_first_character/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/UTF8_error_precedes_first_character/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/broken_UTF8/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/broken_UTF8/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/empty_local/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/empty_local/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/empty_prefix/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/empty_prefix/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/first_Unicode_invalid/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/first_Unicode_invalid/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/first_digit/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/first_digit/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/long_ASCII/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/long_ASCII/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/mixed_Unicode/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/mixed_Unicode/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/multiple_colons/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/multiple_colons/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/next_Unicode_invalid/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/next_Unicode_invalid/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/next_space/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/next_space/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/qualified/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/qualified/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/replacement_rune/attribute=false",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ASCIIAndUnicodeNames/replacement_rune/attribute=true",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_DateTimeBounds",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_DateTimeFractionNeverLosesPrecision",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_EnglishAliases",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_LargeAttributeMapIsLinear",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/attribute_round_trip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/invalid_\\U000f0000root",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/invalid_\\u200broot",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/invalid_\\ufdd0root",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/invalid__root",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/invalid_\u037eroot",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/valid_\\u200croot",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/valid_a\u00b7b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/valid_a\u203fb",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/valid_\u3001root",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NameStartAndNameCharRanges/valid_\ud800\udc00root",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NeverCoercesUntrustedStringer/XML\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435(\"decimal\",_\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435)",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NeverCoercesUntrustedStringer/XML\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435(\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435,_\"1\")",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NeverCoercesUntrustedStringer/XML\u0421\u0442\u0440\u043e\u043a\u0430(\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435)",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NeverCoercesUntrustedStringer/XML\u0422\u0438\u043f\u0417\u043d\u0447(\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435)",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NeverCoercesUntrustedStringer/\u0417\u0430\u043f\u0438\u0441\u0430\u0442\u044cXML(\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435,_\"\u041a\u043e\u0440\u0435\u043d\u044c\")",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NeverCoercesUntrustedStringer/\u041d\u0430\u0439\u0442\u0438\u041d\u0435\u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0435\u0421\u0438\u043c\u0432\u043e\u043b\u044bXML(\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435)",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_NeverCoercesUntrustedStringer/\u041f\u0440\u043e\u0447\u0438\u0442\u0430\u0442\u044cXML(\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435)",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_RejectsEncodedWhitespaceOutsideRoot",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_RejectsEscapedDocumentOverByteBudget",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_RejectsInjectedElementName",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_RejectsNonFiniteFloat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_RejectsUnboundedDecimal",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_RejectsUnsupportedMixedContent",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_RoundTrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_SharedSubtreeChecksTextBudgetBeforeValidation/attribute_name",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_SharedSubtreeChecksTextBudgetBeforeValidation/attribute_value",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_SharedSubtreeChecksTextBudgetBeforeValidation/node_name",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_SharedSubtreeChecksTextBudgetBeforeValidation/node_text",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_SharedSubtreeChecksTotalAttributesBeforeCopy",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_TreeTextBudgetExactBoundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_XML_ValidationCacheChecksContent",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0439\u0424\u0430\u0439\u043b_\u0411\u0435\u0437\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u0430\u041f\u043e\u043b\u0443\u0447\u0430\u0435\u0442TMP/GetTempFileName/explicit_empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0439\u0424\u0430\u0439\u043b_\u0411\u0435\u0437\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u0430\u041f\u043e\u043b\u0443\u0447\u0430\u0435\u0442TMP/GetTempFileName/omitted",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0439\u0424\u0430\u0439\u043b_\u0411\u0435\u0437\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u0430\u041f\u043e\u043b\u0443\u0447\u0430\u0435\u0442TMP/GetTempFileName/undefined",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0439\u0424\u0430\u0439\u043b_\u0411\u0435\u0437\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u0430\u041f\u043e\u043b\u0443\u0447\u0430\u0435\u0442TMP/\u041f\u043e\u043b\u0443\u0447\u0438\u0442\u044c\u0418\u043c\u044f\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u043e\u0433\u043e\u0424\u0430\u0439\u043b\u0430/explicit_empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0439\u0424\u0430\u0439\u043b_\u0411\u0435\u0437\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u0430\u041f\u043e\u043b\u0443\u0447\u0430\u0435\u0442TMP/\u041f\u043e\u043b\u0443\u0447\u0438\u0442\u044c\u0418\u043c\u044f\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u043e\u0433\u043e\u0424\u0430\u0439\u043b\u0430/omitted",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0439\u0424\u0430\u0439\u043b_\u0411\u0435\u0437\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u0430\u041f\u043e\u043b\u0443\u0447\u0430\u0435\u0442TMP/\u041f\u043e\u043b\u0443\u0447\u0438\u0442\u044c\u0418\u043c\u044f\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u043e\u0433\u043e\u0424\u0430\u0439\u043b\u0430/undefined",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0439\u0424\u0430\u0439\u043b_\u0418\u043c\u044f\u0423\u043d\u0438\u043a\u0430\u043b\u044c\u043d\u043e\u0418\u041b\u0435\u0436\u0438\u0442\u0412\u041a\u0430\u0442\u0430\u043b\u043e\u0433\u0435",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0439\u0424\u0430\u0439\u043b_\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043d\u0438\u0435\u0421\u0422\u043e\u0447\u043a\u043e\u0439\u0418\u0411\u0435\u0437",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u044b\u0437\u0432\u0430\u0442\u044c\u0418\u0441\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435\u0411\u0435\u0437\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u0430\u0412\u043d\u0435\u041e\u0431\u0440\u0430\u0431\u043e\u0442\u0447\u0438\u043a\u0430\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u0435\u0442\u0441\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u044b\u0437\u0432\u0430\u0442\u044c\u0418\u0441\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435\u0411\u0435\u0437\u0410\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u0430\u041f\u0435\u0440\u0435\u0431\u0440\u0430\u0441\u044b\u0432\u0430\u0435\u0442\u0418\u0441\u0445\u043e\u0434\u043d\u043e\u0435",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0412\u044b\u0437\u0432\u0430\u0442\u044c\u0418\u0441\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435\u0411\u0435\u0437\u0421\u043a\u043e\u0431\u043e\u043a\u0420\u0430\u0431\u043e\u0442\u0430\u0435\u0442",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041a\u0430\u0442\u0430\u043b\u043e\u0433\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0445\u0424\u0430\u0439\u043b\u043e\u0432\u0418\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u0435\u043b\u044c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041a\u0430\u0442\u0430\u043b\u043e\u0433\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0445\u0424\u0430\u0439\u043b\u043e\u0432\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u041f\u0440\u044f\u043c\u0443\u044e\u041a\u043e\u043d\u043a\u0430\u0442\u0435\u043d\u0430\u0446\u0438\u044e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435\u041e\u0431\u0440\u0430\u0442\u0438\u043c\u043e",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435\u0421\u043e\u0432\u043f\u0430\u0434\u0430\u0435\u0442\u04211\u0421",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041d\u0430\u0431\u043e\u0440\u041d\u0435\u0437\u0430\u043a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0445\u0421\u0438\u043c\u0432\u043e\u043b\u043e\u0432",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0441\u0442\u0430\u0442\u043e\u043a\u0414\u0435\u043b\u0435\u043d\u0438\u0435\u041d\u0430\u041d\u043e\u043b\u044c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0441\u0442\u0430\u0442\u043e\u043a\u0414\u0440\u043e\u0431\u043d\u044b\u0439",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0441\u0442\u0430\u0442\u043e\u043a\u0418\u0414\u0435\u043b\u0435\u043d\u0438\u0435\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u044e\u0442\u041e\u043f\u0430\u0441\u043d\u044b\u0435Decimal",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0441\u0442\u0430\u0442\u043e\u043a\u041d\u0435\u0447\u0438\u0441\u043b\u043e\u0432\u043e\u0439\u041e\u043f\u0435\u0440\u0430\u043d\u0434\u041d\u0435\u041f\u0430\u0434\u0430\u0435\u0442\u0414\u0435\u043b\u0435\u043d\u0438\u0435\u043c\u041d\u0430\u041d\u043e\u043b\u044c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0441\u0442\u0430\u0442\u043e\u043a\u041e\u0442\u0414\u0435\u043b\u0435\u043d\u0438\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0441\u0442\u0430\u0442\u043e\u043a\u041f\u0440\u0438\u043e\u0440\u0438\u0442\u0435\u0442\u041a\u0430\u043a\u0423\u0423\u043c\u043d\u043e\u0436\u0435\u043d\u0438\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0430\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u044f\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u043e\u0433\u043e\u041a\u0430\u0442\u0430\u043b\u043e\u0433\u0430\u041b\u043e\u0432\u0438\u0442\u0441\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/decode_extra_argument",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/encode_extra_argument",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/invalid_extension",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/missing_decode_argument",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/missing_encode_argument",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/separator_extra_argument",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/temp_dir_extra_argument",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/temp_name_extra_argument",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/undefined_encode_argument",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/unknown_enum_member",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/unknown_mode",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041e\u0448\u0438\u0431\u043a\u0438\u0424\u0443\u043d\u043a\u0446\u0438\u0439\u041e\u043a\u0440\u0443\u0436\u0435\u043d\u0438\u044f\u041b\u043e\u0432\u044f\u0442\u0441\u044f\u0421\u041f\u043e\u0437\u0438\u0446\u0438\u0435\u0439/unsupported_encoding",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u043b\u044e\u0441\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u041f\u0440\u043e\u0431\u0435\u043b\u043e\u043c",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0440\u043e\u0431\u0435\u043b\u041a\u043e\u0434\u0438\u0440\u0443\u0435\u0442\u0441\u044f\u041a\u0430\u043a20",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/DecodeString/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/DecodeString/empty_MapThis",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/DecodeString/whitespace",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/EncodeString/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/EncodeString/empty_MapThis",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/EncodeString/whitespace",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0421\u0442\u0440\u043e\u043a\u0443/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0421\u0442\u0440\u043e\u043a\u0443/empty_MapThis",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0421\u0442\u0440\u043e\u043a\u0443/whitespace",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/\u0420\u0430\u0441\u043a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0421\u0442\u0440\u043e\u043a\u0443/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/\u0420\u0430\u0441\u043a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0421\u0442\u0440\u043e\u043a\u0443/empty_MapThis",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u041f\u0443\u0441\u0442\u043e\u0439\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u041d\u0435\u0421\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0441\u044f\u0420\u0435\u0436\u0438\u043c\u043e\u043c\u041f\u043e\u0423\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e/\u0420\u0430\u0441\u043a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0421\u0442\u0440\u043e\u043a\u0443/whitespace",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0420\u0430\u0441\u043a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435\u0411\u0438\u0442\u043e\u0439\u0421\u0442\u0440\u043e\u043a\u0438\u041d\u0435\u041f\u0430\u0434\u0430\u0435\u0442",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0420\u0430\u0441\u043a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435\u041a\u0438\u0440\u0438\u043b\u043b\u0438\u0446\u044b",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0420\u0430\u0441\u043a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435\u041d\u0435\u0412\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442\u041d\u0435\u0432\u0430\u043b\u0438\u0434\u043d\u044b\u0439UTF8",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u0442\u044c\u0421\u0435\u043a\u0440\u0435\u0442_Enc\u0418\u0437\u0414\u0430\u043d\u043d\u044b\u0445",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u0442\u044c\u0421\u0435\u043a\u0440\u0435\u0442_Env\u0418File\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u044e\u0442\u0441\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u0442\u044c\u0421\u0435\u043a\u0440\u0435\u0442_\u0411\u0435\u0437\u041c\u0430\u0441\u0442\u0435\u0440\u041a\u043b\u044e\u0447\u0430",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u0442\u044c\u0421\u0435\u043a\u0440\u0435\u0442_\u0417\u0430\u043a\u0440\u044b\u0442\u0412\u041f\u0435\u0441\u043e\u0447\u043d\u0438\u0446\u0435",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0420\u0435\u0436\u0438\u043c\u041a\u043e\u043c\u043f\u043e\u043d\u0435\u043d\u0442\u0430\u0418\u0437\u041f\u0435\u0440\u0435\u0447\u0438\u0441\u043b\u0435\u043d\u0438\u044f",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0421\u0438\u043c\u0432\u043e\u043b\u044b\u0421\u043e\u043e\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u044e\u0442\u0418\u043c\u0435\u043d\u0430\u043c1\u0421",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0421\u043e\u0441\u0442\u0430\u0432\u043d\u043e\u0435\u0414\u0435\u043b\u0435\u043d\u0438\u0435\u041e\u0442\u043a\u043b\u043e\u043d\u044f\u0435\u0442\u041e\u043f\u0430\u0441\u043d\u044b\u0435Decimal",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestDSL_\u0421\u043f\u043e\u0441\u043e\u0431\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\u0421\u0442\u0440\u043e\u043a\u0438\u0421\u043e\u0432\u043c\u0435\u0441\u0442\u0438\u043c\u04211\u0421",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestErrorInfo_Description",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestErrorInfo_LineAndSource",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestErrorInfo_PropertyMethod",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestFormatUserError_DSLErrorAndPlain",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryFactorySourceConvenienceObservesLiveContext",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryFactorySourceObservesLiveContext",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryFactoryStaticStaysOnConstructionContext",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryTxGuard_DeadlockBecomesUserError",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryTxGuard_LiveSourceInsideTransactionUnaffected/guarded_source",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryTxGuard_LiveSourceInsideTransactionUnaffected/source",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryTxGuard_NoTransactionUnaffected",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryUnloadCopyIsIndependentUnderMutations/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryUnloadCopyIsIndependentUnderMutations/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryUnloadMatchesOneCIdiom/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryUnloadMatchesOneCIdiom/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryUnloadReturnsIndependentCollection/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQueryUnloadReturnsIndependentCollection/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQuery_ArrayParam_ExpandsInClause",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQuery_EmptyText_Panics",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQuery_Execute_AccessFields",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQuery_Execute_AccessReferenceReservedAlias/English",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQuery_Execute_AccessReferenceReservedAlias/Russian",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQuery_Execute_AccessReferenceReservedAlias/short_English_alias",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQuery_Execute_ReturnsArrayOfStruct",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQuery_ReferenceLikeParameter_UnwrapsUUID",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQuery_SetParameter",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestQuery_TextProperty_GetSet",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/Call/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/Call/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/Call/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/Call/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/CallEntrySandboxedWithBindings/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/CallEntrySandboxedWithBindings/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/CallEntrySandboxedWithBindings/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/CallEntrySandboxedWithBindings/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/CallSandboxed/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/CallSandboxed/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/CallSandboxed/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/CallSandboxed/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/Run/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/Run/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/Run/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/Run/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/RunSandboxed/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/RunSandboxed/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/RunSandboxed/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/RunSandboxed/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/RunWithResult/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/RunWithResult/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/RunWithResult/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/Number/RunWithResult/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/Call/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/Call/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/Call/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/Call/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/CallEntrySandboxedWithBindings/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/CallEntrySandboxedWithBindings/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/CallEntrySandboxedWithBindings/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/CallEntrySandboxedWithBindings/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/CallSandboxed/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/CallSandboxed/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/CallSandboxed/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/CallSandboxed/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/Run/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/Run/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/Run/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/Run/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/RunSandboxed/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/RunSandboxed/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/RunSandboxed/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/RunSandboxed/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/RunWithResult/direct/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/RunWithResult/direct/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/RunWithResult/nested-rethrow/\"\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestToNumberStringNestedRethrow/\u0427\u0438\u0441\u043b\u043e/RunWithResult/nested-rethrow/\"\u041d\u0435\"",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestTry_CatchesUserError",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestTry_ErrorDescription",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestTry_ErrorPropagatesWithoutExcept",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestTry_ExecutionContinuesAfterTry",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestTry_Nested_InnerCatch",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestTry_NoError_SkipsExcept",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestUserError_EntrypointsKeepFallbackAndCause/Call",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestUserError_EntrypointsKeepFallbackAndCause/CallEntrySandboxedWithBindings",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestUserError_EntrypointsKeepFallbackAndCause/CallSandboxed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestUserError_EntrypointsKeepFallbackAndCause/Run",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestUserError_EntrypointsKeepFallbackAndCause/RunSandboxed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/dsl/interpreter",
+          "name": "TestUserError_EntrypointsKeepFallbackAndCause/RunWithResult",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestExportList",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestExportListEmpty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/empty/buffered",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/empty/stream",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/header-only/buffered",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/header-only/stream",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/height-only-tail/buffered",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/height-only-tail/stream",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/no-header/buffered",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/no-header/stream",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/ragged-wide/buffered",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/ragged-wide/stream",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/styled-empty-tail/buffered",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestListXLSXUsedRange/styled-empty-tail/stream",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestWriteList",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestWriteListEmpty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/excel",
+          "name": "TestWriteListMatchesExportList",
+          "result": "pass"
+        }
+      ]
+    },
+    {
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b22-ui_pg-targeted.jsonl",
+      "sha256": "7c7dc998aa80f7fd7b9e60ec3711eef378ab4541b1d3e8e66c810114816c89b6",
+      "counts": {
+        "pass": 108,
+        "skip": 14
+      },
+      "leaves": [
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestApplyResolvedLabelsNoSkip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestApplyResolvedLabelsSkipCaseInsensitive",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestApplyResolvedLabelsSkipsDetailLinkColumn",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestOrdinaryReportXLSXUsedRangeMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/background",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/direct",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedAppearance",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedCollapseNegativeAndConditional",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedCollapseToOne",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedCollapseToZero",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedNoCollapseByDefault",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestRenderComposedTable",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/drilldown-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/flat-drilldown",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/grouped",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/grouped-detail12",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportFlatColumnsHTTP/sqlite/incomplete-drilldown",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/sqlite/allowed/AccessDirect",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/sqlite/allowed/AccessQueryless",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/sqlite/allowed/AccessWithQuery",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/sqlite/denied/AccessDirect",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/sqlite/denied/AccessQueryless",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/sqlite/denied/AccessRethrow",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/sqlite/denied/AccessWithQuery",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/sqlite/genuine-error/AccessBadQuery",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/sqlite/genuine-error/AccessFakeText",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportResultQueryAccessStatusMatrix/sqlite/genuine-error/AccessSQLFailure",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/ambiguous-card-refused",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/background-excel-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/excel-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/get-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/pdf-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/post-spoof",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/query-result-proc",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/queryless-result-proc",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTrustedContextHTTPMatrix/sqlite/variant-context",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/composed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/flat",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/flat12-detail-fields",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/forged-row-id",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/forged-selector",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/invalid-id-and-index",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/live-rights-revoked",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportTypedDrilldownHTTPMatrix/sqlite/report-run-revoked",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestReportVariantDataScreenAndExports",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-63",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularAutoScaleHTTPMatrix/sqlite/kpi-67",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/denied-target",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/typed-form-event",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/typed-link",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-cell",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularDrilldownHTTPMatrix/sqlite/wrong-token",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularLayoutReportHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularLayoutReportHTTPMatrix/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularManagedFieldHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularManagedFieldHTTPMatrix/sqlite",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/callback-copy",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/current-rls-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/expired",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/export-does-not-call",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/foreign-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/nested-roundtrip",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/question-answer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/question-current-rls-denied",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/tampered-client-data",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularPayloadHTTPMatrix/sqlite/wrong-cell",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/below-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/exact-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/limit-hit",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/module-must-not-run",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/no-stale-viewer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/GET/ordinary-warning",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/below-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/exact-boundary",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/limit-hit",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/module-must-not-run",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/no-stale-viewer",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-disabled",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularQueryInputLimitHTTPMatrix/sqlite/POST/ordinary-warning",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/expired",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/foreign-session",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/foreign-user",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/metadata-reloaded",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/revoked-role",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularReportResultHTTPMatrix/sqlite/same-instance-export",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/combined-payload-bytes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/control-1308",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/kpi-53893",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/max-100000",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-bytes",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-cells",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-columns",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-header",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-rectangle",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularSizeHTTPMatrix/sqlite/over-rows",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/postgres",
+          "result": "skip"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/autoscale",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/collapsed",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/empty",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/kpi-53893",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/merged-span",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/offset",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestTabularXLSXDimensionHTTPMatrix/sqlite/styled-tail",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestWriteDetailLink",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestWriteDetailLinkCaseInsensitive",
+          "result": "pass"
+        },
+        {
+          "package": "github.com/ivantit66/onebase/internal/ui",
+          "name": "TestWriteDetailLinkNoEntity",
+          "result": "pass"
+        }
+      ]
+    }
+  ]
+}
