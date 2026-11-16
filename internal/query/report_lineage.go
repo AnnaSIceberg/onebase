@@ -36,6 +36,7 @@ type ReportLineageOutput struct {
 	Expression ReportExpression
 }
 type ReportLineageUse struct {
+	Scope      int
 	Clause     string
 	Expression ReportExpression
 }
@@ -123,10 +124,12 @@ type reportExpr struct {
 	done      bool
 }
 type reportSource struct {
-	ref       SourceRef
-	qualifier string
-	fields    []metadata.Field
-	self      string
+	derived    *reportLineageParser
+	occurrence int
+	ref        SourceRef
+	qualifier  string
+	fields     []metadata.Field
+	self       string
 }
 type reportOutput struct {
 	name string
@@ -137,6 +140,8 @@ type reportUse struct {
 	expr   *reportExpr
 }
 type reportLineageParser struct {
+	state      *reportLineageState
+	scopeID    int
 	tokens     []tok
 	pos, nodes int
 	opts       CompileOpts
@@ -177,7 +182,9 @@ func CompileReportLineage(src string, opts CompileOpts) (Result, *ReportLineage,
 		return Result{}, nil, fmt.Errorf("report lineage: unbalanced expression")
 	}
 	tokens, analysisOpts := rewriteTablePartSources(tokens, opts)
-	p := &reportLineageParser{tokens: tokens, opts: analysisOpts}
+	state := &reportLineageState{}
+	p := &reportLineageParser{tokens: tokens, opts: analysisOpts, state: state}
+	state.scopes = append(state.scopes, p)
 	if err = p.parse(); err != nil {
 		return Result{}, nil, err
 	}
@@ -185,28 +192,34 @@ func CompileReportLineage(src string, opts CompileOpts) (Result, *ReportLineage,
 	if err != nil {
 		return Result{}, nil, err
 	}
-	if !res.Projection.Simple || len(res.Projection.Columns) != len(p.outputs) {
+	if (!res.Projection.Simple && len(state.scopes) == 1) || (res.Projection.Simple && len(res.Projection.Columns) != len(p.outputs)) {
 		return Result{}, nil, fmt.Errorf("report lineage: projection mismatch")
 	}
 	out := &ReportLineage{}
-	seen := map[string]bool{}
-	for _, column := range p.outputs {
-		view, err := p.bind(column.expr, "", 0)
-		if err != nil {
-			return Result{}, nil, err
-		}
-		if seen[metadata.SQLIdent(column.name)] {
-			return Result{}, nil, fmt.Errorf("report lineage: duplicate output")
-		}
-		seen[metadata.SQLIdent(column.name)] = true
-		out.outputs = append(out.outputs, ReportLineageOutput{column.name, view})
+	out.outputs, err = p.bindOutputs()
+	if err != nil {
+		return Result{}, nil, err
 	}
-	for _, use := range p.uses {
-		view, err := p.bind(use.expr, use.clause, 0)
+	for _, scope := range state.scopes {
+		inner, err := scope.bindOutputs()
 		if err != nil {
 			return Result{}, nil, err
 		}
-		out.uses = append(out.uses, ReportLineageUse{use.clause, view})
+		if scope != p {
+			for _, column := range inner {
+				out.uses = append(out.uses, ReportLineageUse{Scope: scope.scopeID, Clause: "inner-projection", Expression: column.Expression})
+			}
+		}
+		for _, use := range scope.uses {
+			view, err := scope.bind(use.expr, use.clause, 0)
+			if err != nil {
+				return Result{}, nil, err
+			}
+			out.uses = append(out.uses, ReportLineageUse{Scope: scope.scopeID, Clause: use.clause, Expression: view})
+		}
+	}
+	if !lineageInspectionBounded(out) {
+		return Result{}, nil, fmt.Errorf("report lineage: expanded inspection budget")
 	}
 	var ok bool
 	out.resultDigest, ok = lineageResultDigest(res)
@@ -259,8 +272,8 @@ func (p *reportLineageParser) parse() error {
 	p.take("DISTINCT")
 	p.take("ALL")
 	ctx := preScanSourceContextWithOpts(p.tokens, p.opts)
-	if len(ctx.scopes) != 1 {
-		return fmt.Errorf("report lineage: unsupported SELECT scopes")
+	if len(ctx.scopes) < 1 {
+		return fmt.Errorf("report lineage: missing SELECT scope")
 	}
 	keys := newProjectionKeyResolver(p.tokens, p.opts, ctx)
 	for {
@@ -385,6 +398,9 @@ func (p *reportLineageParser) list(clause string) error {
 	}
 }
 func (p *reportLineageParser) source() error {
+	if p.peek().kind == tLParen {
+		return p.derivedSource()
+	}
 	at := p.pos
 	if at+2 >= len(p.tokens) || p.tokens[at].kind != tIdent || !isSourceType(upperFast(p.tokens[at].val)) || p.tokens[at+1].kind != tDot || p.tokens[at+2].kind != tIdent {
 		return fmt.Errorf("report lineage: unsupported source")
@@ -455,6 +471,8 @@ func (p *reportLineageParser) source() error {
 			return fmt.Errorf("report lineage: duplicate source qualifier")
 		}
 	}
+	source.occurrence = p.state.nextSource
+	p.state.nextSource++
 	p.sources = append(p.sources, source)
 	return nil
 }
@@ -706,7 +724,7 @@ func (p *reportLineageParser) bind(e *reportExpr, clause string, depth int) (Rep
 			}
 		}
 		var err error
-		view.Origins, view.Type, err = p.resolve(e.path)
+		view, err = p.resolveView(e.path, depth)
 		if err != nil {
 			return view, err
 		}
@@ -832,7 +850,7 @@ func (p *reportLineageParser) resolve(path []string) ([]ReportFieldOrigin, metad
 		if !ok {
 			return fail()
 		}
-		origins = append(origins, ReportFieldOrigin{Occurrence: id, Source: source.ref, Field: field.Name, Type: field.Type, Path: append([]string(nil), fieldPath[:hop+1]...)})
+		origins = append(origins, ReportFieldOrigin{Occurrence: p.sources[id].occurrence, Source: source.ref, Field: field.Name, Type: field.Type, Path: append([]string(nil), fieldPath[:hop+1]...)})
 		ref := field.RefEntity
 		if metadata.IsReference(field.Type) {
 			target := metadata.RefName(field.Type)

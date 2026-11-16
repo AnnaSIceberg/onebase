@@ -1,4 +1,4 @@
-# Compiler lineage отчётного запроса (ENG16, первый source-срез)
+# Compiler lineage отчётного запроса (ENG16, derived WIP)
 
 `query.CompileReportLineage(text, opts) (query.Result, *query.ReportLineage, error)`
 компилирует запрос и строит неизменяемое описание поддержанного SQL-профиля.
@@ -7,13 +7,13 @@ runtime/handler/gate не переключён на этот API. Существ
 ReportOutputQueryMaskPlan продолжает запрещать защищённые сравнения.
 ENG06 остаётся INTEGRATION HOLD до совместимого полного ENG16.
 
-Поддержан один SELECT с физическими FROM/JOIN: именованные проекции,
+В этой WIP-ветке добавлены scalar derived SELECT с отдельными scope и сквозными physical occurrence. Стабильный Draft017 для review содержит только исходный single SELECT профиль. Поддержаны именованные проекции,
 WHERE/GROUP/HAVING/ORDER, CASE, простые операторы, MIN/MAX/COUNT/SUM/AVG,
 COALESCE/ЕСТЬNULL, SUBSTR, LENGTH, ограниченный CAST. ТЧ сохраняет владельца.
 Неизвестная функция/поле/источник, неоднозначное имя, wildcard, ordinal,
-derived SELECT/UNION и виртуальная таблица возвращают ошибку без частичного
-Result/receipt. Это намеренная граница первого профиля; A073/KPI с подзапросами
-и UNION им ещё не поддержаны. Поддержка парсинга SUBSTR не означает разрешения
+correlated derived, derived reference navigation, UNION и виртуальная таблица возвращают ошибку без частичного
+Result/receipt. Это намеренная граница WIP; полный A073/KPI
+с UNION/VT ещё не поддержан. Поддержка парсинга SUBSTR не означает разрешения
 произвольного перебора телефонных цифр.
 
 `Outputs()` даёт detached деревья выражений выходных колонок, `Uses()` —
@@ -59,3 +59,16 @@ source-срез не закрывает принятый отчёт совпад
 не затеняет исходное защищённое поле. GROUP BY по одному лишь output alias без
 доказанного исходного поля сейчас STOP; ORDER BY использует output alias в
 соответствии со своим SQL приоритетом. Обычный Query/compiler не меняется.
+
+
+WIP Uses.Scope различает root и каждый derived SELECT. Все child projections
+включаются как inner-projection, даже когда внешняя проекция их не выводит;
+условия/группировки дочерней выборки остаются отдельными Uses того же scope.
+Derived-field содержит полное дерево child expression, а не один alias/type.
+Correlated scope lookup не разрешён. Раскрытое inspection имеет общий бюджет
+узлов/metadata bytes/depth: компактная цепочка повторений T.X+T.X не может
+создать неограниченное дерево при detached JSON inspection.
+
+Это непринимаемый пока WIP: SQLite nested aggregate/child RLS/root-occurrence/
+GROUP shadow/unknown/expansion tests PASS; stable017 independent repeat pending.
+Ни runtime gate, ни safe protected operation authorization не подключены.

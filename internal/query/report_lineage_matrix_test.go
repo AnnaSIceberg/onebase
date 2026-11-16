@@ -130,7 +130,7 @@ func TestReportLineageMatchingMatrix(t *testing.T) {
 func TestReportLineageRejectsUnknownAndAmbiguous(t *testing.T) {
 	opts := query.CompileOpts{Entities: reportLineageEntities()}
 	for name, text := range map[string]string{
-		"derived":               "ВЫБРАТЬ Q.Number КАК N ИЗ (ВЫБРАТЬ A.Number КАК Number ИЗ Документ.LineageRequests КАК A) КАК Q",
+		"correlated_derived":    "ВЫБРАТЬ A.Number КАК N ИЗ Документ.LineageRequests КАК A ВНУТРЕННЕЕ СОЕДИНЕНИЕ (ВЫБРАТЬ B.Number КАК Number ИЗ Документ.LineageRequests КАК B ГДЕ B.Number=A.Number) КАК Q ПО 1=1",
 		"union":                 "ВЫБРАТЬ A.Number КАК N ИЗ Документ.LineageRequests КАК A ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ A.Number ИЗ Документ.LineageRequests КАК A",
 		"wildcard":              "ВЫБРАТЬ A.* ИЗ Документ.LineageRequests КАК A",
 		"unknown_function":      "ВЫБРАТЬ Magical(A.Phone) КАК N ИЗ Документ.LineageRequests КАК A",
