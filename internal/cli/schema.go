@@ -206,6 +206,8 @@ func allSchemas() map[string]map[string]any {
 			"period_end":          boolSchema("Для type: date — использовать конец выбранного дня (23:59:59)"),
 			"choice_show_deleted": boolSchema("Показывать в выборе элементы, помеченные на удаление: true — показывать, false — скрывать. По умолчанию при вводе данных скрыты, в параметрах отчётов и отборах списков показаны с отметкой"),
 			"context":             reportContextSchema(),
+			"choice_label_suffix": stringSchema("Ссылочный реквизит: добавить представление в скобках к подписи выбора"),
+			"choice_filter":       arrayOf(map[string]any{"type": "object", "additionalProperties": false, "required": []string{"field", "param"}, "properties": map[string]any{"field": stringSchema("Ссылочный реквизит выбора"), "param": stringSchema("Ведущий параметр отчёта; пустой не ограничивает выбор")}}),
 		},
 	}
 	// Параметр ОБРАБОТКИ знает обязательность, параметр отчёта — нет

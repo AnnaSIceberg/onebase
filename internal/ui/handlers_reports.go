@@ -79,7 +79,7 @@ func (s *Server) reportForm(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "page-report", map[string]any{
 		"Report":         rep,
 		"ParamValues":    defaults,
-		"ReportParams":   s.buildReportParams(r.Context(), s.resolveLang(r), rep.Params, defaults),
+		"ReportParams":   s.buildReportParams(r.Context(), s.resolveLang(r), rep.Params, defaults, rep),
 		"ActiveVariant":  r.FormValue("__variant"),
 		"ReportPresets":  presets,
 		"ActivePresetID": activePresetID,
@@ -235,6 +235,12 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		return
 	}
 
+	if err := s.validateReportChoiceValues(opCtx, rep, paramValues); err != nil {
+		opStatus = "error"
+		http.Error(w, s.errText(r, err), http.StatusBadRequest)
+		return
+	}
+
 	// Выбранный вариант компоновки (параметр __variant); пусто → основной.
 	variant := r.FormValue("__variant") //nolint:gosec // G120: предел тела ставит вызывающий обработчик; gosec видит только присваивание r.Body в той же функции
 	user := currentUserLogin(r)
@@ -308,7 +314,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		}
 	}
 	compiled, err := s.compileReportVariantQuery(opCtx, rep, variant, queryValues)
-	reportParams := s.buildReportParams(opCtx, s.resolveLang(r), rep.Params, paramValues)
+	reportParams := s.buildReportParams(opCtx, s.resolveLang(r), rep.Params, paramValues, rep)
 	if err != nil {
 		opStatus = "error"
 		s.render(w, r, "page-report", map[string]any{
@@ -638,6 +644,7 @@ func applyResolvedLabels(rows []map[string]any, uuidToLabel map[string]string, s
 
 // reportParamUI is a template-friendly wrapper around a report parameter.
 type reportParamUI struct {
+	Choice reportpkg.Param
 	Name   string
 	Label  string
 	Type   string // raw type string
@@ -660,16 +667,17 @@ type reportParamUI struct {
 }
 
 // buildReportParams builds UI-ready param descriptors with bounded reference options.
-func (s *Server) buildReportParams(ctx context.Context, lang string, params []reportpkg.Param, values map[string]any) []reportParamUI {
+func (s *Server) buildReportParams(ctx context.Context, lang string, params []reportpkg.Param, values map[string]any, reports ...*reportpkg.Report) []reportParamUI {
 	out := make([]reportParamUI, 0, len(params))
 	for _, p := range params {
 		if p.Context != nil {
 			continue
 		}
 		ui := reportParamUI{
-			Name:  p.Name,
-			Label: p.DisplayLabel(lang),
-			Type:  p.Type,
+			Choice: p,
+			Name:   p.Name,
+			Label:  p.DisplayLabel(lang),
+			Type:   p.Type,
 		}
 		switch {
 		case p.Type == "date":
@@ -694,8 +702,7 @@ func (s *Server) buildReportParams(ctx context.Context, lang string, params []re
 			ui.RefEntity = entityName
 			ui.ChoiceShowDeleted = p.ChoiceShowDeleted
 			if entity := s.reg.GetEntity(entityName); entity != nil {
-				// Параметр отчёта — поиск по истории: помеченные видны с отметкой.
-				rows, _ := s.initialReferenceOptions(ctx, entity, refOptionsFilter.withMarked(p.ChoiceShowDeleted), []string{refValueString(values[p.Name])})
+				rows, _ := s.reportInitialChoiceOptions(ctx, p, params, values, entity, reports...)
 				ui.Opts = rows
 			}
 		}
@@ -807,6 +814,9 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 	}
 	if err := reportpkg.ValidateEnumParams(rep.Params, paramValues, s.reg); err != nil {
 		return nil, nil, newReportExportError(http.StatusBadRequest, "invalid report parameter", err)
+	}
+	if err := s.validateReportChoiceValues(ctx, rep, paramValues); err != nil {
+		return nil, nil, newReportExportError(http.StatusBadRequest, "report parameters", err)
 	}
 	variant := r.FormValue("__variant")
 	if settings != nil {

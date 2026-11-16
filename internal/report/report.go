@@ -16,6 +16,11 @@ type Param struct {
 	// помеченные на удаление (`choice_show_deleted`). nil — показывать с
 	// отметкой: параметр отчёта ищет по истории, а не вводит данные.
 	ChoiceShowDeleted *bool `yaml:"choice_show_deleted"`
+	// ChoiceFilter связывает ссылочный выбор с другими параметрами отчёта.
+	// Пустой ведущий параметр не ограничивает выбор (поиск по всем филиалам).
+	ChoiceFilter []ParamChoiceFilter `yaml:"choice_filter,omitempty"`
+	// ChoiceLabelSuffix — ссылочный реквизит, чья подпись добавляется в скобках.
+	ChoiceLabelSuffix string `yaml:"choice_label_suffix,omitempty"`
 	// Default — значение параметра, когда пользователь его не задал. Понимает ту
 	// же грамматику подстановок, что параметры виджетов и регламентных заданий
 	// ({{today}}, {{now|-7d}} и т.п.). Раньше линтер ключ `default` принимал, а
@@ -34,6 +39,11 @@ type Param struct {
 	PeriodEnd bool `yaml:"period_end"`
 	// Context is a trusted server binding, not an editable/default form value.
 	Context *ParamContext `yaml:"context,omitempty"`
+}
+
+type ParamChoiceFilter struct {
+	Field string `yaml:"field"`
+	Param string `yaml:"param"`
 }
 
 type Report struct {
