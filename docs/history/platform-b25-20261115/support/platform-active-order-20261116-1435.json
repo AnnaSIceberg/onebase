@@ -1,0 +1,21 @@
+{
+  "deployment_rule": "User decision 2026-11-16 ~14:35, valid until revoked",
+  "primary_shared_verification": "LPC :8448",
+  "deployment": "Only on her explicit word; one accumulated package",
+  "no_changes_without_word": [":8448", ":8444", ":8443"],
+  "b29_to_8444": "DO NOT DEPLOY",
+  "runtime_head": "902e4d97e50e90f047ec6d27832e2f9d175d095d",
+  "runtime_branch": "integration/cc2-b29-report-enum-20261116",
+  "runtime_accumulation": "B26 -> B29+",
+  "enum_draft": 2637,
+  "enum_source": "2e185f0615f98111cd1353d71afcc72fdabbd5fd",
+  "enum_native_checks": 38,
+  "enum_native_status": "PASS; JS0; cleanup all true",
+  "independent_pg": "B29 exact prebuilt 312 pending",
+  "active_task": "Recursive command menu; Draft #2636; own source branch feature/recursive-command-menu-20261116",
+  "next": ["P8-P25 report/form orders after reconciliation", "A080 MMMM + chained calendar defaults (not urgent)", "owner backlog last"],
+  "shared_changes": false,
+  "db_copies": 0,
+  "new_agents": 0,
+  "recursive_disk_search": false
+}
