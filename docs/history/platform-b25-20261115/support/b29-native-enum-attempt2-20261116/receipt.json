@@ -1,0 +1,90 @@
+{
+  "status": "PASS",
+  "runtime": "902e4d97e50e90f047ec6d27832e2f9d175d095d",
+  "source": "2e185f0615f98111cd1353d71afcc72fdabbd5fd",
+  "sdk_sha256": "0cdf623d05427656b219020edc91c48984855831c56f89b662ad57d45a91010d",
+  "checks": {
+    "public_configuration_check": true,
+    "fixture_user_nonadmin": true,
+    "native_enum_select": true,
+    "native_metadata_order_and_empty": true,
+    "native_russian_labels": true,
+    "native_default_visit_selected": true,
+    "reference_native_picker_preserved": true,
+    "actual_ui_selected_office_result": true,
+    "actual_ui_current_value_kept": true,
+    "direct_xlsx200": true,
+    "direct_default_reader_equals_normal": true,
+    "direct_canonical_selected_result": true,
+    "direct_pdf200": true,
+    "actual_toolbar_background_job": true,
+    "background_default_reader_equals_normal": true,
+    "background_canonical_selected_result": true,
+    "empty_selection_not_defaulted": true,
+    "B29Enum_invalid_HTTP400": true,
+    "B29EnumTabular_invalid_HTTP400": true,
+    "B29EnumQueryTabular_invalid_HTTP400": true,
+    "invalid_excel_HTTP400": true,
+    "invalid_pdf_HTTP400": true,
+    "native_REST_canonical200": true,
+    "native_REST_invalid400": true,
+    "B29EnumTabular_native_snapshot_canonical": true,
+    "B29EnumTabular_default_reader_equals_normal": true,
+    "B29EnumTabular_canonical_selected_result": true,
+    "B29EnumTabular_native_empty_snapshot": true,
+    "B29EnumQueryTabular_native_snapshot_canonical": true,
+    "B29EnumQueryTabular_default_reader_equals_normal": true,
+    "B29EnumQueryTabular_canonical_selected_result": true,
+    "B29EnumQueryTabular_native_empty_snapshot": true,
+    "invalid_background_has_job_page": true,
+    "invalid_background_no_file": true,
+    "public_own_language_change": true,
+    "native_english_labels": true,
+    "native_english_values_canonical": true,
+    "JS0": true
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "own_auth_db_removed": true
+  },
+  "shared_changes": false,
+  "db_copies": 0,
+  "go_started": false,
+  "network_boundary": "exact own loopback browser-context allowlist; no OS isolation claim",
+  "browser_version": "109.0.5414.46",
+  "xlsx": {
+    "direct": {
+      "sha256": "d7bc77ce19d5f35c1bbc52cf7210e1503e6a83264bb64953d36c3d2ab5a5f1ec",
+      "rows": 2,
+      "reader": "3.1.5",
+      "reset_dimensions_called": false,
+      "forced_bounds": false
+    },
+    "background": {
+      "sha256": "d7bc77ce19d5f35c1bbc52cf7210e1503e6a83264bb64953d36c3d2ab5a5f1ec",
+      "rows": 2,
+      "reader": "3.1.5",
+      "reset_dimensions_called": false,
+      "forced_bounds": false
+    },
+    "B29EnumTabular": {
+      "sha256": "936f7080cff431758296b89011dbad68663ad28d8b6636b1bcd020da5080f2fd",
+      "rows": 1,
+      "reader": "3.1.5",
+      "reset_dimensions_called": false,
+      "forced_bounds": false
+    },
+    "B29EnumQueryTabular": {
+      "sha256": "936f7080cff431758296b89011dbad68663ad28d8b6636b1bcd020da5080f2fd",
+      "rows": 1,
+      "reader": "3.1.5",
+      "reset_dimensions_called": false,
+      "forced_bounds": false
+    }
+  },
+  "page_errors": 0
+}

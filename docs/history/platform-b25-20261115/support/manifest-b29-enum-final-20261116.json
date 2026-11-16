@@ -1,0 +1,34 @@
+{
+  "status": "ENUM_SDK_READY_WINDOWS_NATIVE38_PASS_CI_AND_INDEPENDENT_PG_PENDING",
+  "runtime": "902e4d97e50e90f047ec6d27832e2f9d175d095d",
+  "source": "2e185f0615f98111cd1353d71afcc72fdabbd5fd",
+  "source_pr": 2637,
+  "base_b28": "f045bdb11b5e563120ff0381476957e5df9e2549",
+  "sdk": {
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b29-report-enum-windows-amd64.exe",
+      "sha256": "0cdf623d05427656b219020edc91c48984855831c56f89b662ad57d45a91010d",
+      "bytes": 79442432,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\windows-sdk-buildinfo.txt",
+      "embedded_vcs_not_claimed": true
+    },
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b29-report-enum-linux-amd64",
+      "sha256": "b9f2a748fd5e29f39215d35112450df4ebc3a635de7dbe07ded521469d16e6a0",
+      "bytes": 78457157,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\linux-sdk-buildinfo.txt",
+      "embedded_vcs_not_claimed": true
+    }
+  },
+  "build_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\manifest.json",
+  "native_receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-native-enum-attempt2-20261116\\receipt.json",
+  "native_receipt_sha256": "2e5d3eccab33b653e5b9468bfe12867e1e415df330e9cdb66f2500491419eb08",
+  "native_checks": 38,
+  "local_http": {
+    "pass": 93,
+    "skip": 7
+  },
+  "pg_handoff": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-independent-pg-handoff-20261116.json",
+  "shared_changes": false,
+  "db_copies": 0
+}

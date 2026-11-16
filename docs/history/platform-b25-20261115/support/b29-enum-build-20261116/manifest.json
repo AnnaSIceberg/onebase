@@ -1,0 +1,322 @@
+{
+  "runtime": "902e4d97e50e90f047ec6d27832e2f9d175d095d",
+  "base_b28": "f045bdb11b5e563120ff0381476957e5df9e2549",
+  "source": "2e185f0615f98111cd1353d71afcc72fdabbd5fd",
+  "source_pr": 2637,
+  "changed_files": [
+    "CHANGELOG.md",
+    "docs/features.md",
+    "docs/report-enum-parameters.md",
+    "internal/api/v2.go",
+    "internal/api/report_enum_params_test.go",
+    "internal/report/enum_params.go",
+    "internal/ui/handlers_reports.go",
+    "internal/ui/templates.go"
+  ],
+  "commands": [
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-count=1",
+        "-p=1",
+        "-json",
+        "./internal/api",
+        "./internal/ui",
+        "-run",
+        "^(TestReportEnumParamsHTTPMatrix|TestAPIReportTrustedContextMatrix|TestReportTrustedContextHTTPMatrix|TestReportTypedDrilldownHTTPMatrix|TestReportResultQueryAccessStatusMatrix|TestOrdinaryReportXLSXUsedRangeMatrix|TestTabularReportResultHTTPMatrix|TestShellSidePanelListFillsPanelHeight)$"
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\http-enum-critical-tests.jsonl",
+      "sha256": "ecddce2e5d1b302e1ccedd72ef1a865aa776e1b07741a8d7097727fa359892d0",
+      "start": "2026-11-16T10:52:38.980326+00:00",
+      "end": "2026-11-16T10:55:14.391537+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "build",
+        "-p=1",
+        "./..."
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\build-all.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "start": "2026-11-16T10:55:14.561336+00:00",
+      "end": "2026-11-16T10:56:08.981447+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "run",
+        "-p=1",
+        "./tools/i18ncheck"
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\i18n-en.log",
+      "sha256": "3f1aeb0ee17a5d05b77d2a87ff38017caa0944c969d3eb27ea368ebc603d9cf6",
+      "start": "2026-11-16T10:56:09.441403+00:00",
+      "end": "2026-11-16T10:56:12.361907+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "build",
+        "-p=1",
+        "-ldflags=-X github.com/ivantit66/onebase/internal/version.Build=dev-reports-b29-enum",
+        "-o",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b29-report-enum-windows-amd64.exe",
+        "./cmd/onebase"
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\windows-sdk-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "start": "2026-11-16T10:56:12.535569+00:00",
+      "end": "2026-11-16T10:56:17.800735+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "version",
+        "-m",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b29-report-enum-windows-amd64.exe"
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\windows-sdk-buildinfo.txt",
+      "sha256": "e7b9499dd40f9103de5cf4b8965244e5140558baf350e165e409a40910fe3079",
+      "start": "2026-11-16T10:56:18.001713+00:00",
+      "end": "2026-11-16T10:56:18.496733+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "build",
+        "-p=1",
+        "-ldflags=-X github.com/ivantit66/onebase/internal/version.Build=dev-reports-b29-enum",
+        "-o",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b29-report-enum-linux-amd64",
+        "./cmd/onebase"
+      ],
+      "goos": "linux",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\linux-sdk-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "start": "2026-11-16T10:56:18.916421+00:00",
+      "end": "2026-11-16T10:57:27.451079+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "version",
+        "-m",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b29-report-enum-linux-amd64"
+      ],
+      "goos": "linux",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\linux-sdk-buildinfo.txt",
+      "sha256": "0c80e413e29c512fa49cecc099dc4eb49f42645241fe8082d5eda20b761995ea",
+      "start": "2026-11-16T10:57:27.654350+00:00",
+      "end": "2026-11-16T10:57:27.916873+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-c",
+        "-p=1",
+        "-o",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\api-linux-amd64.test",
+        "./internal/api"
+      ],
+      "goos": "linux",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\api-prebuilt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "start": "2026-11-16T10:57:28.377196+00:00",
+      "end": "2026-11-16T10:57:53.721979+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-c",
+        "-p=1",
+        "-o",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\ui-linux-amd64.test",
+        "./internal/ui"
+      ],
+      "goos": "linux",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\ui-prebuilt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "start": "2026-11-16T10:57:54.101172+00:00",
+      "end": "2026-11-16T10:58:45.162470+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-c",
+        "-p=1",
+        "-o",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\dsl-interpreter-linux-amd64.test",
+        "./internal/dsl/interpreter"
+      ],
+      "goos": "linux",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\dsl-interpreter-prebuilt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "start": "2026-11-16T10:58:45.628670+00:00",
+      "end": "2026-11-16T10:59:01.420118+00:00"
+    }
+  ],
+  "artifacts": {
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b29-report-enum-windows-amd64.exe",
+      "sha256": "0cdf623d05427656b219020edc91c48984855831c56f89b662ad57d45a91010d",
+      "bytes": 79442432,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\windows-sdk-buildinfo.txt",
+      "embedded_vcs_not_claimed": true
+    },
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b29-report-enum-linux-amd64",
+      "sha256": "b9f2a748fd5e29f39215d35112450df4ebc3a635de7dbe07ded521469d16e6a0",
+      "bytes": 78457157,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\linux-sdk-buildinfo.txt",
+      "embedded_vcs_not_claimed": true
+    }
+  },
+  "prebuilts": {
+    "api": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\api-linux-amd64.test",
+      "sha256": "05fe050fb06b519af9cd987f4940cac7116d4d7a708f70214ad54e92f355456e",
+      "runtime": "902e4d97e50e90f047ec6d27832e2f9d175d095d"
+    },
+    "ui": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\ui-linux-amd64.test",
+      "sha256": "8fd199d2ec7cbe6326377fc7962b57f1214b0378fabab864b3d10b3814f37730",
+      "runtime": "902e4d97e50e90f047ec6d27832e2f9d175d095d"
+    },
+    "dsl/interpreter": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b29-enum-build-20261116\\dsl-interpreter-linux-amd64.test",
+      "sha256": "9e680e83d9e377336756ce78269ad70bc7a243f3d781ff869c39196236af90e2",
+      "runtime": "902e4d97e50e90f047ec6d27832e2f9d175d095d"
+    }
+  },
+  "shared_changes": false,
+  "db_copies": 0,
+  "status": "BUILD_AND_HTTP_PASS_NATIVE_AND_INDEPENDENT_PG_PENDING",
+  "trusted_context_bound_before_enum_validation": true,
+  "http_counts": {
+    "pass": 93,
+    "skip": 7
+  },
+  "http_leaves": {
+    "github.com/ivantit66/onebase/internal/api/TestAPIReportTrustedContextMatrix/sqlite/spoof-0": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestAPIReportTrustedContextMatrix/sqlite/spoof-1": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestAPIReportTrustedContextMatrix/sqlite/spoof-2": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestAPIReportTrustedContextMatrix/sqlite/spoof-3": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestAPIReportTrustedContextMatrix/sqlite/reference-join-read-denied": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestAPIReportTrustedContextMatrix/postgres": "skip",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/metadata-choice-and-reference": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/default/GET": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/default/POST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/default/REST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/default/XLSX": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/default/PDF": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/selected/GET": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/selected/POST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/selected/REST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/selected/XLSX": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/selected/PDF": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/cleared/GET": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/cleared/POST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/cleared/REST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/cleared/XLSX": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/cleared/PDF": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/free-text/GET": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/free-text/POST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/free-text/REST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/free-text/XLSX": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/free-text/PDF": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/translated-label/GET": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/translated-label/POST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/translated-label/REST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/translated-label/XLSX": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/ru/translated-label/PDF": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/metadata-choice-and-reference": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/default/GET": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/default/POST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/default/REST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/default/XLSX": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/default/PDF": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/selected/GET": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/selected/POST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/selected/REST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/selected/XLSX": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/selected/PDF": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/cleared/GET": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/cleared/POST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/cleared/REST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/cleared/XLSX": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/cleared/PDF": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/free-text/GET": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/free-text/POST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/free-text/REST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/free-text/XLSX": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/free-text/PDF": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/translated-label/GET": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/translated-label/POST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/translated-label/REST": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/translated-label/XLSX": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/sqlite/en/translated-label/PDF": "pass",
+    "github.com/ivantit66/onebase/internal/api/TestReportEnumParamsHTTPMatrix/postgres": "skip",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTrustedContextHTTPMatrix/sqlite/post-spoof": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTrustedContextHTTPMatrix/sqlite/get-spoof": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTrustedContextHTTPMatrix/sqlite/excel-spoof": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTrustedContextHTTPMatrix/sqlite/pdf-spoof": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTrustedContextHTTPMatrix/sqlite/background-excel-spoof": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTrustedContextHTTPMatrix/sqlite/variant-context": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTrustedContextHTTPMatrix/sqlite/queryless-result-proc": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTrustedContextHTTPMatrix/sqlite/query-result-proc": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTrustedContextHTTPMatrix/sqlite/ambiguous-card-refused": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTrustedContextHTTPMatrix/postgres": "skip",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTypedDrilldownHTTPMatrix/sqlite/flat": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTypedDrilldownHTTPMatrix/sqlite/composed": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTypedDrilldownHTTPMatrix/sqlite/flat12-detail-fields": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTypedDrilldownHTTPMatrix/sqlite/forged-selector": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTypedDrilldownHTTPMatrix/sqlite/forged-row-id": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTypedDrilldownHTTPMatrix/sqlite/invalid-id-and-index": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTypedDrilldownHTTPMatrix/sqlite/live-rights-revoked": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTypedDrilldownHTTPMatrix/sqlite/report-run-revoked": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportTypedDrilldownHTTPMatrix/postgres": "skip",
+    "github.com/ivantit66/onebase/internal/ui/TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/direct": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/background": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestOrdinaryReportXLSXUsedRangeMatrix/postgres": "skip",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/sqlite/denied/AccessDirect": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/sqlite/denied/AccessWithQuery": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/sqlite/denied/AccessQueryless": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/sqlite/denied/AccessRethrow": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/sqlite/allowed/AccessDirect": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/sqlite/allowed/AccessWithQuery": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/sqlite/allowed/AccessQueryless": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/sqlite/genuine-error/AccessFakeText": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/sqlite/genuine-error/AccessBadQuery": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/sqlite/genuine-error/AccessSQLFailure": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestReportResultQueryAccessStatusMatrix/postgres": "skip",
+    "github.com/ivantit66/onebase/internal/ui/TestShellSidePanelListFillsPanelHeight": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestTabularReportResultHTTPMatrix/sqlite/same-instance-export": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestTabularReportResultHTTPMatrix/sqlite/foreign-session": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestTabularReportResultHTTPMatrix/sqlite/foreign-user": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestTabularReportResultHTTPMatrix/sqlite/revoked-role": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestTabularReportResultHTTPMatrix/sqlite/expired": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestTabularReportResultHTTPMatrix/sqlite/metadata-reloaded": "pass",
+    "github.com/ivantit66/onebase/internal/ui/TestTabularReportResultHTTPMatrix/postgres": "skip"
+  },
+  "ended": "2026-11-16T10:59:01.604634+00:00"
+}

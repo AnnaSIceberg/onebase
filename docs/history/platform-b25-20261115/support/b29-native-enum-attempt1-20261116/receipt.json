@@ -1,0 +1,25 @@
+{
+  "status": "FAIL",
+  "runtime": "902e4d97e50e90f047ec6d27832e2f9d175d095d",
+  "source": "2e185f0615f98111cd1353d71afcc72fdabbd5fd",
+  "sdk_sha256": "0cdf623d05427656b219020edc91c48984855831c56f89b662ad57d45a91010d",
+  "checks": {
+    "public_configuration_check": true
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "own_auth_db_removed": true
+  },
+  "shared_changes": false,
+  "db_copies": 0,
+  "go_started": false,
+  "network_boundary": "exact own loopback browser-context allowlist; no OS isolation claim",
+  "failure_type": "RuntimeError",
+  "failure_line": 24,
+  "failed_check": null,
+  "page_errors": 0
+}
