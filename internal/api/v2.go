@@ -413,6 +413,10 @@ func (h *handler) runReportV2() http.HandlerFunc {
 			writeError(w, http.StatusForbidden, "report context unavailable", "", 0)
 			return
 		}
+		if err := reportpkg.ValidateEnumParams(rep.Params, params, h.reg); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
+			return
+		}
 		sourceSettings, err := reportpkg.ParseSourceSettings(r.URL.Query().Get("__settings"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
