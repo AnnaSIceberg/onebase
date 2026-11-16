@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ivantit66/onebase/internal/excel"
 	"github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/report/compose"
 )
@@ -42,14 +43,19 @@ func measureCellForExcel(v any, m report.Measure) any {
 // Первая колонка — имена/ключи групп с текстовым отступом (2 пробела × уровень).
 // Значения показателей передаются как float64, чтобы Excel видел числа, а не текст.
 func composedRows(res *compose.Result, spec *report.Composition) (headers []string, rows [][]any) {
+	headers, rows, _ = composedRowsPresented(res, spec, reportCompositionPresentation{})
+	return headers, rows
+}
+
+func composedRowsPresented(res *compose.Result, spec *report.Composition, presentation reportCompositionPresentation) (headers []string, rows [][]any, styles []excel.RowStyle) {
 	headers = make([]string, 0, 1+len(spec.Measures))
-	headers = append(headers, strings.Join(spec.Groupings, " / "))
+	headers = append(headers, presentation.groupHeader(spec))
 	for _, m := range spec.Measures {
 		headers = append(headers, measureTitle(m))
 	}
-	sink := &excelComposeSink{spec: spec, colCount: 1 + len(spec.Measures)}
+	sink := &excelComposeSink{spec: spec, colCount: 1 + len(spec.Measures), presentation: presentation}
 	walkComposed(res, spec, sink)
-	return headers, sink.rows
+	return headers, sink.rows, sink.rowStyles
 }
 
 // excelComposeSink собирает строки [][]any для excel.ExportList.
@@ -57,6 +63,8 @@ type excelComposeSink struct {
 	spec     *report.Composition
 	colCount int
 	rows     [][]any
+	rowStyles []excel.RowStyle
+	presentation reportCompositionPresentation
 }
 
 // row добавляет строку: подпись в первой колонке + значения показателей
@@ -68,10 +76,16 @@ func (e *excelComposeSink) row(label string, vals map[string]any) {
 		r[i+1] = measureCellForExcel(vals[m.Field], m)
 	}
 	e.rows = append(e.rows, r)
+	e.rowStyles = append(e.rowStyles, excel.RowStyle{})
 }
 
 func (e *excelComposeSink) group(g *compose.Group, level int, _ string) {
 	e.row(strings.Repeat("  ", level)+fmtVal(g.Key), g.Subtotals)
+	fill := composedGroupFill(level, len(e.spec.Groupings))
+	if explicit := g.Styles[""].Background; explicit != "" {
+		fill = explicit
+	}
+	e.rowStyles[len(e.rowStyles)-1] = excel.RowStyle{Background: fill, Bold: true}
 }
 
 func (e *excelComposeSink) detail(d compose.DetailRow, level int, _ string) {
@@ -85,5 +99,6 @@ func (e *excelComposeSink) subtotal(g *compose.Group, level int, _ string) {
 }
 
 func (e *excelComposeSink) grand(grand map[string]any) {
-	e.row("ВСЕГО", grand)
+	e.row(e.presentation.grandTitle(), grand)
+	e.rowStyles[len(e.rowStyles)-1] = excel.RowStyle{Bold: true}
 }

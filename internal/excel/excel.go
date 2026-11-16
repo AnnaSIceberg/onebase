@@ -3,6 +3,7 @@ package excel
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/xuri/excelize/v2"
@@ -69,6 +70,17 @@ func closeBook(f *excelize.File) {
 // ExportList builds an xlsx workbook from headers + rows and returns the raw bytes.
 // Cells are formatted: dates → "ДД.ММ.ГГГГ", numbers → right-aligned.
 func ExportList(cols []string, rows [][]any) ([]byte, error) {
+	return ExportListWithRowStyles(cols, rows, nil)
+}
+
+// RowStyle is output presentation, never a replacement for the cell's numeric
+// type, alignment, border or value. Unstyled lists keep their existing output.
+type RowStyle struct {
+	Background string
+	Bold       bool
+}
+
+func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle) ([]byte, error) {
 	f := excelize.NewFile()
 	defer closeBook(f)
 
@@ -79,6 +91,33 @@ func ExportList(cols []string, rows [][]any) ([]byte, error) {
 	sh := &sheet{f: f, name: name}
 
 	boldStyle, cellStyle, numStyle := listStyles(f)
+	styled := make(map[string]int)
+	rowStyleID := func(base int, row RowStyle) (int, error) {
+		key := fmt.Sprintf("%d/%s/%t", base, row.Background, row.Bold)
+		if id, ok := styled[key]; ok {
+			return id, nil
+		}
+		style, err := f.GetStyle(base)
+		if err != nil {
+			return 0, err
+		}
+		if row.Background != "" {
+			style.Fill = excelize.Fill{Type: "pattern", Color: []string{strings.TrimPrefix(row.Background, "#")}, Pattern: 1}
+		}
+		if row.Bold {
+			font := excelize.Font{Bold: true}
+			if style.Font != nil {
+				font = *style.Font
+				font.Bold = true
+			}
+			style.Font = &font
+		}
+		id, err := f.NewStyle(style)
+		if err == nil {
+			styled[key] = id
+		}
+		return id, err
+	}
 
 	// Header row
 	for ci, col := range cols {
@@ -102,11 +141,13 @@ func ExportList(cols []string, rows [][]any) ([]byte, error) {
 		rowIdx := ri + 2
 		for ci, val := range row {
 			cell, _ := excelize.CoordinatesToCellName(ci+1, rowIdx)
+			baseStyle := cellStyle
 			switch v := val.(type) {
 			case time.Time:
 				sh.setCell(cell, v.Format("02.01.2006"))
 				sh.setStyle(cell, cellStyle)
 			case float64, float32, int, int32, int64, uint, uint32, uint64:
+				baseStyle = numStyle
 				sh.setCell(cell, v)
 				sh.setStyle(cell, numStyle)
 			case nil:
@@ -115,6 +156,13 @@ func ExportList(cols []string, rows [][]any) ([]byte, error) {
 			default:
 				sh.setCell(cell, fmt.Sprintf("%v", v))
 				sh.setStyle(cell, cellStyle)
+			}
+			if ri < len(rowStyles) && (rowStyles[ri].Background != "" || rowStyles[ri].Bold) {
+				id, err := rowStyleID(baseStyle, rowStyles[ri])
+				if err != nil {
+					return nil, err
+				}
+				sh.setStyle(cell, id)
 			}
 		}
 		sh.setRowHeight(rowIdx, 18)

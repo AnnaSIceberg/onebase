@@ -41,9 +41,8 @@ func walkComposed(res *compose.Result, spec *report.Composition, s composeSink) 
 				s.detail(d, level+1, path)
 			}
 		}
-		if spec.Totals.Subtotals {
-			s.subtotal(g, level+1, path)
-		}
+		// A group's totals already occupy its header row. Do not repeat them
+		// as a footer, including legacy totals.subtotals configurations.
 	}
 	for _, g := range res.Groups {
 		walk(g, 0, "")
