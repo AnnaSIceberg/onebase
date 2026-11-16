@@ -904,7 +904,7 @@ func CheckReportComposition(proj *project.Project) []Issue {
 		checkComp(rep.Name, "", rep.Composition, reportDetailSortColumns(proj, rep, rep.Query))
 		for _, v := range rep.Variants {
 			text := v.Query
-			if text == "" {
+			if strings.TrimSpace(text) == "" {
 				text = rep.Query
 			}
 			checkComp(rep.Name, "вариант \""+v.Name+"\": ", v.Composition, reportDetailSortColumns(proj, rep, text))

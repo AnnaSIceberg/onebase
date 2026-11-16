@@ -22,6 +22,8 @@ func TestDetailSortNativeVariantActualProjection(t *testing.T) {
 		{name: "queryless main unknown", variant: second, sort: "first", wantIssue: true},
 		{name: "inherits main", main: first, sort: "first"},
 		{name: "inherits main rejects foreign", main: first, sort: "second", wantIssue: true},
+		{name: "whitespace inherits main", main: first, variant: " \n\t ", sort: "first"},
+		{name: "whitespace inheritance rejects foreign", main: first, variant: " \n\t ", sort: "second", wantIssue: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rep := &report.Report{Name: "NativeVariantDetail", Query: tc.main, Variants: []report.ReportVariant{{Name: "variant", Query: tc.variant, Composition: &report.Composition{Detail: true, Sort: []report.SortKey{{Field: tc.sort, Dir: "asc"}}}}}}
