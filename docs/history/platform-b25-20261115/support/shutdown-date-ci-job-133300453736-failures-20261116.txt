@@ -1,0 +1,2 @@
+2026-11-16T12:38:05.9521888Z ##[error]internal/ui/ui_role_scope.go:9:18: func (*Server).uiEnhancementsAllowed is unused (unused)
+2026-11-16T12:38:05.9546955Z ##[error]issues found

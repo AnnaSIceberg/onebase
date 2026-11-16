@@ -1,0 +1,86 @@
+[
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\claude\\C--Users-a-sevrjukova-onebase\\cd50d987-9739-4c93-a5be-68d748529225\\scratchpad\\отчёты-для-analysis\\20261116-1601-platform-готов-к-выключению.md",
+    "target": "reports/20261116-1601-platform-готов-к-выключению.md"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\platform-memory-shutdown-20261116.md",
+    "target": "support/platform-memory-shutdown-20261116.md"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\claude\\C--Users-a-sevrjukova-onebase\\cd50d987-9739-4c93-a5be-68d748529225\\scratchpad\\отчёты-для-analysis\\20261116-platform-текущая-очередь-дата-уровни-отборы-меню.md",
+    "target": "reports/20261116-platform-текущая-очередь-дата-уровни-отборы-меню.md"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-platform-remote-proof-20261116-1601.json",
+    "target": "support/shutdown-platform-remote-proof-20261116-1601.json"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\write-platform-shutdown-ready-20261116.py",
+    "target": "support/write-platform-shutdown-ready-20261116.py"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-checkpoint-platform-20261116.py",
+    "target": "support/shutdown-checkpoint-platform-20261116.py"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-platform-refs-20261116.json",
+    "target": "support/shutdown-platform-refs-20261116.json"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-platform-processes-20261116.json",
+    "target": "support/shutdown-platform-processes-20261116.json"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-source-ci-20261116.json",
+    "target": "support/shutdown-date-source-ci-20261116.json"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\group-levels-pr-body-20261116.md",
+    "target": "support/group-levels-pr-body-20261116.md"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\native-b30-date-mask-body-20261116.py.txt",
+    "target": "support/native-b30-date-mask-body-20261116.py.txt"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\claude\\C--Users-a-sevrjukova-onebase\\cd50d987-9739-4c93-a5be-68d748529225\\scratchpad\\отчёты-для-analysis\\20261116-1535-platform-для-platform2-B30-границы.md",
+    "target": "reports/20261116-1535-platform-для-platform2-B30-границы.md"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453736-20261116.log.gz",
+    "target": "support/shutdown-date-ci-job-133300453736-20261116.log.gz"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453736-failures-20261116.txt",
+    "target": "support/shutdown-date-ci-job-133300453736-failures-20261116.txt"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453880-20261116.log.gz",
+    "target": "support/shutdown-date-ci-job-133300453880-20261116.log.gz"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453880-failures-20261116.txt",
+    "target": "support/shutdown-date-ci-job-133300453880-failures-20261116.txt"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453906-20261116.log.gz",
+    "target": "support/shutdown-date-ci-job-133300453906-20261116.log.gz"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453906-failures-20261116.txt",
+    "target": "support/shutdown-date-ci-job-133300453906-failures-20261116.txt"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133301908915-20261116.log.gz",
+    "target": "support/shutdown-date-ci-job-133301908915-20261116.log.gz"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133301908915-failures-20261116.txt",
+    "target": "support/shutdown-date-ci-job-133301908915-failures-20261116.txt"
+  },
+  {
+    "source": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\support-20261116-1601-files.json",
+    "target": "support/support-20261116-1601-files.json"
+  }
+]

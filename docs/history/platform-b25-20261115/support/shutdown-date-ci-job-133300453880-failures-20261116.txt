@@ -1,0 +1,11 @@
+2026-11-16T12:39:06.5301795Z     Error: expect(locator).toBeVisible() failed
+2026-11-16T12:39:06.5303509Z     Error: element(s) not found
+2026-11-16T12:39:06.5318983Z     Error Context: test-results/form-density-form-group-spacing-default-chromium/error-context.md
+2026-11-16T12:39:06.5326308Z     Error: expect(locator).toBeVisible() failed
+2026-11-16T12:39:06.5328358Z     Error: element(s) not found
+2026-11-16T12:39:06.5343864Z     Error Context: test-results/form-density-form-group-spacing-default-chromium-retry1/error-context.md
+2026-11-16T12:39:06.5351296Z     Error: expect(locator).toHaveCSS(expected) failed
+2026-11-16T12:39:06.5373144Z     Error Context: test-results/form-density-form-group-spacing-compact-chromium/error-context.md
+2026-11-16T12:39:06.5378923Z     Error: expect(locator).toHaveCSS(expected) failed
+2026-11-16T12:39:06.5398579Z     Error Context: test-results/form-density-form-group-spacing-compact-chromium-retry1/error-context.md
+2026-11-16T12:39:06.7042800Z ##[error]Process completed with exit code 1.

@@ -1,0 +1,7 @@
+2026-11-16T12:51:55.2768069Z {"Time":"2026-11-16T12:51:55.2699858Z","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestManagedDateColumnBehavior","Output":"          error: 'window is not defined'\n"}
+2026-11-16T12:51:55.2804639Z {"Time":"2026-11-16T12:51:55.2699858Z","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestManagedDateColumnBehavior","Output":"          error: 'window is not defined'\n"}
+2026-11-16T12:51:55.2837291Z {"Time":"2026-11-16T12:51:55.2699858Z","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestManagedDateColumnBehavior","Output":"          error: 'window is not defined'\n"}
+2026-11-16T12:51:55.2860478Z {"Time":"2026-11-16T12:51:55.2699858Z","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestManagedDateColumnBehavior","Output":"          error: 'window is not defined'\n"}
+2026-11-16T12:51:55.2883133Z {"Time":"2026-11-16T12:51:55.2707669Z","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestManagedDateColumnBehavior","Output":"          error: 'window is not defined'\n"}
+2026-11-16T12:51:55.2911780Z {"Time":"2026-11-16T12:51:55.271093Z","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestManagedDateColumnBehavior","Output":"--- FAIL: TestManagedDateColumnBehavior (0.13s)\n"}
+2026-11-16T12:51:55.4228008Z ##[error]Process completed with exit code 1.

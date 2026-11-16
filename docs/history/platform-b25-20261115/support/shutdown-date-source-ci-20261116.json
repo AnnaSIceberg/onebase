@@ -1,0 +1,376 @@
+{
+  "headRefOid": "9a81ab6cbcb96c834c184ca24c00c1ec474ba90c",
+  "mergeStateStatus": "BLOCKED",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:30:15Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298401247",
+      "name": "classify",
+      "startedAt": "2026-11-16T12:30:01Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:33:55Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300337641",
+      "name": "classify",
+      "startedAt": "2026-11-16T12:33:45Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:33:36Z",
+      "conclusion": "CANCELLED",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546794",
+      "name": "unit-plan",
+      "startedAt": "2026-11-16T12:30:18Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:36:42Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300453639",
+      "name": "unit-plan",
+      "startedAt": "2026-11-16T12:33:58Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:33:26Z",
+      "conclusion": "CANCELLED",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298547107",
+      "name": "launcher-webview-build",
+      "startedAt": "2026-11-16T12:30:32Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:37:58Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300453781",
+      "name": "launcher-webview-build",
+      "startedAt": "2026-11-16T12:33:58Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:31:20Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546855",
+      "name": "Smoke ubuntu-latest / private",
+      "startedAt": "2026-11-16T12:30:18Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:34:50Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300453796",
+      "name": "Smoke ubuntu-latest / private",
+      "startedAt": "2026-11-16T12:33:59Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:31:23Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546825",
+      "name": "Smoke ubuntu-latest / shared",
+      "startedAt": "2026-11-16T12:30:18Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:34:48Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300453801",
+      "name": "Smoke ubuntu-latest / shared",
+      "startedAt": "2026-11-16T12:33:59Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:31:33Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546939",
+      "name": "Smoke windows-latest / private",
+      "startedAt": "2026-11-16T12:30:18Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:35:38Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300454074",
+      "name": "Smoke windows-latest / private",
+      "startedAt": "2026-11-16T12:34:16Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:31:19Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546823",
+      "name": "Smoke windows-latest / shared",
+      "startedAt": "2026-11-16T12:30:18Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:35:21Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300453838",
+      "name": "Smoke windows-latest / shared",
+      "startedAt": "2026-11-16T12:33:59Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:39:10Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300453880",
+      "name": "e2e",
+      "startedAt": "2026-11-16T12:33:58Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:33:37Z",
+      "conclusion": "CANCELLED",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546887",
+      "name": "e2e",
+      "startedAt": "2026-11-16T12:30:19Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:51:59Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300453906",
+      "name": "test-windows",
+      "startedAt": "2026-11-16T12:34:13Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:33:35Z",
+      "conclusion": "CANCELLED",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546697",
+      "name": "test-windows",
+      "startedAt": "2026-11-16T12:30:18Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:38:09Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300453736",
+      "name": "lint",
+      "startedAt": "2026-11-16T12:33:59Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:33:25Z",
+      "conclusion": "CANCELLED",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546604",
+      "name": "lint",
+      "startedAt": "2026-11-16T12:30:18Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:33:38Z",
+      "conclusion": "CANCELLED",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546961",
+      "name": "postgres-integration",
+      "startedAt": "2026-11-16T12:30:19Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300453934",
+      "name": "postgres-integration",
+      "startedAt": "2026-11-16T12:33:59Z",
+      "status": "IN_PROGRESS",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:30:58Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546780",
+      "name": "vuln",
+      "startedAt": "2026-11-16T12:30:19Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:34:30Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300453764",
+      "name": "vuln",
+      "startedAt": "2026-11-16T12:33:58Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:33:36Z",
+      "conclusion": "CANCELLED",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133298546856",
+      "name": "bench",
+      "startedAt": "2026-11-16T12:30:18Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:38:22Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133300454117",
+      "name": "bench",
+      "startedAt": "2026-11-16T12:34:07Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:33:36Z",
+      "conclusion": "CANCELLED",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133300285479",
+      "name": "unit-race",
+      "startedAt": "2026-11-16T12:33:36Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133301908795",
+      "name": "unit-race (other)",
+      "startedAt": "2026-11-16T12:36:46Z",
+      "status": "IN_PROGRESS",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:41:31Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133301908915",
+      "name": "unit-race (ui-1)",
+      "startedAt": "2026-11-16T12:36:46Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:41:05Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133301908706",
+      "name": "unit-race (ui-2)",
+      "startedAt": "2026-11-16T12:36:45Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:42:17Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133301908615",
+      "name": "unit-race (ui-3)",
+      "startedAt": "2026-11-16T12:36:46Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:40:25Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133301908635",
+      "name": "unit-race (ui-4)",
+      "startedAt": "2026-11-16T12:36:45Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:38:50Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133301908643",
+      "name": "unit-race (launcher-1)",
+      "startedAt": "2026-11-16T12:36:45Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:40:10Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133301908814",
+      "name": "unit-race (launcher-2)",
+      "startedAt": "2026-11-16T12:36:45Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:31:39Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133299236207",
+      "name": "smoke",
+      "startedAt": "2026-11-16T12:31:36Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:35:43Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867622295/job/133301348244",
+      "name": "smoke",
+      "startedAt": "2026-11-16T12:35:40Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-16T12:33:42Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/ivanarama/onebase/actions/runs/43867111286/job/133300284347",
+      "name": "build",
+      "startedAt": "2026-11-16T12:33:38Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ]
+}

@@ -1,0 +1,149 @@
+{
+  "created": "2026-11-16T12:56:11.152635+00:00",
+  "branches": [
+    {
+      "branch": "integration/cc2-b30-date-mask-20261116",
+      "head": "d0cb9b15100ecdc6f13a8234dc4b2e3f99fa2eff",
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\report-b30-date-mask-runtime",
+      "status": "",
+      "remote_head": "d0cb9b15100ecdc6f13a8234dc4b2e3f99fa2eff",
+      "remote_matches": true
+    },
+    {
+      "branch": "integration/cc2-b29-report-enum-20261116",
+      "head": "902e4d97e50e90f047ec6d27832e2f9d175d095d",
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\report-b29-enum-runtime",
+      "status": "",
+      "remote_head": "902e4d97e50e90f047ec6d27832e2f9d175d095d",
+      "remote_matches": true
+    },
+    {
+      "branch": "integration/cc2-b28-report-actions-context-20261116",
+      "head": "f045bdb11b5e563120ff0381476957e5df9e2549",
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\report-b28-runtime",
+      "status": "",
+      "remote_head": "f045bdb11b5e563120ff0381476957e5df9e2549",
+      "remote_matches": true
+    },
+    {
+      "branch": "integration/cc2-b27-workbook-20261116",
+      "head": "a10677b2903e4b94cefb8d90a4104fe8a24aa639",
+      "worktree": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\workbook-b27-runtime",
+      "status": "",
+      "remote_head": "a10677b2903e4b94cefb8d90a4104fe8a24aa639",
+      "remote_matches": true
+    },
+    {
+      "branch": "feature/report-and-date-controls-20261113",
+      "head": "9a81ab6cbcb96c834c184ca24c00c1ec474ba90c",
+      "worktree": "C:\\Users\\a.sevrjukova\\platform-report-date-mask-20261116",
+      "status": "",
+      "remote_head": "9a81ab6cbcb96c834c184ca24c00c1ec474ba90c",
+      "remote_matches": true
+    },
+    {
+      "branch": "wip/platform-report-levels-checkpoint-20261116-1553",
+      "head": "579155942a5cdfe336f5148203b45fdb417dc725",
+      "worktree": "C:\\Users\\a.sevrjukova\\platform-report-group-levels-20261116",
+      "status": "",
+      "remote_head": "579155942a5cdfe336f5148203b45fdb417dc725",
+      "remote_matches": true
+    },
+    {
+      "branch": "fix/report-enum-parameters-20261116",
+      "head": "2e185f0615f98111cd1353d71afcc72fdabbd5fd",
+      "worktree": "C:\\Users\\a.sevrjukova\\platform-report-enum-20261116",
+      "status": "",
+      "remote_head": "2e185f0615f98111cd1353d71afcc72fdabbd5fd",
+      "remote_matches": true
+    },
+    {
+      "branch": "feature/tabular-workbook-xlsx-20261116",
+      "head": "b7c57cb628abc493a17505172885c71f9854f0e6",
+      "worktree": "C:\\Users\\a.sevrjukova\\platform-workbook-xlsx-20261116",
+      "status": "",
+      "remote_head": "b7c57cb628abc493a17505172885c71f9854f0e6",
+      "remote_matches": true
+    },
+    {
+      "branch": "fix/tabular-parent-ci-20261116",
+      "head": "bed39b9d6083c9b8d4bf9a9dce741dbd5fc05902",
+      "worktree": "C:\\Users\\a.sevrjukova\\platform-tabular-parent-ci-20261116",
+      "status": "",
+      "remote_head": "bed39b9d6083c9b8d4bf9a9dce741dbd5fc05902",
+      "remote_matches": true
+    },
+    {
+      "branch": "feature/report-typed-drilldown-20261115",
+      "head": "892365a03c8c35e3c48dea25ed897a3c9a072d95",
+      "worktree": "C:\\Users\\a.sevrjukova\\platform2-report-drilldown",
+      "status": "",
+      "remote_head": "892365a03c8c35e3c48dea25ed897a3c9a072d95",
+      "remote_matches": true
+    },
+    {
+      "branch": "feature/report-trusted-context-20261115",
+      "head": "449bafdb8a8c86f177e8dbbe768a62af885b2ab0",
+      "worktree": "C:\\Users\\a.sevrjukova\\platform2-report-context",
+      "status": "",
+      "remote_head": "449bafdb8a8c86f177e8dbbe768a62af885b2ab0",
+      "remote_matches": true
+    },
+    {
+      "branch": "fix/list-xlsx-used-range-20261115",
+      "head": "54a8303aa668dbe35c577ec0a372bf25267b347c",
+      "worktree": "C:\\Users\\a.sevrjukova\\platform2-list-xlsx-source",
+      "status": "",
+      "remote_head": "54a8303aa668dbe35c577ec0a372bf25267b347c",
+      "remote_matches": true
+    },
+    {
+      "branch": "fix/report-result-access-status-20261115",
+      "head": "6ac8da0fa9bab99c57078cfc04d6235070097cd7",
+      "worktree": "C:\\Users\\a.sevrjukova\\platform2-report-acl-source",
+      "status": "",
+      "remote_head": "6ac8da0fa9bab99c57078cfc04d6235070097cd7",
+      "remote_matches": true
+    },
+    {
+      "branch": "feature/report-group-levels-20261116",
+      "head": "b36f7e93befa5ed1c5ab3c12a1dcee4c6359bcdf",
+      "worktree": "current level WT switched to separate WIP; no duplicate source implementation",
+      "status": "",
+      "remote_head": "b36f7e93befa5ed1c5ab3c12a1dcee4c6359bcdf",
+      "remote_matches": true
+    }
+  ],
+  "source_ci": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-source-ci-20261116.json",
+  "ci_logs": [
+    {
+      "job": 133300453736,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453736-20261116.log",
+      "sha256": "b2ebe5be5afd0810d05f9ac69e0728075a547f188107f6039096274d7289eecd",
+      "failure_excerpt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453736-failures-20261116.txt"
+    },
+    {
+      "job": 133300453880,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453880-20261116.log",
+      "sha256": "7e95882512cce90d3a8c32f9a7df6b972fcbb449928aaba35a21e89c8901f0be",
+      "failure_excerpt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453880-failures-20261116.txt"
+    },
+    {
+      "job": 133300453906,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453906-20261116.log",
+      "sha256": "58f2923232085e1f8bac0abbd7b3cc66bad3cfecfc744eab0da0fdcf4c623667",
+      "failure_excerpt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133300453906-failures-20261116.txt"
+    },
+    {
+      "job": 133301908915,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133301908915-20261116.log",
+      "sha256": "d859bdc33f1c7a3f7d1bbede98b178041c573ff677cfc88a525e80fc346bc0cb",
+      "failure_excerpt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\shutdown-date-ci-job-133301908915-failures-20261116.txt"
+    }
+  ],
+  "go_started": false,
+  "browser_started": false,
+  "shared_changes": false,
+  "process_check": "targeted elevated CIM found no own matching processes; native45 cleanupalltrue; ports18586/18587 not listening",
+  "global_heavy_lock": "no lock held by this platform run; no heavy commands started after shutdown order"
+}

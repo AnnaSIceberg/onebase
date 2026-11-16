@@ -1,0 +1,2 @@
+2026-11-16T12:41:26.6162826Z {"Time":"2026-11-16T12:38:29.172276058Z","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestManagedDateColumnBehavior","Output":"--- FAIL: TestManagedDateColumnBehavior (0.09s)\n"}
+2026-11-16T12:41:26.8376584Z ##[error]Process completed with exit code 1.
