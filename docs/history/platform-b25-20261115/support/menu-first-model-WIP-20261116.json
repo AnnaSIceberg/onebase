@@ -1,0 +1,12 @@
+{
+  "head": "3c88d2368843da899665a94d8113ef29eee9d715",
+  "draft": 2636,
+  "worktree": "C:\\Users\\a.sevrjukova\\platform-recursive-menu-20261116",
+  "files": [
+    "internal/metadata/menu.go",
+    "internal/navigation/tree.go"
+  ],
+  "patch": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\menu-recursive-first-model-WIP-20261116.patch",
+  "patch_sha256": "c39e124b505bdbfb4800e5a04a6245239abeba0229f29d089a477ef9dd4fcae4",
+  "status": "INCOMPLETE_MODEL_NO_SDK_NO_GO_CHECKS; retained while date mask takes priority"
+}
