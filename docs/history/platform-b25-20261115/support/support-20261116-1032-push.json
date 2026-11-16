@@ -1,0 +1,70 @@
+{
+  "branch": "wip/platform-b24-final-b25-handoff-20261115",
+  "commit": "6e7df0a16f1f875a1b818d0b4bffec342152153b",
+  "parent": "4d49b94f3a9859cc52493c3d1f08a771c5b7d620",
+  "files": [
+    {
+      "path": "reports/20261116-1032-platform-B22-native-и-CI.md",
+      "bytes": 5552,
+      "sha256": "05b2cf6c10ca7ac6d4d59538d47af13bb1313ce6298894536dd9444a753b20e8"
+    },
+    {
+      "path": "support/b22-native-resume-20261116-1032.json",
+      "bytes": 4028,
+      "sha256": "57ed4de17e2afc40636d8fb780093aef92633d4c24942eb67e9fde64ce65e5b3"
+    },
+    {
+      "path": "support/b22-native-attempt3-20261116-receipt.json",
+      "bytes": 4855,
+      "sha256": "ef34a3dceceb871e2116ce76f357b9e4d3c915ff36f72deac9838379ba9a8493"
+    },
+    {
+      "path": "support/ci-repair-20261116.py",
+      "bytes": 3481,
+      "sha256": "1e1e91c0d58079dd937ab2ea5fb40faa4525e06e0238c1caaaf10ca9ee890d0a"
+    },
+    {
+      "path": "support/ci-repair-20261116.json",
+      "bytes": 1439,
+      "sha256": "ebde9ddb58d04bfd5803533b4deb481c8667a2c81410c2e0cbdd5607a05fd8d1"
+    },
+    {
+      "path": "support/push-b22-acl-testfix-20261116.py",
+      "bytes": 2385,
+      "sha256": "0c8b27d5c1727e379ffab0c75fd795a834ce1b8b9ec2c988348800014b4319c1"
+    },
+    {
+      "path": "support/b22-acl-testfix-20261116.json",
+      "bytes": 368,
+      "sha256": "29cc60417e753ec4ea81a6de935ff9d3a602d1c5bc443d8b084eecc4c3edf91f"
+    },
+    {
+      "path": "support/repair-b22-native-helper-20261116.py",
+      "bytes": 1632,
+      "sha256": "7341cd44d336a8dbea572ea0876521b9ae0030512bdd3eb9c448eddb0824edb1"
+    },
+    {
+      "path": "support/b22-native-afterrelease-attempt2-20261116.py",
+      "bytes": 12046,
+      "sha256": "ddb143a6239c511f1a2a73e154ebd6b8b3771cc263a6951eb0a2d8747b0ff9cd"
+    },
+    {
+      "path": "support/b22-native-afterrelease-attempt3-20261116.py",
+      "bytes": 12043,
+      "sha256": "ad14849cfeca56a66cc512e50c2f17d6f966aa6aeba5a68c646d16465776bd98"
+    },
+    {
+      "path": "support/resource-sample-20261116.py",
+      "bytes": 1110,
+      "sha256": "e37e0b9cdd61e3072453d0e03740ff435fffcc78e138b8ebb5ac7902388d3c00"
+    },
+    {
+      "path": "support/record-b22-resume-20261116.py",
+      "bytes": 8315,
+      "sha256": "3a47af69ec8e25892cbf73b4385fd7cb5990fd28fc4bae5f8cb697c0c6a4a4df"
+    }
+  ],
+  "created_utc": "2026-11-16T07:34:42.980849+00:00",
+  "scope": "source helpers/reports/metadata only; no SDK, DB or secrets",
+  "recovery": "original commit retained; sandbox blocked Git credential-helper IPC, only the verified push was resumed"
+}

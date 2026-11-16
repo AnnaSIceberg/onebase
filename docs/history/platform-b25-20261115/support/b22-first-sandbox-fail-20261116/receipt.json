@@ -1,0 +1,30 @@
+{
+  "product_runtime": "1496c60ccad535d722bb1d83d2694d7d81bfbded",
+  "test_source": "a1ac5b8af8624b05c81bf8f074555578bb3df52e",
+  "test_only_delta": [
+    "internal/ui/report_result_access_test.go"
+  ],
+  "started_utc": "2026-11-16T07:36:15.612815+00:00",
+  "commands": [
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-count=1",
+        "-p=1",
+        "-json",
+        "./internal/ui",
+        "-run",
+        "^(TestReportResultQueryAccessStatusMatrix|TestOrdinaryReportXLSXUsedRangeMatrix)$"
+      ],
+      "goos": "windows",
+      "gomaxprocs": 2,
+      "go_parallelism": 1,
+      "exit": 1,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b22-corrected-ui-tests-20261116\\local-targeted.jsonl",
+      "log_sha256": "b2bda294ae854fa4384bd15a9d5eb34381367f881f071efbd052641ef8e07180",
+      "started_utc": "2026-11-16T07:36:15.612855+00:00",
+      "ended_utc": "2026-11-16T07:37:11.303989+00:00"
+    }
+  ]
+}

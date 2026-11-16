@@ -1,0 +1,9 @@
+C:\Users\a.sevrjukova\AppData\Local\Temp\platform-help-admin-20261111\b22-corrected-ui-tests-attempt2-20261116\b22-ui-fixture-corrected-linux-amd64.test: go1.26.11
+	path	github.com/ivantit66/onebase/internal/ui.test
+	mod	github.com/ivantit66/onebase	(devel)	
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=0
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1

@@ -1,0 +1,7 @@
+error acquiring upload token: creating token file: open C:\Users\a.sevrjukova\AppData\Roaming\go\telemetry\local\upload.token: Access is denied.
+{"ImportPath":"./internal/ui","Action":"build-output","Output":"# ./internal/ui\n"}
+{"ImportPath":"./internal/ui","Action":"build-output","Output":"open C:\\Users\\a.sevrjukova\\AppData\\Local\\go-build\\2b\\2b18dd86a7667d4aa5f4ef3ddb6e70f025db4af96b7cdf8ae77063d2b03ef7be-a: Access is denied.\n"}
+{"ImportPath":"./internal/ui","Action":"build-fail"}
+{"Time":"2026-11-16T10:36:42.2888116+03:00","Action":"start","Package":"./internal/ui"}
+{"Time":"2026-11-16T10:36:42.2958797+03:00","Action":"output","Package":"./internal/ui","Output":"FAIL\t./internal/ui [setup failed]\n"}
+{"Time":"2026-11-16T10:36:42.2958797+03:00","Action":"fail","Package":"./internal/ui","Elapsed":0.007,"FailedBuild":"./internal/ui"}
