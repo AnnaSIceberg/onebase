@@ -11,9 +11,9 @@ ENG06 остаётся INTEGRATION HOLD до совместимого полно
 WHERE/GROUP/HAVING/ORDER, CASE, простые операторы, MIN/MAX/COUNT/SUM/AVG,
 COALESCE/ЕСТЬNULL, SUBSTR, LENGTH, ограниченный CAST. ТЧ сохраняет владельца.
 Неизвестная функция/поле/источник, неоднозначное имя, wildcard, ordinal,
-correlated derived, derived reference navigation, UNION и виртуальная таблица возвращают ошибку без частичного
+correlated derived, derived reference navigation и виртуальная таблица возвращают ошибку без частичного
 Result/receipt. Это намеренная граница WIP; полный A073/KPI
-с UNION/VT ещё не поддержан. Поддержка парсинга SUBSTR не означает разрешения
+с VT/специальными выражениями ещё не поддержан. Поддержка парсинга SUBSTR не означает разрешения
 произвольного перебора телефонных цифр.
 
 `Outputs()` даёт detached деревья выражений выходных колонок, `Uses()` —
@@ -72,3 +72,13 @@ Correlated scope lookup не разрешён. Раскрытое inspection и�
 Это непринимаемый пока WIP: SQLite nested aggregate/child RLS/root-occurrence/
 GROUP shadow/unknown/expansion tests PASS; stable017 independent repeat pending.
 Ни runtime gate, ни safe protected operation authorization не подключены.
+
+
+UNION WIP связывает колонки по позиции, имена берёт из первой ветви и
+объединяет деревья всех ветвей. Типы должны согласоваться; неизвестные/разные
+типы, сложная ref-навигация и невыведенные global ORDER имена дают STOP.
+UNION ALL и duplicate elimination различаются в operation/control graph.
+Общий ORDER BY использует объединённый выход, а не последнюю ветвь.
+SELECT DISTINCT также явно записывает membership dependencies всех outputs.
+SQLite UNION ALL/DISTINCT nested aggregate+RLS и negative/global ORDER tests
+PASS; PG SKIP. Никакой autorization protected operations/runtime ещё нет.

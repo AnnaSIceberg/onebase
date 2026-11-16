@@ -27,6 +27,21 @@ func (p *reportLineageParser) bindOutputs() ([]ReportLineageOutput, error) {
 		}
 		out = append(out, ReportLineageOutput{Name: column.name, Expression: view})
 	}
+	if p.selectDistinct {
+		// SELECT DISTINCT changes row membership using every output, even when
+		// a later renderer masks it. It is an explicit control dependency.
+		exists := false
+		for _, use := range p.uses {
+			if use.clause == "select-distinct" {
+				exists = true
+			}
+		}
+		if !exists {
+			for _, column := range p.outputs {
+				p.uses = append(p.uses, reportUse{clause: "select-distinct", expr: column.expr})
+			}
+		}
+	}
 	return out, nil
 }
 func (p *reportLineageParser) derivedSource() error {

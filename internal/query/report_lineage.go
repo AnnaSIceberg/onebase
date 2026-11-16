@@ -117,11 +117,13 @@ func lineageEnvironmentDigest(opts CompileOpts) ([32]byte, bool) {
 }
 
 type reportExpr struct {
-	op, value string
-	path      []string
-	args      []*reportExpr
-	view      ReportExpression
-	done      bool
+	owner       *reportLineageParser
+	outputIndex int
+	op, value   string
+	path        []string
+	args        []*reportExpr
+	view        ReportExpression
+	done        bool
 }
 type reportSource struct {
 	derived    *reportLineageParser
@@ -140,14 +142,15 @@ type reportUse struct {
 	expr   *reportExpr
 }
 type reportLineageParser struct {
-	state      *reportLineageState
-	scopeID    int
-	tokens     []tok
-	pos, nodes int
-	opts       CompileOpts
-	sources    []reportSource
-	outputs    []reportOutput
-	uses       []reportUse
+	selectDistinct bool
+	state          *reportLineageState
+	scopeID        int
+	tokens         []tok
+	pos, nodes     int
+	opts           CompileOpts
+	sources        []reportSource
+	outputs        []reportOutput
+	uses           []reportUse
 }
 
 // CompileReportLineage opts into the strict analysis profile without changing
@@ -266,11 +269,16 @@ func (p *reportLineageParser) newExpr(op, value string, args ...*reportExpr) (*r
 	return &reportExpr{op: op, value: value, args: args}, nil
 }
 func (p *reportLineageParser) parse() error {
+	if found, err := p.parseUnion(); found || err != nil {
+		return err
+	}
 	if err := p.want("SELECT"); err != nil {
 		return err
 	}
-	p.take("DISTINCT")
-	p.take("ALL")
+	p.selectDistinct = p.take("DISTINCT")
+	if !p.selectDistinct {
+		p.take("ALL")
+	}
 	ctx := preScanSourceContextWithOpts(p.tokens, p.opts)
 	if len(ctx.scopes) < 1 {
 		return fmt.Errorf("report lineage: missing SELECT scope")
@@ -718,6 +726,15 @@ func (p *reportLineageParser) bind(e *reportExpr, clause string, depth int) (Rep
 		view.LiteralDigest = sha256.Sum256([]byte(e.op + ":" + e.value))
 	case "row-count":
 		view.Type = metadata.FieldTypeNumber
+	case "scope-output":
+		if e.owner == nil || e.outputIndex < 0 || e.outputIndex >= len(e.owner.outputs) {
+			return view, fmt.Errorf("report lineage: invalid scope output")
+		}
+		child, err := e.owner.bind(e.owner.outputs[e.outputIndex].expr, "", depth+1)
+		if err != nil {
+			return view, err
+		}
+		view.Type, view.Args = child.Type, []ReportExpression{child}
 	case "field":
 		if clause == "order" && len(e.path) == 1 {
 			for _, out := range p.outputs {
@@ -758,6 +775,21 @@ func lineageExprType(op, value string, args []ReportExpression) (metadata.FieldT
 	}
 	isNumber := func(i int) bool { return i < len(args) && args[i].Type == metadata.FieldTypeNumber }
 	switch op {
+	case "union-all", "union-distinct":
+		if len(args) != 2 {
+			return fail()
+		}
+		a, b := args[0].Type, args[1].Type
+		if a == "null" {
+			a = b
+		}
+		if b == "null" {
+			b = a
+		}
+		if a != "" && a == b && !metadata.IsReference(a) {
+			return a, nil
+		}
+		return fail()
 	case "OR", "AND", "NOT", "=", "<>", "!=", "<", ">", "<=", ">=", "IS NULL", "IS NOT NULL", "LIKE":
 		return metadata.FieldTypeBool, nil
 	case "+", "-", "*", "/", "%":
