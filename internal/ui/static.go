@@ -90,6 +90,7 @@ func mountStatic(r chi.Router) {
 		serveAppJS(w, req, reportControlsJS, reportControlsJSETag)
 	})
 	r.Get("/static/tabular.js", func(w http.ResponseWriter, r *http.Request) { serveAppJS(w, r, tabularJS, tabularJSETag) })
+	mountNavigationTree(r)
 	r.Get("/static/settings-navigation.js", func(w http.ResponseWriter, req *http.Request) {
 		serveAppJS(w, req, settingsNavigationJS, settingsNavigationJSETag)
 	})
