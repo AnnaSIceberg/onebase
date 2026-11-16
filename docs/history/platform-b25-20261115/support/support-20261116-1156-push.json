@@ -1,0 +1,119 @@
+{
+  "branch": "wip/platform-b24-final-b25-handoff-20261115",
+  "commit": "96240c52675fb9796ca7c2b923cb64eef9bb4783",
+  "parent": "d491e29eb95453dbbfef9a29374eb2c8a57c631d",
+  "files": [
+    {
+      "path": "reports/20261116-1156-platform-T8-source-B26-принят-B27-build.md",
+      "bytes": 4705,
+      "sha256": "ef09b99eb35ad4a0201de7e68c8e143f9f342fb59c32512504723dc2966aea52"
+    },
+    {
+      "path": "support/platform-line-20261116-1156.json",
+      "bytes": 1934,
+      "sha256": "b5158e41b7a6fbed84107cd51715bb44ff943355d712fd8bfdafb2efe4c05089"
+    },
+    {
+      "path": "support/refactor-xlsx-for-workbook-20261116.py",
+      "bytes": 2654,
+      "sha256": "70ba004ec98ac52a22266005a9e3bd412ac3d89972437b0f6ff752880e92c886"
+    },
+    {
+      "path": "support/refactor-xlsx-for-workbook-20261116.json",
+      "bytes": 263,
+      "sha256": "1b2e4b8cd31487ea57b76c082837ae5dde257c50e9b1839fd87d1010dc96c073"
+    },
+    {
+      "path": "support/publish-t8-draft-20261116.py",
+      "bytes": 5871,
+      "sha256": "5e36f3946d04e93334eb7f100c6b7934c40816462858223a27225409dcd57bb4"
+    },
+    {
+      "path": "support/t8-draft-20261116.json",
+      "bytes": 949,
+      "sha256": "9925c20b0383913ef19dcc3bea46dfcfc02612b64ea8a34d5b1467bc225ead88"
+    },
+    {
+      "path": "support/verify-t8-20261116.py",
+      "bytes": 4304,
+      "sha256": "7435ebfcc7617c74c6c92ad080660ef354b49be3867e59476e5f7991c175caca"
+    },
+    {
+      "path": "support/verify-t8-attempt2-20261116.py",
+      "bytes": 4337,
+      "sha256": "974b1ac32b106cda639dbc46aebd1722732596eb70a1f44d06f717f3717f6c17"
+    },
+    {
+      "path": "support/verify-t8-attempt3-20261116.py",
+      "bytes": 4337,
+      "sha256": "a891b9ccaa24dd4e04a8ae58d27e173a3d6645226280465b4f43a80fcf43c982"
+    },
+    {
+      "path": "support/build-b27-workbook-20261116.py",
+      "bytes": 4983,
+      "sha256": "fa57291939e49fbc3ebc1c5e57f4529c2f6e6910b0d614dd16075b0e7d094fdc"
+    },
+    {
+      "path": "support/record-platform-progress-20261116.py",
+      "bytes": 8018,
+      "sha256": "f4feefb0ce0ea38bbd1f76dcfe3e0e82188bc3cedd95bf37b3b2e4ae2eb78100"
+    },
+    {
+      "path": "support/support-20261116-1047-push.json",
+      "bytes": 2821,
+      "sha256": "bf5ce709237f22190a8d5c270a8922af6b9cc635ed3609d8746694368c97339d"
+    },
+    {
+      "path": "support/t8-verify-attempt1-20261116/receipt.json",
+      "bytes": 967,
+      "sha256": "bf913513258a14d1300160a185a62332f325567a1b951c4122e59135a77baaae"
+    },
+    {
+      "path": "support/t8-verify-attempt1-20261116/xlsx-and-workbook-tests.jsonl",
+      "bytes": 60722,
+      "sha256": "806814878201d350d7b2e11bbe30c13f970bcc33770e8b59b1f9589717e28431"
+    },
+    {
+      "path": "support/t8-verify-attempt2-20261116/receipt.json",
+      "bytes": 9799,
+      "sha256": "f17f0ade674836ad284c07c4257834dbb68f2c9b24e97c9ec5799fbbb7bd925e"
+    },
+    {
+      "path": "support/t8-verify-attempt2-20261116/xlsx-and-workbook-tests.jsonl",
+      "bytes": 57653,
+      "sha256": "abdb210071cfbda09f8c8726dfcdb647734e733d4abb8b9a34746b16c24377c9"
+    },
+    {
+      "path": "support/t8-verify-attempt2-20261116/build-all.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "support/t8-verify-attempt2-20261116/i18n-en.log",
+      "bytes": 2452,
+      "sha256": "bbb90d25f48c30fb8a7f97112922bc9033c167b1ac03a0ed11b569d9c97933c3"
+    },
+    {
+      "path": "support/t8-verify-attempt3-20261116/receipt.json",
+      "bytes": 9799,
+      "sha256": "1482b05598ec31ea5ae37b476b544ebce6ed6b03d3c626960c3607e4da62eebd"
+    },
+    {
+      "path": "support/t8-verify-attempt3-20261116/xlsx-and-workbook-tests.jsonl",
+      "bytes": 57626,
+      "sha256": "a028cc41776e50a9a0ca78917699e11bb24565fae3e2fde23b2a542b3b9bdd12"
+    },
+    {
+      "path": "support/t8-verify-attempt3-20261116/build-all.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "support/t8-verify-attempt3-20261116/i18n-en.log",
+      "bytes": 2452,
+      "sha256": "bbb90d25f48c30fb8a7f97112922bc9033c167b1ac03a0ed11b569d9c97933c3"
+    }
+  ],
+  "created_utc": "2026-11-16T08:56:53.239437+00:00",
+  "scope": "metadata/source reports only; no SDK/DB/secrets/payloads"
+}

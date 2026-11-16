@@ -1,0 +1,47 @@
+{
+  "status": "T8_B27R2_WINDOWS_NATIVE30_PASS_SOURCE_CI_PENDING",
+  "runtime": "a10677b2903e4b94cefb8d90a4104fe8a24aa639",
+  "source": "9b8db2dc37a4d799bfaaeef0cda1d0512168194b",
+  "base_b26": "513274b7e1bc230d8c0de5fcd22a34deb672345c",
+  "source_pr": 2635,
+  "sdk": {
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b27r2-workbook-windows-amd64.exe",
+      "sha256": "7bd6521a53b3c9a4342c89a72076cc031115c06f0b3f235209ec872436f587e1",
+      "bytes": 79428608,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\windows-sdk-buildinfo.txt",
+      "buildinfo_sha256": "3fcbf9e8cd8b0d3a5a2e3716b15c83dc4c96c2d6e8c9fb7227156433bdb28351",
+      "runtime": "a10677b2903e4b94cefb8d90a4104fe8a24aa639",
+      "source_t8": "9b8db2dc37a4d799bfaaeef0cda1d0512168194b",
+      "embedded_vcs_not_claimed": true
+    },
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b27r2-workbook-linux-amd64",
+      "sha256": "6c27eddfff6d92566e680b33f3704ac327d78673bdad36671319805ee045b3d9",
+      "bytes": 78446203,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\linux-sdk-buildinfo.txt",
+      "buildinfo_sha256": "96e872c4c3bc0c6dd52ac961a8dfe59afa0277416e88afdf2c3a563310f5eced",
+      "runtime": "a10677b2903e4b94cefb8d90a4104fe8a24aa639",
+      "source_t8": "9b8db2dc37a4d799bfaaeef0cda1d0512168194b",
+      "embedded_vcs_not_claimed": true
+    }
+  },
+  "build_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\manifest.json",
+  "build_manifest_sha256": "d88170fb1c6ac0e412129cb7b2fd914e9ee10e495d89808e9294bd2586a88d91",
+  "native_receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-native-workbook-attempt1-20261116\\receipt.json",
+  "native_receipt_sha256": "aef74fb5084fd501877184a6746c226c4b80642d12c1a0837c125d9e3e0542d0",
+  "native_checks": 30,
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "own_auth_db_removed": true
+  },
+  "go_started_by_native": false,
+  "full_ci": "PENDING: latest source run has Windows failure under investigation; not Ready",
+  "shared_changes": false,
+  "db_copies": 0,
+  "linux_native": "not claimed"
+}

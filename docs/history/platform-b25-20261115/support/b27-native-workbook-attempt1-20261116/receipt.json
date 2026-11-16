@@ -1,0 +1,67 @@
+{
+  "status": "FAIL",
+  "runtime": "7b89c38bfab4d2aa2f2c8d1843fb66f83032cfd3",
+  "source_t8": "79aac9d7426497fac35ba00ea42ba95232f23ff5",
+  "base_b26": "513274b7e1bc230d8c0de5fcd22a34deb672345c",
+  "sdk_windows_sha256": "e312a45e863e199873b98d3d4f1a6106f9d8b6f35a992a67da0e8b07a0ac2f75",
+  "checks": {
+    "public_check": true,
+    "native_post303": false
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "own_auth_db_removed": true
+  },
+  "shared_changes": false,
+  "db_copies": 0,
+  "go_compiler_started": false,
+  "request_boundary": "own exact loopback browser-context allowlist; no OS network-isolation claim",
+  "cli_commands": [
+    {
+      "args": [
+        "check",
+        "--project",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27-native-workbook-attempt1-20261116\\config"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27-native-workbook-attempt1-20261116\\cli-0.log",
+      "sha256": "167aebbc45f78a573e297889ae05eb9e00a1adf0479caa074cf7ed805066034f"
+    },
+    {
+      "args": [
+        "migrate",
+        "--project",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27-native-workbook-attempt1-20261116\\config",
+        "--sqlite",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27-native-workbook-attempt1-20261116\\own-native.sqlite"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27-native-workbook-attempt1-20261116\\cli-1.log",
+      "sha256": "d0781592ed1081555898d2ba31bfa26940e3ebfb10f9daea50acbca762b76042"
+    },
+    {
+      "args": [
+        "user",
+        "add",
+        "own_b27_admin",
+        "--admin",
+        "--password-stdin",
+        "--project",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27-native-workbook-attempt1-20261116\\config",
+        "--sqlite",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27-native-workbook-attempt1-20261116\\own-native.sqlite"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27-native-workbook-attempt1-20261116\\cli-2.log",
+      "sha256": "e98e17c1c7694c06acd54f8378f8dbc7d8dc68969f55381dbf16cab33d38ae4d"
+    }
+  ],
+  "failure_type": "AssertionError",
+  "failed_check": "native_post303",
+  "failure_line": 36,
+  "page_errors": 0
+}

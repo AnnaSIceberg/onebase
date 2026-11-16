@@ -1,0 +1,269 @@
+{
+  "runtime": "a10677b2903e4b94cefb8d90a4104fe8a24aa639",
+  "base_b26": "513274b7e1bc230d8c0de5fcd22a34deb672345c",
+  "source_t8": "9b8db2dc37a4d799bfaaeef0cda1d0512168194b",
+  "draft": 2635,
+  "changed_files": [
+    "README.md",
+    "QUICKSTART.md",
+    "docs/dsl-reference.md",
+    "internal/dsl/langref/methods.go",
+    "docs/features.md",
+    "examples/tabular-workbook/README.md",
+    "internal/sheet/workbook.go",
+    "internal/sheet/workbook_test.go",
+    "internal/sheet/xlsx.go",
+    "internal/dsl/interpreter/spreadsheet_document.go",
+    "internal/dsl/interpreter/spreadsheet_workbook.go",
+    "internal/dsl/interpreter/spreadsheet_workbook_test.go"
+  ],
+  "core_go_files_exact_source": true,
+  "commands": [
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-count=1",
+        "-p=1",
+        "-json",
+        "./internal/sheet",
+        "./internal/dsl/interpreter",
+        "-run",
+        "Test.*(Workbook|XLSX|Xlsx|Outline)"
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\xlsx-tests.jsonl",
+      "sha256": "5e7408696eb4c4858b1e7d5d07af00dba290ba0458cd51ddb41f1b9d793d4c53",
+      "start": "2026-11-16T09:43:40.355646+00:00",
+      "end": "2026-11-16T09:44:08.274884+00:00",
+      "gomaxprocs": 2,
+      "parallelism": 1
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-count=1",
+        "-p=1",
+        "-json",
+        "./internal/ui",
+        "-run",
+        "^(TestShellSidePanelListFillsPanelHeight|TestTabularReportResultHTTPMatrix|TestTabularXLSXDimensionHTTPMatrix)$"
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\http-critical-tests.jsonl",
+      "sha256": "d5ab831b22acc6dec060192f1d6befdc24461a51554a443aa5d7b193d0cde583",
+      "start": "2026-11-16T09:44:08.457494+00:00",
+      "end": "2026-11-16T09:45:18.896137+00:00",
+      "gomaxprocs": 2,
+      "parallelism": 1
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "build",
+        "-p=1",
+        "./..."
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\build-all.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "start": "2026-11-16T09:45:19.087048+00:00",
+      "end": "2026-11-16T09:46:09.566673+00:00",
+      "gomaxprocs": 2,
+      "parallelism": 1
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "run",
+        "-p=1",
+        "./tools/i18ncheck"
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\i18n-en.log",
+      "sha256": "3f1aeb0ee17a5d05b77d2a87ff38017caa0944c969d3eb27ea368ebc603d9cf6",
+      "start": "2026-11-16T09:46:09.741763+00:00",
+      "end": "2026-11-16T09:46:12.284375+00:00",
+      "gomaxprocs": 2,
+      "parallelism": 1
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "build",
+        "-p=1",
+        "-ldflags=-X github.com/ivantit66/onebase/internal/version.Build=dev-reports-b27r2-workbook",
+        "-o",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b27r2-workbook-windows-amd64.exe",
+        "./cmd/onebase"
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\windows-sdk-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "start": "2026-11-16T09:46:12.473781+00:00",
+      "end": "2026-11-16T09:46:17.889691+00:00",
+      "gomaxprocs": 2,
+      "parallelism": 1
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "version",
+        "-m",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b27r2-workbook-windows-amd64.exe"
+      ],
+      "goos": "windows",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\windows-sdk-buildinfo.txt",
+      "sha256": "3fcbf9e8cd8b0d3a5a2e3716b15c83dc4c96c2d6e8c9fb7227156433bdb28351",
+      "start": "2026-11-16T09:46:18.055437+00:00",
+      "end": "2026-11-16T09:46:18.530913+00:00",
+      "gomaxprocs": 2,
+      "parallelism": 1
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "build",
+        "-p=1",
+        "-ldflags=-X github.com/ivantit66/onebase/internal/version.Build=dev-reports-b27r2-workbook",
+        "-o",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b27r2-workbook-linux-amd64",
+        "./cmd/onebase"
+      ],
+      "goos": "linux",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\linux-sdk-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "start": "2026-11-16T09:46:18.975631+00:00",
+      "end": "2026-11-16T09:46:48.920154+00:00",
+      "gomaxprocs": 2,
+      "parallelism": 1
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "version",
+        "-m",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b27r2-workbook-linux-amd64"
+      ],
+      "goos": "linux",
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\linux-sdk-buildinfo.txt",
+      "sha256": "96e872c4c3bc0c6dd52ac961a8dfe59afa0277416e88afdf2c3a563310f5eced",
+      "start": "2026-11-16T09:46:49.083318+00:00",
+      "end": "2026-11-16T09:46:49.331655+00:00",
+      "gomaxprocs": 2,
+      "parallelism": 1
+    }
+  ],
+  "artifacts": {
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b27r2-workbook-windows-amd64.exe",
+      "sha256": "7bd6521a53b3c9a4342c89a72076cc031115c06f0b3f235209ec872436f587e1",
+      "bytes": 79428608,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\windows-sdk-buildinfo.txt",
+      "buildinfo_sha256": "3fcbf9e8cd8b0d3a5a2e3716b15c83dc4c96c2d6e8c9fb7227156433bdb28351",
+      "runtime": "a10677b2903e4b94cefb8d90a4104fe8a24aa639",
+      "source_t8": "9b8db2dc37a4d799bfaaeef0cda1d0512168194b",
+      "embedded_vcs_not_claimed": true
+    },
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b27r2-workbook-linux-amd64",
+      "sha256": "6c27eddfff6d92566e680b33f3704ac327d78673bdad36671319805ee045b3d9",
+      "bytes": 78446203,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b27r2-workbook-build-20261116\\linux-sdk-buildinfo.txt",
+      "buildinfo_sha256": "96e872c4c3bc0c6dd52ac961a8dfe59afa0277416e88afdf2c3a563310f5eced",
+      "runtime": "a10677b2903e4b94cefb8d90a4104fe8a24aa639",
+      "source_t8": "9b8db2dc37a4d799bfaaeef0cda1d0512168194b",
+      "embedded_vcs_not_claimed": true
+    }
+  },
+  "shared_changes": false,
+  "db_copies": 0,
+  "status": "BUILD_AND_TARGETED_TESTS_PASS_SDK_READY_NATIVE_PENDING",
+  "xlsx_counts": {
+    "pass": 50
+  },
+  "xlsx_leaves": {
+    "TestTabularDrilldownColorXLSXUnchanged/FF0000": "pass",
+    "TestTabularDrilldownColorXLSXUnchanged/FF9900": "pass",
+    "TestTabularDrilldownColorXLSXUnchanged/A3A300": "pass",
+    "TestTabularDrilldownColorXLSXUnchanged/008000": "pass",
+    "TestTabularExportXLSXViewAndFormats": "pass",
+    "TestTabularExportXLSXCollapsedParentWins": "pass",
+    "TestWorkbookResourceLimitsAreGlobalAndAtomic": "pass",
+    "TestWorkbookExcelBoundsIncludeMergesAndGeometry/merge-row": "pass",
+    "TestWorkbookExcelBoundsIncludeMergesAndGeometry/merge-column": "pass",
+    "TestWorkbookExcelBoundsIncludeMergesAndGeometry/negative-cell": "pass",
+    "TestWorkbookExcelBoundsIncludeMergesAndGeometry/width": "pass",
+    "TestWorkbookExcelBoundsIncludeMergesAndGeometry/height": "pass",
+    "TestWorkbookExcelBoundsIncludeMergesAndGeometry/pane": "pass",
+    "TestWorkbookExcelBoundsIncludeMergesAndGeometry/nil-cell": "pass",
+    "TestWorkbookNamesAndSheetBudget": "pass",
+    "TestWorkbookGroupingWorkSharesCellBudget": "pass",
+    "TestDocumentXLSXDimension/empty": "pass",
+    "TestDocumentXLSXDimension/single": "pass",
+    "TestDocumentXLSXDimension/dense": "pass",
+    "TestDocumentXLSXDimension/sparse-offset": "pass",
+    "TestDocumentXLSXDimension/merge-span": "pass",
+    "TestDocumentXLSXDimension/styled-tail": "pass",
+    "TestDocumentXLSXDimension/collapsed": "pass",
+    "TestDocumentXLSXDimension/autoscale": "pass",
+    "TestDocumentXLSXDimension/format-maps-only": "pass",
+    "TestDocumentXLSXDimension/kpi-53893": "pass",
+    "TestDocumentXLSXKeepsLayoutStyles": "pass",
+    "TestXLSXColor": "pass",
+    "TestSpreadsheetWorkbookDSLTwoNamedSnapshots": "pass",
+    "TestSpreadsheetWorkbookDSLLayoutAndGroups": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/empty": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/blank": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/long": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/invalid-character": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/apostrophe": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/duplicate": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/wrong-document": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/wrong-name": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/arity": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/format": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/count-arity": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/constructor": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/row-bound": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/column-bound": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/sparse-budget": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/global-budget": "pass",
+    "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/unknown-method": "pass",
+    "TestSpreadsheetXLSXBase64Export": "pass",
+    "TestSpreadsheetXLSXAttachmentIsWorkbook": "pass",
+    "TestSpreadsheetXLSXFromLayoutKeepsTemplate": "pass"
+  },
+  "http_counts": {
+    "pass": 14,
+    "skip": 2
+  },
+  "http_leaves": {
+    "TestShellSidePanelListFillsPanelHeight": "pass",
+    "TestTabularReportResultHTTPMatrix/sqlite/same-instance-export": "pass",
+    "TestTabularReportResultHTTPMatrix/sqlite/foreign-session": "pass",
+    "TestTabularReportResultHTTPMatrix/sqlite/foreign-user": "pass",
+    "TestTabularReportResultHTTPMatrix/sqlite/revoked-role": "pass",
+    "TestTabularReportResultHTTPMatrix/sqlite/expired": "pass",
+    "TestTabularReportResultHTTPMatrix/sqlite/metadata-reloaded": "pass",
+    "TestTabularReportResultHTTPMatrix/postgres": "skip",
+    "TestTabularXLSXDimensionHTTPMatrix/sqlite/empty": "pass",
+    "TestTabularXLSXDimensionHTTPMatrix/sqlite/offset": "pass",
+    "TestTabularXLSXDimensionHTTPMatrix/sqlite/merged-span": "pass",
+    "TestTabularXLSXDimensionHTTPMatrix/sqlite/styled-tail": "pass",
+    "TestTabularXLSXDimensionHTTPMatrix/sqlite/collapsed": "pass",
+    "TestTabularXLSXDimensionHTTPMatrix/sqlite/autoscale": "pass",
+    "TestTabularXLSXDimensionHTTPMatrix/sqlite/kpi-53893": "pass",
+    "TestTabularXLSXDimensionHTTPMatrix/postgres": "skip"
+  },
+  "ended_utc": "2026-11-16T09:46:49.606853+00:00"
+}
