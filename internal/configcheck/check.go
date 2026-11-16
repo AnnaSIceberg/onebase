@@ -809,6 +809,9 @@ func CheckReportComposition(proj *project.Project) []Issue {
 		if c == nil {
 			return
 		}
+		for _, err := range append(c.MeasureScopeErrors(), c.MeasureCalculationErrors()...) {
+			add(repName, prefix+err)
+		}
 		groups := map[string]bool{}
 		for _, g := range c.Groupings {
 			groups[g] = true
@@ -820,6 +823,13 @@ func CheckReportComposition(proj *project.Project) []Issue {
 		}
 		for _, m := range c.Measures {
 			measures[m.Field] = true
+			for _, calculation := range m.Calculations {
+				if calculation.Expr != "" {
+					if err := parseReturnExpr(calculation.Expr); err != nil {
+						add(repName, prefix+"ошибка формулы уровня "+calculation.Level+": "+err.Error())
+					}
+				}
+			}
 			if m.Expr != "" {
 				// Вычисляемый показатель: агрегат необязателен, но выражение валидируем.
 				if err := parseReturnExpr(m.Expr); err != nil {

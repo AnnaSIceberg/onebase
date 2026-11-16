@@ -66,6 +66,9 @@ func ComposeCross(rows []Row, spec report.Composition, ev Evaluator) (*CrossResu
 
 // ComposeCrossN — ComposeCross с явным потолком строк (как ComposeN).
 func ComposeCrossN(rows []Row, spec report.Composition, ev Evaluator, maxRows int) (*CrossResult, error) {
+	if err := validateCalculations(spec); err != nil {
+		return nil, err
+	}
 	rows = alignRowKeys(rows, spec)
 	res := &CrossResult{Columns: spec.Columns, RowCount: len(rows)}
 	if maxRows > 0 && len(rows) > maxRows {
@@ -183,7 +186,9 @@ func buildCrossRows(rows []Row, spec report.Composition, level int, ev Evaluator
 	}
 	out := make([]*CrossRow, 0, len(order))
 	for _, k := range order {
-		cells, styles := crossAgg(buckets[k], spec, ev, wc, ctx)
+		rowCtx := ctx
+		rowCtx.level = field
+		cells, styles := crossAgg(buckets[k], spec, ev, wc, rowCtx)
 		cr := &CrossRow{
 			Field:  field,
 			Key:    k,
@@ -251,9 +256,14 @@ func crossCells(rows []Row, spec report.Composition, ev Evaluator, wc *warnColle
 type crossContext struct {
 	grand Row
 	paths [][]any
+	level string
 }
 
 func crossAgg(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollector, ctx crossContext) (map[string]any, map[string]report.CellStyle) {
+	level := ctx.level
+	if level == "" {
+		level = report.MeasureScopeGrand
+	}
 	byPath := map[string][]Row{}
 	for _, r := range rows {
 		p := colPath(r, spec)
@@ -271,7 +281,7 @@ func crossAgg(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollect
 			continue
 		}
 		// agg — field-keyed: служит для вычисления Expr и условий оформления.
-		agg := aggregateContext(sub, spec.Measures, ev, wc, measureContext{grand: ctx.grand, previous: previous, first: first, firstSelf: pi == 0})
+		agg := aggregateContext(sub, spec.Measures, ev, wc, measureContext{grand: ctx.grand, previous: previous, first: first, firstSelf: pi == 0, level: level})
 		if pi == 0 {
 			first = agg
 		}
@@ -279,13 +289,18 @@ func crossAgg(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollect
 		st := evalStyles(agg, spec, ev, wc)
 		for mi, m := range spec.Measures {
 			ck := colKey(p, mi)
+			if !m.InScope(level) {
+				cells[ck] = nil
+				continue
+			}
+			m = m.AtLevel(level)
 			if m.Expr != "" {
 				// Вычисляемый показатель: значение уже посчитано в field-keyed agg.
 				cells[ck] = agg[m.Field]
 			} else {
 				// Обычный показатель — считаем независимо по индексу, чтобы
 				// показатели с одинаковым Field не затирали друг друга.
-				cells[ck] = aggMeasure(sub, m)
+				cells[ck] = aggMeasureAtLevel(sub, m, level, wc)
 			}
 			if len(st) == 0 {
 				continue

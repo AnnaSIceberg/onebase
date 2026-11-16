@@ -88,6 +88,9 @@ func Compose(rows []Row, spec report.Composition, ev Evaluator) (*Result, error)
 }
 
 func ComposeN(rows []Row, spec report.Composition, ev Evaluator, maxRows int) (*Result, error) {
+	if err := validateCalculations(spec); err != nil {
+		return nil, err
+	}
 	rows = alignRowKeys(rows, spec)
 	res := &Result{RowCount: len(rows)}
 	if maxRows > 0 && len(rows) > maxRows {
@@ -187,7 +190,7 @@ func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, w
 			Field:     field,
 			Key:       k,
 			Count:     len(buckets[k]),
-			Subtotals: aggregateContext(buckets[k], spec.Measures, ev, wc, measureContext{grand: grand}),
+			Subtotals: aggregateContext(buckets[k], spec.Measures, ev, wc, measureContext{grand: grand, level: field}),
 		}
 		// Условное оформление группы/подытога вычисляется по её подытогам плюс
 		// собственному полю группировки (field→Key) — чтобы правило вида
@@ -242,7 +245,27 @@ func evalStyles(row Row, spec report.Composition, ev Evaluator, wc *warnCollecto
 func buildDetails(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollector) []DetailRow {
 	out := make([]DetailRow, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, DetailRow{Values: r, Styles: evalStyles(r, spec, ev, wc)})
+		values := r
+		cloned := false
+		for _, m := range spec.Measures {
+			if !m.InScope(report.MeasureScopeDetail) {
+				// Clone once before blanking; input still feeds grand/group totals.
+				if !cloned {
+					values = make(Row, len(r))
+					for key, value := range r {
+						values[key] = value
+					}
+					cloned = true
+				}
+				for key := range values {
+					if strings.EqualFold(key, m.Field) {
+						values[key] = nil
+					}
+				}
+				values[m.Field] = nil
+			}
+		}
+		out = append(out, DetailRow{Values: values, Styles: evalStyles(values, spec, ev, wc)})
 	}
 	sortDetails(out, spec)
 	return out
@@ -403,6 +426,9 @@ func normalizeGroupKey(v any) any {
 // Строки выравниваются по spec (alignRowKeys) — поэтому field и поля мер
 // находятся регистронезависимо, как и в основном своде.
 func GroupByField(rows []Row, spec report.Composition, field string, ev Evaluator) (keys []any, subtotals map[any]map[string]any) {
+	if err := validateCalculations(spec); err != nil {
+		return nil, nil
+	}
 	rows = alignRowKeys(rows, spec)
 	buckets := map[any][]Row{}
 	for _, r := range rows {
@@ -416,7 +442,7 @@ func GroupByField(rows []Row, spec report.Composition, field string, ev Evaluato
 	grand := aggregate(rows, spec.Measures, ev, nil)
 	for k, rs := range buckets {
 		// Предупреждения уже собраны основным проходом Compose — здесь nil-приёмник.
-		subtotals[k] = aggregateContext(rs, spec.Measures, ev, nil, measureContext{grand: grand})
+		subtotals[k] = aggregateContext(rs, spec.Measures, ev, nil, measureContext{grand: grand, level: field})
 	}
 	return keys, subtotals
 }
@@ -426,18 +452,34 @@ func aggregate(rows []Row, measures []report.Measure, ev Evaluator, wc *warnColl
 }
 
 func aggregateContext(rows []Row, measures []report.Measure, ev Evaluator, wc *warnCollector, ctx measureContext) map[string]any {
+	level := ctx.level
+	if level == "" {
+		level = report.MeasureScopeGrand
+	}
+	// Keep declared names for P6 reference shadowing even when a measure is
+	// excluded here. Scope must not turn a real Grand_X field into context X.
+	declared := measures
 	out := map[string]any{}
+	active := make([]report.Measure, 0, len(measures))
+	for _, m := range measures {
+		if m.InScope(level) {
+			active = append(active, m.AtLevel(level))
+		} else {
+			out[m.Field] = nil
+		}
+	}
+	measures = active
 	// Первый проход: обычные показатели (не вычисляемые).
 	for _, m := range measures {
 		if m.Expr != "" {
 			continue // вычисляемые — во второй проход
 		}
-		out[m.Field] = aggMeasure(rows, m)
+		out[m.Field] = aggMeasureAtLevel(rows, m, level, wc)
 	}
 	// Второй проход: вычисляемые показатели. Порядок определяется зависимостями
 	// (Expr, ссылающийся на другой Expr, вычисляется после него) — порядок
 	// объявления в YAML больше не критичен. Циклы разрываются с предупреждением.
-	order, cyclic := orderExprMeasures(measures)
+	order, cyclic := orderExprMeasures(measures, declared)
 	if len(cyclic) > 0 {
 		names := make([]string, len(cyclic))
 		for i, idx := range cyclic {
@@ -451,7 +493,7 @@ func aggregateContext(rows []Row, measures []report.Measure, ev Evaluator, wc *w
 			out[m.Field] = nil
 			continue
 		}
-		bindings, available := contextBindings(m.Expr, out, measures, ctx)
+		bindings, available := contextBindings(m.Expr, out, declared, ctx)
 		if !available {
 			out[m.Field] = nil
 			continue
@@ -479,7 +521,7 @@ func aggregateContext(rows []Row, measures []report.Measure, ev Evaluator, wc *w
 // (топологическая сортировка, стабильная — при отсутствии зависимостей сохраняет
 // порядок объявления). cyclic — индексы показателей, оставшихся в цикле; они
 // добавляются в конец order в порядке объявления (вычислятся «как есть»).
-func orderExprMeasures(measures []report.Measure) (order []int, cyclic []int) {
+func orderExprMeasures(measures []report.Measure, declared ...[]report.Measure) (order []int, cyclic []int) {
 	// Имена приводим к нижнему регистру: интерпретатор разрешает идентификаторы
 	// регистронезависимо, поэтому и зависимости между Expr должны определяться так.
 	exprFields := map[string]bool{}
@@ -490,6 +532,11 @@ func orderExprMeasures(measures []report.Measure) (order []int, cyclic []int) {
 		if m.Expr != "" {
 			exprFields[strings.ToLower(m.Field)] = true
 			idxs = append(idxs, i)
+		}
+	}
+	for _, fields := range declared {
+		for _, m := range fields {
+			allFields[strings.ToLower(m.Field)] = true
 		}
 	}
 	if len(idxs) <= 1 {

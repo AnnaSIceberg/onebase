@@ -11,6 +11,7 @@ import (
 type measureContext struct {
 	grand, previous, first Row
 	grandSelf, firstSelf   bool
+	level                  string
 }
 
 // Context is passive scalar data, evaluated by the same sandbox as ordinary
