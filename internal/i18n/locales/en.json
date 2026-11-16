@@ -1642,5 +1642,6 @@
   "КонтекстФормыРезультата доступен только в команде текущей формы результата": "ResultFormContext is available only in a command of the current result form",
   "Пауза": "Pause",
   "Позиция воспроизведения": "Playback position",
-  "Громкость": "Volume"
+  "Громкость": "Volume",
+  "Уровни группировки": "Grouping levels"
 }
