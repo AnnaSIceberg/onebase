@@ -1,0 +1,8 @@
+{
+  "source": "fc8777bc33c1dfae23cc8bc4c9da9df378d2e18a",
+  "status": "GO_END_SOURCE_GATES_PASS_BROWSER_PREBUILT_READY",
+  "binary": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\date-mask-source-ui-attempt3-20261116.exe",
+  "binary_sha256": "91c3ec82ea46836f584cf9d6b3e9dae7fd9f5ae928ecdad06149e283480dbc9a",
+  "source_gates": "attempt2 passed; subsequent change initializes test fixture interpreter only",
+  "ended": "2026-11-16T12:14:59.304087+00:00"
+}

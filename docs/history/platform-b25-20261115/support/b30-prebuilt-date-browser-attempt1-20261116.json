@@ -1,0 +1,14 @@
+{
+  "runtime": "d0cb9b15100ecdc6f13a8234dc4b2e3f99fa2eff",
+  "source": "fc8777bc33c1dfae23cc8bc4c9da9df378d2e18a",
+  "binary": {
+    "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b30-date-mask-build-20261116\\ui-windows-amd64.test.exe",
+    "sha256": "8152f1e60832b541d6e4ffe3e576943d8d27efe06164aafd9f21b01651a9eda8",
+    "runtime": "d0cb9b15100ecdc6f13a8234dc4b2e3f99fa2eff"
+  },
+  "exit": 0,
+  "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b30-prebuilt-date-browser-attempt1-20261116.log",
+  "sha256": "e1250f86939a6708a805131161be755e394a450a88eee0ea76a802bce6116b5f",
+  "go_started": false,
+  "shared_changes": false
+}

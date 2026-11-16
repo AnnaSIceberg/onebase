@@ -1,0 +1,46 @@
+{
+  "runtime": "d0cb9b15100ecdc6f13a8234dc4b2e3f99fa2eff",
+  "branch": "integration/cc2-b30-date-mask-20261116",
+  "base_b29": "902e4d97e50e90f047ec6d27832e2f9d175d095d",
+  "source": "9a81ab6cbcb96c834c184ca24c00c1ec474ba90c",
+  "tested_source_code": "fc8777bc33c1dfae23cc8bc4c9da9df378d2e18a",
+  "source_docs_refresh_only": [
+    "CHANGELOG.md",
+    "docs/images/releases/v0.14.0-help.png",
+    "docs/releases/release_v0.14.0.md"
+  ],
+  "draft": 2611,
+  "build_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b30-date-mask-build-20261116\\manifest.json",
+  "build_manifest_sha256": "a91d3241f4ade6ff209850fc64fc7dcd6de5e61e2ec67124df828a434ec94c23",
+  "artifacts": {
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b30-date-mask-windows-amd64.exe",
+      "sha256": "121fe5e8d8cd193a3a7e374dd9c94806080b8bdcda8648d246389ff281a40bef",
+      "bytes": 79456256,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b30-date-mask-build-20261116\\windows-sdk-buildinfo.txt",
+      "embedded_vcs_not_claimed": true
+    },
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b30-date-mask-linux-amd64",
+      "sha256": "dee4ea598016d6c499ea118898b7099a8544dd20ba4964023ca039f95a87df87",
+      "bytes": 78469413,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b30-date-mask-build-20261116\\linux-sdk-buildinfo.txt",
+      "embedded_vcs_not_claimed": true
+    }
+  },
+  "native_checks": 45,
+  "native_receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b30-native-date-mask-attempt2-20261116\\receipt.json",
+  "native_receipt_sha256": "bc2a8dba8d1369082871da67270f21caf805e44add6d131fcee9b32771cb6410",
+  "runtime_browser_receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b30-prebuilt-date-browser-attempt1-20261116.json",
+  "runtime_browser_sha256": "f0af6750b99afeb1e724c89d33cd4bbe88af6a8316a8e044c53b9fc8155565bf",
+  "http_leaf_counts": {
+    "pass": 131,
+    "skip": 7
+  },
+  "independent_pg": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b30-independent-pg-handoff-20261116.json",
+  "independent_pg_status": "PENDING_312",
+  "source_ci_status": "RUNNING_NOT_FULL_GREEN",
+  "shared_changes": false,
+  "db_copies": 0,
+  "deployment_rule": "LPC8448 only explicit user word, one accumulated package; no8444/8443 updates"
+}

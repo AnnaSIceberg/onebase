@@ -1,0 +1,22 @@
+=== RUN   TestDateMaskBrowserReportEditing
+--- FAIL: TestDateMaskBrowserReportEditing (0.06s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+[signal 0xc0000005 code=0x0 addr=0x0 pc=0x7ff67445476d]
+
+goroutine 22 [running]:
+testing.tRunner.func1.2({0x7ff674c0b2c0, 0x7ff676d3da30})
+	C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/src/testing/testing.go:1974 +0x239
+testing.tRunner.func1()
+	C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/src/testing/testing.go:1977 +0x349
+panic({0x7ff674c0b2c0?, 0x7ff676d3da30?})
+	C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/src/runtime/panic.go:860 +0x13a
+github.com/ivantit66/onebase/internal/ui.(*Server).attachDebugger(...)
+	C:/Users/a.sevrjukova/platform-report-date-mask-20261116/internal/ui/server.go:190
+github.com/ivantit66/onebase/internal/ui.New(_, _, _, _, {{0x0, 0x0, 0x0}, {0x0, 0x0, 0x0}, ...}, ...)
+	C:/Users/a.sevrjukova/platform-report-date-mask-20261116/internal/ui/server.go:175 +0x9ed
+github.com/ivantit66/onebase/internal/ui.TestDateMaskBrowserReportEditing(0x2a36e7fb3400)
+	C:/Users/a.sevrjukova/platform-report-date-mask-20261116/internal/ui/date_mask_browser_test.go:26 +0x195
+testing.tRunner(0x2a36e7fb3400, 0x7ff675911230)
+	C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/src/testing/testing.go:2036 +0xc3
+created by testing.(*T).Run in goroutine 1
+	C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/src/testing/testing.go:2101 +0x4a9

@@ -1,0 +1,62 @@
+{
+  "source": "d570ea4a40f3681bde8dec518ffee8565c4eddd3",
+  "draft": 2611,
+  "commands": [
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-count=1",
+        "-p=1",
+        "-json",
+        "./internal/ui",
+        "-run",
+        "^(TestDateInputBehaviorThroughDOMEvents|TestReportControlsBehaviorThroughDOMEvents|TestCompactReportsRoleScopeThroughHTTP)$"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\date-mask-source-checks-attempt1-20261116\\ui-controls-tests.jsonl",
+      "sha256": "9f88cf012fbaf364d4c869c5c46a0901fe608afd5c2f741817a7540f13f3fa24"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "build",
+        "-p=1",
+        "./..."
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\date-mask-source-checks-attempt1-20261116\\build-all.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "run",
+        "-p=1",
+        "./tools/i18ncheck"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\date-mask-source-checks-attempt1-20261116\\i18n-en.log",
+      "sha256": "e8ebc4f2c07888ebecfb45d41c6f9da7884db329b9f8f8b566bc001560dd27fd"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-c",
+        "-p=1",
+        "-o",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\date-mask-source-ui-attempt1-20261116.exe",
+        "./internal/ui"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\date-mask-source-checks-attempt1-20261116\\browser-prebuilt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "browser_started": false,
+  "status": "GO_END_SOURCE_GATES_PASS_BROWSER_PREBUILT_READY",
+  "binary": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\date-mask-source-ui-attempt1-20261116.exe",
+  "binary_sha256": "01cb4a449071095f0e9753fb30f5d5bd4c10e1dddff24b0dc0fb359aeddae4ab",
+  "ended": "2026-11-16T11:55:00.476145+00:00"
+}

@@ -1,0 +1,10 @@
+{
+  "source": "fc8777bc33c1dfae23cc8bc4c9da9df378d2e18a",
+  "binary": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\date-mask-source-ui-attempt3-20261116.exe",
+  "binary_sha256": "91c3ec82ea46836f584cf9d6b3e9dae7fd9f5ae928ecdad06149e283480dbc9a",
+  "exit": 0,
+  "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\date-mask-source-browser-attempt3-20261116.log",
+  "log_sha256": "e1e5f39a2e84103d19236b86f0fdb3ca50ee3c9c374137a37052bf88c290b9b1",
+  "go_started": false,
+  "browser_fixture": "public HTTP report + trusted CDP keyboard + clipboard restored by fixture"
+}
