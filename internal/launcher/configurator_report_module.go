@@ -49,6 +49,7 @@ func (h *handler) configuratorSaveReport(w http.ResponseWriter, r *http.Request)
 		Context           *report.ParamContext       `yaml:"context,omitempty"`
 		ChoiceFilter      []report.ParamChoiceFilter `yaml:"choice_filter,omitempty"`
 		ChoiceLabelSuffix string                     `yaml:"choice_label_suffix,omitempty"`
+		VisibleWhen       *report.ParamVisibility    `yaml:"visible_when,omitempty"`
 	}
 	type saveReport struct {
 		Name        string              `yaml:"name"`
@@ -149,6 +150,7 @@ func (h *handler) configuratorSaveReport(w http.ResponseWriter, r *http.Request)
 			params[i].Context = contextByName[strings.ToLower(params[i].Name)].Context
 			params[i].ChoiceFilter = previous.ChoiceFilter
 			params[i].ChoiceLabelSuffix = previous.ChoiceLabelSuffix
+			params[i].VisibleWhen = previous.VisibleWhen
 		}
 		if err := setYAMLMapField(doc, "query", query); err != nil {
 			return nil, err
