@@ -111,20 +111,20 @@ func (s *Server) reportProjectionMetadata(compiled *query.Result, output string)
 	return result
 }
 
-// Last grouping level and details have no automatic fill. Earlier groups fade
-// from the same pale shade for screen and exports; explicit cell styles win.
+// Groups fade from the same pale shade for screen and exports; details have
+// no automatic fill. Explicit safe cell styles win.
 func composedGroupFill(level, count int) string {
-	if level < 0 || count <= 1 || level >= count-1 {
+	if level < 0 || count < 1 || level >= count {
 		return ""
 	}
-	numerator, denominator := count-1-level, count-1
+	numerator, denominator := count-level, count
 	return fmt.Sprintf("#%02x%02x%02x", 255-15*numerator/denominator, 255-16*numerator/denominator, 255-43*numerator/denominator)
 }
 
 func composedGroupDarkFill(level, count int) string {
-	if level < 0 || count <= 1 || level >= count-1 {
+	if level < 0 || count < 1 || level >= count {
 		return ""
 	}
-	numerator, denominator := count-1-level, count-1
+	numerator, denominator := count-level, count
 	return fmt.Sprintf("#%02x%02x%02x", 15+36*numerator/denominator, 23+42*numerator/denominator, 42+43*numerator/denominator)
 }

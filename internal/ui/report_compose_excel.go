@@ -5,12 +5,12 @@ package ui
 // для передачи в excel.ExportList.
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/excel"
 	"github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/report/compose"
+	"github.com/ivantit66/onebase/internal/sheet"
 )
 
 // measureCellForExcel выбирает значение ячейки показателя для Excel так, чтобы
@@ -38,7 +38,7 @@ func measureCellForExcel(v any, m report.Measure) any {
 // скомпонованного результата. Порядок строк задаёт walkComposed — общий с
 // HTML-рендером (renderComposedTable), поэтому выгрузка и экран не расходятся:
 //
-//	группа → [дети/детали] → подытог … → ВСЕГО
+//	группа с итогами → [дети/детали] … → Итого
 //
 // Первая колонка — имена/ключи групп с текстовым отступом (2 пробела × уровень).
 // Значения показателей передаются как float64, чтобы Excel видел числа, а не текст.
@@ -60,10 +60,10 @@ func composedRowsPresented(res *compose.Result, spec *report.Composition, presen
 
 // excelComposeSink собирает строки [][]any для excel.ExportList.
 type excelComposeSink struct {
-	spec     *report.Composition
-	colCount int
-	rows     [][]any
-	rowStyles []excel.RowStyle
+	spec         *report.Composition
+	colCount     int
+	rows         [][]any
+	rowStyles    []excel.RowStyle
 	presentation reportCompositionPresentation
 }
 
@@ -82,8 +82,8 @@ func (e *excelComposeSink) row(label string, vals map[string]any) {
 func (e *excelComposeSink) group(g *compose.Group, level int, _ string) {
 	e.row(strings.Repeat("  ", level)+fmtVal(g.Key), g.Subtotals)
 	fill := composedGroupFill(level, len(e.spec.Groupings))
-	if explicit := g.Styles[""].Background; explicit != "" {
-		fill = explicit
+	if explicit := sheet.ColorRGB(g.Styles[""].Background); explicit != "" {
+		fill = "#" + explicit
 	}
 	e.rowStyles[len(e.rowStyles)-1] = excel.RowStyle{Background: fill, Bold: true}
 }
@@ -92,10 +92,6 @@ func (e *excelComposeSink) detail(d compose.DetailRow, level int, _ string) {
 	// Первая ячейка детали — только отступ (зеркалит HTML-рендер). Осмысленный
 	// идентификатор строки (ссылка на документ) — задача B3 (detail_link).
 	e.row(strings.Repeat("  ", level), d.Values)
-}
-
-func (e *excelComposeSink) subtotal(g *compose.Group, level int, _ string) {
-	e.row(fmt.Sprintf("%s··· Итого: %s ···", strings.Repeat("  ", level), fmtVal(g.Key)), g.Subtotals)
 }
 
 func (e *excelComposeSink) grand(grand map[string]any) {

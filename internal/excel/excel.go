@@ -3,6 +3,7 @@ package excel
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -80,6 +81,8 @@ type RowStyle struct {
 	Bold       bool
 }
 
+var rowColorRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
 func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle) ([]byte, error) {
 	f := excelize.NewFile()
 	defer closeBook(f)
@@ -93,6 +96,9 @@ func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle) 
 	boldStyle, cellStyle, numStyle := listStyles(f)
 	styled := make(map[string]int)
 	rowStyleID := func(base int, row RowStyle) (int, error) {
+		if row.Background != "" && !rowColorRE.MatchString(row.Background) {
+			return 0, fmt.Errorf("invalid row background color: expected #RRGGBB")
+		}
 		key := fmt.Sprintf("%d/%s/%t", base, row.Background, row.Bold)
 		if id, ok := styled[key]; ok {
 			return id, nil

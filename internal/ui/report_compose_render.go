@@ -14,7 +14,7 @@ import (
 )
 
 // renderComposedTable строит единую <table> с раскрываемыми группами,
-// подитогами, общим итогом и условным оформлением деталей. Порядок строк задаёт
+// итогами в строках групп, общим итогом и условным оформлением деталей. Порядок строк задаёт
 // walkComposed (общий с Excel-выгрузкой); htmlComposeSink рисует каждую строку.
 func renderComposedTable(res *compose.Result, spec *report.Composition) template.HTML {
 	return renderComposedTablePresented(res, spec, reportCompositionPresentation{})
@@ -63,28 +63,19 @@ func collapseLevel(spec *report.Composition) (int, bool) {
 // «▶»: раскрытие идёт по одному уровню за клик, иначе первый же клик по
 // свёрнутой группе снова вываливал всё поддерево.
 type htmlComposeSink struct {
-	b          *strings.Builder
-	spec       *report.Composition
-	collapseTo int
+	b            *strings.Builder
+	spec         *report.Composition
+	collapseTo   int
 	presentation reportCompositionPresentation
 }
 
 // hiddenStyle возвращает display:none для строк, скрытых начальным
-// сворачиванием. Уровень строки уже учитывает вложенность: детали и подытог
-// группы уровня L приходят с level = L+1.
+// сворачиванием. Детали группы уровня L приходят с level = L+1.
 func (h *htmlComposeSink) hiddenStyle(level int) string {
 	if h.collapseTo >= 0 && level > h.collapseTo {
 		return "display:none"
 	}
 	return ""
-}
-
-// groupMarker — треугольник состояния группы: свёрнута (▶) или развёрнута (▼).
-func (h *htmlComposeSink) groupMarker(level int) string {
-	if h.collapseTo >= 0 && level >= h.collapseTo {
-		return "▶"
-	}
-	return "▼"
 }
 
 // measureCells выводит ячейки показателей строки: выравнивание + условное
@@ -108,7 +99,7 @@ func (h *htmlComposeSink) group(g *compose.Group, level int, path string) {
 		rowStyle = joinStyles(rowStyle, "--rc-group-fill:"+fill+";--rc-group-dark:"+darkFill)
 	}
 	marker := ""
-	if len(g.Children) > 0 || len(g.Details) > 0 {
+	if len(g.Children) > 0 || (h.spec.Detail && len(g.Details) > 0) {
 		open := h.collapseTo < 0 || level < h.collapseTo
 		text := "+"
 		if open {
@@ -140,14 +131,6 @@ func (h *htmlComposeSink) detail(d compose.DetailRow, level int, path string) {
 		fmt.Fprintf(h.b, `<td style="padding-left:%dpx"></td>`, 8+level*18)
 	}
 	h.measureCells(d.Values, d.Styles)
-	h.b.WriteString(`</tr>`)
-}
-
-func (h *htmlComposeSink) subtotal(g *compose.Group, level int, path string) {
-	rowStyle := joinStyles(cssOf(g.Styles[""]), h.hiddenStyle(level))
-	fmt.Fprintf(h.b, `<tr class="subtotal" data-parent="%s" style="%s"><td style="padding-left:%dpx">··· Итого: %s ···</td>`,
-		html.EscapeString(path), html.EscapeString(rowStyle), 8+level*18, html.EscapeString(fmtVal(g.Key)))
-	h.measureCells(g.Subtotals, g.Styles)
 	h.b.WriteString(`</tr>`)
 }
 

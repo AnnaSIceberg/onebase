@@ -1599,8 +1599,7 @@ function rcBuildView(table) {
       button: cell && cell.querySelector('.rc-fold'),
       level: Number(tr.getAttribute('data-level')) || 0,
       path: tr.getAttribute('data-group') || '',
-      // Начальное состояние рисует сервер (appearance.collapse_to): «▶» —
-      // группа свёрнута. Без ключа все группы приходят развёрнутыми.
+      // Initial expansion belongs to this result's server-side appearance.
       open: !cell || (cell.querySelector('.rc-fold') ? cell.querySelector('.rc-fold').getAttribute('aria-expanded') !== 'false' : cell.textContent.trim().charAt(0) !== '▶')
     };
     groups.push(g);
@@ -1633,7 +1632,7 @@ function rcBuildView(table) {
       var text = g.cell.textContent;
       if (text.charAt(0) !== mark) g.cell.textContent = mark + text.slice(1);
     });
-    tbody.querySelectorAll('tr.det,tr.subtotal').forEach(function (tr) {
+    tbody.querySelectorAll('tr.det').forEach(function (tr) {
       var g = byPath[tr.getAttribute('data-parent') || ''];
       var show = !g || (g.open && ancestorsOpen(g.path));
       tr.style.display = show ? '' : 'none';
@@ -1643,9 +1642,10 @@ function rcBuildView(table) {
   groups.forEach(function (g) {
     if (!g.button) return;
     g.tr.style.cursor = 'pointer';
-    g.tr.addEventListener('click', function (e) {
-      if (e.target.closest && e.target.closest('a,input,select,textarea')) return;
+    g.button.addEventListener('click', function () {
       g.open = !g.open;
+      var block = table.closest('.report-block');
+      if (block) block.querySelectorAll('.rc-level').forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
       apply();
     });
   });
@@ -1671,6 +1671,7 @@ function obInitReportCompositionControls() {
         var button = document.createElement('button');
         button.type = 'button'; button.className = 'btn btn-sm rc-level';
         button.textContent = String(level); button.setAttribute('data-rc-level', String(level));
+        button.setAttribute('aria-pressed', 'false');
         button.addEventListener('click', function () {
           view.setLevel(level);
           panel.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b === button)); });

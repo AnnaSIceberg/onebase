@@ -392,7 +392,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 			}
 			s.render(w, r, "page-report", map[string]any{
 				"Report":             rep,
-				"ComposedHTML":       renderCrossTable(cr, comp),
+				"ComposedHTML":       renderCrossTablePresented(cr, comp, s.compositionPresentation(rep, comp, &compiled, s.resolveLang(r))),
 				"Capped":             cr.Capped,
 				"ComposeWarnings":    cr.Warnings,
 				"ParamValues":        paramValues,
@@ -762,7 +762,10 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 			if cerr != nil {
 				return nil, nil, newReportExportError(http.StatusInternalServerError, "compose error", cerr)
 			}
-			h, xr := crossSheetRows(cr, comp)
+			h, xr, styles := crossSheetRowsPresented(cr, comp, s.compositionPresentation(rep, comp, &compiled, s.resolveLang(r)))
+			if stats != nil {
+				stats.rowStyles = styles
+			}
 			return h, xr, nil
 		}
 		res, cerr := compose.Compose(data, *comp, ev)
