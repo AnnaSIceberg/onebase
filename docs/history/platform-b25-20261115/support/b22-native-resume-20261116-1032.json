@@ -1,0 +1,108 @@
+{
+  "status": "B22_WINDOWS_NATIVE_PASS_PG_CORRECTED_FIXTURE_PREBUILT_PENDING",
+  "created_utc": "2026-11-16T07:32:55.236963+00:00",
+  "runtime_product": "1496c60ccad535d722bb1d83d2694d7d81bfbded",
+  "sdk_windows_sha256": "8ee6d46c2665bee1eba4388e5d4d6a433d9603058286a05683874717c51fbd2f",
+  "immutable_build_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\manifest-1115b22-report-acl-list-xlsx-DEV.json",
+  "immutable_build_manifest_sha256": "2a60722e8801038e22082db366525b3d007cebde38c632da724ca6778a7d61f6",
+  "native": {
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b22-native-acl-xlsx-attempt3-20261116\\receipt.json",
+    "sha256": "ef34a3dceceb871e2116ce76f357b9e4d3c915ff36f72deac9838379ba9a8493",
+    "checks": 26,
+    "status": "PASS",
+    "cleanup": {
+      "context": true,
+      "browser": true,
+      "driver": true,
+      "app": true,
+      "port_closed": true,
+      "tunnel_not_used": true,
+      "own_auth_db_removed": true
+    },
+    "helper_sha256": "ad14849cfeca56a66cc512e50c2f17d6f966aa6aeba5a68c646d16465776bd98",
+    "exports": {
+      "direct": {
+        "sha256": "d5719131735859b010adb77af13200953b5acd39135b5e57d3bda157d1eca7ca",
+        "bytes": 6754,
+        "dimension": "A1:B28",
+        "rows": 28,
+        "columns": 2,
+        "filled_cells": 56,
+        "default_reader": "3.1.5",
+        "reset_dimensions_called": false,
+        "forced_bounds": false
+      },
+      "background": {
+        "sha256": "d5719131735859b010adb77af13200953b5acd39135b5e57d3bda157d1eca7ca",
+        "bytes": 6754,
+        "dimension": "A1:B28",
+        "rows": 28,
+        "columns": 2,
+        "filled_cells": 56,
+        "default_reader": "3.1.5",
+        "reset_dimensions_called": false,
+        "forced_bounds": false
+      }
+    }
+  },
+  "source_heads": [
+    {
+      "number": 2632,
+      "branch": "fix/list-xlsx-used-range-20261115",
+      "parent": "db1b058739a594bcf21e29c3327cdff3440c4dfc",
+      "head": "6f9a28d81b056bfe5fda42d1d161f182e9737395",
+      "files": [
+        "internal/excel/dimension_test.go",
+        "internal/ui/report_list_dimension_test.go"
+      ],
+      "remote_exact": true,
+      "clean": true,
+      "validation": "gofmt + git diff --check; remote CI pending"
+    },
+    {
+      "number": 2629,
+      "branch": "feature/report-trusted-context-20261115",
+      "parent": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+      "head": "54409bcda023220f32d1e723db7656ee0ec6216e",
+      "files": [
+        "internal/report/context.go",
+        "internal/ui/report_context_test.go"
+      ],
+      "remote_exact": true,
+      "clean": true,
+      "validation": "gofmt + git diff --check; remote CI pending"
+    },
+    {
+      "number": 2630,
+      "branch": "feature/report-typed-drilldown-20261115",
+      "parent": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+      "head": "f022b846801ed2d953c21a20b68f94bf7e0ece61",
+      "files": [
+        "internal/ui/report_drilldown.go"
+      ],
+      "remote_exact": true,
+      "clean": true,
+      "validation": "gofmt + git diff --check; remote CI pending"
+    },
+    {
+      "pr": 2631,
+      "head": "6f4e46893706169822c33d980428fc5eb5bc8a17",
+      "parent": "a00d323898c6ca40ab093eca8319dae812faf90e",
+      "branch": "fix/report-result-access-status-20261115",
+      "file": "internal/ui/report_result_access_test.go",
+      "product_delta": false,
+      "remote_exact": true,
+      "clean": true,
+      "created_utc": "2026-11-16T07:30:44.937029+00:00"
+    }
+  ],
+  "ci": "New HEAD checks have not appeared yet. No full-CI/Ready claim.",
+  "postgres": "Independent exact-name PG gate remains pending; old UI prebuilt has the known SELECT fixture, must not be retagged.",
+  "scope": {
+    "shared_changes": false,
+    "db_copies": 0,
+    "local_go_started": false,
+    "recursive_disk_search": false,
+    "b26_not_duplicated": true
+  }
+}

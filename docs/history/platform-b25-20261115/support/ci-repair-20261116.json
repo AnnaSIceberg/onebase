@@ -1,0 +1,44 @@
+{
+  "started_utc": "2026-11-16T07:23:55.884706+00:00",
+  "local_go_or_browser_started": false,
+  "pull_requests": [
+    {
+      "number": 2632,
+      "branch": "fix/list-xlsx-used-range-20261115",
+      "parent": "db1b058739a594bcf21e29c3327cdff3440c4dfc",
+      "head": "6f9a28d81b056bfe5fda42d1d161f182e9737395",
+      "files": [
+        "internal/excel/dimension_test.go",
+        "internal/ui/report_list_dimension_test.go"
+      ],
+      "remote_exact": true,
+      "clean": true,
+      "validation": "gofmt + git diff --check; remote CI pending"
+    },
+    {
+      "number": 2629,
+      "branch": "feature/report-trusted-context-20261115",
+      "parent": "02c62ecd322eb423b78dd0ebe66d999e384db5dd",
+      "head": "54409bcda023220f32d1e723db7656ee0ec6216e",
+      "files": [
+        "internal/report/context.go",
+        "internal/ui/report_context_test.go"
+      ],
+      "remote_exact": true,
+      "clean": true,
+      "validation": "gofmt + git diff --check; remote CI pending"
+    },
+    {
+      "number": 2630,
+      "branch": "feature/report-typed-drilldown-20261115",
+      "parent": "cf5cf1005e75aedf3f766436b0412a053c7be19b",
+      "head": "f022b846801ed2d953c21a20b68f94bf7e0ece61",
+      "files": [
+        "internal/ui/report_drilldown.go"
+      ],
+      "remote_exact": true,
+      "clean": true,
+      "validation": "gofmt + git diff --check; remote CI pending"
+    }
+  ]
+}

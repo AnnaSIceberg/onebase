@@ -1,0 +1,11 @@
+{
+  "pr": 2631,
+  "head": "6f4e46893706169822c33d980428fc5eb5bc8a17",
+  "parent": "a00d323898c6ca40ab093eca8319dae812faf90e",
+  "branch": "fix/report-result-access-status-20261115",
+  "file": "internal/ui/report_result_access_test.go",
+  "product_delta": false,
+  "remote_exact": true,
+  "clean": true,
+  "created_utc": "2026-11-16T07:30:44.937029+00:00"
+}
