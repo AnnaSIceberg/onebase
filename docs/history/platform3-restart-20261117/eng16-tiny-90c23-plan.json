@@ -1,0 +1,121 @@
+{
+    "schema":  "platform3-eng16-tiny/1",
+    "state":  "PREPARED_NOT_OPEN_NOT_RUN",
+    "owner":  "platform3",
+    "slot":  2,
+    "requires_new_assignment":  true,
+    "single_global_go_lane":  true,
+    "candidate":  "90c23e981b138c2c7c5d5848c3c3db398920a547",
+    "source_root":  "C:/Users/a.sevrjukova/AppData/Local/Temp/platform3-report-lineage-source-20261116",
+    "clean":  {
+                  "required":  true,
+                  "observed":  true,
+                  "check":  "git status --porcelain=v1 --untracked-files=all",
+                  "new_head_requires_new_plan":  true
+              },
+    "go":  {
+               "path":  "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+               "sha256":  "c0ea949d000a24883f37b1dd2db794a9fb2b824fbcff11facb469615a50ca6af",
+               "version_claim":  "path only; no version probe executed"
+           },
+    "environment":  {
+                        "GOTOOLCHAIN":  "local",
+                        "GOMAXPROCS":  "2",
+                        "CGO_ENABLED":  "0",
+                        "GOWORK":  "off",
+                        "GOFLAGS":  "-p=1",
+                        "GOOS":  "windows",
+                        "GOARCH":  "amd64",
+                        "GOPROXY":  "off",
+                        "GOSUMDB":  "off",
+                        "GOTMPDIR":  "\u003cowned-output\u003e/go-tmp",
+                        "TMP":  "\u003cowned-output\u003e/tmp",
+                        "TEMP":  "\u003cowned-output\u003e/tmp"
+                    },
+    "no_pg_env":  {
+                      "TEST_DATABASE_URL":  "",
+                      "DATABASE_URL":  "",
+                      "PGHOST":  "",
+                      "PGPORT":  "",
+                      "PGUSER":  "",
+                      "PGPASSWORD":  "",
+                      "PGDATABASE":  "",
+                      "PGSERVICE":  "",
+                      "PGSERVICEFILE":  "",
+                      "PGPASSFILE":  ""
+                  },
+    "commands":  [
+                     {
+                         "name":  "query-info-slice",
+                         "package":  "./internal/query",
+                         "regex":  "^TestReportLineageInfoSlice",
+                         "argv":  [
+                                      "test",
+                                      "-p=1",
+                                      "./internal/query",
+                                      "-run",
+                                      "^TestReportLineageInfoSlice",
+                                      "-count=1",
+                                      "-timeout=35s",
+                                      "-json"
+                                  ]
+                     },
+                     {
+                         "name":  "access-virtual",
+                         "package":  "./internal/access",
+                         "regex":  "^TestReportOutputVirtual",
+                         "argv":  [
+                                      "test",
+                                      "-p=1",
+                                      "./internal/access",
+                                      "-run",
+                                      "^TestReportOutputVirtual",
+                                      "-count=1",
+                                      "-timeout=35s",
+                                      "-json"
+                                  ]
+                     }
+                 ],
+    "timeouts":  {
+                     "worker_wall_seconds":  120,
+                     "phase_external_seconds":  50,
+                     "go_test_seconds":  35,
+                     "git_seconds":  5,
+                     "own_process_cleanup_seconds":  15
+                 },
+    "disk":  {
+                 "fresh_free_before_each_phase":  2147483648,
+                 "stop_free_during_own_run":  1073741824
+             },
+    "output_policy":  {
+                          "root":  "C:/Users/a.sevrjukova/AppData/Local/Temp/platform3-engine-probes-20261116",
+                          "leaf_prefix":  "eng16-tiny-90c23-",
+                          "create_only_after_real_held_fd_callback":  true,
+                          "raw":  "per-phase JSONL; synthetic fixtures only",
+                          "public":  "status, leaf counts, timestamps, source CLEAN, log/tool/plan/worker SHA; no rows/SQL/args/env",
+                          "no_source_outputs":  true,
+                          "no_new_cache_root":  true,
+                          "cleanup":  "no shared cache/WT/source cleanup; own outputs retained"
+                      },
+    "scope":  {
+                  "synthetic_sqlite":  true,
+                  "postgres":  false,
+                  "actual_db":  false,
+                  "http":  false,
+                  "browser":  false,
+                  "sdk":  false,
+                  "new_wt":  false,
+                  "archives":  false,
+                  "whole_suites":  false,
+                  "targets":  false,
+                  "auto_rel38":  false
+              },
+    "worker":  {
+                   "path":  "C:/Users/a.sevrjukova/AppData/Local/Temp/platform3-engine-probes-20261116/eng16-tiny-90c23-worker.py",
+                   "entrypoint":  "run_in_slot2(window_id, assert_slot2_held, output_dir)",
+                   "real_fd":  "coordinator SlotLease closure stream/identity/claim; worker acquires/releases no shared lock",
+                   "worker_sha_pinned_by_assignment":  true
+               },
+    "plan_sha_policy":  "Exact bytes pinned by .sha256 sidecar and actual coordinator assignment; no self-referential hash",
+    "hold":  "Full ENG06/ENG16/ENG12 runtime/native/SDK compatibility OPEN; checkpoint not peer-accepted or PASS"
+}

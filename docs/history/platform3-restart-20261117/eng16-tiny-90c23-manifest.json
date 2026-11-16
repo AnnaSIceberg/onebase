@@ -1,0 +1,13 @@
+{
+    "state":  "PREPARED_NOT_IMPORTED_NOT_RUN_NO_ASSIGNMENT",
+    "owner":  "platform3",
+    "candidate":  "90c23e981b138c2c7c5d5848c3c3db398920a547",
+    "plan":  "C:/Users/a.sevrjukova/AppData/Local/Temp/claude/C--Users-a-sevrjukova-onebase/cd50d987-9739-4c93-a5be-68d748529225/scratchpad/отчёты-для-analysis/20261117-platform3-ENG16-tiny-90c23-plan.json",
+    "plan_sha256":  "596f704844003132ade10f2ad968b941eb384295166a009bf3a1d9c6af798e20",
+    "worker":  "C:/Users/a.sevrjukova/AppData/Local/Temp/platform3-engine-probes-20261116/eng16-tiny-90c23-worker.py",
+    "worker_sha256":  "b31a2ceb1687b620217c288766b175ca7abcfacad264b3e9f01df394a7516865",
+    "entrypoint":  "run_in_slot2(window_id, assert_slot2_held, output_dir)",
+    "guard_protocol":  "coordinator actual SlotLease closure: shared slot2 path, held stream FD, fileID, PID/head/window/token; callback also verifies deadline/assignment SHA",
+    "validation":  "PowerShell JSON/pin/static read only; Python import/compile/selftest0; Go0",
+    "new_head_or_bytes_requires_new_plan_and_assignment":  true
+}

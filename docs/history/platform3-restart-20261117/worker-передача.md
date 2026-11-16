@@ -1,0 +1,15 @@
+# ENG16 tiny90: immutable plan + callable worker готовы, NOT OPEN
+
+Exact source90c23e981b138c2c7c5d5848c3c3db398920a547 повторно HEAD/CLEAN подтверждён. Ни один источник после фиксации не менялся. Подготовлено до01:50 для proposed02:15 пачки; actual assignment отсутствует, запуск не разрешён.
+
+Plan: 20261117-platform3-ENG16-tiny-90c23-plan.json рядом с этим отчётом. SHA256596f704844003132ade10f2ad968b941eb384295166a009bf3a1d9c6af798e20; отдельный .sha256. Manifest: C:/Users/a.sevrjukova/AppData/Local/Temp/platform3-engine-probes-20261116/eng16-tiny-90c23-manifest.json. Worker: та же папка/eng16-tiny-90c23-worker.py, SHAb31a2ceb1687b620217c288766b175ca7abcfacad264b3e9f01df394a7516865.
+
+Callable run_in_slot2(window_id, assert_slot2_held, output_dir) совместим с прочитанным current coordinator SlotLease closure. Worker сам не захватывает/не снимает общий lock. Callback обязателен до каждого compiler/test step и во время own process; дополнительно проверяются real shared slot2 path, stream/FD/fileID/noninheritable/PID/token/head/window/coordinator из closure. No-op lambda/строковый lease/fake local lock не принимаются. Истечение/assignment SHA callback проверяет coordinator. Его новый launcher/assignment должен отдельно pin exact planSHA/workerSHA/head90; prior primary lease к worker platform3 не применяется.
+
+Ровно2 команды последовательно query ^TestReportLineageInfoSlice и access ^TestReportOutputVirtual, -p=1/-count=1/-timeout=35s/-json. Absolute existing go1.26.11.exe pinned SHA; go version probe не запускается. GOMAX2/CGO0/local/offwork, no network module fetch, PG/DB env empty. External phase50s, total120s, git timeout5s, cleanup только own spawned process tree. Fresh Cfree>=2GiB перед каждым шагом, stop own run при<1GiB; shared caches/процессы/guard не трогает. Output только new owned leaf под existing probe area, no WT/archive/SDK. Synthetic SQLite allowed, PG skip, actualDB/HTTP/browser/targets/whole0. Raw JSONL fixtures-only; public receipt только статусы/leafcounts/hash/times/CLEAN, без SQL/rows/args/env.
+
+Подготовка/валидация: только source/static read + PowerShell JSON/pin/hash checks. Worker НЕ импортирован/НЕ запущен/НЕ selftested; Python/Go compile0, новых bin/WT/cache0. Факт подготовки не PASS функциональности worker/graph. Source90 aftercarry checksNOTRUN; guard71 bounded static STOP ACK отдельно, fullENG06/16/12 runtime/native/SDK HOLD OPEN/REL38 неавто.
+
+Generated-with: Codex
+Coordinator launcher подготовлен perenos: scratchpad/perenos-codex/slot2-platform3-90c23-launcher-20261117.py SHA7af0db483ac232ba0499c5001ddefc21cd64dd41db9fcbb16fb565dac9f1764e. Platform3 прочитал source/сверил SHA, compatible real closure lease stream/identity/claim/PID/head/window/FD подтверждён статически. Import/run/selftest0. Exact source90 HEAD/CLEAN повторно совпали. Actual assignment/window НЕТ; priority updated: primary actualnewf3/fix и РАННЯЯ ENG15semanticphase TestScopedRelative/newpropagation идут перед optional90, сохранять P6 числа. Старый primary lease не подходит. НовыеGo/build/test/bin/WT/cache не разрешены до отдельного actualwindow; fullHOLD/неautoREL38.
+
