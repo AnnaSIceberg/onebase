@@ -102,3 +102,21 @@ receipt. Группировка по функции сохраняет те же
 остаётся в обычном compiler без изменений; это не разрешение раскрытия календарной
 части защищённой даты. РАЗНОСТЬДАТ и виртуальные источники пока не поддержаны
 этим профилем.
+
+WIP periodic information slices: LastSlice/FirstSlice (русские эквиваленты),
+явный AS qualifier, отсутствующий filter, boundary только omitted или параметр.
+Nonperiodic/no dimensions/>64 dimensions/unknown method/filter/expression args
+дают STOP. Все partition dimensions (включая скрытые и неупомянутые) и period
+попадают в Uses.Scope как slice-partition/slice-order-desc|asc; boundary сохраняется
+в slice-bound. Это control dependencies всех outputs, не разрешение агрегата.
+RLS компилятора применяется до выбора строки LatestPerKey; typed/actor/read/RLS
+admission по-прежнему обязан доказать host. Report-only mandatory guard отдельно
+отклоняет protected VT до появления разрешённого operation graph. Physical tables,
+ordinary Query/cards и metadata/compiled SQL compiler не меняются.
+
+Current checkpoint не является новым PASS: prior SQLite LastSlice/RLS positive
+был проверен, четыре implicit-key policy cases воспроизвели P1 до guard; owner
+report-only guard6leafPASS отдельно. После carry и новых strict-boundary/budget
+checks новая матрица ещё НЕ запускалась из-за disk barrier/single Go lane ENG31.
+Native KPI/полный consumer query/admission/SDK remain HOLD. This WIP is not the
+portable strict970 API, published independently without scopes/VT/privacy policy.

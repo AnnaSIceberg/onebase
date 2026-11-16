@@ -43,7 +43,8 @@ type ReportLineageUse struct {
 
 // ReportLineage is an immutable compiler receipt, NOT permission to read PII.
 // This opt-in profile tracks physical JOINs, scalar derived scopes and UNION.
-// Virtual tables and unknown syntax return no partial receipt.
+// Only bounded periodic information slices are supported virtual sources.
+// Other virtual tables and unknown syntax return no partial receipt.
 // Output policy remains mandatory even when the lineage is fully known.
 type ReportLineage struct {
 	outputs                         []ReportLineageOutput
@@ -126,6 +127,7 @@ type reportExpr struct {
 	done        bool
 }
 type reportSource struct {
+	slice      *reportInfoSlice
 	derived    *reportLineageParser
 	occurrence int
 	ref        SourceRef
@@ -213,6 +215,11 @@ func CompileReportLineage(src string, opts CompileOpts) (Result, *ReportLineage,
 				out.uses = append(out.uses, ReportLineageUse{Scope: scope.scopeID, Clause: "inner-projection", Expression: column.Expression})
 			}
 		}
+		sliceUses, err := scope.infoSliceUses()
+		if err != nil {
+			return Result{}, nil, err
+		}
+		out.uses = append(out.uses, sliceUses...)
 		for _, use := range scope.uses {
 			view, err := scope.bind(use.expr, use.clause, 0)
 			if err != nil {
@@ -422,10 +429,18 @@ func (p *reportLineageParser) source() error {
 	}
 	typ, name := upperFast(p.tokens[at].val), p.tokens[at+2].val
 	p.pos += 3
+	var slice *reportInfoSlice
 	if p.peek().kind == tDot {
-		return fmt.Errorf("report lineage: virtual source unsupported")
+		if sourcePermKind(typ) != "inforeg" {
+			return fmt.Errorf("report lineage: virtual source unsupported")
+		}
+		var err error
+		slice, err = p.infoSlice()
+		if err != nil {
+			return err
+		}
 	}
-	source := reportSource{ref: SourceRef{Kind: sourcePermKind(typ), Name: name}, qualifier: sourceToTable(typ, name)}
+	source := reportSource{slice: slice, ref: SourceRef{Kind: sourcePermKind(typ), Name: name}, qualifier: sourceToTable(typ, name)}
 	if tps, ok := p.opts.tablePartSources[lowerFast(name)]; ok {
 		if _, unique := lineageUniqueEntity(p.opts.Entities, tps.owner.Name); !unique {
 			return fmt.Errorf("report lineage: ambiguous tablepart owner")
@@ -454,6 +469,12 @@ func (p *reportLineageParser) source() error {
 					if reg.Periodic {
 						source.fields = append(source.fields, metadata.Field{Name: "period", Type: metadata.FieldTypeDate})
 					}
+					if slice != nil {
+						if !reg.Periodic || len(reg.Dimensions) == 0 || len(reg.Dimensions) > 64 {
+							return fmt.Errorf("report lineage: slice grain not proven")
+						}
+						slice.dimensions = append([]metadata.Field(nil), reg.Dimensions...)
+					}
 				}
 			}
 		case "register":
@@ -480,6 +501,8 @@ func (p *reportLineageParser) source() error {
 		}
 		source.qualifier = lowerFast(p.peek().val)
 		p.pos++
+	} else if slice != nil {
+		return fmt.Errorf("report lineage: slice requires explicit source alias")
 	}
 	for _, old := range p.sources {
 		if strings.EqualFold(old.qualifier, source.qualifier) {
