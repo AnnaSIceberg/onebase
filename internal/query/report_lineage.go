@@ -42,8 +42,8 @@ type ReportLineageUse struct {
 }
 
 // ReportLineage is an immutable compiler receipt, NOT permission to read PII.
-// This first profile accepts one SELECT with physical JOIN sources. Derived
-// scopes, UNION, virtual tables and unknown syntax return no partial receipt.
+// This opt-in profile tracks physical JOINs, scalar derived scopes and UNION.
+// Virtual tables and unknown syntax return no partial receipt.
 // Output policy remains mandatory even when the lineage is fully known.
 type ReportLineage struct {
 	outputs                         []ReportLineageOutput
@@ -748,13 +748,19 @@ func (p *reportLineageParser) bind(e *reportExpr, clause string, depth int) (Rep
 			}
 		}
 		var err error
-		view, err = p.resolveView(e.path, depth)
+		view, err = p.resolveView(e.path, depth, lineageReferenceIDClause(clause))
 		if err != nil {
 			return view, err
 		}
 	default:
 		for _, arg := range e.args {
-			child, err := p.bind(arg, "", depth+1)
+			// Predicate sections use the stored reference ID. SELECT/GROUP/ORDER
+			// may rewrite a bare reference to its presentation and remain STOP.
+			childClause := ""
+			if lineageReferenceIDClause(clause) {
+				childClause = clause
+			}
+			child, err := p.bind(arg, childClause, depth+1)
 			if err != nil {
 				return view, err
 			}
@@ -854,7 +860,11 @@ func lineageExprType(op, value string, args []ReportExpression) (metadata.FieldT
 	}
 	return fail()
 }
-func (p *reportLineageParser) resolve(path []string) ([]ReportFieldOrigin, metadata.FieldType, error) {
+func lineageReferenceIDClause(clause string) bool {
+	return clause == "join" || clause == "where" || clause == "having"
+}
+
+func (p *reportLineageParser) resolve(path []string, referenceID bool) ([]ReportFieldOrigin, metadata.FieldType, error) {
 	fail := func() ([]ReportFieldOrigin, metadata.FieldType, error) {
 		return nil, "", fmt.Errorf("report lineage: field source unknown or ambiguous")
 	}
@@ -899,7 +909,7 @@ func (p *reportLineageParser) resolve(path []string) ([]ReportFieldOrigin, metad
 			ref = target
 		}
 		if hop == len(fieldPath)-1 {
-			if ref != "" && field.Name != "id" && !(source.self != "" && (strings.EqualFold(name, "Ссылка") || strings.EqualFold(name, "Ref"))) {
+			if ref != "" && !referenceID && field.Name != "id" && !(source.self != "" && (strings.EqualFold(name, "Ссылка") || strings.EqualFold(name, "Ref"))) {
 				return fail()
 			}
 			return origins, field.Type, nil

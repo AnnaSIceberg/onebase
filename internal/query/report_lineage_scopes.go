@@ -87,7 +87,7 @@ func (p *reportLineageParser) derivedSource() error {
 	p.sources = append(p.sources, reportSource{qualifier: qualifier, derived: child, occurrence: -1})
 	return nil
 }
-func (p *reportLineageParser) resolveView(path []string, depth int) (ReportExpression, error) {
+func (p *reportLineageParser) resolveView(path []string, depth int, referenceID bool) (ReportExpression, error) {
 	var candidates []int
 	fieldPath := path
 	if len(path) > 1 {
@@ -121,7 +121,7 @@ func (p *reportLineageParser) resolveView(path []string, depth int) (ReportExpre
 	}
 	source := p.sources[candidates[0]]
 	if source.derived == nil {
-		origins, typ, err := p.resolve(path)
+		origins, typ, err := p.resolve(path, referenceID)
 		return ReportExpression{Op: "field", Type: typ, Origins: origins}, err
 	}
 	if len(fieldPath) != 1 {

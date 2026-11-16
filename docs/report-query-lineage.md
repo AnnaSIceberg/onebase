@@ -7,7 +7,7 @@ runtime/handler/gate не переключён на этот API. Существ
 ReportOutputQueryMaskPlan продолжает запрещать защищённые сравнения.
 ENG06 остаётся INTEGRATION HOLD до совместимого полного ENG16.
 
-В этой WIP-ветке добавлены scalar derived SELECT с отдельными scope и сквозными physical occurrence. Стабильный Draft017 для review содержит только исходный single SELECT профиль. Поддержаны именованные проекции,
+В этой WIP-ветке добавлены scalar derived SELECT с отдельными scope и сквозными physical occurrence. Основная source-ветка содержит strict foundation без scope/UNION. Поддержаны именованные проекции,
 WHERE/GROUP/HAVING/ORDER, CASE, простые операторы, MIN/MAX/COUNT/SUM/AVG,
 COALESCE/ЕСТЬNULL, SUBSTR, LENGTH, ограниченный CAST. ТЧ сохраняет владельца.
 Неизвестная функция/поле/источник, неоднозначное имя, wildcard, ordinal,
@@ -69,8 +69,9 @@ Correlated scope lookup не разрешён. Раскрытое inspection и�
 узлов/metadata bytes/depth: компактная цепочка повторений T.X+T.X не может
 создать неограниченное дерево при detached JSON inspection.
 
-Это непринимаемый пока WIP: SQLite nested aggregate/child RLS/root-occurrence/
-GROUP shadow/unknown/expansion tests PASS; stable017 independent repeat pending.
+Scope/UNION delta получила отдельное bounded CODE ONLY review; это не приёмка
+full privacy/runtime. SQLite nested aggregate/child RLS/root-occurrence/
+GROUP shadow/unknown/expansion tests PASS.
 Ни runtime gate, ни safe protected operation authorization не подключены.
 
 
@@ -82,3 +83,14 @@ UNION ALL и duplicate elimination различаются в operation/control g
 SELECT DISTINCT также явно записывает membership dependencies всех outputs.
 SQLite UNION ALL/DISTINCT nested aggregate+RLS и negative/global ORDER tests
 PASS; PG SKIP. Никакой autorization protected operations/runtime ещё нет.
+
+Ссылочные поля в JOIN/WHERE/HAVING доказываются как stored FK UUID, согласно
+секциям обычного компилятора. Контекст предиката сохраняется внутри выражений;
+origin содержит owning SourceRef, occurrence, исходное поле и reference type.
+Защищённый FK не становится доступным из-за такого типа. Bare reference в
+SELECT (включая CASE/COUNT), GROUP/ORDER и derived passthrough остаётся STOP:
+представление не выдаётся за UUID. Ни права карточек, ни runtime gate не меняются.
+
+Typed fingerprints используют общий provenance FormatVersion 2/domain v2.
+Receipts старого формата нужно инвалидировать и пересчитать по host snapshot;
+совпадение digest не доказывает доверенное происхождение пользовательского ввода.
