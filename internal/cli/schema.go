@@ -208,6 +208,7 @@ func allSchemas() map[string]map[string]any {
 			"context":             reportContextSchema(),
 			"choice_label_suffix": stringSchema("Ссылочный реквизит: добавить представление в скобках к подписи выбора"),
 			"choice_filter":       arrayOf(map[string]any{"type": "object", "additionalProperties": false, "required": []string{"field", "param"}, "properties": map[string]any{"field": stringSchema("Ссылочный реквизит выбора"), "param": stringSchema("Ведущий параметр отчёта; пустой не ограничивает выбор")}}),
+			"visible_when":        map[string]any{"type": "object", "additionalProperties": false, "required": []string{"param", "equals"}, "properties": map[string]any{"param": stringSchema("Другой bool-параметр отчёта"), "equals": boolSchema("Значение флажка, при котором поле видно")}},
 		},
 	}
 	// Параметр ОБРАБОТКИ знает обязательность, параметр отчёта — нет

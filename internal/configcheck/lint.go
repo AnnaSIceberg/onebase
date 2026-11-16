@@ -525,7 +525,7 @@ func reportYAMLSchema() *yamlLintSchema {
 		// параметра пока только у обработок (processor.Param). А вот «default»
 		// модель знает — параметр без значения получает умолчание, — поэтому
 		// ключ разрешён: иначе линт ругался бы на работающую возможность.
-		"params":      seq(with(obj("name", "type", "label", "options", "default", "period_end", "choice_show_deleted", "choice_label_suffix"), map[string]*yamlLintSchema{"labels": freeMap(), "choice_filter": seq(obj("field", "param")), "context": with(obj("user"), map[string]*yamlLintSchema{"user_card": obj("catalog", "account_field", "field", "table_part", "column")})})),
+		"params":      seq(with(obj("name", "type", "label", "options", "default", "period_end", "choice_show_deleted", "choice_label_suffix"), map[string]*yamlLintSchema{"labels": freeMap(), "visible_when": obj("param", "equals"), "choice_filter": seq(obj("field", "param")), "context": with(obj("user"), map[string]*yamlLintSchema{"user_card": obj("catalog", "account_field", "field", "table_part", "column")})})),
 		"composition": composition,
 		"variants":    seq(with(obj("name", "query"), map[string]*yamlLintSchema{"composition": composition, "filters": seq(obj("field", "op", "value"))})),
 	})
