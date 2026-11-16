@@ -135,3 +135,5 @@ e2e/playwright-report/
 govulnpolicy.exe
 
 !docs/provenance-digest.md
+
+!docs/report-query-lineage.md

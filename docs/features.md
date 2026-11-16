@@ -8793,3 +8793,11 @@ choice_row_style:
 ```bsl
 Поля.Добавить(Новый Структура("имя, заголовок, значение, важность", "обмен1с", "1С", "НЕ выгружена: " + Ошибка, "error"));
 ```
+
+## SQL provenance: portable strict source API
+<!-- status: testing -->
+<!-- date: 2026-11-16 -->
+
+CompileReportLineage/Outputs/Uses/Matches дают серверу проверяемое происхождение
+одного SELECT с JOIN. Это source foundation без runtime/allow и без изменения
+обычных запросов/карточек. Контракт и STOP-границы: docs/report-query-lineage.md.
