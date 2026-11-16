@@ -12,7 +12,8 @@ import (
 )
 
 // Validate before executing a report, including the composed JSON response.
-// The same catalog activity, deletion and row-access rules apply as in UI choice.
+// Report choices search history, including inactive/marked selected records.
+// Folder exclusion, read permission, row access and dependent predicates apply.
 func (h *handler) validateReportChoiceValues(ctx context.Context, rep *reportpkg.Report, values map[string]any) error {
 	visible := func(entity *metadata.Entity, value any, predicates []storage.ChoicePredicate) error {
 		if value == nil || fmt.Sprint(value) == "" {
@@ -23,9 +24,6 @@ func (h *handler) validateReportChoiceValues(ctx context.Context, rep *reportpkg
 			return fmt.Errorf("report choice is unavailable")
 		}
 		base := storage.ListParams{ExcludeFolders: true, ChoicePredicates: predicates}
-		if entity.Activity != nil && entity.Activity.HideFromChoice {
-			base.ActivityScope = metadata.ActivityScopeActive
-		}
 		params, err := h.applyRowFilter(ctx, entity, "read", base)
 		if err != nil {
 			return err
