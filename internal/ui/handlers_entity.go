@@ -1387,7 +1387,11 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 			check := base
 			check.ChoicePredicates = choice.Predicates
 			check.IncludeFolders = choice.Folders
-			allowed, err = s.choiceSelectedAllowedWithParams(r.Context(), ent, *choice.Selected, check)
+			if choice.ReportParam != nil {
+				allowed, err = s.reportChoiceSelectedAllowedWithParams(r.Context(), ent, *choice.Selected, check)
+			} else {
+				allowed, err = s.choiceSelectedAllowedWithParams(r.Context(), ent, *choice.Selected, check)
+			}
 			if err != nil {
 				s.serverError(w, r, err)
 				return

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dbtest"
+	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/runtime"
@@ -101,8 +102,8 @@ func TestReportParameterChoiceNativeContext(t *testing.T) {
 func TestReportParameterChoiceNativeMarkedHistory(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
-		branch := &metadata.Entity{Name: "ChoiceMarkedBranch", Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: "Name", Type: metadata.FieldTypeString}}}
-		direction := &metadata.Entity{Name: "ChoiceMarkedDirection", Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: "Name", Type: metadata.FieldTypeString}, {Name: "Branch", Type: "reference:ChoiceMarkedBranch", RefEntity: branch.Name}}}
+		branch := &metadata.Entity{Name: "ChoiceMarkedBranch", Kind: metadata.KindCatalog, Activity: &metadata.ActivityConfig{Field: "Active", HideFromChoice: true}, Fields: []metadata.Field{{Name: "Name", Type: metadata.FieldTypeString}, {Name: "Active", Type: metadata.FieldTypeBool}}}
+		direction := &metadata.Entity{Name: "ChoiceMarkedDirection", Kind: metadata.KindCatalog, Activity: &metadata.ActivityConfig{Field: "Active", HideFromChoice: true}, Fields: []metadata.Field{{Name: "Name", Type: metadata.FieldTypeString}, {Name: "Active", Type: metadata.FieldTypeBool}, {Name: "Branch", Type: "reference:ChoiceMarkedBranch", RefEntity: branch.Name}}}
 		entities := []*metadata.Entity{branch, direction}
 		if err := db.Migrate(ctx, entities); err != nil {
 			t.Fatal(err)
@@ -111,22 +112,22 @@ func TestReportParameterChoiceNativeMarkedHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 		b, d := uuid.New(), uuid.New()
-		if err := db.Upsert(ctx, branch.Name, b, map[string]any{"Name": "History branch"}, branch); err != nil {
+		if err := db.Upsert(ctx, branch.Name, b, map[string]any{"Name": "History branch", "Active": false}, branch); err != nil {
 			t.Fatal(err)
 		}
-		if err := db.Upsert(ctx, direction.Name, d, map[string]any{"Name": "History direction", "Branch": b}, direction); err != nil {
+		if err := db.Upsert(ctx, direction.Name, d, map[string]any{"Name": "History direction", "Branch": b, "Active": false}, direction); err != nil {
 			t.Fatal(err)
 		}
 		if err := db.MarkForDeletion(ctx, direction.Name, d, true); err != nil {
 			t.Fatal(err)
 		}
-		rep := &reportpkg.Report{Name: "MarkedChoice", Params: []reportpkg.Param{
+		rep := &reportpkg.Report{Name: "MarkedChoice", Query: "ВЫБРАТЬ Name ИЗ Справочник.ChoiceMarkedDirection", Params: []reportpkg.Param{
 			{Name: "Branch", Type: "reference:ChoiceMarkedBranch"},
-			{Name: "Direction", Type: "reference:ChoiceMarkedDirection", ChoiceFilter: []reportpkg.ParamChoiceFilter{{Field: "Branch", Param: "Branch"}}},
+			{Name: "Direction", Type: "reference:ChoiceMarkedDirection", ChoiceFilter: []reportpkg.ParamChoiceFilter{{Field: "Branch", Param: "Branch"}}, ChoiceLabelSuffix: "Branch"},
 		}}
 		reg := runtime.NewRegistry()
 		reg.Load(runtime.LoadOptions{Entities: entities, Reports: []*reportpkg.Report{rep}})
-		s := &Server{store: db, reg: reg}
+		s := &Server{store: db, reg: reg, interp: interpreter.New(), lockMgr: runtime.NewLockManager(), messages: NewMessageStore(), ops: newOperationLimiter()}
 		for _, show := range []bool{true, false} {
 			rep.Params[1].ChoiceShowDeleted = &show
 			values := map[string]any{"Branch": b.String()}
@@ -138,6 +139,9 @@ func TestReportParameterChoiceNativeMarkedHistory(t *testing.T) {
 			if len(options[1].Opts) != want {
 				t.Fatalf("initial marked=%v: %+v", show, options[1].Opts)
 			}
+			if show && !strings.Contains(refValueString(options[1].Opts[0]["_label"]), "History branch") {
+				t.Fatal("inactive leading reference lost its permitted suffix")
+			}
 			q := url.Values{"form_kind": {"report"}, "form_entity": {rep.Name}, "form": {"params"}, "element": {"Direction"}, "sources": {`{"Branch":"` + b.String() + `"}`}, "selected_id": {d.String()}, "search": {"0"}, "marked": {"0"}}
 			w := serveRefOptions(t, s, direction.Name, q.Encode(), nil)
 			var result map[string]any
@@ -147,6 +151,12 @@ func TestReportParameterChoiceNativeMarkedHistory(t *testing.T) {
 			values["Direction"] = d.String()
 			if err := s.validateReportChoiceValues(ctx, rep, values); err != nil {
 				t.Fatalf("historical selected value became a write prohibition: %v", err)
+			}
+			form := url.Values{"Branch": {b.String()}, "Direction": {d.String()}}
+			response := httptest.NewRecorder()
+			s.reportRun(response, reqWithChi("POST", "/ui/report/MarkedChoice", form, map[string]string{"name": rep.Name}))
+			if response.Code != 200 || !strings.Contains(response.Body.String(), "History direction") {
+				t.Fatalf("matching inactive history rejected on run: %d %s", response.Code, response.Body.String())
 			}
 		}
 	})

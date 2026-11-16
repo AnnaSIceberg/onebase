@@ -66,7 +66,7 @@ func (s *Server) reportChoicePredicates(ctx context.Context, p reportpkg.Param, 
 		if ref == nil || !s.canCtx(ctx, string(ref.Kind), ref.Name, "read") {
 			return nil, fmt.Errorf("unknown report choice source")
 		}
-		visible, err := s.choiceSelectedAllowed(ctx, ref, id, nil, false)
+		visible, err := s.reportChoiceSelectedAllowedWithParams(ctx, ref, id, storage.ListParams{})
 		if err != nil || !visible {
 			return nil, fmt.Errorf("report choice source is unavailable: %s", f.Param)
 		}
@@ -100,7 +100,7 @@ func (s *Server) reportChoiceLabels(ctx context.Context, p reportpkg.Param, targ
 			if err != nil {
 				continue
 			}
-			visible, err := s.choiceSelectedAllowed(ctx, ref, id, nil, false)
+			visible, err := s.reportChoiceSelectedAllowedWithParams(ctx, ref, id, storage.ListParams{})
 			if err != nil || !visible {
 				continue
 			}
@@ -143,7 +143,7 @@ func (s *Server) reportReferenceOptions(ctx context.Context, p reportpkg.Param, 
 	if selected != "" {
 		id, err := uuid.Parse(selected)
 		if err == nil {
-			allowed, err := s.choiceSelectedAllowed(ctx, target, id, predicates, false)
+			allowed, err := s.reportChoiceSelectedAllowedWithParams(ctx, target, id, storage.ListParams{ChoicePredicates: predicates})
 			if err == nil && allowed {
 				rows = s.appendSelectedRefOptions(ctx, rows, target, []string{selected})
 			}
@@ -252,7 +252,7 @@ func (s *Server) validateReportChoiceValues(ctx context.Context, rep *reportpkg.
 		if err != nil {
 			return fmt.Errorf("invalid report choice: %s", p.Name)
 		}
-		allowed, err := s.choiceSelectedAllowed(ctx, target, id, predicates, false)
+		allowed, err := s.reportChoiceSelectedAllowedWithParams(ctx, target, id, storage.ListParams{ChoicePredicates: predicates})
 		if err != nil {
 			return err
 		}
@@ -261,6 +261,24 @@ func (s *Server) validateReportChoiceValues(ctx context.Context, rep *reportpkg.
 		}
 	}
 	return nil
+}
+
+// Reports search history, including inactive records. Selected/source/suffix
+// checks use the same activity scope as the report picker. Read permission,
+// row access, folder exclusion and dependent predicates still apply. Marked
+// visibility controls the offered list, not an already selected historical ref.
+func (s *Server) reportChoiceSelectedAllowedWithParams(ctx context.Context, target *metadata.Entity, id uuid.UUID, params storage.ListParams) (bool, error) {
+	if target == nil || !s.canCtx(ctx, string(target.Kind), target.Name, "read") {
+		return false, fmt.Errorf("report choice is unavailable")
+	}
+	base := s.refListParamsForMode(target, refOptionsFilter)
+	base.Filters = params.Filters
+	base.ChoicePredicates = params.ChoicePredicates
+	base, err := s.rowFilterFor(ctx, target, "read", base)
+	if err != nil {
+		return false, err
+	}
+	return s.store.ListContainsID(ctx, target.Name, target, id, base)
 }
 
 // Resolve hidden leading parameters only for the picker. Do not put their values
