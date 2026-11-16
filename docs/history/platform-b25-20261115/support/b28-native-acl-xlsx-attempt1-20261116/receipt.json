@@ -1,0 +1,143 @@
+{
+  "status": "PASS",
+  "runtime": "f045bdb11b5e563120ff0381476957e5df9e2549",
+  "source": "f045bdb11b5e563120ff0381476957e5df9e2549",
+  "base_b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "e3a9682e547a9e41cd6aeea7df733127cfa5dee443b84b6351e01506c8c503c0",
+  "checks": {
+    "B22Direct_HTTP403": true,
+    "B22Direct_no_data_or_viewer": true,
+    "B22WithQuery_HTTP403": true,
+    "B22WithQuery_no_data_or_viewer": true,
+    "B22Queryless_HTTP403": true,
+    "B22Queryless_no_data_or_viewer": true,
+    "B22Rethrow_HTTP403": true,
+    "B22Rethrow_no_data_or_viewer": true,
+    "B22Fake_HTTP500_not_ACL": true,
+    "B22BadCompile_HTTP500_not_ACL": true,
+    "allowed_direct200_and_data": true,
+    "B22WithQuery_allowed_native_viewer": true,
+    "B22Queryless_allowed_native_viewer": true,
+    "ordinary_native_generate200": true,
+    "ordinary_visible_grand253": true,
+    "direct_public_route200": true,
+    "direct_ZIP_dimension_full": true,
+    "direct_default_counts_full": true,
+    "direct_default_equals_normal_typed": true,
+    "direct_grand253": true,
+    "background_native_job_page": true,
+    "background_ZIP_dimension_full": true,
+    "background_default_counts_full": true,
+    "background_default_equals_normal_typed": true,
+    "background_grand253": true,
+    "JS0": true
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "phase": "ordinary-native-background",
+  "go_started": false,
+  "db_copies": 0,
+  "shared_changes": false,
+  "browser_os_network_isolated": false,
+  "browser_request_boundary": "exact own loopback context allowlist",
+  "fixture_files": [
+    {
+      "path": "catalogs\\B22ACLSource.yaml",
+      "sha256": "7edc8cdc5b40bbeeb5df72490fa1d4df6fe4751b5759cf0d4aff0bc6f45c68d4"
+    },
+    {
+      "path": "catalogs\\B22ListSource.yaml",
+      "sha256": "22753a5202c608749f39173daee4ec13461715cf3ef5de51e8ef4191e02a9324"
+    },
+    {
+      "path": "config\\app.yaml",
+      "sha256": "9854d60f77eb303e832816b530690061d2a9db75f6b0bf76868c59011370e968"
+    },
+    {
+      "path": "reports\\B22BadCompile.yaml",
+      "sha256": "21609f924dc8a633ebb5d26ad22ea9c17750b763958723a57254a3292bcf85f7"
+    },
+    {
+      "path": "reports\\B22Direct.yaml",
+      "sha256": "85ce43131b41378dea67dd3ad7ba6ad12bc1dc6bafff6c6b8dce57365df1c563"
+    },
+    {
+      "path": "reports\\B22Fake.yaml",
+      "sha256": "2b78a364dc74c3e3ca39f64370ec0c5c1040f127e8881087df1b04b56e57928c"
+    },
+    {
+      "path": "reports\\B22Ordinary.yaml",
+      "sha256": "3534e21128279ed46c471feebfb68821a65bacc73145f13ab7a49718fda5790a"
+    },
+    {
+      "path": "reports\\B22Queryless.yaml",
+      "sha256": "c905abb3085af162d1a6553d6479d89ab5e487daac98cd5b6b8f4602b045d5c7"
+    },
+    {
+      "path": "reports\\B22Rethrow.yaml",
+      "sha256": "06eb8a591dbb1042ed28794261fc4a466b495d63bf284fd5d7f226cf5d8bebca"
+    },
+    {
+      "path": "reports\\B22WithQuery.yaml",
+      "sha256": "f16d45e872c1a3516731d42b6bc6db2ca4f31dcbc475ad308478ab587c320bde"
+    },
+    {
+      "path": "roles\\B22ReportOnly.yaml",
+      "sha256": "d0bd7dda6c9809850fdef7fe4d9eb9e020c4535d75f451644b2bf89cc170420f"
+    },
+    {
+      "path": "src\\B22BadCompile.rep.os",
+      "sha256": "b6e27390e9cc3e4bb8361589b788930f0228b8e0f300f4b07af615e8cfde1d2e"
+    },
+    {
+      "path": "src\\B22Fake.rep.os",
+      "sha256": "39ef6871b1d62f36d2e2d5a7a49135e745107973af6ec644da8ef527dffd3c62"
+    },
+    {
+      "path": "src\\B22Queryless.rep.os",
+      "sha256": "683538b1e2df85100983428a48e267369694fd4dc211b9de400eaab765062685"
+    },
+    {
+      "path": "src\\B22Rethrow.rep.os",
+      "sha256": "9f385e539946c2e7710ad75d4f1a741f4fbf4085fafbb42478a50af1e1a17f7b"
+    },
+    {
+      "path": "src\\B22WithQuery.rep.os",
+      "sha256": "683538b1e2df85100983428a48e267369694fd4dc211b9de400eaab765062685"
+    }
+  ],
+  "browser_version": "109.0.5414.46",
+  "exports": {
+    "direct": {
+      "sha256": "d5719131735859b010adb77af13200953b5acd39135b5e57d3bda157d1eca7ca",
+      "bytes": 6754,
+      "dimension": "A1:B28",
+      "rows": 28,
+      "columns": 2,
+      "filled_cells": 56,
+      "default_reader": "3.1.5",
+      "reset_dimensions_called": false,
+      "forced_bounds": false
+    },
+    "background": {
+      "sha256": "d5719131735859b010adb77af13200953b5acd39135b5e57d3bda157d1eca7ca",
+      "bytes": 6754,
+      "dimension": "A1:B28",
+      "rows": 28,
+      "columns": 2,
+      "filled_cells": 56,
+      "default_reader": "3.1.5",
+      "reset_dimensions_called": false,
+      "forced_bounds": false
+    }
+  },
+  "page_errors": 0
+}

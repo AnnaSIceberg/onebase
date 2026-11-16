@@ -1,0 +1,64 @@
+{
+  "started": "2026-11-16T10:30:02.467650+00:00",
+  "runtime": "f045bdb11b5e563120ff0381476957e5df9e2549",
+  "serial_browsers": true,
+  "go_started": false,
+  "runs": [
+    {
+      "helper": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\native-b28-acl-xlsx-20261116.py",
+      "exit": 0,
+      "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-acl-xlsx-attempt1-20261116\\receipt.json",
+      "receipt_sha256": "e3e31d93c84887f496cf3cdf264c7bcfbea8aeb358d7cc8fd2fe5b1f126a2eb3",
+      "status": "PASS",
+      "checks": 26,
+      "cleanup": {
+        "context": true,
+        "browser": true,
+        "driver": true,
+        "app": true,
+        "port_closed": true,
+        "tunnel_not_used": true,
+        "own_auth_db_removed": true
+      },
+      "runtime": "f045bdb11b5e563120ff0381476957e5df9e2549"
+    },
+    {
+      "helper": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\native-b28-context-drilldown-20261116.py",
+      "exit": 0,
+      "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-context-drilldown-attempt1-20261116\\receipt.json",
+      "receipt_sha256": "cb631f14a157b5451059cf83e73dc712e36ef53429fc317358775adb02d0fe32",
+      "status": "PASS",
+      "checks": 19,
+      "cleanup": {
+        "context": true,
+        "browser": true,
+        "driver": true,
+        "app": true,
+        "port_closed": true,
+        "tunnel_not_used": true,
+        "own_auth_db_removed": true
+      },
+      "runtime": "f045bdb11b5e563120ff0381476957e5df9e2549"
+    },
+    {
+      "helper": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\native-b28-workbook-20261116.py",
+      "exit": 0,
+      "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\receipt.json",
+      "receipt_sha256": "ca8cdbe8fcde307d89d1df3bb497e8fd4c596b9f4fc300fc67fa4f4dbad64d87",
+      "status": "PASS",
+      "checks": 30,
+      "cleanup": {
+        "context": true,
+        "browser": true,
+        "driver": true,
+        "app": true,
+        "port_closed": true,
+        "own_auth_db_removed": true
+      },
+      "runtime": "f045bdb11b5e563120ff0381476957e5df9e2549"
+    }
+  ],
+  "status": "PASS",
+  "checks": 75,
+  "ended": "2026-11-16T10:30:30.502476+00:00"
+}

@@ -1,0 +1,43 @@
+{
+  "b21": "0d77e91557b12bada4668fd7bfa5f1b13a37de08",
+  "b27r2": "a10677b2903e4b94cefb8d90a4104fe8a24aa639",
+  "b21_is_b27r2_ancestor": true,
+  "b28": "f045bdb11b5e563120ff0381476957e5df9e2549",
+  "source_matches": [
+    {
+      "file": "internal/report/drilldown.go",
+      "source": "892365a03c8c35e3c48dea25ed897a3c9a072d95",
+      "blob": "7d7f725343a97ff916f414ec8e37ed2d0044ac8a"
+    },
+    {
+      "file": "internal/ui/report_drilldown.go",
+      "source": "892365a03c8c35e3c48dea25ed897a3c9a072d95",
+      "blob": "d6bd6e6e46308908662903af7354295254193cbd"
+    },
+    {
+      "file": "internal/configcheck/report_drilldown.go",
+      "source": "892365a03c8c35e3c48dea25ed897a3c9a072d95",
+      "blob": "7f626c5b4a0bc04faff5de3e3187e12995ad268d"
+    },
+    {
+      "file": "internal/report/context.go",
+      "source": "449bafdb8a8c86f177e8dbbe768a62af885b2ab0",
+      "blob": "ac1d5f4d8ad61f14263bb7f517104d727b7f130b"
+    },
+    {
+      "file": "internal/access/scalar_user_card.go",
+      "source": "449bafdb8a8c86f177e8dbbe768a62af885b2ab0",
+      "blob": "a476b057b712c77dab7cc005c28adf2fb0a2cb3d"
+    },
+    {
+      "file": "internal/configcheck/report_context.go",
+      "source": "449bafdb8a8c86f177e8dbbe768a62af885b2ab0",
+      "blob": "9cb5047d4877d80526c81cefd9d23834eff28931"
+    }
+  ],
+  "b28_not_built_yet": true,
+  "shared_changes": false,
+  "incorrect_report": "20261116-1257-platform-B27r2-T8-native30-SDK-handoff.md",
+  "correction": "P4/P7 present in B27r2 via B21; only B22 was absent",
+  "timestamp": "2026-11-16T13:17:04.475578"
+}

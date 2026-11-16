@@ -1,0 +1,110 @@
+{
+  "status": "PASS",
+  "runtime": "f045bdb11b5e563120ff0381476957e5df9e2549",
+  "source_t8": "b7c57cb628abc493a17505172885c71f9854f0e6",
+  "base_b26": "513274b7e1bc230d8c0de5fcd22a34deb672345c",
+  "sdk_windows_sha256": "e3a9682e547a9e41cd6aeea7df733127cfa5dee443b84b6351e01506c8c503c0",
+  "checks": {
+    "native_registry_workbook_methods3": true,
+    "public_check": true,
+    "native_result_proc_registered_factory": true,
+    "normal_sheet_order": true,
+    "normal_СМ_typed_value": true,
+    "normal_СМ_fill": true,
+    "normal_СМ_dimension": true,
+    "СМ_merge": true,
+    "СМ_width": true,
+    "СМ_height": true,
+    "СМ_page": true,
+    "normal_ХД_typed_value": true,
+    "normal_ХД_fill": true,
+    "normal_ХД_dimension": true,
+    "ХД_merge": true,
+    "ХД_width": true,
+    "ХД_height": true,
+    "ХД_page": true,
+    "default_read_only_sheet_order": true,
+    "default_read_only_СМ_typed_value": true,
+    "default_read_only_СМ_fill": true,
+    "default_read_only_СМ_dimension": true,
+    "default_read_only_ХД_typed_value": true,
+    "default_read_only_ХД_fill": true,
+    "default_read_only_ХД_dimension": true,
+    "native_empty_book500": true,
+    "native_empty_book_explicit_error": true,
+    "JS0": true,
+    "actual_server_post303": true,
+    "actual_server_viewer200": true
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "own_auth_db_removed": true
+  },
+  "shared_changes": false,
+  "db_copies": 0,
+  "go_compiler_started": false,
+  "request_boundary": "own exact loopback browser-context allowlist; no OS network-isolation claim",
+  "cli_commands": [
+    {
+      "args": [
+        "langref",
+        "--format",
+        "json"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\cli-0.log",
+      "sha256": "f66d9d01643f506ffec539bf4356bff07ecf834db1d2ae15036a0086818c9619"
+    },
+    {
+      "args": [
+        "check",
+        "--project",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\config"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\cli-1.log",
+      "sha256": "167aebbc45f78a573e297889ae05eb9e00a1adf0479caa074cf7ed805066034f"
+    },
+    {
+      "args": [
+        "migrate",
+        "--project",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\config",
+        "--sqlite",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\own-native.sqlite"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\cli-2.log",
+      "sha256": "d0781592ed1081555898d2ba31bfa26940e3ebfb10f9daea50acbca762b76042"
+    },
+    {
+      "args": [
+        "user",
+        "add",
+        "own_b27_admin",
+        "--admin",
+        "--password-stdin",
+        "--project",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\config",
+        "--sqlite",
+        "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\own-native.sqlite"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\cli-3.log",
+      "sha256": "e98e17c1c7694c06acd54f8378f8dbc7d8dc68969f55381dbf16cab33d38ae4d"
+    }
+  ],
+  "browser_post_event_status": 200,
+  "browser_version": "109.0.5414.46",
+  "reader_version": "3.1.5",
+  "artifact": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\native-workbook.xlsx",
+  "artifact_sha256": "70a445e42da7d445a26c3f87d86d0b770755a8a515fdefcbfde0e5d274b74263",
+  "reset_dimensions": false,
+  "forced_bounds": false,
+  "server_log_sha256": "80b28207dc8ba1cc5ec43b4749c6511a842378282cfe4521bb8fea9b3381d0ab",
+  "page_errors": 0
+}

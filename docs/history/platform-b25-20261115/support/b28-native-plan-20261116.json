@@ -1,0 +1,23 @@
+[
+  {
+    "helper": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\native-b28-acl-xlsx-20261116.py",
+    "source_helper": "b22-native-afterrelease-attempt3-20261116.py",
+    "source_sha256": "ad14849cfeca56a66cc512e50c2f17d6f966aa6aeba5a68c646d16465776bd98",
+    "helper_sha256": "ecfe618e5fb8022fc69acbe6d4a80a5d344c6d6dd00007fbb60cd1783a532bd9",
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-acl-xlsx-attempt1-20261116\\receipt.json"
+  },
+  {
+    "helper": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\native-b28-context-drilldown-20261116.py",
+    "source_helper": "b21-native-context-drilldown-attempt3.py",
+    "source_sha256": "da381dff66c1c017c9ef44f4625847f8477f6ea22ce4929f0f0f1d580bf55cdc",
+    "helper_sha256": "0abc9e6750442fa7e4824bd971c4c465793e678d892a70c1110a9111862b069b",
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-context-drilldown-attempt1-20261116\\receipt.json"
+  },
+  {
+    "helper": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\native-b28-workbook-20261116.py",
+    "source_helper": "native-b27r2-workbook-20261116.py",
+    "source_sha256": "a312da12d95e1ee5ff216f2e46ff0e139809a10e50370d2fcb6aa70f0008dcbe",
+    "helper_sha256": "b68d1d83af38450523077f820b3821ba08ec411470426adb74d24b7f48c7d234",
+    "receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-workbook-attempt1-20261116\\receipt.json"
+  }
+]

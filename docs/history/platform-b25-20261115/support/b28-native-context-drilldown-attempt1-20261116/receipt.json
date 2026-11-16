@@ -1,0 +1,100 @@
+{
+  "status": "PASS",
+  "runtime": "f045bdb11b5e563120ff0381476957e5df9e2549",
+  "source": "f045bdb11b5e563120ff0381476957e5df9e2549",
+  "upstream_inputs": {
+    "p4": "892365a03c8c35e3c48dea25ed897a3c9a072d95",
+    "p7": "449bafdb8a8c86f177e8dbbe768a62af885b2ab0",
+    "acl": "6ac8da0fa9bab99c57078cfc04d6235070097cd7",
+    "ordinary_xlsx": "54a8303aa668dbe35c577ec0a372bf25267b347c"
+  },
+  "sdk_platform": "windows-amd64",
+  "sdk_sha256": "e3a9682e547a9e41cd6aeea7df733127cfa5dee443b84b6351e01506c8c503c0",
+  "checks": {
+    "context_native_http200": true,
+    "context_actual_own_rows": true,
+    "context_inputs_absent": true,
+    "queryless_native_viewer": true,
+    "queryless_server_uuid_and_actor": true,
+    "queryless_default_reader_exact_bound_values": true,
+    "typed_native_http200": true,
+    "flat12_no_service_column": true,
+    "flat12_two_typed_actions": true,
+    "flat12_own_context": true,
+    "typed_actions_fixed_server_route": true,
+    "typed_0_native_redirect_target": true,
+    "typed_0_native_entity_loaded": true,
+    "typed_1_native_redirect_target": true,
+    "typed_1_native_entity_loaded": true,
+    "typed_route_authorized_303": true,
+    "typed_entity_http200": true,
+    "actual_anchor_causes_entity_navigation": true,
+    "JS0": true
+  },
+  "cleanup": {
+    "context": true,
+    "browser": true,
+    "driver": true,
+    "app": true,
+    "port_closed": true,
+    "tunnel_not_used": true,
+    "own_auth_db_removed": true
+  },
+  "phase": "typed-flat12",
+  "db_copies": 0,
+  "shared_changes": false,
+  "go_started": false,
+  "browser_os_network_isolated": false,
+  "browser_request_boundary": "own context exact loopback origin allowlist",
+  "source_fixture_files": [
+    {
+      "path": "catalogs\\B21Department.yaml",
+      "sha256": "54f30b0503acad7d59e172f3c41a53f23bc2190d1fe205a1be872cb4aad72a2e"
+    },
+    {
+      "path": "catalogs\\B21Entry.yaml",
+      "sha256": "567fa05e063dc35940677568808d883f6d251fe4795ccc434699617af57873fe"
+    },
+    {
+      "path": "catalogs\\B21Staff.yaml",
+      "sha256": "d951d358885848e0d1be7cc71f14b4919fe2ae901c37a7b9aee90c46f3f9cd8c"
+    },
+    {
+      "path": "config\\app.yaml",
+      "sha256": "8172c8c7aba6f36df9ac599c62da348f7078d287d821a1719c2430c3f3dde7e3"
+    },
+    {
+      "path": "reports\\B21Context.yaml",
+      "sha256": "d147b337fe344244c89ff15e91a5d7ed92bdbfcfc3c1565011ac86196fab2853"
+    },
+    {
+      "path": "reports\\B21Result.yaml",
+      "sha256": "2b44c83e5c06eac60ad2252c8740aba939218a3f1f5946b0fa31b6f2e14517ac"
+    },
+    {
+      "path": "reports\\B21Typed.yaml",
+      "sha256": "8b81238e007afc64ca7ee6793a11af87eeefc96c917a1213a84e11b484ef2286"
+    },
+    {
+      "path": "src\\B21Result.rep.os",
+      "sha256": "5b0e45020654b3c495790e4615c3c3c65ab9b10fbfe2fc502f17c21e4f7d0dc0"
+    }
+  ],
+  "browser_version": "109.0.5414.46",
+  "xlsx": {
+    "sha256": "e6d6734f3b3766f55a6d826f8c31304ef0f2cf9ae11f4c1afd0d3ad2038f7f88",
+    "bytes": 6265,
+    "rows": 2,
+    "reader": "3.1.5",
+    "read_only": true,
+    "reset_dimensions_called": false
+  },
+  "redirect_evidence": {
+    "server_drilldown_statuses": [
+      303,
+      303
+    ],
+    "browser_terminal_status_observer_not_used_for_intermediate_redirect": true
+  },
+  "page_errors": 0
+}

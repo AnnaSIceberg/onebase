@@ -1,0 +1,81 @@
+{"Time":"2026-11-16T13:17:48.9899643+03:00","Action":"start","Package":"github.com/ivantit66/onebase/internal/excel"}
+{"Time":"2026-11-16T13:17:49.1429238+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange"}
+{"Time":"2026-11-16T13:17:49.1429238+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange","Output":"=== RUN   TestListXLSXUsedRange\n"}
+{"Time":"2026-11-16T13:17:49.1429238+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/empty/buffered"}
+{"Time":"2026-11-16T13:17:49.1470312+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/empty/buffered","Output":"=== RUN   TestListXLSXUsedRange/empty/buffered\n"}
+{"Time":"2026-11-16T13:17:49.1510309+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/empty/buffered","Output":"--- PASS: TestListXLSXUsedRange/empty/buffered (0.01s)\n"}
+{"Time":"2026-11-16T13:17:49.1510309+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/empty/buffered","Elapsed":0.01}
+{"Time":"2026-11-16T13:17:49.1510309+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/empty/stream"}
+{"Time":"2026-11-16T13:17:49.1510309+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/empty/stream","Output":"=== RUN   TestListXLSXUsedRange/empty/stream\n"}
+{"Time":"2026-11-16T13:17:49.1550356+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/empty/stream","Output":"--- PASS: TestListXLSXUsedRange/empty/stream (0.00s)\n"}
+{"Time":"2026-11-16T13:17:49.1550356+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/empty/stream","Elapsed":0}
+{"Time":"2026-11-16T13:17:49.1550356+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/header-only/buffered"}
+{"Time":"2026-11-16T13:17:49.1550356+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/header-only/buffered","Output":"=== RUN   TestListXLSXUsedRange/header-only/buffered\n"}
+{"Time":"2026-11-16T13:17:49.1600322+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/header-only/buffered","Output":"--- PASS: TestListXLSXUsedRange/header-only/buffered (0.00s)\n"}
+{"Time":"2026-11-16T13:17:49.1600322+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/header-only/buffered","Elapsed":0}
+{"Time":"2026-11-16T13:17:49.1600322+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/header-only/stream"}
+{"Time":"2026-11-16T13:17:49.1600322+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/header-only/stream","Output":"=== RUN   TestListXLSXUsedRange/header-only/stream\n"}
+{"Time":"2026-11-16T13:17:49.1640316+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/header-only/stream","Output":"--- PASS: TestListXLSXUsedRange/header-only/stream (0.00s)\n"}
+{"Time":"2026-11-16T13:17:49.1640316+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/header-only/stream","Elapsed":0}
+{"Time":"2026-11-16T13:17:49.1640316+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/ragged-wide/buffered"}
+{"Time":"2026-11-16T13:17:49.1640316+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/ragged-wide/buffered","Output":"=== RUN   TestListXLSXUsedRange/ragged-wide/buffered\n"}
+{"Time":"2026-11-16T13:17:49.1680345+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/ragged-wide/buffered","Output":"--- PASS: TestListXLSXUsedRange/ragged-wide/buffered (0.00s)\n"}
+{"Time":"2026-11-16T13:17:49.1690358+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/ragged-wide/buffered","Elapsed":0}
+{"Time":"2026-11-16T13:17:49.1690358+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/ragged-wide/stream"}
+{"Time":"2026-11-16T13:17:49.1690358+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/ragged-wide/stream","Output":"=== RUN   TestListXLSXUsedRange/ragged-wide/stream\n"}
+{"Time":"2026-11-16T13:17:49.1720369+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/ragged-wide/stream","Output":"--- PASS: TestListXLSXUsedRange/ragged-wide/stream (0.00s)\n"}
+{"Time":"2026-11-16T13:17:49.1730358+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/ragged-wide/stream","Elapsed":0}
+{"Time":"2026-11-16T13:17:49.1730358+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/styled-empty-tail/buffered"}
+{"Time":"2026-11-16T13:17:49.1730358+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/styled-empty-tail/buffered","Output":"=== RUN   TestListXLSXUsedRange/styled-empty-tail/buffered\n"}
+{"Time":"2026-11-16T13:17:49.1760397+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/styled-empty-tail/buffered","Output":"--- PASS: TestListXLSXUsedRange/styled-empty-tail/buffered (0.00s)\n"}
+{"Time":"2026-11-16T13:17:49.1760397+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/styled-empty-tail/buffered","Elapsed":0}
+{"Time":"2026-11-16T13:17:49.1760397+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/styled-empty-tail/stream"}
+{"Time":"2026-11-16T13:17:49.1760397+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/styled-empty-tail/stream","Output":"=== RUN   TestListXLSXUsedRange/styled-empty-tail/stream\n"}
+{"Time":"2026-11-16T13:17:49.181036+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/styled-empty-tail/stream","Output":"--- PASS: TestListXLSXUsedRange/styled-empty-tail/stream (0.00s)\n"}
+{"Time":"2026-11-16T13:17:49.181036+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/styled-empty-tail/stream","Elapsed":0}
+{"Time":"2026-11-16T13:17:49.181036+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/height-only-tail/buffered"}
+{"Time":"2026-11-16T13:17:49.181036+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/height-only-tail/buffered","Output":"=== RUN   TestListXLSXUsedRange/height-only-tail/buffered\n"}
+{"Time":"2026-11-16T13:17:49.1840368+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/height-only-tail/buffered","Output":"--- PASS: TestListXLSXUsedRange/height-only-tail/buffered (0.00s)\n"}
+{"Time":"2026-11-16T13:17:49.1840368+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/height-only-tail/buffered","Elapsed":0}
+{"Time":"2026-11-16T13:17:49.1840368+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/height-only-tail/stream"}
+{"Time":"2026-11-16T13:17:49.1840368+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/height-only-tail/stream","Output":"=== RUN   TestListXLSXUsedRange/height-only-tail/stream\n"}
+{"Time":"2026-11-16T13:17:49.1890378+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/height-only-tail/stream","Output":"--- PASS: TestListXLSXUsedRange/height-only-tail/stream (0.00s)\n"}
+{"Time":"2026-11-16T13:17:49.1890378+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/height-only-tail/stream","Elapsed":0}
+{"Time":"2026-11-16T13:17:49.1890378+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/no-header/buffered"}
+{"Time":"2026-11-16T13:17:49.1890378+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/no-header/buffered","Output":"=== RUN   TestListXLSXUsedRange/no-header/buffered\n"}
+{"Time":"2026-11-16T13:17:49.1920412+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/no-header/buffered","Output":"--- PASS: TestListXLSXUsedRange/no-header/buffered (0.00s)\n"}
+{"Time":"2026-11-16T13:17:49.1920412+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/no-header/buffered","Elapsed":0}
+{"Time":"2026-11-16T13:17:49.1920412+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/no-header/stream"}
+{"Time":"2026-11-16T13:17:49.1920412+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/no-header/stream","Output":"=== RUN   TestListXLSXUsedRange/no-header/stream\n"}
+{"Time":"2026-11-16T13:17:49.1970437+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/no-header/stream","Output":"--- PASS: TestListXLSXUsedRange/no-header/stream (0.01s)\n"}
+{"Time":"2026-11-16T13:17:49.1970437+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange/no-header/stream","Elapsed":0.01}
+{"Time":"2026-11-16T13:17:49.1970437+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange","Output":"--- PASS: TestListXLSXUsedRange (0.05s)\n"}
+{"Time":"2026-11-16T13:17:49.1970437+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Test":"TestListXLSXUsedRange","Elapsed":0.05}
+{"Time":"2026-11-16T13:17:49.1970437+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Output":"PASS\n"}
+{"Time":"2026-11-16T13:17:49.2000403+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/excel","Output":"ok  \tgithub.com/ivantit66/onebase/internal/excel\t0.210s\n"}
+{"Time":"2026-11-16T13:17:49.2000403+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/excel","Elapsed":0.21}
+{"Time":"2026-11-16T13:19:11.9204592+03:00","Action":"start","Package":"github.com/ivantit66/onebase/internal/ui"}
+{"Time":"2026-11-16T13:19:12.1675559+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix"}
+{"Time":"2026-11-16T13:19:12.1675559+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix","Output":"=== RUN   TestOrdinaryReportXLSXUsedRangeMatrix\n"}
+{"Time":"2026-11-16T13:19:12.1675559+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite"}
+{"Time":"2026-11-16T13:19:12.1675559+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite","Output":"=== RUN   TestOrdinaryReportXLSXUsedRangeMatrix/sqlite\n"}
+{"Time":"2026-11-16T13:19:12.2416739+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/direct"}
+{"Time":"2026-11-16T13:19:12.2416739+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/direct","Output":"=== RUN   TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/direct\n"}
+{"Time":"2026-11-16T13:19:12.2551042+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/direct","Output":"--- PASS: TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/direct (0.02s)\n"}
+{"Time":"2026-11-16T13:19:12.2551042+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/direct","Elapsed":0.02}
+{"Time":"2026-11-16T13:19:12.2551042+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/background"}
+{"Time":"2026-11-16T13:19:12.2551042+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/background","Output":"=== RUN   TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/background\n"}
+{"Time":"2026-11-16T13:19:12.265119+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/background","Output":"--- PASS: TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/background (0.01s)\n"}
+{"Time":"2026-11-16T13:19:12.265119+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite/background","Elapsed":0.01}
+{"Time":"2026-11-16T13:19:12.3036707+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite","Output":"--- PASS: TestOrdinaryReportXLSXUsedRangeMatrix/sqlite (0.13s)\n"}
+{"Time":"2026-11-16T13:19:12.3036707+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/sqlite","Elapsed":0.13}
+{"Time":"2026-11-16T13:19:12.3036707+03:00","Action":"run","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/postgres"}
+{"Time":"2026-11-16T13:19:12.3036707+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/postgres","Output":"=== RUN   TestOrdinaryReportXLSXUsedRangeMatrix/postgres\n"}
+{"Time":"2026-11-16T13:19:12.3036707+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/postgres","Output":"    dbtest.go:68: TEST_DATABASE_URL not set\n"}
+{"Time":"2026-11-16T13:19:12.3036707+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/postgres","Output":"--- SKIP: TestOrdinaryReportXLSXUsedRangeMatrix/postgres (0.00s)\n"}
+{"Time":"2026-11-16T13:19:12.3036707+03:00","Action":"skip","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix/postgres","Elapsed":0}
+{"Time":"2026-11-16T13:19:12.3036707+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix","Output":"--- PASS: TestOrdinaryReportXLSXUsedRangeMatrix (0.13s)\n"}
+{"Time":"2026-11-16T13:19:12.3036707+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/ui","Test":"TestOrdinaryReportXLSXUsedRangeMatrix","Elapsed":0.13}
+{"Time":"2026-11-16T13:19:12.3036707+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Output":"PASS\n"}
+{"Time":"2026-11-16T13:19:12.3168673+03:00","Action":"output","Package":"github.com/ivantit66/onebase/internal/ui","Output":"ok  \tgithub.com/ivantit66/onebase/internal/ui\t0.396s\n"}
+{"Time":"2026-11-16T13:19:12.3168673+03:00","Action":"pass","Package":"github.com/ivantit66/onebase/internal/ui","Elapsed":0.396}

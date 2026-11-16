@@ -1,0 +1,36 @@
+{
+  "runtime": "f045bdb11b5e563120ff0381476957e5df9e2549",
+  "base_b27r2": "a10677b2903e4b94cefb8d90a4104fe8a24aa639",
+  "status": "SDK_READY_WINDOWS_NATIVE75_PASS_INDEPENDENT_PG_PENDING",
+  "build_manifest": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-reports-build-20261116\\manifest.json",
+  "native_receipt": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-native-combined-20261116.json",
+  "artifacts": {
+    "windows": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b28-reports-windows-amd64.exe",
+      "sha256": "e3a9682e547a9e41cd6aeea7df733127cfa5dee443b84b6351e01506c8c503c0",
+      "bytes": 79430144,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-reports-build-20261116\\windows-sdk-buildinfo.txt",
+      "runtime": "f045bdb11b5e563120ff0381476957e5df9e2549",
+      "embedded_vcs_not_claimed": true
+    },
+    "linux": {
+      "path": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\onebase-1116b28-reports-linux-amd64",
+      "sha256": "8ad3b292e9cacb722b6738da6d0a20f844946bbccd296e517f336d60e7f86268",
+      "bytes": 78443333,
+      "buildinfo": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-reports-build-20261116\\linux-sdk-buildinfo.txt",
+      "runtime": "f045bdb11b5e563120ff0381476957e5df9e2549",
+      "embedded_vcs_not_claimed": true
+    }
+  },
+  "local_xlsx": {
+    "pass": 66
+  },
+  "local_reports": {
+    "pass": 85,
+    "skip": 10
+  },
+  "native_checks": 75,
+  "pg_handoff": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b28-independent-pg-handoff-20261116.json",
+  "shared_changes": false,
+  "db_copies": 0
+}

@@ -1,0 +1,50 @@
+{
+  "started_utc": "2026-11-16T10:07:45.529170+00:00",
+  "serial": true,
+  "runs": [
+    {
+      "pr": 2631,
+      "head": "6ac8da0fa9bab99c57078cfc04d6235070097cd7",
+      "pass_events": 12,
+      "skip_events": 1,
+      "pg_skip_not_claimed_as_pass": true,
+      "test_log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\refreshed-source-checks-20261116\\2631-tests.jsonl",
+      "test_sha256": "1bfc408faec05898ff42fe75fe5e0cb952bb7ce1b1383522f9e3573aee96190d",
+      "build_all": "PASS",
+      "build_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "pr": 2630,
+      "head": "892365a03c8c35e3c48dea25ed897a3c9a072d95",
+      "pass_events": 9,
+      "skip_events": 1,
+      "pg_skip_not_claimed_as_pass": true,
+      "test_log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\refreshed-source-checks-20261116\\2630-tests.jsonl",
+      "test_sha256": "8cb75d707db10ee64cbe223751a890c0a9d4f7e8fe5cdebe8beeab1bab0bd623",
+      "build_all": "PASS",
+      "build_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "pr": 2629,
+      "head": "449bafdb8a8c86f177e8dbbe768a62af885b2ab0",
+      "pass_events": 8,
+      "skip_events": 1,
+      "pg_skip_not_claimed_as_pass": true,
+      "test_log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\refreshed-source-checks-20261116\\2629-tests.jsonl",
+      "test_sha256": "6a79a76d70ff62236e1a9b004cf3f8277392f3f20da974c10d0c27e36e84b720",
+      "build_all": "PASS",
+      "build_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "pr": 2632,
+      "head": "54a8303aa668dbe35c577ec0a372bf25267b347c",
+      "pass_events": 17,
+      "skip_events": 1,
+      "pg_skip_not_claimed_as_pass": true,
+      "test_log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\refreshed-source-checks-20261116\\2632-tests.jsonl",
+      "test_sha256": "848b5c84b502bf6d5aa02053993a97159598cbd6caf2fd826242c949539e5ebe",
+      "build_all": "PASS",
+      "build_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}
