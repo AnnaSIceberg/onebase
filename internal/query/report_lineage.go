@@ -650,17 +650,21 @@ func (p *reportLineageParser) atom(depth int) (*reportExpr, error) {
 func (p *reportLineageParser) call(name string, depth int) (*reportExpr, error) {
 	op, agg := sqlAgg(name)
 	if !agg {
-		switch upperFast(name) {
-		case "ЕСТЬNULL", "ISNULL", "COALESCE":
-			op = "COALESCE"
-		case "SUBSTR", "SUBSTRING":
-			op = "SUBSTR"
-		case "LENGTH", "ДЛИНАСТРОКИ":
-			op = "LENGTH"
-		case "CAST":
-			op = "CAST"
-		default:
-			return nil, fmt.Errorf("report lineage: unknown function")
+		if calendar := lineageCalendarFunction(name); calendar != "" {
+			op = calendar
+		} else {
+			switch upperFast(name) {
+			case "ЕСТЬNULL", "ISNULL", "COALESCE":
+				op = "COALESCE"
+			case "SUBSTR", "SUBSTRING":
+				op = "SUBSTR"
+			case "LENGTH", "ДЛИНАСТРОКИ":
+				op = "LENGTH"
+			case "CAST":
+				op = "CAST"
+			default:
+				return nil, fmt.Errorf("report lineage: unknown function")
+			}
 		}
 	}
 	p.pos++ // (
@@ -781,6 +785,11 @@ func lineageExprType(op, value string, args []ReportExpression) (metadata.FieldT
 	}
 	isNumber := func(i int) bool { return i < len(args) && args[i].Type == metadata.FieldTypeNumber }
 	switch op {
+	case "YEAR", "MONTH", "DAY":
+		if typ, ok := lineageCalendarType(args); ok {
+			return typ, nil
+		}
+		return fail()
 	case "union-all", "union-distinct":
 		if len(args) != 2 {
 			return fail()

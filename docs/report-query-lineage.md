@@ -94,3 +94,11 @@ SELECT (включая CASE/COUNT), GROUP/ORDER и derived passthrough оста�
 Typed fingerprints используют общий provenance FormatVersion 2/domain v2.
 Receipts старого формата нужно инвалидировать и пересчитать по host snapshot;
 совпадение digest не доказывает доверенное происхождение пользовательского ввода.
+
+Год/YEAR, Месяц/MONTH, День/DAY сохраняют дерево аргумента и дают числовой тип
+только при одном доказанном поле/выражении metadata type date. String/number,
+непривязанный параметр, неизвестная функция/arity/DISTINCT дают STOP без partial
+receipt. Группировка по функции сохраняет те же control origins. SQL rewrite
+остаётся в обычном compiler без изменений; это не разрешение раскрытия календарной
+части защищённой даты. РАЗНОСТЬДАТ и виртуальные источники пока не поддержаны
+этим профилем.
