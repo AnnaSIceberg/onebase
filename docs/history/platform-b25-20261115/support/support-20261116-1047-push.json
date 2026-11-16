@@ -1,0 +1,74 @@
+{
+  "branch": "wip/platform-b24-final-b25-handoff-20261115",
+  "commit": "d491e29eb95453dbbfef9a29374eb2c8a57c631d",
+  "parent": "6e7df0a16f1f875a1b818d0b4bffec342152153b",
+  "files": [
+    {
+      "path": "reports/20261116-1047-platform-B22-GoEND-PG-handoff.md",
+      "bytes": 3167,
+      "sha256": "9b6f0549dedcdcb5a842e7ca574ea61fdf5652ec778db95b28683869781e74ea"
+    },
+    {
+      "path": "support/b22-corrected-pg-handoff-20261116-1047.json",
+      "bytes": 17680,
+      "sha256": "068c187cc47cb93a0a0458609ba6020ae5be2f1a7320ef38b3a2555131fba5e8"
+    },
+    {
+      "path": "support/b22-corrected-ui-tests-20261116/receipt.json",
+      "bytes": 17434,
+      "sha256": "d3da5f12a116289149f781f96538e34af11d92682246299004b75986a89aa4bb"
+    },
+    {
+      "path": "support/b22-corrected-ui-tests-20261116/local-targeted.jsonl",
+      "bytes": 17666,
+      "sha256": "b1b395a008a1e62edb6d196bcab1e15128feda2767c600a48c5a536c12d50373"
+    },
+    {
+      "path": "support/b22-corrected-ui-tests-20261116/linux-prebuilt-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "support/b22-corrected-ui-tests-20261116/linux-prebuilt-buildinfo.txt",
+      "bytes": 378,
+      "sha256": "d63d831d7d49dc3f06e9cd3f12248593f3dfc591a48771e9a3c0c635dec78944"
+    },
+    {
+      "path": "support/build-b22-corrected-ui-tests-20261116.py",
+      "bytes": 4387,
+      "sha256": "bb0724f310ac287d7451a85036f01e4efddb42cb5d05e6b7395a8a0fcd5fbb3e"
+    },
+    {
+      "path": "support/build-b22-corrected-ui-tests-attempt2-20261116.py",
+      "bytes": 4396,
+      "sha256": "1d6b99cf7b51b4c580e09b1e579b9c20031da1ba53403c89a3e9cc355708cc98"
+    },
+    {
+      "path": "support/recover-support-push-20261116.py",
+      "bytes": 2011,
+      "sha256": "fdecbc7cfaef981db16ecc37bc435cc9031e85f293d791106e37eb954b52407d"
+    },
+    {
+      "path": "support/handoff-b22-pg-20261116.py",
+      "bytes": 6108,
+      "sha256": "631f432669a2a98d9b701418a5bf4b371c5e8441bb28dcc77e50c14f490459bc"
+    },
+    {
+      "path": "support/support-20261116-1032-push.json",
+      "bytes": 2630,
+      "sha256": "ab945874aae31741eb91011fec3fa41b1587351dc0f6010c2c4620e95846ff93"
+    },
+    {
+      "path": "support/b22-first-sandbox-fail-20261116/receipt.json",
+      "bytes": 1092,
+      "sha256": "595135f3c46f40565a7e4fe1de7a2d92bf2add2b26e41c5bcc4e379b8ff00ad1"
+    },
+    {
+      "path": "support/b22-first-sandbox-fail-20261116/local-targeted.jsonl",
+      "bytes": 854,
+      "sha256": "b2bda294ae854fa4384bd15a9d5eb34381367f881f071efbd052641ef8e07180"
+    }
+  ],
+  "created_utc": "2026-11-16T07:47:55.323771+00:00",
+  "scope": "metadata/source reports only; no SDK/DB/secrets/payloads"
+}

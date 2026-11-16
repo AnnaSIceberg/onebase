@@ -1,0 +1,25 @@
+{
+  "branch": "feature/tabular-workbook-xlsx-20261116",
+  "head": "84f146757cb91f353067cb03ab5e34ccc1d4c6ac",
+  "parent": "c63fe8e37796ebfaa057bbfed08888d4c3bad610",
+  "base_main": "adddaa8d95f04b4b7b3ff57991edbbd9b8740fa2",
+  "dependency": "Draft #2627 + test-only 0594980b",
+  "files": [
+    "docs/features.md",
+    "examples/tabular-workbook/README.md",
+    "internal/sheet/workbook.go",
+    "internal/sheet/workbook_test.go",
+    "internal/sheet/xlsx.go",
+    "internal/dsl/interpreter/spreadsheet_document.go",
+    "internal/dsl/interpreter/spreadsheet_workbook.go",
+    "internal/dsl/interpreter/spreadsheet_workbook_test.go"
+  ],
+  "status": "DRAFT_PUBLISHED_TESTS_PENDING",
+  "created_utc": "2026-11-16T08:07:07.568754+00:00",
+  "pull_request": {
+    "headRefOid": "84f146757cb91f353067cb03ab5e34ccc1d4c6ac",
+    "isDraft": true,
+    "number": 2635,
+    "url": "https://github.com/ivanarama/onebase/pull/2635"
+  }
+}

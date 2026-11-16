@@ -1,0 +1,29 @@
+{
+  "source": "84f146757cb91f353067cb03ab5e34ccc1d4c6ac",
+  "pr": 2635,
+  "started_utc": "2026-11-16T08:09:34.605163+00:00",
+  "commands": [
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-count=1",
+        "-p=1",
+        "-json",
+        "./internal/sheet",
+        "./internal/dsl/interpreter",
+        "-run",
+        "Test.*(Workbook|XLSX|Xlsx|Outline)"
+      ],
+      "exit": 1,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\t8-verify-attempt1-20261116\\xlsx-and-workbook-tests.jsonl",
+      "sha256": "806814878201d350d7b2e11bbe30c13f970bcc33770e8b59b1f9589717e28431",
+      "gomaxprocs": 2,
+      "parallelism": 1,
+      "start": "2026-11-16T08:09:34.797045+00:00",
+      "end": "2026-11-16T08:11:23.137933+00:00"
+    }
+  ],
+  "database_access": false,
+  "sdk_rebuilt": false
+}

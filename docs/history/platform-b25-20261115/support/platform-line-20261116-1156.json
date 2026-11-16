@@ -1,0 +1,49 @@
+{
+  "current_dev_baseline": {
+    "name": "B26",
+    "runtime": "513274b7e1bc230d8c0de5fcd22a34deb672345c",
+    "linux_sdk_sha256": "e977a632cfefc6c1b34575b4ac7797aeb1c057090738f470243fb03b48b67e6d",
+    "deployment_provenance": "release-claude report 20261116-1051; no platform live-install or independent SDK file hash claimed"
+  },
+  "b26_source_ci": {
+    "pr": 2634,
+    "head": "2a0f4acad4df556dcd8d4676ef2967aa050fe687",
+    "parent": "ed5636a5dd89387f91359b412c06240fecc1b5c2",
+    "own_branch": "fix/side-panel-full-height-ci-20261116",
+    "source_branch": "fix/side-panel-full-height-source",
+    "change": "one en translation: Panel width",
+    "i18n_exit": 0,
+    "source_push_user_approved": true,
+    "runtime_rebuilt": false
+  },
+  "t8_source": {
+    "pr": 2635,
+    "head": "79aac9d7426497fac35ba00ea42ba95232f23ff5",
+    "proof": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\t8-verify-attempt3-20261116\\receipt.json",
+    "proof_sha256": "1482b05598ec31ea5ae37b476b544ebce6ed6b03d3c626960c3607e4da62eebd",
+    "leaf_pass": 49,
+    "openpyxl_checks": 4,
+    "build_all": "PASS",
+    "i18n_en": "PASS"
+  },
+  "b27_candidate": {
+    "runtime": "7b89c38bfab4d2aa2f2c8d1843fb66f83032cfd3",
+    "branch": "integration/cc2-b27-workbook-20261116",
+    "base_b26": "513274b7e1bc230d8c0de5fcd22a34deb672345c",
+    "status": "SDK_BUILD_ACTIVE_NATIVE_PENDING",
+    "contains": "B26 + T8 only; B22/P4/P7 follow separately",
+    "installed": false
+  },
+  "b22": {
+    "status": "Windows native26 PASS; corrected UI prebuilt ready; independent PG196 pending",
+    "handoff": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\b22-corrected-pg-handoff-20261116-1047.json"
+  },
+  "source_pr_conflicts": [
+    2630,
+    2629,
+    2631,
+    2632
+  ],
+  "shared_changes_by_platform": false,
+  "recursive_disk_search": false
+}

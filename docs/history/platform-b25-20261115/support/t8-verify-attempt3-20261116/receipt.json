@@ -1,0 +1,303 @@
+{
+  "source": "79aac9d7426497fac35ba00ea42ba95232f23ff5",
+  "pr": 2635,
+  "started_utc": "2026-11-16T08:36:24.013349+00:00",
+  "commands": [
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "test",
+        "-count=1",
+        "-p=1",
+        "-json",
+        "./internal/sheet",
+        "./internal/dsl/interpreter",
+        "-run",
+        "Test.*(Workbook|XLSX|Xlsx|Outline)"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\t8-verify-attempt3-20261116\\xlsx-and-workbook-tests.jsonl",
+      "sha256": "a028cc41776e50a9a0ca78917699e11bb24565fae3e2fde23b2a542b3b9bdd12",
+      "gomaxprocs": 2,
+      "parallelism": 1,
+      "start": "2026-11-16T08:36:24.185868+00:00",
+      "end": "2026-11-16T08:37:42.075427+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "build",
+        "-p=1",
+        "./..."
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\t8-verify-attempt3-20261116\\build-all.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gomaxprocs": 2,
+      "parallelism": 1,
+      "start": "2026-11-16T08:37:43.440381+00:00",
+      "end": "2026-11-16T08:38:43.823408+00:00"
+    },
+    {
+      "argv": [
+        "C:/Users/a.sevrjukova/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.windows-amd64/bin/go.exe",
+        "run",
+        "-p=1",
+        "./tools/i18ncheck"
+      ],
+      "exit": 0,
+      "log": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\t8-verify-attempt3-20261116\\i18n-en.log",
+      "sha256": "bbb90d25f48c30fb8a7f97112922bc9033c167b1ac03a0ed11b569d9c97933c3",
+      "gomaxprocs": 2,
+      "parallelism": 1,
+      "start": "2026-11-16T08:38:44.009706+00:00",
+      "end": "2026-11-16T08:38:45.754085+00:00"
+    }
+  ],
+  "database_access": false,
+  "sdk_rebuilt": false,
+  "leaf_counts": {
+    "pass": 49
+  },
+  "leaf_names": [
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLLayoutAndGroups"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/apostrophe"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/arity"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/blank"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/column-bound"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/constructor"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/count-arity"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/duplicate"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/empty"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/format"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/global-budget"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/invalid-character"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/long"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/row-bound"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/sparse-budget"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/unknown-method"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/wrong-document"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLRejectsInvalidInputs/wrong-name"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetWorkbookDSLTwoNamedSnapshots"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetXLSXAttachmentIsWorkbook"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/dsl/interpreter",
+      "TestSpreadsheetXLSXBase64Export"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXDimension/autoscale"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXDimension/collapsed"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXDimension/dense"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXDimension/empty"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXDimension/format-maps-only"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXDimension/kpi-53893"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXDimension/merge-span"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXDimension/single"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXDimension/sparse-offset"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXDimension/styled-tail"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestDocumentXLSXKeepsLayoutStyles"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestTabularDrilldownColorXLSXUnchanged/008000"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestTabularDrilldownColorXLSXUnchanged/A3A300"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestTabularDrilldownColorXLSXUnchanged/FF0000"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestTabularDrilldownColorXLSXUnchanged/FF9900"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestTabularExportXLSXCollapsedParentWins"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestTabularExportXLSXViewAndFormats"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestWorkbookExcelBoundsIncludeMergesAndGeometry/height"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestWorkbookExcelBoundsIncludeMergesAndGeometry/merge-column"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestWorkbookExcelBoundsIncludeMergesAndGeometry/merge-row"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestWorkbookExcelBoundsIncludeMergesAndGeometry/negative-cell"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestWorkbookExcelBoundsIncludeMergesAndGeometry/nil-cell"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestWorkbookExcelBoundsIncludeMergesAndGeometry/pane"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestWorkbookExcelBoundsIncludeMergesAndGeometry/width"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestWorkbookGroupingWorkSharesCellBudget"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestWorkbookNamesAndSheetBudget"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestWorkbookResourceLimitsAreGlobalAndAtomic"
+    ],
+    [
+      "github.com/ivantit66/onebase/internal/sheet",
+      "TestXLSXColor"
+    ]
+  ],
+  "independent_reader": {
+    "version": "3.1.5",
+    "checks": [
+      {
+        "read_only": false,
+        "sheet": "СМ",
+        "value": 111,
+        "type": "int",
+        "fill": "FFFF0000",
+        "dimension": "A1:A1"
+      },
+      {
+        "read_only": false,
+        "sheet": "ХД",
+        "value": 222,
+        "type": "int",
+        "fill": "FF00FF00",
+        "dimension": "A1:A1"
+      },
+      {
+        "read_only": true,
+        "sheet": "СМ",
+        "value": 111,
+        "type": "int",
+        "fill": "FFFF0000",
+        "dimension": "A1:A1"
+      },
+      {
+        "read_only": true,
+        "sheet": "ХД",
+        "value": 222,
+        "type": "int",
+        "fill": "FF00FF00",
+        "dimension": "A1:A1"
+      }
+    ],
+    "reset_dimensions": false,
+    "forced_bounds": false,
+    "artifact": "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\platform-help-admin-20261111\\t8-verify-attempt3-20261116\\two-named-snapshots.xlsx",
+    "sha256": "49d408dd2b2c8d2ee710d17955dbea23a19c34243e681ff7da8552f1e8b008c9"
+  },
+  "status": "TARGETED_TESTS_AND_BUILD_ALL_PASS_OPENPYXL_PASS",
+  "ended_utc": "2026-11-16T08:38:45.755236+00:00"
+}
