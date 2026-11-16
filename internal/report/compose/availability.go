@@ -75,18 +75,17 @@ func (a *measureAvailability) dependency(target int, candidates []int) {
 
 // Do not choose a new winner for duplicate names. Exact output-key writes use
 // the existing aggregate/Expr order. A case-fold ambiguity is unavailable only
-// when every possible bound slot is unavailable. Pending active declarations
-// must not be poisoned merely by an earlier excluded same-name declaration.
-func availabilityBindings(name string, writers map[string]int, pending map[string][]int, excluded []bool) []int {
+// when every possible bound slot is unavailable. Pending declarations are
+// considered only when no previous writer exists, never instead of a real
+// excluded previous writer (including an Expr reading its own old field).
+func availabilityBindings(name string, writers map[string]int, pending map[string][]int) []int {
 	var candidates []int
-	activeWritten := false
 	for field, slot := range writers {
 		if strings.EqualFold(name, field) {
 			candidates = append(candidates, slot)
-			activeWritten = activeWritten || !excluded[slot]
 		}
 	}
-	if !activeWritten && len(pending[strings.ToLower(name)]) > 0 {
+	if len(candidates) == 0 {
 		return pending[strings.ToLower(name)]
 	}
 	return candidates
@@ -155,7 +154,7 @@ func newMeasureAvailability(declared, active []report.Measure, slots, order []in
 		m, slot := active[n], slots[n]
 		for _, name := range availabilityIdentifiers(m.Expr) {
 			if declaredNames[strings.ToLower(name)] {
-				a.dependency(slot, availabilityBindings(name, planned, pending, excluded))
+				a.dependency(slot, availabilityBindings(name, planned, pending))
 				continue
 			}
 			scope, field, ok := report.MeasureReference(name)
@@ -173,7 +172,7 @@ func newMeasureAvailability(declared, active []report.Measure, slots, order []in
 				source, self = ctx.first, ctx.firstSelf
 			}
 			if self {
-				ids := availabilityBindings(field, planned, pending, excluded)
+				ids := availabilityBindings(field, planned, pending)
 				if len(ids) == 0 {
 					a.mark(slot)
 				} else {

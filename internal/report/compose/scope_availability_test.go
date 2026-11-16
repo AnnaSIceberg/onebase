@@ -108,6 +108,36 @@ func TestScopeUnavailableDoesNotPoisonActiveDuplicateBinding(t *testing.T) {
 	}
 }
 
+func TestScopeUnavailableSelfReadUsesActualPreviousWriter(t *testing.T) {
+	for _, scoped := range []bool{false, true} {
+		previous := report.Measure{Field: "N", Agg: "min"}
+		value := any(nil)
+		if scoped {
+			previous.Scope = []string{report.MeasureScopeGrand}
+			value = 7
+		}
+		spec := report.Composition{Groupings: []string{"G"}, Measures: []report.Measure{previous, {Field: "N", Expr: "N + 1"}, {Field: "X", Expr: "N * 2"}}}
+		ev := &availabilityEvaluator{inner: expreval.New(nil, expreval.DefaultProfile()), calls: map[string]int{}}
+		result, err := compose.Compose([]compose.Row{{"G": "a", "N": value}}, spec, ev)
+		if err != nil || len(result.Warnings) != 0 {
+			t.Fatalf("self binding: %v %+v", err, result)
+		}
+		if scoped {
+			number(t, result.Grand["N"], "8")
+			number(t, result.Grand["X"], "16")
+			if result.Groups[0].Subtotals["N"] != nil || result.Groups[0].Subtotals["X"] != nil || ev.calls["N + 1"] != 1 || ev.calls["N * 2"] != 1 {
+				t.Fatal("pending self slot replaced an actual excluded writer")
+			}
+		} else {
+			number(t, result.Groups[0].Subtotals["N"], "1")
+			number(t, result.Groups[0].Subtotals["X"], "2")
+			if ev.calls["N + 1"] != 2 || ev.calls["N * 2"] != 2 {
+				t.Fatal("ordinary available nil self-read changed")
+			}
+		}
+	}
+}
+
 func TestScopeUnavailableMissingP6PropagatesAndZeroRemains(t *testing.T) {
 	spec := report.Composition{Groupings: []string{"G"}, Columns: []string{"Year"}, Measures: []report.Measure{
 		{Field: "Amount", Agg: "sum"}, {Field: "X", Expr: "Amount - Previous_Amount"}, {Field: "Y", Expr: "X + 1"},
