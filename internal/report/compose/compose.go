@@ -461,9 +461,11 @@ func aggregateContext(rows []Row, measures []report.Measure, ev Evaluator, wc *w
 	declared := measures
 	out := map[string]any{}
 	active := make([]report.Measure, 0, len(measures))
-	for _, m := range measures {
+	var activeSlots []int
+	for slot, m := range measures {
 		if m.InScope(level) {
 			active = append(active, m.AtLevel(level))
+			activeSlots = append(activeSlots, slot)
 		} else {
 			out[m.Field] = nil
 		}
@@ -480,6 +482,7 @@ func aggregateContext(rows []Row, measures []report.Measure, ev Evaluator, wc *w
 	// (Expr, ссылающийся на другой Expr, вычисляется после него) — порядок
 	// объявления в YAML больше не критичен. Циклы разрываются с предупреждением.
 	order, cyclic := orderExprMeasures(measures, declared)
+	availability := newMeasureAvailability(declared, measures, activeSlots, order, ctx, out)
 	if len(cyclic) > 0 {
 		names := make([]string, len(cyclic))
 		for i, idx := range cyclic {
@@ -489,13 +492,23 @@ func aggregateContext(rows []Row, measures []report.Measure, ev Evaluator, wc *w
 	}
 	for _, idx := range order {
 		m := measures[idx]
+		slot := activeSlots[idx]
+		if availability.blocked[slot] {
+			out[m.Field] = nil
+			availability.writers[m.Field] = slot
+			continue
+		}
 		if ev == nil {
 			out[m.Field] = nil
+			availability.writers[m.Field] = slot
 			continue
 		}
 		bindings, available := contextBindings(m.Expr, out, declared, ctx)
 		if !available {
+			availability.mark(slot)
+			availability.propagate(out)
 			out[m.Field] = nil
+			availability.writers[m.Field] = slot
 			continue
 		}
 		d, ok, err := ev.EvalNum(m.Expr, bindings)
@@ -512,6 +525,7 @@ func aggregateContext(rows []Row, measures []report.Measure, ev Evaluator, wc *w
 			// ноль) → пустая ячейка, как в 1С (без предупреждения).
 			out[m.Field] = nil
 		}
+		availability.writers[m.Field] = slot
 	}
 	return out
 }
