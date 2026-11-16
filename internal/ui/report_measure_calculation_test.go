@@ -114,23 +114,29 @@ composition:
 		})
 	}
 	req := reqWithChi(http.MethodGet, "/ui/report/calculations/pdf", nil, map[string]string{"name": "calculations"})
-	headers, rows, err := s.reportExportRows(req, rep)
+	headers, rows, styles, err := s.reportExportTable(req, rep)
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc := buildReportSheet("calculations", headers, rows)
+	if len(styles) != len(rows) {
+		t.Fatal("export row styles lost alignment")
+	}
+	doc := buildReportSheet("calculations", headers, rows, styles)
 	found := false
 	for i, row := range rows {
 		if len(row) < 2 {
 			continue
 		}
-		if strings.TrimSpace(fmt.Sprint(row[0])) == "ВСЕГО" {
+		if strings.TrimSpace(fmt.Sprint(row[0])) == "Итого" {
 			if fmtVal(row[1]) != "87,50" {
 				t.Fatalf("wrong PDF/common snapshot grand %v", row)
 			}
 			cell := doc.GetCell(3+i, 1)
 			if cell == nil || cell.Text != "87,50" {
 				t.Fatal("TabDoc changed grand")
+			}
+			if cell.BackColor != styles[i].Background || cell.Bold != styles[i].Bold {
+				t.Fatal("TabDoc changed export row style")
 			}
 			found = true
 		}

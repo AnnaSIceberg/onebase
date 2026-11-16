@@ -101,7 +101,7 @@ func TestOrdinaryReportXLSXUsedRangeMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(rows) != 28 || len(rows[27]) < 2 || rows[27][0] != "ВСЕГО" || rows[27][1] != "253" {
+			if len(rows) != 28 || len(rows[27]) < 2 || rows[27][0] != "Итого" || rows[27][1] != "253" {
 				t.Fatal("ordinary report rows/totals changed")
 			}
 			if dir := os.Getenv("ONEBASE_TEST_XLSX_DIR"); dir != "" {

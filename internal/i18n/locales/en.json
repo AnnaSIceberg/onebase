@@ -356,6 +356,7 @@
   "История конфигурации": "Configuration history",
   "Источник данных": "Data source",
   "Исходный код": "Source code",
+  "Итого": "Total",
   "К": "I",
   "К отчёту": "Back to report",
   "Как в 1С, у элемента появляется реквизит «Владелец».": "As in 1C, each item has an Owner attribute.",
@@ -1645,5 +1646,6 @@
   "КонтекстФормыРезультата доступен только в команде текущей формы результата": "ResultFormContext is available only in a command of the current result form",
   "Пауза": "Pause",
   "Позиция воспроизведения": "Playback position",
-  "Громкость": "Volume"
+  "Громкость": "Volume",
+  "Уровни группировки": "Grouping levels"
 }

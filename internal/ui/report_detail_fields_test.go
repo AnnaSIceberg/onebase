@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/excel"
 	"github.com/ivantit66/onebase/internal/metadata"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/report/compose"
@@ -92,7 +93,7 @@ func TestReportDetailFieldsHTTP(t *testing.T) {
 		t.Fatal("detail value is not escaped")
 	}
 	// Group and grand rows keep the column grid with empty detail cells.
-	if !strings.Contains(page, `<td>ВСЕГО</td><td class="detail-field" style=""></td><td class="detail-field" style=""></td>`) {
+	if !strings.Contains(page, `<td>Итого</td><td class="detail-field" style=""></td><td class="detail-field" style=""></td>`) {
 		t.Fatalf("grand row does not keep empty detail columns: %s", page)
 	}
 }
@@ -142,6 +143,28 @@ func TestComposedRowsDetailFields(t *testing.T) {
 	}
 	if got := fmtDetailVal("2026-11-20T09:00:00Z"); got != "20.11.2026 12:00:00" {
 		t.Fatalf("HTML detail value %q", got)
+	}
+	// Presentation adds a header and row styles without shifting the native
+	// detail columns, changing their dates, or converting numeric measures.
+	presentedHeaders, presentedRows, styles := composedRowsPresented(res, spec, reportCompositionPresentation{groupLabels: []string{"Мастер (подпись)"}})
+	if len(presentedHeaders) != len(headers) || presentedHeaders[0] != "Мастер (подпись)" || strings.Join(presentedHeaders[1:], "|") != strings.Join(headers[1:], "|") {
+		t.Fatalf("presentation shifted detail headers: %q", presentedHeaders)
+	}
+	if len(presentedRows) != len(rows) || len(styles) != len(rows) {
+		t.Fatalf("presentation shifted row/style count: %d/%d, want %d", len(presentedRows), len(styles), len(rows))
+	}
+	for ri := range rows {
+		if len(presentedRows[ri]) != len(rows[ri]) {
+			t.Fatalf("row %d column count changed", ri)
+		}
+		for ci := range rows[ri] {
+			if presentedRows[ri][ci] != rows[ri][ci] {
+				t.Fatalf("cell %d/%d changed: %#v -> %#v", ri, ci, rows[ri][ci], presentedRows[ri][ci])
+			}
+		}
+	}
+	if styles[0].Background == "" || !styles[0].Bold || styles[1] != (excel.RowStyle{}) {
+		t.Fatalf("group/detail styles misaligned: %+v", styles)
 	}
 }
 

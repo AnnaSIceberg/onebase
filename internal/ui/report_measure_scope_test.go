@@ -82,7 +82,7 @@ func TestReportMeasureScopeHTTPExports(t *testing.T) {
 					for _, value := range row {
 						if value == "987654321" {
 							count++
-							if row[0] != "ВСЕГО" {
+							if row[0] != "Итого" {
 								t.Fatalf("resource outside grand: %v", row)
 							}
 						}
@@ -100,11 +100,14 @@ func TestReportMeasureScopeHTTPExports(t *testing.T) {
 	}
 	// reportPDF uses exactly these export rows as buildReportSheet input.
 	req := reqWithChi(http.MethodGet, "/ui/report/scope/pdf", nil, map[string]string{"name": "scope"})
-	headers, rows, err := s.reportExportRows(req, rep)
+	headers, rows, styles, err := s.reportExportTable(req, rep)
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc := buildReportSheet("scope", headers, rows)
+	if len(styles) != len(rows) {
+		t.Fatal("export row styles lost alignment")
+	}
+	doc := buildReportSheet("scope", headers, rows, styles)
 	count := 0
 	for i, row := range rows {
 		if row[1] != nil {
@@ -112,13 +115,16 @@ func TestReportMeasureScopeHTTPExports(t *testing.T) {
 				t.Fatalf("unexpected PDF input value: %v", row[1])
 			}
 			count++
-			if row[0] != "ВСЕГО" {
+			if row[0] != "Итого" {
 				t.Fatalf("PDF input resource outside grand: %v", row)
 			}
 		}
 		cell := doc.GetCell(3+i, 1)
 		if cell == nil || cell.Text != fmtVal(row[1]) {
 			t.Fatal("PDF document changed resource value")
+		}
+		if cell.BackColor != styles[i].Background || cell.Bold != styles[i].Bold {
+			t.Fatal("PDF document changed export row style")
 		}
 	}
 	if count != 1 {
