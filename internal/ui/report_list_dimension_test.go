@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,13 +27,17 @@ import (
 )
 
 func TestOrdinaryReportXLSXUsedRangeMatrix(t *testing.T) {
+	const detailCount = 22
+	// ENG02: one header, two group rows containing their totals, all details,
+	// and one grand total. Legacy totals.subtotals must not add two footers.
+	const wantRows = 1 + 2 + detailCount + 1
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
 		e := &metadata.Entity{Name: "ListDimensionSource", Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: "Team", Type: metadata.FieldTypeString}, {Name: "Amount", Type: metadata.FieldTypeNumber}}}
 		if err := db.Migrate(ctx, []*metadata.Entity{e}); err != nil {
 			t.Fatal(err)
 		}
-		for i := 1; i <= 22; i++ {
+		for i := 1; i <= detailCount; i++ {
 			team := "A"
 			if i > 11 {
 				team = "B"
@@ -80,8 +86,9 @@ func TestOrdinaryReportXLSXUsedRangeMatrix(t *testing.T) {
 				if err := xml.Unmarshal(raw, &sh); err != nil {
 					t.Fatal(err)
 				}
-				if sh.Dimension.Ref != "A1:B28" || len(sh.Rows) != 28 {
-					t.Fatalf("ordinary XLSX dimension=%s rows%d, wantA1:B28/28", sh.Dimension.Ref, len(sh.Rows))
+				wantDimension := fmt.Sprintf("A1:B%d", wantRows)
+				if sh.Dimension.Ref != wantDimension || len(sh.Rows) != wantRows {
+					t.Fatalf("ordinary XLSX dimension=%s rows%d, want%s/%d", sh.Dimension.Ref, len(sh.Rows), wantDimension, wantRows)
 				}
 				found = true
 			}
@@ -101,8 +108,40 @@ func TestOrdinaryReportXLSXUsedRangeMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(rows) != 28 || len(rows[27]) < 2 || rows[27][0] != "Итого" || rows[27][1] != "253" {
+			if len(rows) != wantRows || len(rows[wantRows-1]) < 2 || rows[wantRows-1][0] != "Итого" || rows[wantRows-1][1] != "253" {
 				t.Fatal("ordinary report rows/totals changed")
+			}
+			wantSubtotals := map[string]int{"A": 66, "B": 187}
+			seenGroups := make(map[string]bool)
+			seenDetails := make(map[int]bool)
+			detailSubtotals := make(map[string]int)
+			group := ""
+			for index, row := range rows[1 : wantRows-1] {
+				if len(row) != 2 {
+					t.Fatalf("row%d lost cells: %v", index+2, row)
+				}
+				label := strings.TrimSpace(row[0])
+				value, err := strconv.Atoi(row[1])
+				if err != nil {
+					t.Fatalf("row%d invalid amount %q: %v", index+2, row[1], err)
+				}
+				if label != "" {
+					want, ok := wantSubtotals[label]
+					if !ok || seenGroups[label] || value != want {
+						t.Fatalf("row%d duplicate footer or wrong group subtotal: %v", index+2, row)
+					}
+					seenGroups[label] = true
+					group = label
+					continue
+				}
+				if group == "" || value < 1 || value > detailCount || seenDetails[value] || (group == "A" && value > 11) || (group == "B" && value <= 11) {
+					t.Fatalf("row%d missing, duplicate or misplaced detail in group %q: %v", index+2, group, row)
+				}
+				seenDetails[value] = true
+				detailSubtotals[group] += value
+			}
+			if len(seenGroups) != 2 || len(seenDetails) != detailCount || detailSubtotals["A"] != 66 || detailSubtotals["B"] != 187 {
+				t.Fatalf("ordinary XLSX lost groups/details: groups%v details%d sums%v", seenGroups, len(seenDetails), detailSubtotals)
 			}
 			if dir := os.Getenv("ONEBASE_TEST_XLSX_DIR"); dir != "" {
 				if err := os.MkdirAll(dir, 0700); err != nil { // #nosec G703 -- Opt-in test artifact directory supplied by the trusted test runner.
