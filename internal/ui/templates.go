@@ -4673,7 +4673,7 @@ const tplJournal = `
 <table><thead><tr>
   <th>{{t $.Lang "Документ"}}</th>
   {{range .JournalColumns}}<th>{{.DisplayLabel $.Lang}}</th>{{end}}
-  <th style="width:90px"></th>
+  {{if not .Cfg.HideListRowActions}}<th style="width:90px"></th>{{end}}
 </tr></thead>
 <tbody>
 {{range .Rows}}{{$row := .}}
@@ -4686,7 +4686,7 @@ const tplJournal = `
     {{if eq (index $fmts .Field) "date"}}<td style="{{journalCellStyle $row .Field}}">{{fmtDate $v}}</td>
     {{else}}<td style="{{journalCellStyle $row .Field}}">{{$v}}</td>{{end}}
   {{end}}
-  <td><a class="btn btn-sm btn-primary" href="/ui/document/{{lower (str (index . "_doc_kind"))}}/{{str (index . "id")}}">{{t $.Lang "Открыть"}}</a></td>
+  {{if not $.Cfg.HideListRowActions}}<td><a class="btn btn-sm btn-primary" href="/ui/document/{{lower (str (index . "_doc_kind"))}}/{{str (index . "id")}}">{{t $.Lang "Открыть"}}</a></td>{{end}}
 </tr>
 {{end}}
 </tbody></table>
