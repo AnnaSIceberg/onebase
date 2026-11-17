@@ -44,7 +44,12 @@ func buildScalarColumnTypes(tokens []tok, opts CompileOpts, ctx sourceContext, k
 		if len(ctx.scopes[scopeID].derivedAliases) > 0 {
 			scoped[scopeID] = buildScopedColTypes(tokens, opts, ctx, derived)[scopeID]
 		}
-		outputs[scopeID] = scalarProjectionTypes(tokens, ctx, scopeID, scoped[scopeID], qualified[scopeID], keys)
+		var unionKeys map[string]bool
+		outputs[scopeID], unionKeys = scalarProjectionTypesUnion(tokens, ctx, scopeID, scoped[scopeID], qualified[scopeID], keys)
+		unionDateOutputs(tokens, ctx, scopeID, outputs[scopeID], unionKeys, keys, func(branch int) (map[string]metadata.FieldType, map[string]map[string]metadata.FieldType) {
+			resolve(branch)
+			return scoped[branch], qualified[branch]
+		})
 		return outputs[scopeID]
 	}
 	for scopeID := range ctx.scopes {
@@ -53,11 +58,112 @@ func buildScalarColumnTypes(tokens []tok, opts CompileOpts, ctx sourceContext, k
 	return scoped, qualified
 }
 
-func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
-	fields map[string]metadata.FieldType, qualified map[string]map[string]metadata.FieldType,
-	keys *projectionKeyResolver,
-) map[string]metadata.FieldType {
-	output := map[string]metadata.FieldType{}
+// unionDateOutputs доказывает колонку-дату производной таблицы с ОБЪЕДИНИТЬ:
+// тип колонки задаёт позиция, а не первая ветвь, поэтому дата доказана, только
+// если во всех ветвях элемент на этой позиции — дата. Без этого ДЕНЬ/МЕСЯЦ/ГОД/
+// НачалоМесяца от «Д.Дата» подзапроса-объединения считались на SQLite по UTC
+// (дата 05.08 00:00 МСК давала день 4). Прочие типы через ОБЪЕДИНИТЬ не
+// выводятся, как и раньше.
+func unionDateOutputs(tokens []tok, ctx sourceContext, scopeID int, output map[string]metadata.FieldType,
+	unionKeys map[string]bool, keys *projectionKeyResolver,
+	branchMaps func(int) (map[string]metadata.FieldType, map[string]map[string]metadata.FieldType),
+) {
+	if len(unionKeys) == 0 {
+		return
+	}
+	starts := unionBranchSelects(tokens, ctx, scopeID)
+	if len(starts) < 2 {
+		return
+	}
+	var first []string
+	var types [][]metadata.FieldType
+	for bi, start := range starts {
+		branch, ok := ctx.scopeIDAt(start)
+		if !ok {
+			return
+		}
+		fields, qualified := map[string]metadata.FieldType(nil), map[string]map[string]metadata.FieldType(nil)
+		if branch != scopeID {
+			fields, qualified = branchMaps(branch)
+		} else {
+			fields, qualified = branchMaps(scopeID)
+		}
+		var row []metadata.FieldType
+		end := start + 1
+		for end < len(tokens) && ctx.tokenSection[end] == sectionSelect && ctx.tokenScope[end] == branch {
+			end++
+		}
+		depth, from := 0, selectProjectionStart(tokens, start)
+		item := func(from, to int) {
+			expr := tokens[from:to]
+			if n := len(expr); n >= 2 && expr[n-2].kind == tIdent {
+				if kw, ok := sqlKW(expr[n-2].val); ok && kw == "AS" {
+					expr = expr[:n-2]
+				}
+			}
+			column, _ := parseProjectionItem(tokens[from:to])
+			if bi == 0 {
+				key, known := keys.outputSQLKey(column, from, to)
+				if !known || column.Star {
+					key = ""
+				}
+				first = append(first, key)
+			}
+			if column.Star {
+				row = append(row, "")
+				return
+			}
+			row = append(row, scalarProjectionFieldTypeAt(tokens, ctx, from, from+len(expr), fields, qualified))
+		}
+		for i := from; i < end; i++ {
+			switch tokens[i].kind {
+			case tLParen:
+				depth++
+			case tRParen:
+				depth--
+			case tComma:
+				if depth == 0 {
+					item(from, i)
+					from = i + 1
+				}
+			}
+		}
+		item(from, end)
+		types = append(types, row)
+	}
+	for pos, key := range first {
+		// Только ключ, обнулённый одним ОБЪЕДИНИТЬ: коллизия имени или «*»
+		// по-прежнему лишают колонку типа.
+		if key == "" || !unionKeys[key] {
+			continue
+		}
+		date := true
+		for _, row := range types {
+			if pos >= len(row) || row[pos] != metadata.FieldTypeDate {
+				date = false
+				break
+			}
+		}
+		if date && !unionKeyAmbiguous(first, key) {
+			output[key] = metadata.FieldTypeDate
+			output[metadata.SQLIdent(key)] = metadata.FieldTypeDate
+		}
+	}
+}
+
+func unionKeyAmbiguous(keys []string, key string) bool {
+	n := 0
+	for _, k := range keys {
+		if k == key {
+			n++
+		}
+	}
+	return n != 1
+}
+
+// unionBranchSelects — позиции SELECT всех ветвей ОБЪЕДИНИТЬ, первая из которых
+// принадлежит scopeID. Ветвь в скобках не распознаётся — тогда доказательства нет.
+func unionBranchSelects(tokens []tok, ctx sourceContext, scopeID int) []int {
 	start := -1
 	for i, t := range tokens {
 		if id, ok := ctx.scopeIDAt(i); ok && id == scopeID && t.kind == tIdent {
@@ -68,7 +174,62 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		}
 	}
 	if start < 0 {
-		return output
+		return nil
+	}
+	level := ctx.tokenDepth[start]
+	starts := []int{start}
+	for i := start + 1; i < len(tokens) && ctx.tokenDepth[i] >= level; i++ {
+		if ctx.tokenDepth[i] != level || tokens[i].kind != tIdent {
+			continue
+		}
+		kw, ok := sqlKW(tokens[i].val)
+		if !ok || kw != "UNION" {
+			continue
+		}
+		j := i + 1
+		if j < len(tokens) && tokens[j].kind == tIdent {
+			if kw, ok := sqlKW(tokens[j].val); ok && kw == "ALL" {
+				j++
+			}
+		}
+		if j >= len(tokens) || tokens[j].kind != tIdent {
+			return nil
+		}
+		if kw, ok := sqlKW(tokens[j].val); !ok || kw != "SELECT" {
+			return nil
+		}
+		starts = append(starts, j)
+	}
+	return starts
+}
+
+func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
+	fields map[string]metadata.FieldType, qualified map[string]map[string]metadata.FieldType,
+	keys *projectionKeyResolver,
+) map[string]metadata.FieldType {
+	output, _ := scalarProjectionTypesUnion(tokens, ctx, scopeID, fields, qualified, keys)
+	return output
+}
+
+// scalarProjectionTypesUnion — scalarProjectionTypes и ключи, тип которых
+// обнулён только тем, что SELECT — первая ветвь ОБЪЕДИНИТЬ (не коллизией).
+func scalarProjectionTypesUnion(tokens []tok, ctx sourceContext, scopeID int,
+	fields map[string]metadata.FieldType, qualified map[string]map[string]metadata.FieldType,
+	keys *projectionKeyResolver,
+) (map[string]metadata.FieldType, map[string]bool) {
+	output := map[string]metadata.FieldType{}
+	unionKeys := map[string]bool{}
+	start := -1
+	for i, t := range tokens {
+		if id, ok := ctx.scopeIDAt(i); ok && id == scopeID && t.kind == tIdent {
+			if kw, ok := sqlKW(t.val); ok && kw == "SELECT" {
+				start = i
+				break
+			}
+		}
+	}
+	if start < 0 {
+		return output, nil
 	}
 	end := start + 1
 	for end < len(tokens) && ctx.tokenSection[end] == sectionSelect && ctx.tokenScope[end] == scopeID {
@@ -120,6 +281,9 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		}
 		if _, duplicate := output[key]; duplicate {
 			typ = ""
+			delete(unionKeys, key)
+		} else if union {
+			unionKeys[key] = true
 		}
 		output[key] = typ
 	}
@@ -144,6 +308,7 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 		physical := metadata.SQLIdent(key)
 		if !complete || !stars.complete || physicalCounts[physical] != 1 || stars.counts[physical] > 0 {
 			output[key] = ""
+			delete(unionKeys, key)
 		}
 	}
 	// Derived consumers can spell a long output either logically or with its
@@ -156,7 +321,7 @@ func scalarProjectionTypes(tokens []tok, ctx sourceContext, scopeID int,
 	for key, typ := range physical {
 		output[key] = typ
 	}
-	return output
+	return output, unionKeys
 }
 
 // outputSQLKey reserves names independently of expression types. The boolean
