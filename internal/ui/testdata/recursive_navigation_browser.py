@@ -11,12 +11,26 @@ def require(name,ok):
 def folder(page,id):return page.locator('details[data-nav-id="cfg:'+id+'"]')
 def read(page,key):return page.evaluate('(key)=>localStorage.getItem(key)',key)
 with sync_playwright() as driver:
- browser=driver.chromium.launch(executable_path=os.environ['OB_BROWSER_CHROME'],headless=True)
- context=browser.new_context(viewport={'width':1280,'height':900})
- context.route('**/*',lambda route:route.continue_() if route.request.url.startswith(origin+'/') else route.abort())
- def login(token):context.add_cookies([{'name':'onebase_session','value':token,'url':origin}])
+ browser=driver.chromium.connect_over_cdp(os.environ['OB_BROWSER_CDP_URL'])
+ if not browser.contexts or not browser.contexts[0].pages:
+  raise RuntimeError('Acceptance requires an already open browser window')
+ context=browser.contexts[0]
+ session=None
+ def login(token):
+  global session
+  session=token
  login(os.environ['OB_RECURSIVE_MENU_ALICE'])
- page=context.new_page();page.on('pageerror',lambda e:errors.append(str(e)))
+ page=context.new_page();page.set_viewport_size({'width':1280,'height':900})
+ page.on('pageerror',lambda e:errors.append(str(e)))
+ # Authentication belongs only to requests in this disposable fixture tab.
+ # Never replace cookies or routes in the shared open browser context.
+ def route_fixture(route):
+  if not route.request.url.startswith(origin+'/'):
+   route.abort();return
+  headers=route.request.all_headers()
+  headers['cookie']='onebase_session='+session
+  route.continue_(headers=headers)
+ page.route('**/*',route_fixture)
  try:
   page.goto(origin+'/ui/?subsystem=School',wait_until='domcontentloaded')
   page.locator('[data-tree-initialized="1"]').first.wait_for()
@@ -25,7 +39,7 @@ with sync_playwright() as driver:
   ids=folder(page,'reports').locator(':scope > a, :scope > details').evaluate_all('(xs)=>xs.map(x=>x.dataset.navId)')
   require('mixed_order_and_role_projection',ids==['cfg:direct','cfg:masters','cfg:last'])
   require('acl_prunes_empty_branch',page.locator('[data-nav-id="cfg:empty"], [data-nav-id="cfg:forbidden"]').count()==0)
-  require('direct_forbidden403',context.request.get(origin+'/ui/catalog/Private?subsystem=School').status==403)
+  require('direct_forbidden403',page.request.get(origin+'/ui/catalog/Private?subsystem=School',headers={'Cookie':'onebase_session='+session}).status==403)
   held=folder(page,'held');masters=folder(page,'masters');key=held.get_attribute('data-nav-key');master_key=masters.get_attribute('data-nav-key')
   held.locator(':scope > summary').click();page.wait_for_function('(key)=>localStorage.getItem(key)==="0"',arg=key)
   require('mouse_collapse_and_aria',not held.evaluate('(x)=>x.open') and held.locator(':scope > summary').get_attribute('aria-expanded')=='false')
@@ -36,6 +50,9 @@ with sync_playwright() as driver:
   summary.press('ArrowLeft');page.wait_for_function('(key)=>localStorage.getItem(key)==="0"',arg=key)
   summary.press('ArrowRight');page.wait_for_function('(key)=>localStorage.getItem(key)==="1"',arg=key)
   require('arrow_keys_persist',folder(page,'held').evaluate('(x)=>x.open'))
+  summary.press('Space');page.wait_for_function('(key)=>localStorage.getItem(key)==="0"',arg=key)
+  require('space_collapses_with_aria',not folder(page,'held').evaluate('(x)=>x.open') and summary.get_attribute('aria-expanded')=='false')
+  summary.press('Space');page.wait_for_function('(key)=>localStorage.getItem(key)==="1"',arg=key)
   # Close another branch and then navigate directly into the held command.
   other=folder(page,'other');other_key=other.get_attribute('data-nav-key');other.locator(':scope > summary').click();page.wait_for_function('(key)=>localStorage.getItem(key)==="0"',arg=other_key)
   masters.locator(':scope > summary').click();page.wait_for_function('(key)=>localStorage.getItem(key)==="0"',arg=master_key)
@@ -59,6 +76,6 @@ with sync_playwright() as driver:
   page.screenshot(path=str(out/'02-personal-recursive-editor.png'),full_page=True)
   require('javascript_errors_zero',not errors)
  finally:
-  (out/'receipt.json').write_text(json.dumps({'checks':checks,'errors':errors,'browser':browser.version,'own_sqlite':True,'shared_changes':False},indent=2),encoding='utf-8')
-  context.close();browser.close()
+  print(json.dumps({'checks':checks,'errors':errors}))
+  page.close()  # Only our tab; the existing window and context stay open.
 print(json.dumps(checks))

@@ -196,11 +196,14 @@ func mustJSONRecursive(t *testing.T, value any) []byte {
 	return raw
 }
 
-// Optional native-browser acceptance; compilation completes before Chrome starts.
+// Optional acceptance in a tab of an already open browser; never launches Chrome.
 // The fixture uses only its own SQLite and real authenticated HTTP sessions.
 func TestRecursiveNavigationBrowser(t *testing.T) {
 	if os.Getenv("OB_RECURSIVE_MENU_BROWSER") != "1" {
-		t.Skip("set OB_RECURSIVE_MENU_BROWSER=1 and OB_BROWSER_CHROME for native acceptance")
+		t.Skip("set OB_RECURSIVE_MENU_BROWSER=1 and OB_BROWSER_CDP_URL for acceptance in the open browser")
+	}
+	if os.Getenv("OB_BROWSER_CDP_URL") == "" {
+		t.Fatal("OB_BROWSER_CDP_URL must point to the already open browser; this test never launches Chrome")
 	}
 	f := newRecursiveHTTPFixture(t)
 	if err := f.server.store.Migrate(context.Background(), f.server.reg.Entities()); err != nil {
@@ -216,6 +219,7 @@ func TestRecursiveNavigationBrowser(t *testing.T) {
 		python = "python"
 	}
 	cmd := exec.CommandContext(ctx, python, filepath.Join("testdata", "recursive_navigation_browser.py")) //nolint:gosec // Optional test-only local Python; fixed script and authenticated loopback fixture.
+	hideAudioTestProcess(cmd)
 	artifacts := os.Getenv("OB_RECURSIVE_MENU_ARTIFACTS")
 	if artifacts == "" {
 		artifacts = t.TempDir()
