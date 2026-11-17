@@ -58,8 +58,16 @@ func TestJournalRowActionsRespectScopedCompactControlsHTTP(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			row := semanticFind(page, "data-ob-list-row", "")
-			if row == nil || semanticAttr(row, "data-open-url") != "/ui/document/fineprobe/"+id.String() || semanticAttr(row, "tabindex") != "-1" {
+			row := semanticFind(page, "data-open-url", "/ui/document/fineprobe/"+id.String())
+			hasRowMarker := false
+			if row != nil {
+				for _, attr := range row.Attr {
+					if attr.Key == "data-ob-list-row" {
+						hasRowMarker = true
+					}
+				}
+			}
+			if row == nil || row.Data != "tr" || !hasRowMarker || semanticAttr(row, "tabindex") != "-1" {
 				t.Fatal("journal lost native row navigation")
 			}
 			table := row.Parent.Parent
