@@ -2,7 +2,10 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
@@ -15,18 +18,58 @@ type kpiChoiceOwnerKey struct{}
 
 // The initial page supplies declared blank defaults itself, but must not turn
 // a nonempty whitespace value into the opt-in ALL sentinel.
-func kpiChoiceInitialSource(values any, name string) string {
+func kpiChoiceInitialSource(values any, name string) (string, bool) {
 	switch values := values.(type) {
 	case map[string]string:
-		return values[name]
+		return values[name], true
 	case map[string]any:
-		if value, ok := values[name].(string); ok {
-			return value
+		value, present := values[name]
+		if !present {
+			return "", true // server-supplied declared blank default
 		}
-		return refValueString(values[name])
+		if text, ok := value.(string); ok {
+			return text, true
+		}
+		if id, ok := value.(uuid.UUID); ok && id != uuid.Nil {
+			return id.String(), true
+		}
+		return "", false
 	default:
-		return ""
+		return "", false
 	}
+}
+
+// The ordinary decoder is deliberately unchanged. For this opt-in, JSON null
+// must not be converted to an empty string and duplicate keys are ambiguous.
+func validateKPIChoiceSources(raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return nil // absent sources remain absent, never an explicit empty value
+	}
+	d := json.NewDecoder(strings.NewReader(raw))
+	start, err := d.Token()
+	if err != nil || start != json.Delim('{') {
+		return fmt.Errorf("invalid KPI choice sources")
+	}
+	seen := map[string]bool{}
+	for d.More() {
+		key, err := d.Token()
+		name, ok := key.(string)
+		if err != nil || !ok || seen[name] {
+			return fmt.Errorf("invalid or duplicate KPI choice source")
+		}
+		seen[name] = true
+		value, err := d.Token()
+		if _, ok := value.(string); err != nil || !ok {
+			return fmt.Errorf("KPI choice source must be a string")
+		}
+	}
+	if end, err := d.Token(); err != nil || end != json.Delim('}') {
+		return fmt.Errorf("invalid KPI choice sources")
+	}
+	if _, err := d.Token(); err != io.EOF {
+		return fmt.Errorf("invalid trailing KPI choice sources")
+	}
+	return nil
 }
 
 func withKPIChoiceOwner(ctx context.Context, proc *processorpkg.Processor) context.Context {

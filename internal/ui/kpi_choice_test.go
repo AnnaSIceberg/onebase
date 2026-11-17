@@ -167,6 +167,19 @@ func TestKPIManagedChoiceHTTPMatrix(t *testing.T) {
 		if got := get(f.query(f.hiddenBranch.String())); got.Total != 0 {
 			t.Fatalf("unreadable source opened choices: %+v", got)
 		}
+		for _, raw := range []string{
+			`{"Объект.Branch":null}`, `{"Объект.Branch":false}`, `{"Объект.Branch":0}`,
+			`{"Объект.Branch":[]}`, `{"Объект.Branch":{}}`,
+			`{"Объект.Branch":"","Объект.Branch":""}`,
+			`{"Объект.Branch":null,"Объект.Branch":""}`,
+			`{"Объект.Branch":"","\u041eбъект.Branch":""}`,
+		} {
+			q := f.query("")
+			q.Set("sources", raw)
+			if w := f.picker(t, f.user, q); w.Code != 400 {
+				t.Fatalf("non-string/duplicate source accepted: %d %s", w.Code, raw)
+			}
+		}
 		for _, raw := range []string{"bad", " ", "\t", uuid.Nil.String(), uuid.NewString()} {
 			w := f.picker(t, f.user, f.query(raw))
 			if raw == "bad" || strings.TrimSpace(raw) == "" || raw == uuid.Nil.String() {

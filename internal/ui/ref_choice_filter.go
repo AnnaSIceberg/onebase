@@ -710,6 +710,11 @@ func (s *Server) resolveChoiceRequest(r *http.Request, target *metadata.Entity) 
 	if err != nil {
 		return nil, err
 	}
+	if element.KPIChoice != nil {
+		if err := validateKPIChoiceSources(rawSources); err != nil {
+			return nil, err
+		}
+	}
 	choiceCtx := r.Context()
 	if formKind == choiceFormKindProcessor {
 		choiceCtx = withKPIChoiceOwner(choiceCtx, s.reg.GetProcessor(ownerName))
@@ -922,7 +927,12 @@ func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity,
 			// The form holds the leading reference, not the attribute behind it.
 			sources[path] = formValueForPath(data["Values"], source.Root+"."+source.Field)
 			if element.KPIChoice != nil && path == element.KPIChoice.AllWhenEmpty {
-				sources[path] = kpiChoiceInitialSource(data["Values"], source.Field)
+				value, valid := kpiChoiceInitialSource(data["Values"], source.Field)
+				if valid {
+					sources[path] = value
+				} else {
+					delete(sources, path) // null/nonreference values cannot activate ALL
+				}
 			}
 		}
 		selected := formValueForPath(data["Values"], element.DataPath)
