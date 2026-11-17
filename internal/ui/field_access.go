@@ -31,6 +31,9 @@ func (s *Server) fieldDecisions(ctx context.Context, entity *metadata.Entity) ma
 // heterogeneous journal rows). The synthetic metadata still canonicalises
 // policy names to the exact row keys.
 func (s *Server) fieldDecisionsFor(ctx context.Context, kind, name string, meta *metadata.Entity) map[string]access.FieldDecision {
+	if access.IsReportOutput(ctx) {
+		return access.ReportOutputFieldDecisions(auth.UserFromContext(ctx), kind, name, meta)
+	}
 	return access.FieldDecisions(auth.UserFromContext(ctx), kind, name, meta)
 }
 
@@ -408,6 +411,9 @@ func (s *Server) maskedRecordLabel(ctx context.Context, entity *metadata.Entity,
 // filter, grouping or aggregate — where an output mask protects nothing — still
 // denies the whole query (plan.Denied).
 func (s *Server) queryMaskPlan(ctx context.Context, res query.Result) access.QueryMaskPlan {
+	if access.IsReportOutput(ctx) {
+		return s.reportOutputMaskPlan(ctx, res)
+	}
 	return access.QueryMaskPlanFor(auth.UserFromContext(ctx), res, s.sourceMeta)
 }
 
@@ -426,17 +432,25 @@ func (s *Server) dslQueryGuard(ctx context.Context, res query.Result, rows []map
 // sourceMeta resolves the metadata of a query source object (entity/register/
 // inforeg/account register); nil if unknown.
 func (s *Server) sourceMeta(kind, name string) *metadata.Entity {
-	if e := s.reg.GetEntity(name); e != nil {
-		return e
-	}
-	if r := s.reg.GetRegister(name); r != nil {
-		return storage.RegisterPredicateEntity(r)
-	}
-	if ir := s.reg.GetInfoRegister(name); ir != nil {
-		return storage.InfoRegisterPredicateEntity(ir)
-	}
-	if ar := s.reg.GetAccountRegister(name); ar != nil {
-		return storage.AccountRegisterPredicateEntity(ar)
+	switch strings.ToLower(kind) {
+	case "catalog", "document":
+		if e := s.reg.GetEntity(name); e != nil && strings.EqualFold(string(e.Kind), kind) {
+			return e
+		}
+	case "register":
+		if s.reg.GetRegister(name) != nil && s.reg.GetAccountRegister(name) != nil {
+			return nil
+		}
+		if r := s.reg.GetRegister(name); r != nil {
+			return storage.RegisterPredicateEntity(r)
+		}
+		if ar := s.reg.GetAccountRegister(name); ar != nil {
+			return storage.AccountRegisterPredicateEntity(ar)
+		}
+	case "inforeg":
+		if ir := s.reg.GetInfoRegister(name); ir != nil {
+			return storage.InfoRegisterPredicateEntity(ir)
+		}
 	}
 	return nil
 }
