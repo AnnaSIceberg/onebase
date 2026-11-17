@@ -143,6 +143,12 @@ func TestKPIManagedChoiceHTTPMatrix(t *testing.T) {
 		if strings.Contains(mustJSON(t, all), "PRIVATE_PHONE") {
 			t.Fatal("PII in suffix response")
 		}
+		f.directions.ChoiceRowStyle = &metadata.ChoiceRowStyle{Rules: []metadata.ChoiceStyleRule{{When: "Enabled", Disabled: true, Style: metadata.FormCellStyle{Color: "#ff0000"}}}}
+		styled := get(f.query(""))
+		if styled.Items[0][refOptionDisabledKey] != true || styled.Items[0][refOptionStyleKey] == nil {
+			t.Fatal("KPI transport lost native disabled/style flags")
+		}
+		f.directions.ChoiceRowStyle = nil
 		q := f.query(f.b1.String())
 		q.Set("limit", "1")
 		q.Set("selected_id", f.d2.String())

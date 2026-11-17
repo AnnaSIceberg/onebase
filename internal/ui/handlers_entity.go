@@ -1365,7 +1365,15 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for i, row := range items {
-			items[i] = map[string]any{"id": row["id"], "_label": row["_label"]}
+			item := map[string]any{"id": row["id"], "_label": row["_label"]}
+			// Preserve native disabled/style transport; these keys are produced
+			// by the server and cannot be catalog field names.
+			for _, key := range []string{refOptionStyleKey, refOptionStyleBgKey, refOptionDisabledKey} {
+				if value, ok := row[key]; ok {
+					item[key] = value
+				}
+			}
+			items[i] = item
 		}
 	}
 	if choice != nil && choice.ReportParam != nil {
