@@ -95,6 +95,15 @@ func init() {
 				return parsed.In(time.Local).Format("2006-01-02 15:04:05.999999999"), nil
 			}
 		}
+		// Старые значения SQLite без смещения — местные стенные часы, как их
+		// читает и storage (ParseRegPeriod). Без этого НачалоДня/НачалоЧаса и
+		// вся локализация дат (#1243) давали на таких базах NULL: группировка
+		// отчёта по дню выводилась с пустой подписью.
+		for _, layout := range localRegPeriodLayouts {
+			if parsed, err := time.ParseInLocation(layout, strings.TrimSpace(value), time.Local); err == nil {
+				return parsed.Format("2006-01-02 15:04:05.999999999"), nil
+			}
+		}
 		return nil, nil
 	})
 }
