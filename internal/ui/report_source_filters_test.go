@@ -50,7 +50,7 @@ func TestReportResultSourceFiltersHTTPMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		cases := []string{"unfiltered", "get-alpha", "post-alpha", "case-field", "numeric", "reference", "masked", "empty", "variant-filter", "variant-conflict", "preset-alpha", "default-preset-alpha", "unknown-field", "unsupported-op", "reference-label", "queryless-filter", "queryless-no-filter", "malformed-settings", "query-budget", "variant-budget", "no-composition", "settings-too-large", "source-read-denied"}
+		cases := []string{"unfiltered", "get-alpha", "post-alpha", "case-field", "numeric", "reference", "masked", "empty", "variant-filter", "variant-conflict", "variant-no-user-filter", "preset-alpha", "default-preset-alpha", "unknown-field", "unsupported-op", "reference-label", "queryless-filter", "queryless-no-filter", "malformed-settings", "query-budget", "variant-budget", "no-composition", "settings-too-large", "source-read-denied"}
 		for index, name := range cases {
 			t.Run(name, func(t *testing.T) {
 				rep := &reportpkg.Report{Name: fmt.Sprintf("SourceFilters%d", index), Query: `ВЫБРАТЬ П.Метка, П.Amount, П.RefValue.Ссылка КАК RefValue, П.Secret ИЗ Справочник.SourceFilterRow КАК П`, ResultProc: "Build", Composition: &reportpkg.Composition{Detail: true, Measures: []reportpkg.Measure{{Field: "Метка", Agg: "count"}}}, Variants: []reportpkg.ReportVariant{{Name: "beta", Query: `ВЫБРАТЬ П.Метка, П.Amount, П.RefValue.Ссылка КАК RefValue ИЗ Справочник.SourceFilterRow КАК П`, Filters: []reportpkg.VariantFilter{{Field: "Метка", Op: "eq", Value: "BETA"}}}}}
@@ -88,9 +88,14 @@ func TestReportResultSourceFiltersHTTPMatrix(t *testing.T) {
 				case "variant-filter", "variant-budget":
 					settings.Variant = "beta"
 					settings.Filters[0].Value = "BETA"
+					status = 400 // Native permanent filters wrap a derived SELECT: no lineage proof yet.
 				case "variant-conflict":
 					settings.Variant = "beta"
 					want = 0
+					status = 400
+				case "variant-no-user-filter":
+					settings.Variant = "beta"
+					settings.Filters = nil
 				case "unknown-field":
 					settings.Filters[0].Field = "Unknown"
 					status = 400
