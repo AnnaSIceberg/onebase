@@ -60,14 +60,18 @@ func TestAPIReportSourceFiltersMatrix(t *testing.T) {
 					settings.Filters[0].Value = "NONE"
 					want = 0
 				case "masked":
+					// Скрытое от роли поле в схеме отбора не предлагается, поддельный
+					// отбор по нему отвергается (docs/report-result-filters.md).
 					settings.Filters = []reportpkg.Filter{{Field: "Secret", Op: "eq", Value: "RAW_SECRET"}}
-					want = 0
-				case "variant":
+					status = 400
+				case "variant", "variant-conflict":
+					// Пользовательский отбор поверх SQL-обёртки variants[].filters
+					// отклоняется явно, пока вложенный SELECT не доказан (ENG04).
 					settings.Variant = "beta"
-					settings.Filters[0].Value = "BETA"
-				case "variant-conflict":
-					settings.Variant = "beta"
-					want = 0
+					if name == "variant" {
+						settings.Filters[0].Value = "BETA"
+					}
+					status = 400
 				case "composed":
 					q.Set("compose", "1")
 				case "unknown-field":
@@ -126,7 +130,9 @@ func TestAPIReportSourceFiltersMatrix(t *testing.T) {
 				}
 			})
 		}
-		t.Run("source-budget-refusal", func(t *testing.T) {
+		// Источник больше страницы REST — не отказ: отбор применяется до лимита
+		// принятых строк (100000), а не по первой странице источника.
+		t.Run("source-over-page-limit", func(t *testing.T) {
 			for i := 0; i <= restMaxLimit; i++ {
 				if err := db.Upsert(ctx, e.Name, uuid.New(), map[string]any{"Метка": "BETA", "Amount": 1, "Owner": "runner"}, e); err != nil {
 					t.Fatal(err)
@@ -135,8 +141,17 @@ func TestAPIReportSourceFiltersMatrix(t *testing.T) {
 			raw, _ := (&reportpkg.UserReportSettings{Filters: []reportpkg.Filter{{Field: "Метка", Op: "eq", Value: "ALPHA"}}}).JSON()
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, withUser(httptest.NewRequest(http.MethodGet, "/api/v2/report/"+rep.Name+"?__settings="+url.QueryEscape(raw), nil), apiUser("runner", perm)))
-			if w.Code != 422 {
-				t.Fatalf("cropped filter source HTTP%d", w.Code)
+			if w.Code != 200 {
+				t.Fatalf("filter over a source larger than a page: HTTP%d %s", w.Code, w.Body.String())
+			}
+			var body struct {
+				Meta restV2Meta `json:"meta"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Meta.Total != 1 {
+				t.Fatalf("filter applied after the source page: total %d", body.Meta.Total)
 			}
 		})
 	})
