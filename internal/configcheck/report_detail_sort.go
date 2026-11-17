@@ -57,10 +57,12 @@ func reportDetailSortColumns(proj *project.Project, rep *report.Report, queryTex
 	return fields
 }
 
-func detailOnlySortColumns(c *report.Composition, outputs map[string]bool) map[string]bool {
-	if !c.Detail || len(c.Columns) > 0 {
-		return nil
-	}
+// querySortColumns — колонки результата запроса, допустимые в sort кроме
+// группировок и показателей: детальные записи упорядочиваются по значению, а
+// группы (в том числе в кросс-таблице) — по наименьшему значению поля в группе
+// (compose.sortFieldValues, 1С — порядок по полю «Сортировка400»). Колонка
+// обязана однозначно существовать в результате.
+func querySortColumns(c *report.Composition, outputs map[string]bool) map[string]bool {
 	fields := map[string]bool{}
 	for name := range outputs {
 		fields[name] = true

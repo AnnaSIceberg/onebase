@@ -221,40 +221,49 @@ func formatDate(t time.Time, pattern string) string {
 	if hasHourToken(pattern) || isMinutesSecondsPattern(pattern) {
 		minute = goLayoutMinute
 	}
-	// «ММММ»/«МММ» — название месяца (именительный падеж), как ДФ='ММММ гг' в
-	// СКД: «Сентябрь 26». Раньше «ММММ» печаталось двумя номерами — «0909».
-	// Подставляется до шаблона Go: в русских названиях нет его токенов.
+	// «ММММ»/«МММ» — название месяца, как в 1С: ДФ='ММММ гг' → «Сентябрь 26»,
+	// а с днём — родительный падеж: ДФ='д ММММ гггг' → «1 сентября 2026».
+	// Раньше «ММММ» печаталось двумя номерами — «0909». Название вставляется
+	// после форматирования через метку, чтобы токены шаблона («д» в
+	// «декабря») его не задели. Одиночное «д»/«d» — день без ведущего нуля.
 	month := int(t.Month()) - 1
-	pattern = strings.NewReplacer(
-		"MMMM", monthNamesRU[month], "ММММ", monthNamesRU[month],
-		"MMM", monthShortRU[month], "МММ", monthShortRU[month],
-	).Replace(pattern)
-	return t.Format(strings.NewReplacer(
+	full := monthNamesRU[month]
+	if strings.ContainsAny(pattern, "dд") {
+		full = monthGenitiveRU[month]
+	}
+	fullMark, shortMark := string(rune(1)), string(rune(2))
+	out := t.Format(strings.NewReplacer(
+		"MMMM", fullMark, "ММММ", fullMark,
+		"MMM", shortMark, "МММ", shortMark,
 		"yyyy", goLayoutYear4, "гггг", goLayoutYear4,
 		"yy", goLayoutYear2, "гг", goLayoutYear2,
 		"MM", goLayoutMonth, "ММ", goLayoutMonth,
 		"dd", goLayoutDay, "дд", goLayoutDay,
+		"d", goLayoutDayShort, "д", goLayoutDayShort,
 		"HH", goLayoutHour24, "ЧЧ", goLayoutHour24,
 		"hh", goLayoutHour12, "чч", goLayoutHour12,
 		"ss", goLayoutSecond, "сс", goLayoutSecond,
 		"mm", minute, "мм", minute,
 	).Replace(pattern))
+	return strings.NewReplacer(fullMark, full, shortMark, monthShortRU[month]).Replace(out)
 }
 
 var monthNamesRU = [12]string{"Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"}
+var monthGenitiveRU = [12]string{"января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"}
 var monthShortRU = [12]string{"янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"}
 
 // Токены эталонного времени Go (Mon Jan 2 15:04:05 MST 2006) — именами, чтобы
 // таблица замен читалась как «год → год», а не как набор чисел.
 const (
-	goLayoutYear4  = "2006"
-	goLayoutYear2  = "06"
-	goLayoutMonth  = "01"
-	goLayoutDay    = "02"
-	goLayoutHour24 = "15"
-	goLayoutHour12 = "03"
-	goLayoutMinute = "04"
-	goLayoutSecond = "05"
+	goLayoutYear4    = "2006"
+	goLayoutYear2    = "06"
+	goLayoutMonth    = "01"
+	goLayoutDay      = "02"
+	goLayoutDayShort = "2"
+	goLayoutHour24   = "15"
+	goLayoutHour12   = "03"
+	goLayoutMinute   = "04"
+	goLayoutSecond   = "05"
 )
 
 // hasHourToken — есть ли в шаблоне часы. От этого зависит прочтение строчного

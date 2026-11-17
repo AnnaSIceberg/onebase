@@ -24,3 +24,17 @@ func TestFormatMonthName(t *testing.T) {
 		t.Fatalf("строка-дата SQLite: %q", got)
 	}
 }
+
+// С днём в шаблоне месяц — в родительном падеже, как в 1С.
+func TestFormatMonthNameGenitiveWithDay(t *testing.T) {
+	moment := time.Date(2026, 9, 1, 0, 0, 0, 0, time.Local)
+	for format, want := range map[string]string{
+		"ДФ='д ММММ гггг'":  "1 сентября 2026",
+		"ДФ='dd MMMM yyyy'": "01 сентября 2026",
+		"ДФ='ММММ гггг'":    "Сентябрь 2026",
+	} {
+		if got, err := FormatValue(moment, format); err != nil || got != want {
+			t.Fatalf("%s: %q, %v (want %q)", format, got, err, want)
+		}
+	}
+}

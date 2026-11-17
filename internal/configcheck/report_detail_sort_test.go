@@ -64,8 +64,11 @@ func TestDetailSortValidationDoesNotAllowUnknownColumns(t *testing.T) {
 		{name: "alias", query: "ВЫБРАТЬ Label КАК label, Amount КАК amount ИЗ Справочник.Line", field: "LABEL", detail: true},
 		{name: "direct", query: "ВЫБРАТЬ Label, Amount ИЗ Справочник.Line", field: "label", detail: true},
 		{name: "unknown", query: "ВЫБРАТЬ Label КАК label ИЗ Справочник.Line", field: "absent", detail: true, wantIssue: true},
-		{name: "no details", query: "ВЫБРАТЬ Label КАК label ИЗ Справочник.Line", field: "label", detail: false, wantIssue: true},
-		{name: "pivot", query: "ВЫБРАТЬ Label КАК label ИЗ Справочник.Line", field: "label", detail: true, columns: []string{"Month"}, wantIssue: true},
+		// Группы упорядочиваются по полю результата и без детальных записей, и в
+		// кросс-таблице (Сортировка400 у А_ЗвонкиПоНаправлениям).
+		{name: "no details", query: "ВЫБРАТЬ Label КАК label ИЗ Справочник.Line", field: "label", detail: false},
+		{name: "pivot", query: "ВЫБРАТЬ Label КАК label ИЗ Справочник.Line", field: "label", detail: true, columns: []string{"Month"}},
+		{name: "pivot unknown", query: "ВЫБРАТЬ Label КАК label ИЗ Справочник.Line", field: "absent", columns: []string{"Month"}, wantIssue: true},
 		{name: "duplicate", query: "ВЫБРАТЬ Label КАК label, Amount КАК label ИЗ Справочник.Line", field: "label", detail: true, wantIssue: true},
 		{name: "wildcard", query: "ВЫБРАТЬ * ИЗ Справочник.Line", field: "label", detail: true, wantIssue: true},
 	} {

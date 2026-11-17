@@ -866,7 +866,7 @@ func CheckReportComposition(proj *project.Project) []Issue {
 				add(repName, prefix+"неизвестное выравнивание: "+m.Align)
 			}
 		}
-		detailSort := detailOnlySortColumns(c, outputColumns)
+		detailSort := querySortColumns(c, outputColumns)
 		for _, s := range c.Sort {
 			if !dirs[s.Dir] {
 				add(repName, prefix+"неизвестное направление сортировки: "+s.Dir)
