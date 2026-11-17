@@ -30,9 +30,9 @@ func TestMenuReportVariantBrowserControllerInNode(t *testing.T) {
 func TestMenuReportVariantHTTPSelectionAndPermissions(t *testing.T) {
 	f := newNavigationHTTPFixture(t)
 	const full = "Полный + по филиалам / & ?"
-	rep := &reportpkg.Report{Name: "MenuVariants", Query: `ВЫБРАТЬ "MENU_BASE_SOURCE" КАК Marker`, Composition: &reportpkg.Composition{Detail: true}, Variants: []reportpkg.ReportVariant{
-		{Name: full, Query: `ВЫБРАТЬ "MENU_FULL_SOURCE" КАК Marker`, Composition: &reportpkg.Composition{Detail: true}},
-		{Name: "Итоговый", Query: `ВЫБРАТЬ "MENU_TOTAL_SOURCE" КАК Marker`, Composition: &reportpkg.Composition{Detail: true}},
+	rep := &reportpkg.Report{Name: "MenuVariants", Query: `ВЫБРАТЬ "MENU_BASE_SOURCE" КАК Marker`, Composition: &reportpkg.Composition{Groupings: []string{"marker"}, Detail: true}, Variants: []reportpkg.ReportVariant{
+		{Name: full, Query: `ВЫБРАТЬ "MENU_FULL_SOURCE" КАК Marker`, Composition: &reportpkg.Composition{Groupings: []string{"marker"}, Detail: true}},
+		{Name: "Итоговый", Query: `ВЫБРАТЬ "MENU_TOTAL_SOURCE" КАК Marker`, Composition: &reportpkg.Composition{Groupings: []string{"marker"}, Detail: true}},
 	}}
 	f.server.reg.Load(runtime.LoadOptions{Entities: f.server.reg.Entities(), Reports: []*reportpkg.Report{rep}})
 	f.server.reg.LoadSubsystems([]*metadata.Subsystem{{Name: "School", Contents: metadata.SubsystemContents{Reports: []string{rep.Name}}, Menu: &metadata.Menu{Sections: []metadata.MenuSection{{
@@ -90,7 +90,7 @@ func TestMenuReportVariantHTTPSelectionAndPermissions(t *testing.T) {
 		}
 		run := f.request(t, http.MethodPost, path, "alice", nil)
 		if run.Code != http.StatusOK || !strings.Contains(run.Body.String(), tc.marker) {
-			t.Fatalf("menu variant did not execute its own query: %d %s", run.Code, run.Body.String())
+			t.Fatalf("menu variant response: HTTP %d, missing %q", run.Code, tc.marker)
 		}
 	}
 	state := f.personalEditor(t, "alice", "School")
