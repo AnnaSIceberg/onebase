@@ -31,6 +31,19 @@ func (s *Server) resolveUUIDsInReport(ctx context.Context, rows []map[string]any
 			}
 			count(col.Output)
 		}
+		// Транслятор доказывает только «Ссылка»/реквизит главного источника;
+		// ВЫБОР по ссылкам одной сущности и реквизит табличной части
+		// доказывает Lineage. Доказанное транслятором не переопределяется.
+		if lineage := s.reportLineageRefColumns(compiled); len(lineage) > 0 {
+			merged := make(map[string]string, len(refColumns)+len(lineage))
+			for column, target := range lineage {
+				merged[column] = target
+			}
+			for column, target := range refColumns {
+				merged[column] = target
+			}
+			refColumns = merged
+		}
 	} else {
 		// Подзапрос/ОБЪЕДИНИТЬ: транслятор ссылки не доказывает, колонку
 		// результата прослеживает Lineage (reportLineageRefColumns).
@@ -178,14 +191,46 @@ func (s *Server) reportLineageRefColumns(res query.Result) map[string]string {
 }
 
 func (s *Server) lineageRefTarget(res query.Result, line query.ProjectionLineage, depth int) string {
-	if depth > 4 || !line.Plain || len(line.Paths) != 1 {
+	if depth > 4 || len(line.Paths) == 0 {
+		return ""
+	}
+	if !line.Plain {
+		// ВЫБОР КОГДА … ТОГДА З.Направление ИНАЧЕ Б.Направление КОНЕЦ,
+		// ЕСТЬNULL(А, Б), МИНИМУМ/МАКСИМУМ(А): значение — одна из ссылок. Все
+		// значения обязаны быть ссылками на одну сущность, без голых имён.
+		if !refPassThroughCall(line.Call) || line.Star {
+			return ""
+		}
+		inPath := map[string]bool{}
+		for _, path := range line.Paths {
+			for _, segment := range path {
+				inPath[strings.ToLower(segment)] = true
+			}
+		}
+		for _, name := range line.Uses {
+			if !inPath[strings.ToLower(name)] && !strings.EqualFold(name, line.Output) {
+				return ""
+			}
+		}
+		target := ""
+		for _, path := range line.Paths {
+			one := query.ProjectionLineage{Plain: true, Paths: [][]string{path}, Uses: path}
+			entity := s.lineageRefTarget(res, one, depth+1)
+			if entity == "" || (target != "" && entity != target) {
+				return ""
+			}
+			target = entity
+		}
+		return target
+	}
+	if len(line.Paths) != 1 {
 		return ""
 	}
 	path := line.Paths[0]
 	if refs, ok := res.Projection.SourceAliases[strings.ToLower(path[0])]; ok {
 		target := ""
 		for i, src := range refs {
-			entity := s.referencePathTarget(s.sourceMeta(src.Kind, src.Name), path[1:])
+			entity := s.referencePathTarget(s.lineageSourceMeta(res, src), path[1:])
 			if entity == "" || (i > 0 && entity != target) {
 				return ""
 			}
@@ -244,4 +289,38 @@ func (s *Server) referencePathTarget(meta *metadata.Entity, fields []string) str
 
 func isReportReferenceName(name string) bool {
 	return strings.EqualFold(name, "Ссылка") || strings.EqualFold(name, "Ref")
+}
+
+// refPassThroughCall — выражение, значение которого — одна из его ссылок:
+// ВЫБОР (Call пусто), ЕСТЬNULL/COALESCE, МИНИМУМ/МАКСИМУМ.
+func refPassThroughCall(call string) bool {
+	switch call {
+	case "", "естьnull", "isnull", "coalesce", "минимум", "максимум", "min", "max":
+		return true
+	}
+	return false
+}
+
+// lineageSourceMeta — метаданные источника по алиасу. Табличная часть
+// («Документ.А_ОтчетМастера.Работы КАК Р») приходит в запрос синтетической
+// таблицей; её поля берутся у владельца по Sources.
+func (s *Server) lineageSourceMeta(res query.Result, ref query.SourceRef) *metadata.Entity {
+	if meta := s.sourceMeta(ref.Kind, ref.Name); meta != nil {
+		return meta
+	}
+	for _, src := range res.Sources {
+		if src.TablePart == "" || !strings.EqualFold(metadata.TablePartTableName(src.Name, src.TablePart), ref.Name) {
+			continue
+		}
+		owner := s.reg.GetEntity(src.Name)
+		if owner == nil {
+			return nil
+		}
+		for i := range owner.TableParts {
+			if strings.EqualFold(owner.TableParts[i].Name, src.TablePart) {
+				return metadata.TablePartQueryEntity(owner, &owner.TableParts[i], owner.Name)
+			}
+		}
+	}
+	return nil
 }

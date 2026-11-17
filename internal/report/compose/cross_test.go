@@ -380,3 +380,34 @@ func TestSortGroupsByNonGroupingField(t *testing.T) {
 		t.Fatalf("порядок групп: дерево %v, кросс %v", tree, cross)
 	}
 }
+
+// «Частота работ» (order СКД [Направление.ПорядокВОтчетах Asc, Заявка Desc]):
+// поле запроса упорядочивает направления, а внутри направления, где оно
+// одинаково, решает показатель по убыванию.
+func TestSortLevelsByFieldThenMeasure(t *testing.T) {
+	rows := []Row{
+		{"Направление": "СМА", "Порядок": "2", "Работа": "ТЭН", "Заявка": "1"},
+		{"Направление": "СМА", "Порядок": "2", "Работа": "Насос", "Заявка": "5"},
+		{"Направление": "ХД", "Порядок": "1", "Работа": "Фреон", "Заявка": "2"},
+		{"Направление": "ХД", "Порядок": "1", "Работа": "Компрессор", "Заявка": "7"},
+	}
+	spec := report.Composition{
+		Groupings: []string{"Направление", "Работа"},
+		Measures:  []report.Measure{{Field: "Заявка", Agg: "sum"}},
+		Sort:      []report.SortKey{{Field: "Порядок"}, {Field: "Заявка", Dir: "desc"}},
+	}
+	res, err := Compose(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, g := range res.Groups {
+		got = append(got, toStr(g.Key))
+		for _, c := range g.Children {
+			got = append(got, toStr(c.Key))
+		}
+	}
+	if strings.Join(got, ",") != "ХД,Компрессор,Фреон,СМА,Насос,ТЭН" {
+		t.Fatalf("порядок: %v", got)
+	}
+}
