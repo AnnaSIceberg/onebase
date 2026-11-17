@@ -22,5 +22,14 @@ func (s *Server) reportOutputRecordLabel(ctx context.Context, entity *metadata.E
 	if access.ReportOutputLabelProtected(entity) {
 		return fmt.Sprint(row["id"])
 	}
-	return s.maskedRecordLabel(ctx, entity, row)
+	// Поля обязательной политики ПДн убираются из копии строки до подписи при
+	// любой роли: иначе при пустом Наименовании RowLabel взял бы следующий
+	// строковый кандидат — pii-поле, которое карточная политика админу
+	// оставляет открытым.
+	clean := make(map[string]any, len(row))
+	for key, value := range row {
+		clean[key] = value
+	}
+	s.maskRecordWithDecisions(access.ReportOutputDecisions(entity), clean)
+	return s.maskedRecordLabel(ctx, entity, clean)
 }
