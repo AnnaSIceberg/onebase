@@ -56,13 +56,21 @@ func ReportOutputDecisions(meta *metadata.Entity) map[string]FieldDecision {
 }
 
 // ReportOutputLabelProtected — представление сущности в отчёте недоступно:
-// хотя бы одно поле представления под обязательной политикой ПДн.
+// под обязательной политикой ПДн поле, которым объект представляется. Это
+// любое поле явного presentation или первое по правилу имён (metadata.
+// LabelFields). Прочие строковые поля LabelFields — лишь запасные кандидаты:
+// скрытое pii-поле маска удаляет из строки, и RowLabel его не возьмёт, поэтому
+// ПДн-поле филиала не делает недоступным его Наименование.
 func ReportOutputLabelProtected(meta *metadata.Entity) bool {
 	decisions := ReportOutputDecisions(meta)
 	if len(decisions) == 0 {
 		return false
 	}
-	for _, field := range metadata.LabelFields(meta) {
+	labels := metadata.LabelFields(meta)
+	if len(meta.Presentation) == 0 && len(labels) > 1 {
+		labels = labels[:1]
+	}
+	for _, field := range labels {
 		if _, ok := decisions[field.Name]; ok {
 			return true
 		}

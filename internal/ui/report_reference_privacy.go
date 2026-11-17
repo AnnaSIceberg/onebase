@@ -16,23 +16,38 @@ import (
 // Resolve only columns proven to contain entity references. Unknown UUID-like
 // strings never trigger a search across unrelated catalogs/documents.
 func (s *Server) resolveUUIDsInReport(ctx context.Context, rows []map[string]any, compiled query.Result, skipCols ...string) {
-	if !compiled.Projection.Simple {
-		return
-	}
+	refColumns := compiled.RefColumns
 	outputCounts := map[string]int{}
-	for _, col := range compiled.Projection.Columns {
-		if col.Star {
-			return // a wildcard may introduce a second column with the same name
-		}
-		name := col.Output
+	count := func(name string) {
 		if logical, ok := compiled.LongIdents[name]; ok {
 			name = logical
 		}
 		outputCounts[strings.ToLower(name)]++
 	}
+	if compiled.Projection.Simple {
+		for _, col := range compiled.Projection.Columns {
+			if col.Star {
+				return // a wildcard may introduce a second column with the same name
+			}
+			count(col.Output)
+		}
+	} else {
+		// Подзапрос/ОБЪЕДИНИТЬ: транслятор ссылки не доказывает, колонку
+		// результата прослеживает Lineage (reportLineageRefColumns).
+		refColumns = s.reportLineageRefColumns(compiled)
+		for _, line := range compiled.Projection.Lineage {
+			if !line.Result {
+				continue
+			}
+			if line.Star {
+				return
+			}
+			count(line.Output)
+		}
+	}
 	ctx = access.WithReportOutput(ctx)
 	cache := map[string]string{}
-	for column, target := range compiled.RefColumns {
+	for column, target := range refColumns {
 		if logical, ok := compiled.LongIdents[column]; ok {
 			column = logical
 		}
@@ -117,4 +132,116 @@ func (s *Server) validateReportReferenceChoice(ctx context.Context, p reportpkg.
 		}
 	}
 	return nil
+}
+
+// reportLineageRefColumns доказывает ссылочные колонки результата запроса с
+// подзапросом или ОБЪЕДИНИТЬ: элемент выборки — простая ссылка
+// «Алиас.Реквизит[.Ссылка]» или «Алиас.Ссылка» на источник по алиасу, либо
+// колонка подзапроса, которая сама так доказана. Для ОБЪЕДИНИТЬ все ветви
+// обязаны дать одну сущность; имя колонки — из первой ветви. Неоднозначное
+// не доказывается и остаётся UUID.
+func (s *Server) reportLineageRefColumns(res query.Result) map[string]string {
+	type column struct {
+		name, entity string
+		conflict     bool
+	}
+	byPos := map[int]*column{}
+	for _, line := range res.Projection.Lineage {
+		if !line.Result {
+			continue
+		}
+		if line.Star {
+			return nil
+		}
+		entity := s.lineageRefTarget(res, line, 0)
+		col := byPos[line.Position]
+		if col == nil {
+			col = &column{entity: entity}
+			byPos[line.Position] = col
+		} else if col.entity != entity {
+			col.conflict = true
+		}
+		if line.Branch == 0 {
+			col.name = line.Output
+		}
+		if entity == "" {
+			col.conflict = true
+		}
+	}
+	out := map[string]string{}
+	for _, col := range byPos {
+		if !col.conflict && col.name != "" && col.entity != "" {
+			out[col.name] = col.entity
+		}
+	}
+	return out
+}
+
+func (s *Server) lineageRefTarget(res query.Result, line query.ProjectionLineage, depth int) string {
+	if depth > 4 || !line.Plain || len(line.Paths) != 1 {
+		return ""
+	}
+	path := line.Paths[0]
+	if refs, ok := res.Projection.SourceAliases[strings.ToLower(path[0])]; ok {
+		target := ""
+		for i, src := range refs {
+			entity := s.referencePathTarget(s.sourceMeta(src.Kind, src.Name), path[1:])
+			if entity == "" || (i > 0 && entity != target) {
+				return ""
+			}
+			target = entity
+		}
+		return target
+	}
+	// Алиас подзапроса: «Т.Колонка» — колонка вложенного SELECT.
+	if len(path) != 2 {
+		return ""
+	}
+	target := ""
+	for _, inner := range res.Projection.Lineage {
+		if inner.Result || !strings.EqualFold(inner.Output, path[1]) {
+			continue
+		}
+		entity := s.lineageRefTarget(res, inner, depth+1)
+		if entity == "" || (target != "" && entity != target) {
+			return ""
+		}
+		target = entity
+	}
+	return target
+}
+
+// referencePathTarget — сущность, на которую ссылается путь полей от meta:
+// «Ссылка» (только последним) — сама meta, ссылочный реквизит — его сущность.
+func (s *Server) referencePathTarget(meta *metadata.Entity, fields []string) string {
+	if meta == nil || len(fields) == 0 {
+		return ""
+	}
+	for i, name := range fields {
+		if isReportReferenceName(name) {
+			if i != len(fields)-1 || meta.Kind == "" {
+				return ""
+			}
+			return meta.Name
+		}
+		var ref string
+		for _, f := range meta.Fields {
+			if strings.EqualFold(f.Name, name) {
+				ref = f.RefEntity
+				break
+			}
+		}
+		if ref == "" {
+			return ""
+		}
+		meta = s.reg.GetEntity(ref)
+		if meta == nil {
+			return ""
+		}
+	}
+	return meta.Name
+}
+
+func isReportReferenceName(name string) bool {
+	return strings.EqualFold(name, "Ссылка") || strings.EqualFold(name, "Ref")
 }

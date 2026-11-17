@@ -15,6 +15,9 @@ type ProjectionLineage struct {
 	// аргументы КОЛИЧЕСТВО(…): они дают признак или счётчик, а не само значение.
 	// В остальном избыточность намеренная: лишнее имя только ужесточает.
 	Uses []string
+	// Paths — составные ссылки среди Uses как написаны («Ф.Наименование»,
+	// «З.Филиал.Ссылка»), чтобы привязать поле к источнику по алиасу.
+	Paths [][]string
 	// Plain — элемент является простой ссылкой на поле (маскируется на выходе).
 	Plain bool
 	// Star — элемент «*» или «Т.*».
@@ -22,6 +25,10 @@ type ProjectionLineage struct {
 	// Result — элемент принадлежит SELECT, чьи строки являются результатом
 	// запроса: верхнему уровню или ветви ОБЪЕДИНИТЬ, а не подзапросу в ИЗ/ГДЕ.
 	Result bool
+	// Branch — номер ветви результата (0 — первая, она задаёт имена колонок);
+	// Position — номер элемента в своём списке выборки. Для элемента
+	// подзапроса Branch = -1.
+	Branch, Position int
 }
 
 // projectionLineage разбирает списки выборки всех SELECT потока токенов.
@@ -30,7 +37,7 @@ func projectionLineage(tokens []tok) []ProjectionLineage {
 	// resultParen[d] — скобка глубины d открывает ветвь результата
 	// («(ВЫБРАТЬ …) ОБЪЕДИНИТЬ (ВЫБРАТЬ …)»), а не подзапрос.
 	resultParen := map[int]bool{0: true}
-	depth := 0
+	depth, branches := 0, 0
 	for i, t := range tokens {
 		switch t.kind {
 		case tLParen:
@@ -52,9 +59,15 @@ func projectionLineage(tokens []tok) []ProjectionLineage {
 		start := selectProjectionStart(tokens, i)
 		end := projectionEnd(tokens, start)
 		result := resultParen[depth]
-		for _, item := range splitProjectionItems(tokens[start:end]) {
+		branch := -1
+		if result {
+			branch = branches
+			branches++
+		}
+		for pos, item := range splitProjectionItems(tokens[start:end]) {
 			col, _ := parseProjectionItem(item)
-			line := ProjectionLineage{Uses: valueIdentifiers(item), Result: result, Star: col.Star}
+			uses, paths := valueIdentifiers(item)
+			line := ProjectionLineage{Uses: uses, Paths: paths, Result: result, Star: col.Star, Branch: branch, Position: pos}
 			if !col.Star {
 				line.Output = col.Output
 				line.Plain = len(col.Fields) > 0
@@ -122,9 +135,10 @@ func projectionEnd(tokens []tok, start int) int {
 }
 
 // valueIdentifiers — identifiersIn без условий ВЫБОР КОГДА … ТОГДА и без
-// аргументов КОЛИЧЕСТВО(…).
-func valueIdentifiers(item []tok) []string {
+// аргументов КОЛИЧЕСТВО(…). Вторым значением — составные ссылки «А.Поле…».
+func valueIdentifiers(item []tok) ([]string, [][]string) {
 	var out []string
+	var paths [][]string
 	caseDepth, condDepth := 0, -1
 	countParen, depth := -1, 0
 	for i, t := range item {
@@ -173,6 +187,72 @@ func valueIdentifiers(item []tok) []string {
 			continue
 		}
 		out = append(out, t.val)
+		if i+2 < len(item) && item[i+1].kind == tDot && (i == 0 || item[i-1].kind != tDot) {
+			path := []string{t.val}
+			for j := i + 1; j+1 < len(item) && item[j].kind == tDot && item[j+1].kind == tIdent; j += 2 {
+				path = append(path, item[j+1].val)
+			}
+			if len(path) > 1 {
+				paths = append(paths, path)
+			}
+		}
+	}
+	return out, paths
+}
+
+// projectionSourceAliases — алиасы источников «Справочник.X КАК А» (и имя
+// объекта без алиаса) в нижнем регистре. Алиас подзапроса сюда не входит.
+func projectionSourceAliases(tokens []tok) map[string][]SourceRef {
+	out := map[string][]SourceRef{}
+	add := func(alias string, ref SourceRef) {
+		for _, known := range out[alias] {
+			if known == ref {
+				return
+			}
+		}
+		out[alias] = append(out[alias], ref)
+	}
+	for i := 0; i+2 < len(tokens); i++ {
+		if tokens[i].kind != tIdent || tokens[i+1].kind != tDot || tokens[i+2].kind != tIdent {
+			continue
+		}
+		if i > 0 && tokens[i-1].kind == tDot {
+			continue
+		}
+		kind := sourcePermKind(upperFast(tokens[i].val))
+		if kind == "" {
+			continue
+		}
+		ref := SourceRef{Kind: kind, Name: tokens[i+2].val}
+		j := i + 3
+		for j+1 < len(tokens) && tokens[j].kind == tDot && tokens[j+1].kind == tIdent {
+			j += 2
+		}
+		if j < len(tokens) && tokens[j].kind == tLParen {
+			depth := 0
+			for ; j < len(tokens); j++ {
+				if tokens[j].kind == tLParen {
+					depth++
+				} else if tokens[j].kind == tRParen {
+					depth--
+					if depth == 0 {
+						j++
+						break
+					}
+				}
+			}
+		}
+		add(lowerFast(ref.Name), ref)
+		if j < len(tokens) && tokens[j].kind == tIdent {
+			if kw, isKW := sqlKW(tokens[j].val); isKW && kw == "AS" {
+				j++
+			}
+		}
+		if j < len(tokens) && tokens[j].kind == tIdent {
+			if _, isKW := sqlKW(tokens[j].val); !isKW {
+				add(lowerFast(tokens[j].val), ref)
+			}
+		}
 	}
 	return out
 }

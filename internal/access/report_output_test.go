@@ -193,3 +193,20 @@ func TestOrdinaryMaskUnknownSourceFailsClosedWithoutChangingKnownSource(t *testi
 		}
 	}
 }
+
+// Запасные строковые кандидаты LabelFields не делают представление
+// защищённым: pii-поле филиала не скрывает его Наименование.
+func TestReportOutputLabelProtectedUsesShownField(t *testing.T) {
+	branch := &metadata.Entity{Name: "Branch", Kind: metadata.KindCatalog, Fields: []metadata.Field{
+		{Name: "Наименование", Type: metadata.FieldTypeString}, {Name: "Чат", Type: metadata.FieldTypeString, PII: true},
+	}}
+	if access.ReportOutputLabelProtected(branch) {
+		t.Fatal("PII fallback candidate hid an ordinary branch name")
+	}
+	person := &metadata.Entity{Name: "Person", Kind: metadata.KindCatalog, Fields: []metadata.Field{
+		{Name: "Наименование", Type: metadata.FieldTypeString, PII: true}, {Name: "Код", Type: metadata.FieldTypeString},
+	}}
+	if !access.ReportOutputLabelProtected(person) {
+		t.Fatal("personal name label must stay protected")
+	}
+}
