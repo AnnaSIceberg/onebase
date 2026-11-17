@@ -214,11 +214,21 @@ func extractFormatParam(fmtStr, key string) string {
 // При наличии часов строчное «mm»/«мм» всегда означает минуты, даже рядом
 // с годом или днём. Для месяца нужно явное «MM»/«ММ»: «дд.ММ.гггг ЧЧ:мм:сс».
 func formatDate(t time.Time, pattern string) string {
+	// Текст в двойных кавычках — литерал, как в 1С: ДФ='d MMMM yyyy "года"'.
+	// Он выводится как есть и не участвует ни в замене токенов, ни в выборе
+	// падежа, ни в разборе шаблона Go (каждая часть форматируется отдельно).
+	parts := strings.Split(pattern, `"`)
+	var tokens strings.Builder
+	for i := 0; i < len(parts); i += 2 {
+		tokens.WriteString(parts[i])
+		tokens.WriteByte(' ')
+	}
+	template := tokens.String()
 	// Замены не перекрываются и не перечитывают уже подставленное, а порядок
 	// аргументов задаёт приоритет: «yyyy» пробуется раньше «yy», иначе год
 	// превратился бы в «0606».
 	minute := goLayoutMonth
-	if hasHourToken(pattern) || isMinutesSecondsPattern(pattern) {
+	if hasHourToken(template) || isMinutesSecondsPattern(template) {
 		minute = goLayoutMinute
 	}
 	// «ММММ»/«МММ» — название месяца, как в 1С: ДФ='ММММ гг' → «Сентябрь 26»,
@@ -228,11 +238,11 @@ func formatDate(t time.Time, pattern string) string {
 	// «декабря») его не задели. Одиночное «д»/«d» — день без ведущего нуля.
 	month := int(t.Month()) - 1
 	full := monthNamesRU[month]
-	if strings.ContainsAny(pattern, "dд") {
+	if strings.ContainsAny(template, "dд") {
 		full = monthGenitiveRU[month]
 	}
 	fullMark, shortMark := string(rune(1)), string(rune(2))
-	out := t.Format(strings.NewReplacer(
+	layout := strings.NewReplacer(
 		"MMMM", fullMark, "ММММ", fullMark,
 		"MMM", shortMark, "МММ", shortMark,
 		"yyyy", goLayoutYear4, "гггг", goLayoutYear4,
@@ -244,8 +254,17 @@ func formatDate(t time.Time, pattern string) string {
 		"hh", goLayoutHour12, "чч", goLayoutHour12,
 		"ss", goLayoutSecond, "сс", goLayoutSecond,
 		"mm", minute, "мм", minute,
-	).Replace(pattern))
-	return strings.NewReplacer(fullMark, full, shortMark, monthShortRU[month]).Replace(out)
+	)
+	names := strings.NewReplacer(fullMark, full, shortMark, monthShortRU[month])
+	var out strings.Builder
+	for i, part := range parts {
+		if i%2 == 1 {
+			out.WriteString(part)
+		} else if part != "" {
+			out.WriteString(names.Replace(t.Format(layout.Replace(part))))
+		}
+	}
+	return out.String()
 }
 
 var monthNamesRU = [12]string{"Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"}
