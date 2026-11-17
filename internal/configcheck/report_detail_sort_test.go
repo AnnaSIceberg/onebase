@@ -69,6 +69,9 @@ func TestDetailSortValidationDoesNotAllowUnknownColumns(t *testing.T) {
 		{name: "no details", query: "ВЫБРАТЬ Label КАК label ИЗ Справочник.Line", field: "label", detail: false},
 		{name: "pivot", query: "ВЫБРАТЬ Label КАК label ИЗ Справочник.Line", field: "label", detail: true, columns: []string{"Month"}},
 		{name: "pivot unknown", query: "ВЫБРАТЬ Label КАК label ИЗ Справочник.Line", field: "absent", columns: []string{"Month"}, wantIssue: true},
+		// Запрос с подзапросом и ОБЪЕДИНИТЬ: колонки — из первой ветви внешнего SELECT.
+		{name: "union subquery", query: "ВЫБРАТЬ Д.Label КАК label, Д.Amount КАК sort400 ИЗ (ВЫБРАТЬ Label КАК Label, Amount КАК Amount ИЗ Справочник.Line ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ Label, Amount ИЗ Справочник.Line) КАК Д", field: "Sort400", columns: []string{"label"}},
+		{name: "union subquery unknown", query: "ВЫБРАТЬ Д.Label КАК label ИЗ (ВЫБРАТЬ Label КАК Label ИЗ Справочник.Line ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ Label ИЗ Справочник.Line) КАК Д", field: "absent", wantIssue: true},
 		{name: "duplicate", query: "ВЫБРАТЬ Label КАК label, Amount КАК label ИЗ Справочник.Line", field: "label", detail: true, wantIssue: true},
 		{name: "wildcard", query: "ВЫБРАТЬ * ИЗ Справочник.Line", field: "label", detail: true, wantIssue: true},
 	} {

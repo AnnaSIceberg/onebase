@@ -19,8 +19,11 @@ func reportDetailSortColumns(proj *project.Project, rep *report.Report, queryTex
 		params[p.Name] = nil
 	}
 	compiled, err := query.Compile(queryText, query.CompileOpts{Params: params, Entities: proj.Entities, Registers: proj.Registers, InfoRegs: proj.InfoRegisters, AccountRegs: proj.AccountRegisters})
-	if err != nil || !compiled.Projection.Simple {
+	if err != nil {
 		return nil
+	}
+	if !compiled.Projection.Simple {
+		return outerQuerySortColumns(compiled)
 	}
 	counts := map[string]int{}
 	for _, col := range compiled.Projection.Columns {
@@ -74,6 +77,32 @@ func querySortColumns(c *report.Composition, outputs map[string]bool) map[string
 	}
 	for _, m := range c.Measures {
 		delete(fields, strings.ToLower(m.Field))
+	}
+	return fields
+}
+
+// outerQuerySortColumns — колонки результата запроса с подзапросом или
+// ОБЪЕДИНИТЬ (Сортировка400 у А_ЗвонкиПоНаправлениям «…(с архивом)»): имена
+// задаёт первая ветвь внешнего SELECT. «*» или безымянное выражение делают
+// набор недоказанным, повторяющееся имя не допускается.
+func outerQuerySortColumns(compiled query.Result) map[string]bool {
+	counts := map[string]int{}
+	for _, line := range compiled.Projection.Lineage {
+		if !line.Result || line.Branch != 0 {
+			continue
+		}
+		if line.Star {
+			return nil
+		}
+		if line.Output != "" {
+			counts[strings.ToLower(line.Output)]++
+		}
+	}
+	fields := map[string]bool{}
+	for name, count := range counts {
+		if count == 1 {
+			fields[name] = true
+		}
 	}
 	return fields
 }
