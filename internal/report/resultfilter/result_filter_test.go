@@ -140,3 +140,36 @@ func TestReportResultFilterPublicSchemaAndValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestReportResultFilterUnaliasedNativeColumns(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		entity := &metadata.Entity{Name: "NativeFilterRow", Kind: metadata.KindCatalog, Fields: []metadata.Field{{Name: "Метка", Type: "string"}, {Name: "Amount", Type: "number"}}}
+		if err := db.Migrate(ctx, []*metadata.Entity{entity}); err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range []map[string]any{{"Метка": "KEEP", "Amount": 7}, {"Метка": "DROP", "Amount": 9}} {
+			if err := db.Upsert(ctx, entity.Name, uuid.New(), row, entity); err != nil {
+				t.Fatal(err)
+			}
+		}
+		res, err := query.Compile("ВЫБРАТЬ П.Метка, П.Amount ИЗ Справочник.NativeFilterRow КАК П", query.CompileOpts{Entities: []*metadata.Entity{entity}, Dialect: db.Dialect()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields := resultfilter.Schema(res, func(_, name string) *metadata.Entity {
+			if name == entity.Name {
+				return entity
+			}
+			return nil
+		}, func(query.SourceRef, *metadata.Entity, string, bool) bool { return true })
+		plan, err := resultfilter.New(fields, []reportpkg.Filter{{Field: "мЕТКА", Op: "eq", Value: "KEEP"}, {Field: "Amount", Op: "ge", Value: "7"}}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := resultfilter.Run(ctx, db, &res, plan, resultfilter.Options{MaxRows: 1})
+		if err != nil || len(result.Rows) != 1 || result.Rows[0]["метка"] != "KEEP" {
+			t.Fatalf("native physical columns: %+v %v", result, err)
+		}
+	})
+}

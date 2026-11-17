@@ -163,9 +163,8 @@ func sourcePath(sources []query.SourceOccurrence, path []string) (query.SourceOc
 func outputName(res query.Result, col query.ProjectionColumn) string {
 	name := strings.ToLower(col.Output)
 	if col.Alias == "" {
-		if actual := res.DSLColumnAliases[name]; actual != "" {
-			name = actual
-		}
+		// DSLColumnAliases belongs to queryProxy's object materialization, not
+		// query.Run/VisitQuery. Native report rows retain the physical SQL label.
 		if len(col.Path) > 0 && (strings.EqualFold(col.Path[len(col.Path)-1], "Ссылка") || strings.EqualFold(col.Path[len(col.Path)-1], "Ref")) {
 			if res.RefColumns["id"] != "" {
 				name = "id"

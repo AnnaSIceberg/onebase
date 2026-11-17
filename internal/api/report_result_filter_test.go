@@ -78,8 +78,8 @@ func TestReportResultFilterAPIVariantAndPresetSchema(t *testing.T) {
 		status int
 		want   any
 	}{
-		{"default-preset", nil, 200, float64(7)},
-		{"owned-preset", url.Values{"__preset": {preset}}, 200, float64(7)},
+		{"default-preset", nil, 200, "7"},
+		{"owned-preset", url.Values{"__preset": {preset}}, 200, "7"},
 		// The same output alias is not a type proof for another variant.
 		{"main-invalid-numeric-filter", url.Values{"__variant": {""}}, 400, nil},
 		{"explicit-main", url.Values{"__variant": {""}, "__settings": {`{"variant":"numeric","filters":[{"field":"value","op":"contains","value":"KEEP"}]}`}}, 200, "KEEP"},
