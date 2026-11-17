@@ -204,8 +204,9 @@ func TestReportResultProcDiscloseCannotReadPrivateReferenceHTTP(t *testing.T) {
 З = Новый Запрос;
 З.Текст = "ВЫБРАТЬ Ссылка КАК Ключ ИЗ Справочник.RefPrivacy";
 Для Каждого Стр Из З.Выполнить() Цикл
-    Об = Стр.Ключ.ПолучитьОбъект();
+    Об = Справочники.RefPrivacy.НайтиПоИдентификатору(Стр.Ключ.УникальныйИдентификатор()).ПолучитьОбъект();
     Д.Ячейка(2, 1).Текст = Строка(Об.Label) + Строка(Об.Phone) + Строка(Об.House);
+    Д.Ячейка(3, 1).Текст = "REFERENCE_READ_MARKER";
 КонецЦикла;
 Возврат Д;
 КонецФункции`)
@@ -227,7 +228,7 @@ func TestReportResultProcDiscloseCannotReadPrivateReferenceHTTP(t *testing.T) {
 			t.Fatalf("report module: HTTP%d %s", response.Code, response.Body.String())
 		}
 		view := tabularHTTP(s, actor, "privacy-session", "GET", response.Header().Get("Location"), nil)
-		if view.Code != 200 || !strings.Contains(view.Body.String(), "SAFE_REPORT_MARKER") {
+		if view.Code != 200 || !strings.Contains(view.Body.String(), "SAFE_REPORT_MARKER") || !strings.Contains(view.Body.String(), "REFERENCE_READ_MARKER") {
 			t.Fatal("report result missing", view.Code)
 		}
 		for _, secret := range []string{"79990009987", "HOUSE_987", "FLAT_654"} {

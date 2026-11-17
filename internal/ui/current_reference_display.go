@@ -42,7 +42,7 @@ func (s *Server) retainCurrentObjectRefOptions(ctx context.Context, entity *meta
 		}
 		label := selected // retain even a dangling stored ID; never silently clear it.
 		if row := rows[id.String()]; row != nil {
-			access.MaskRecord(s.currentReferenceDisplayDecisions(ctx, target), row)
+			s.maskRecordWithDecisions(s.currentReferenceDisplayDecisions(ctx, target), row)
 			label = firstStringField(row, target)
 		}
 		options[field.Name] = append(options[field.Name], map[string]any{"id": selected, "_label": label, "_choice_outside_filter": true})
