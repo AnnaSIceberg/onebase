@@ -1,9 +1,10 @@
 package configcheck
 
 import (
-	"github.com/ivantit66/onebase/internal/project"
 	"path/filepath"
 	"testing"
+
+	"github.com/ivantit66/onebase/internal/project"
 )
 
 func TestRunFullKPIChoiceOptIn(t *testing.T) {

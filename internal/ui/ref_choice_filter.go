@@ -290,6 +290,9 @@ func (s *Server) choicePredicates(ctx context.Context, owner *metadata.Entity, f
 		if kpiSource && !present {
 			return nil, true, nil
 		}
+		if kpiSource && rawValue != "" && raw == "" {
+			return nil, false, fmt.Errorf("invalid value for KPI choice source %q", path)
+		}
 		if raw == "" {
 			if kpiSource {
 				continue // explicit opt-in empty source removes only this eq

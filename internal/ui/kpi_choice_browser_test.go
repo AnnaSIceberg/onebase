@@ -21,7 +21,7 @@ func TestKPIManagedChoiceBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(db.Close)
 	f := newKPIChoiceFixture(t, db)
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {

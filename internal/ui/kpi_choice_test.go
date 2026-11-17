@@ -167,9 +167,9 @@ func TestKPIManagedChoiceHTTPMatrix(t *testing.T) {
 		if got := get(f.query(f.hiddenBranch.String())); got.Total != 0 {
 			t.Fatalf("unreadable source opened choices: %+v", got)
 		}
-		for _, raw := range []string{"bad", uuid.Nil.String(), uuid.NewString()} {
+		for _, raw := range []string{"bad", " ", "\t", uuid.Nil.String(), uuid.NewString()} {
 			w := f.picker(t, f.user, f.query(raw))
-			if raw == "bad" || raw == uuid.Nil.String() {
+			if raw == "bad" || strings.TrimSpace(raw) == "" || raw == uuid.Nil.String() {
 				if w.Code != 400 {
 					t.Fatalf("invalid UUID accepted: %d", w.Code)
 				}
