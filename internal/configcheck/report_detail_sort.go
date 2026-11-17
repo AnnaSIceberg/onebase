@@ -83,8 +83,9 @@ func querySortColumns(c *report.Composition, outputs map[string]bool) map[string
 
 // outerQuerySortColumns — колонки результата запроса с подзапросом или
 // ОБЪЕДИНИТЬ (Сортировка400 у А_ЗвонкиПоНаправлениям «…(с архивом)»): имена
-// задаёт первая ветвь внешнего SELECT. «*» или безымянное выражение делают
-// набор недоказанным, повторяющееся имя не допускается.
+// задаёт первая ветвь внешнего SELECT. «*» делает набор недоказанным;
+// безымянное выражение в набор не входит (по нему не сортируют), повторяющееся
+// имя не допускается.
 func outerQuerySortColumns(compiled query.Result) map[string]bool {
 	counts := map[string]int{}
 	for _, line := range compiled.Projection.Lineage {
