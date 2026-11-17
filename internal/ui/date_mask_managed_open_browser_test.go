@@ -112,7 +112,7 @@ sample();</script>`))
 		}
 		router.ServeHTTP(w, r)
 	}))
-	t.Cleanup(func() { s.CloseEventStreams(); server.Close(); s.Close(); _ = db.Close() })
+	t.Cleanup(func() { s.CloseEventStreams(); server.Close(); s.Close(); db.Close() })
 	browser := newMobileLayoutBrowserSize(t, managedLayoutTestBrowser(t), 1440, 750)
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
