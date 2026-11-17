@@ -50,10 +50,10 @@ func TestReportResultSourceFiltersHTTPMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		cases := []string{"unfiltered", "get-alpha", "post-alpha", "case-field", "numeric", "reference", "masked", "empty", "variant-filter", "variant-conflict", "preset-alpha", "default-preset-alpha", "unknown-field", "unsupported-op", "reference-label", "queryless-filter", "queryless-no-filter", "malformed-settings", "query-budget", "variant-budget", "no-composition", "settings-too-large", "source-read-denied"}
+		cases := []string{"unfiltered", "get-alpha", "post-alpha", "case-field", "numeric", "reference", "masked", "empty", "variant-filter", "variant-conflict", "variant-no-user-filter", "preset-alpha", "default-preset-alpha", "unknown-field", "unsupported-op", "reference-label", "queryless-filter", "queryless-no-filter", "malformed-settings", "query-budget", "variant-budget", "no-composition", "settings-too-large", "source-read-denied"}
 		for index, name := range cases {
 			t.Run(name, func(t *testing.T) {
-				rep := &reportpkg.Report{Name: fmt.Sprintf("SourceFilters%d", index), Query: `ВЫБРАТЬ Метка, Amount, RefValue.Ссылка КАК RefValue, Secret ИЗ Справочник.SourceFilterRow`, ResultProc: "Build", Composition: &reportpkg.Composition{Detail: true, Measures: []reportpkg.Measure{{Field: "Метка", Agg: "count"}}}, Variants: []reportpkg.ReportVariant{{Name: "beta", Query: `ВЫБРАТЬ Метка, Amount, RefValue.Ссылка КАК RefValue ИЗ Справочник.SourceFilterRow`, Filters: []reportpkg.VariantFilter{{Field: "Метка", Op: "eq", Value: "BETA"}}}}}
+				rep := &reportpkg.Report{Name: fmt.Sprintf("SourceFilters%d", index), Query: `ВЫБРАТЬ П.Метка, П.Amount, П.RefValue.Ссылка КАК RefValue, П.Secret ИЗ Справочник.SourceFilterRow КАК П`, ResultProc: "Build", Composition: &reportpkg.Composition{Detail: true, Measures: []reportpkg.Measure{{Field: "Метка", Agg: "count"}}}, Variants: []reportpkg.ReportVariant{{Name: "beta", Query: `ВЫБРАТЬ П.Метка, П.Amount, П.RefValue.Ссылка КАК RefValue ИЗ Справочник.SourceFilterRow КАК П`, Filters: []reportpkg.VariantFilter{{Field: "Метка", Op: "eq", Value: "BETA"}}}}}
 				prog := mustParse(t, `Функция Build() Д=Новый ТабличныйДокумент;Д.Ячейка(1,1).Текст="COUNT:"+Строка(Результат.Количество());Н=2;Для Каждого Стр Из Результат Цикл Д.Ячейка(Н,1).Текст=Стр.Метка;Д.Ячейка(Н,2).Текст=Строка(Стр.RefValue);Н=Н+1;КонецЦикла;Возврат Д;КонецФункции`)
 				reg := runtime.NewRegistry()
 				reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{ref, entity}, Reports: []*reportpkg.Report{rep}, Programs: map[string]*ast.Program{rep.Name: prog}})
@@ -81,16 +81,21 @@ func TestReportResultSourceFiltersHTTPMatrix(t *testing.T) {
 					settings.Filters = []reportpkg.Filter{{Field: "RefValue", Op: "eq", Value: strings.ToUpper(a.String())}}
 				case "masked":
 					settings.Filters = []reportpkg.Filter{{Field: "Secret", Op: "eq", Value: "RAW_SECRET"}}
-					want = 0
+					status = http.StatusBadRequest // Protected fields cannot be used as a report oracle.
 				case "empty":
 					settings.Filters[0].Value = "NONE"
 					want = 0
 				case "variant-filter", "variant-budget":
 					settings.Variant = "beta"
 					settings.Filters[0].Value = "BETA"
+					status = 400 // Native permanent filters wrap a derived SELECT: no lineage proof yet.
 				case "variant-conflict":
 					settings.Variant = "beta"
 					want = 0
+					status = 400
+				case "variant-no-user-filter":
+					settings.Variant = "beta"
+					settings.Filters = nil
 				case "unknown-field":
 					settings.Filters[0].Field = "Unknown"
 					status = 400
@@ -111,7 +116,7 @@ func TestReportResultSourceFiltersHTTPMatrix(t *testing.T) {
 					status = 400
 				case "query-budget":
 					s.cfg.Limits.ReportMaxRows = 1
-					status = 422
+					want = 1 // The accepted ALPHA row fits; rejected rows do not consume the cap.
 				case "no-composition":
 					rep.Composition = nil
 				case "source-read-denied":
@@ -156,6 +161,12 @@ func TestReportResultSourceFiltersHTTPMatrix(t *testing.T) {
 				}
 				before := len(s.tabularResults.items)
 				w := tabularHTTP(s, actor, "own-source-filter", method, target, form)
+				// Arbitrary DSL output needs a host producer proof even if its SQL
+				// inputs can be filtered. Keep native validation failures above;
+				// a previously successful filtered module must now stop explicitly.
+				if status == http.StatusSeeOther && settings != nil && len(settings.Filters) > 0 {
+					status = http.StatusUnprocessableEntity
+				}
 				if w.Code != status {
 					t.Fatalf("HTTP%d want%d: %s", w.Code, status, w.Body.String())
 				}

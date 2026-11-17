@@ -83,6 +83,8 @@ func serveAppJS(w http.ResponseWriter, r *http.Request, body []byte, etag string
 // тем же путём, что и в конфигураторе лаунчера, чтобы рабочий стол и
 // предпросмотр виджетов рисовались идентично.
 func mountStatic(r chi.Router) {
+	mountReportResultFilters(r)
+
 	r.Get("/static/list-controls.js", func(w http.ResponseWriter, req *http.Request) {
 		serveAppJS(w, req, listControlsJS, listControlsJSETag)
 	})

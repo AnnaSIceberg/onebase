@@ -18,6 +18,9 @@ func (e *querySourceAccessDenied) Error() string {
 func (e *querySourceAccessDenied) Unwrap() error { return interpreter.ErrRowAccessDenied }
 
 func reportResultErrorStatus(err error) int {
+	if errors.Is(err, errReportFilterProducerUnproven) {
+		return http.StatusUnprocessableEntity
+	}
 	if errors.Is(err, interpreter.ErrRowAccessDenied) {
 		return http.StatusForbidden
 	}

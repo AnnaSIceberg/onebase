@@ -15,6 +15,7 @@ import (
 
 	"github.com/ivantit66/onebase/internal/auth"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
+	"github.com/ivantit66/onebase/internal/report/resultfilter"
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
@@ -33,23 +34,9 @@ var errSettingsTooLarge = errors.New("настройки отчёта слишк
 var errReportPresetNameRequired = errors.New("укажите название варианта отчёта")
 
 type reportSettingsRequest struct {
+	Err            error
 	Settings       *reportpkg.UserReportSettings
 	ActivePresetID string
-}
-
-// readReportSettings разбирает пользовательские настройки из поля __settings
-// запроса (FormValue читает и POST-форму, и GET-query). Пустое или повреждённое
-// значение → nil (поведение отчёта по умолчанию).
-func readReportSettings(r *http.Request) *reportpkg.UserReportSettings {
-	raw := r.FormValue("__settings")
-	if raw == "" {
-		return nil
-	}
-	s, err := reportpkg.ParseUserSettings(raw)
-	if err != nil {
-		return nil
-	}
-	return s
 }
 
 // reportSettingsWithRequestVariant накладывает явный __variant из запроса поверх
@@ -86,54 +73,45 @@ func requestFormValue(r *http.Request, name string) (string, bool) {
 }
 
 func (s *Server) reportSettingsForRequest(r *http.Request, rep *reportpkg.Report) reportSettingsRequest {
+	raw := r.FormValue("__settings")
+	parsed, err := resultfilter.ParseSettings(raw)
+	if err != nil {
+		return reportSettingsRequest{Err: err}
+	}
 	if !reportSupportsRuntimeSettings(rep) {
+		if parsed != nil && len(parsed.Filters) > 0 {
+			return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, parsed)}
+		}
 		return reportSettingsRequest{}
 	}
-	presetID, hasPreset := requestFormValue(r, "__preset")
-	if settings := readReportSettings(r); settings != nil {
-		settings = reportSettingsWithRequestVariant(r, settings)
-		return reportSettingsRequest{Settings: settings, ActivePresetID: presetID}
+	preset, hasPreset := requestFormValue(r, "__preset")
+	loaded, loadErr := resultfilter.ResolveSettings(r.Context(), s.store, rep.Name, currentUserLogin(r), raw, preset, hasPreset)
+	if loadErr != nil {
+		return reportSettingsRequest{Err: loadErr}
 	}
-	if s.store == nil {
-		return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, nil), ActivePresetID: presetID}
+	// Choosing a named preset submits the previous form's variant too. The
+	// selected preset owns that variant; the standard preset and ordinary
+	// variant selector still accept an explicitly empty main variant.
+	if raw == "" && hasPreset && preset != "" && preset != standardReportPresetID {
+		return reportSettingsRequest{Settings: loaded.Settings, ActivePresetID: loaded.PresetID}
 	}
-
-	user := currentUserLogin(r)
-	if hasPreset {
-		if presetID == "" || presetID == standardReportPresetID {
-			return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, nil), ActivePresetID: standardReportPresetID}
-		}
-		if p, err := s.store.GetReportPreset(r.Context(), rep.Name, user, presetID); err == nil && p != nil {
-			if st, err := reportpkg.ParseUserSettings(p.SettingsJSON); err == nil {
-				return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, st), ActivePresetID: p.ID}
-			}
-		}
-		return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, nil), ActivePresetID: standardReportPresetID}
-	}
-
-	if p, err := s.store.GetDefaultReportPreset(r.Context(), rep.Name, user); err == nil && p != nil {
-		if st, err := reportpkg.ParseUserSettings(p.SettingsJSON); err == nil {
-			return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, st), ActivePresetID: p.ID}
-		}
-	}
-
-	// Fallback для баз, где до появления именованных пресетов уже была одна
-	// сохранённая настройка в _settings.
-	if settings := loadUserSettings(r.Context(), s.store, rep.Name, user); settings != nil {
-		settings = reportSettingsWithRequestVariant(r, settings)
-		return reportSettingsRequest{Settings: settings}
-	}
-	return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, nil)}
+	return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, loaded.Settings), ActivePresetID: loaded.PresetID}
 }
 
 func reportSupportsRuntimeSettings(rep *reportpkg.Report) bool {
 	if rep == nil {
 		return false
 	}
+	if strings.TrimSpace(rep.Query) != "" {
+		return true
+	}
 	if rep.Composition != nil {
 		return true
 	}
 	for i := range rep.Variants {
+		if strings.TrimSpace(rep.Variants[i].Query) != "" {
+			return true
+		}
 		if rep.Variants[i].Composition != nil {
 			return true
 		}
@@ -224,9 +202,6 @@ func reportSettingsPanelState(rep *reportpkg.Report, s *reportpkg.UserReportSett
 		return nil
 	}
 	comp := effectiveComposition(rep, s)
-	if comp == nil {
-		return nil
-	}
 	out := &reportpkg.UserReportSettings{}
 	if s != nil {
 		out.Variant = s.Variant
@@ -235,7 +210,7 @@ func reportSettingsPanelState(rep *reportpkg.Report, s *reportpkg.UserReportSett
 	if comp != nil {
 		out.Composition = panelComposition(comp)
 	}
-	if out.Variant == "" && out.Composition == nil && len(out.Filters) == 0 {
+	if strings.TrimSpace(rep.Query) == "" && out.Variant == "" && out.Composition == nil && len(out.Filters) == 0 {
 		return nil
 	}
 	return out
@@ -492,7 +467,7 @@ func loadUserSettings(ctx context.Context, store *storage.DB, report, user strin
 	if err != nil || raw == "" {
 		return nil
 	}
-	st, err := reportpkg.ParseUserSettings(raw)
+	st, err := resultfilter.ParseSettings(raw)
 	if err != nil {
 		return nil
 	}
@@ -606,6 +581,10 @@ func (s *Server) reportSettingsSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st = reportSettingsWithRequestVariant(r, st)
+	if err := s.validateReportResultSettings(r, rep, st); err != nil {
+		http.Error(w, s.errText(r, err), http.StatusBadRequest)
+		return
+	}
 	canon := ""
 	if normalized := reportSettingsPanelState(rep, st); normalized != nil {
 		if canon, err = normalized.JSON(); err != nil {

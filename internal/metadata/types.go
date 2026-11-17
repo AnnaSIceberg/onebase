@@ -90,6 +90,9 @@ type Field struct {
 	// Маркер, который по умолчанию не защищает, был бы просто комментарием, а
 	// комментарий в поле с телефоном читается как гарантия.
 	PII bool
+	// ReportPII hides a field only at report output boundaries; ordinary
+	// card/read/disclosure policy is unchanged (for example, a house number).
+	ReportPII bool
 	// PIIOpenWhen — условие над полями той же записи (`pii_open_when`, синтаксис
 	// условий формы: `СтатусОсновной = "НаОформлении"`), при котором поле с
 	// pii: true открыто в ФОРМЕ ОБЪЕКТА этой записи: показывается без маски и

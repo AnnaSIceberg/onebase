@@ -138,6 +138,7 @@ func allSchemas() map[string]map[string]any {
 			"id":                  stringSchema("Устойчивый идентификатор реквизита: не меняется при переименовании, по нему миграция переименовывает колонку, а не заводит новую"),
 			"required":            boolSchema("Реквизит обязателен к заполнению; проверяется при записи"),
 			"pii":                 boolSchema("Реквизит содержит персональные данные: закрыт маской для роли, которая про него не сказала read: full"),
+			"report_pii":          boolSchema("Поле скрыто в отчётах независимо от роли; политика карточки не меняется"),
 			"pii_open_when":       stringSchema("Условие над полями той же записи (синтаксис условий формы), при котором поле с pii: true открыто в форме объекта этой записи; только у реквизита шапки справочника и документа — в табличных частях и регистрах check отвергает ключ"),
 			// default читается как исходный текст скаляра: metadata.defaultScalar
 			// принимает любой скаляр, потому что `сейчас`, `12` и `Истина` YAML
@@ -161,6 +162,7 @@ func allSchemas() map[string]map[string]any {
 			"title": fieldProperties["title"], "label": fieldProperties["label"],
 			"titles": fieldProperties["titles"], "required": fieldProperties["required"],
 			"default": fieldProperties["default"], "pii": fieldProperties["pii"],
+			"report_pii": fieldProperties["report_pii"],
 		},
 	}
 	tablePart := map[string]any{

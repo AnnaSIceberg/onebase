@@ -368,6 +368,12 @@ func tabularAttribute(form *metadata.FormModule, entity *metadata.Entity, name s
 }
 
 func (s *Server) runTabularReport(w http.ResponseWriter, r *http.Request, rep *reportpkg.Report, params map[string]any, rows []map[string]any) error {
+	if _, filtered := r.Context().Value(reportSourceFilterKey{}).(*reportSourceFilterState); filtered {
+		// Filtered SQL inputs do not prove the returned document's lineage.
+		// Until a host-sealed producer trace is available, stop before creating
+		// any DSL capabilities or executing the module, including caught errors.
+		return errReportFilterProducerUnproven
+	}
 	decl := s.reg.GetProcedure(rep.Name, rep.ResultProc)
 	if decl == nil {
 		return fmt.Errorf("процедура результата отчёта не найдена")
@@ -385,7 +391,8 @@ func (s *Server) runTabularReport(w http.ResponseWriter, r *http.Request, rep *r
 	vars["Результат"] = resultRows
 	installTabularLayouts(vars, &tabularLayouts{s: s, owner: rep.Name})
 	var result any
-	err := s.interp.RunSandboxed(decl, &interpreter.MapThis{M: params}, interpreter.SandboxProfile{Context: r.Context(), MaxWallClock: 30 * time.Second}, &result, vars)
+	profile := interpreter.SandboxProfile{Context: r.Context(), MaxWallClock: 30 * time.Second}
+	err := s.interp.RunSandboxed(decl, &interpreter.MapThis{M: params}, profile, &result, vars)
 	if err = finishDSLExecution(tx, err); err != nil {
 		return err
 	}
