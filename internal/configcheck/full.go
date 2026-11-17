@@ -71,6 +71,7 @@ func RunFullWithOptions(dir string, opts Options) Result {
 		issues = append(issues, CheckFormHeaderKind(proj)...)
 		issues = append(issues, CheckFormConceal(proj)...)
 		issues = append(issues, CheckFormChoiceFilter(proj)...)
+		issues = append(issues, CheckFormKPIChoice(proj)...)
 		issues = append(issues, CheckFormChoiceContext(proj)...)
 		issues = append(issues, CheckFormAdminOnly(proj)...)
 		issues = append(issues, CheckFormHintFrom(proj)...)

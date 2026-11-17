@@ -426,6 +426,9 @@ type FormElement struct {
 	// контракт не входят. Порядок условий сохраняется для стабильного YAML
 	// round-trip, семантика списка — AND.
 	ChoiceFilter []FormChoiceCondition `yaml:"choice_filter,omitempty"`
+	// KPIChoice is an explicit managed KPI processor extension; ordinary forms
+	// retain the existing empty-source semantics of choice_filter.
+	KPIChoice *FormKPIChoice `yaml:"kpi_choice,omitempty"`
 	// Choices — декларативный список значений для выбора (аналог 1С СписокВыбора).
 	// Задаётся в .form.yaml на элементе kind: ПолеСписка; рендерер показывает
 	// <select> с этими значениями, а выбор дёргает событие ПриИзменении.

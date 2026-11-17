@@ -680,6 +680,14 @@ func managedFormSchema() map[string]any {
 				"items":       map[string]any{"oneOf": []any{condition, queryCondition}},
 				"description": "Условия зависимого подбора; соединяются через AND",
 			},
+			"kpi_choice": map[string]any{
+				"type": "object", "additionalProperties": false,
+				"required": []string{"all_when_empty", "label_suffix"},
+				"properties": map[string]any{
+					"all_when_empty": stringSchema("Только managed kind:kpi: прямой Объект.<Параметр>; явное пустое значение снимает ровно соответствующий eq"),
+					"label_suffix":   stringSchema("Разрешённый ссылочный реквизит того же eq; подпись в скобках с учётом read/RLS/PII"),
+				},
+			},
 		},
 	}
 	return map[string]any{

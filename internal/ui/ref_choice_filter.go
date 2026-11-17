@@ -47,6 +47,7 @@ type resolvedChoiceRequest struct {
 	// вычисленные сервером из присланных значений формы.
 	StyleParams map[string]bool
 	ReportParam *reportpkg.Param
+	KPIChoice   *metadata.FormKPIChoice
 	// Folders — элемент объявил choice_folders: группы справочника остаются в
 	// выдаче. Признак берётся из метаданных формы, а не из запроса браузера.
 	Folders bool
@@ -191,6 +192,14 @@ func (s *Server) choicePredicates(ctx context.Context, owner *metadata.Entity, f
 	if element == nil {
 		return nil, false, fmt.Errorf("choice element is not declared")
 	}
+	if element.KPIChoice != nil {
+		if err := s.validateKPIChoiceScope(ctx, owner, form, target, element); err != nil {
+			return nil, false, err
+		}
+		if !s.kpiChoiceReadable(ctx, target, element) {
+			return nil, true, nil
+		}
+	}
 	// choice_folders живёт и без условий: элемент объявляет только состав
 	// выдачи, отбирать при этом нечего.
 	if len(element.ChoiceFilter) == 0 {
@@ -275,8 +284,16 @@ func (s *Server) choicePredicates(ctx context.Context, owner *metadata.Entity, f
 			continue
 		}
 		path := strings.TrimSpace(condition.From)
-		raw := strings.TrimSpace(sources[path])
+		rawValue, present := sources[path]
+		raw := strings.TrimSpace(rawValue)
+		kpiSource := element.KPIChoice != nil && path == element.KPIChoice.AllWhenEmpty
+		if kpiSource && !present {
+			return nil, true, nil
+		}
 		if raw == "" {
+			if kpiSource {
+				continue // explicit opt-in empty source removes only this eq
+			}
 			// eq_or_empty: источник пуст — остаются записи с пустым
 			// реквизитом (общие), а не пустой список.
 			if condition.Op == metadata.FormChoiceOpEqualOrEmpty {
@@ -289,6 +306,12 @@ func (s *Server) choicePredicates(ctx context.Context, owner *metadata.Entity, f
 		id, err := uuid.Parse(raw)
 		if err != nil || id == uuid.Nil {
 			return nil, false, fmt.Errorf("invalid value for choice source %q", path)
+		}
+		if kpiSource {
+			visible, err := s.choiceRefVisible(ctx, target, fieldName, id)
+			if err != nil || !visible {
+				return nil, true, err
+			}
 		}
 		source, ok := metadata.ParseFormChoiceSource(path)
 		if !ok {
@@ -684,12 +707,16 @@ func (s *Server) resolveChoiceRequest(r *http.Request, target *metadata.Entity) 
 	if err != nil {
 		return nil, err
 	}
-	predicates, empty, err := s.choicePredicates(r.Context(), owner, form, target, element, sources)
+	choiceCtx := r.Context()
+	if formKind == choiceFormKindProcessor {
+		choiceCtx = withKPIChoiceOwner(choiceCtx, s.reg.GetProcessor(ownerName))
+	}
+	predicates, empty, err := s.choicePredicates(choiceCtx, owner, form, target, element, sources)
 	if err != nil {
 		return nil, err
 	}
 
-	resolved := &resolvedChoiceRequest{Predicates: predicates, Empty: empty, Folders: element.ChoiceFolders, ShowDeleted: formChoiceShowDeleted(owner, form, element),
+	resolved := &resolvedChoiceRequest{Predicates: predicates, Empty: empty, KPIChoice: element.KPIChoice, Folders: element.ChoiceFolders, ShowDeleted: formChoiceShowDeleted(owner, form, element),
 		StyleParams: s.choiceStyleParamValues(r.Context(), owner, form, element, sources)}
 	if selectedRaw != "" {
 		id, parseErr := uuid.Parse(selectedRaw)
@@ -799,7 +826,7 @@ func markOutsideChoice(rows []map[string]any, selected string) {
 // читает сервер, поэтому нужны owner-сущность, форма и цель.
 func (s *Server) initialChoiceOptions(ctx context.Context, owner *metadata.Entity, form *metadata.FormModule, target *metadata.Entity, element *metadata.FormElement, sources map[string]string, selected, ownerID string, ownerAsked bool) ([]map[string]any, error) {
 	mode := refOptionsChoice.withMarked(formChoiceShowDeleted(owner, form, element))
-	if len(element.ChoiceFilter) == 0 && !element.ChoiceFolders {
+	if len(element.ChoiceFilter) == 0 && !element.ChoiceFolders && element.KPIChoice == nil {
 		return s.initialReferenceOptionsOwned(ctx, target, mode, []string{selected}, ownerID, ownerAsked)
 	}
 	predicates, empty, err := s.choicePredicates(ctx, owner, form, target, element, sources)
@@ -815,6 +842,15 @@ func (s *Server) initialChoiceOptions(ctx context.Context, owner *metadata.Entit
 		}
 	}
 	rows = s.appendSelectedRefOptions(ctx, rows, target, []string{selected})
+	if element.KPIChoice != nil {
+		if !empty && ownerOK {
+			if err := s.kpiChoiceLabels(ctx, target, element.KPIChoice, rows); err != nil {
+				return nil, err
+			}
+		} else {
+			rows = nil
+		}
+	}
 	if selected == "" {
 		return rows, nil
 	}
@@ -846,7 +882,7 @@ func (s *Server) applyProcessorChoiceFilters(ctx context.Context, proc *processo
 	if proc == nil {
 		return
 	}
-	s.applyChoiceFilters(ctx, processorVirtualEntity(proc), pickProcessorManagedFormCtx(ctx, proc), choiceFormKindProcessor, data)
+	s.applyChoiceFilters(withKPIChoiceOwner(ctx, proc), processorVirtualEntity(proc), pickProcessorManagedFormCtx(ctx, proc), choiceFormKindProcessor, data)
 }
 
 func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity, form *metadata.FormModule, formKind string, data map[string]any) {
@@ -860,7 +896,7 @@ func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity,
 		if element == nil {
 			return true
 		}
-		filtered := len(element.ChoiceFilter) > 0 || element.ChoiceFolders || len(element.ChoiceStyleParams) > 0
+		filtered := len(element.ChoiceFilter) > 0 || element.ChoiceFolders || len(element.ChoiceStyleParams) > 0 || element.KPIChoice != nil
 		if (!filtered && element.ChoiceShowDeleted == nil) || (filtered && strings.TrimSpace(element.ID) == "") {
 			return true
 		}
