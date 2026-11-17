@@ -30,7 +30,7 @@ func crossSheetRowsPresented(cr *compose.CrossResult, spec *report.Composition, 
 	headers = make([]string, 0, 1+len(cr.Cols))
 	headers = append(headers, presentation.groupHeader(spec))
 	for _, c := range cr.Cols {
-		headers = append(headers, crossColTitle(c, measureAt(c), multiMeasure))
+		headers = append(headers, crossColTitle(c, measureAt(c), multiMeasure, spec, presentation))
 	}
 	for _, m := range spec.Measures {
 		headers = append(headers, crossTotalTitle(presentation.grandTitle(), m, multiMeasure))

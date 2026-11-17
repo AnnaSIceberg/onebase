@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +84,22 @@ func TestReportGroupPeriodCallLabel(t *testing.T) {
 	out := string(renderComposedTablePresented(res, &spec, presentation))
 	if strings.Count(out, "> 01.09.2026 0:00:00</td>") != 2 || !strings.Contains(out, "> 01.09.2026</td>") {
 		t.Fatalf("подписи групп-периодов:\n%s", out)
+	}
+	// Та же подпись — у колонки кросс-таблицы (HTML/Excel) и на оси диаграммы.
+	cross := report.Composition{Groupings: []string{"Дата"}, Columns: []string{"Час"}, Measures: spec.Measures}
+	cr, _ := compose.ComposeCross(rows, cross, nil)
+	if out := string(renderCrossTablePresented(cr, &cross, presentation)); !strings.Contains(out, ">01.09.2026 0:00:00</th>") {
+		t.Fatalf("колонка-период кросс-таблицы:\n%s", out)
+	}
+	if headers, _, _ := crossSheetRowsPresented(cr, &cross, presentation); headers[1] != "01.09.2026 0:00:00" {
+		t.Fatalf("кросс-Excel: заголовок %v", headers)
+	}
+	chartSpec := spec
+	chartSpec.Groupings = []string{"Час"}
+	chartSpec.Chart = &report.ChartSpec{Type: "bar"}
+	chartRes, _ := compose.Compose(rows, chartSpec, newInterpEvaluator(interpreter.New()))
+	if opt := buildComposedChart(chartRes, chartSpec.Chart, rows, chartSpec, nil, presentation); !strings.Contains(fmt.Sprint(opt), "01.09.2026 0:00:00") {
+		t.Fatalf("ось диаграммы: %v", opt)
 	}
 	if got := presentation.groupLabel("Час", "2026-09-01 09:05:00"); got != "01.09.2026 9:05:00" {
 		t.Fatalf("час без ведущего нуля, как в 1С: %q", got)

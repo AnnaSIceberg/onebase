@@ -313,7 +313,7 @@ func joinStyles(a, b string) string {
 // совпадает с верхней группировкой — берём ключи верхнего уровня (как раньше);
 // иначе сворачиваем плоские строки rows отдельным проходом по полю Category
 // (раньше Category игнорировался и ось всегда шла по группировке).
-func buildComposedChart(res *compose.Result, c *report.ChartSpec, rows []compose.Row, spec report.Composition, ev compose.Evaluator) map[string]any {
+func buildComposedChart(res *compose.Result, c *report.ChartSpec, rows []compose.Row, spec report.Composition, ev compose.Evaluator, presentation reportCompositionPresentation) map[string]any {
 	if c == nil {
 		return nil
 	}
@@ -326,7 +326,7 @@ func buildComposedChart(res *compose.Result, c *report.ChartSpec, rows []compose
 			return nil
 		}
 		for _, g := range res.Groups {
-			cd.XAxis = append(cd.XAxis, groupLabel(g.Key))
+			cd.XAxis = append(cd.XAxis, presentation.groupLabel(g.Field, g.Key))
 		}
 		for _, sf := range fields {
 			s := widget.ChartSeries{Name: sf}

@@ -46,7 +46,7 @@ func renderCrossTablePresented(cr *compose.CrossResult, spec *report.Composition
 	for _, c := range cr.Cols {
 		m := measureAt(c)
 		b.WriteString(`<th class="num" style="` + html.EscapeString(measureAlign(m)) + `">` +
-			html.EscapeString(crossColTitle(c, m, multiMeasure)) + `</th>`)
+			html.EscapeString(crossColTitle(c, m, multiMeasure, spec, presentation)) + `</th>`)
 	}
 	// Итог строки по всем колонкам — справа, как в СКД 1С.
 	for _, m := range spec.Measures {
@@ -106,10 +106,16 @@ func writeCrossRow(b *strings.Builder, row *compose.CrossRow, cols []compose.Cro
 
 // crossColTitle — подпись колонки: значение(я) пути через « / »; при нескольких
 // показателях добавляется название показателя, чтобы колонки различались.
-func crossColTitle(c compose.CrossCol, m report.Measure, multiMeasure bool) string {
+func crossColTitle(c compose.CrossCol, m report.Measure, multiMeasure bool, spec *report.Composition, presentation reportCompositionPresentation) string {
 	parts := make([]string, len(c.Path))
 	for i, p := range c.Path {
-		parts[i] = fmtVal(p)
+		field := ""
+		if i < len(spec.Columns) {
+			field = spec.Columns[i]
+		}
+		// Колонка-дата подписывается так же, как группа: «01.09.2026», а для
+		// функции периода — «01.09.2026 0:00:00».
+		parts[i] = presentation.groupLabel(field, p)
 	}
 	title := strings.Join(parts, " / ")
 	if multiMeasure {

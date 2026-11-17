@@ -497,13 +497,14 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 			})
 			return
 		}
+		presentation := s.compositionPresentation(rep, comp, &compiled, s.resolveLang(r))
 		var chartOption map[string]any
 		if comp.Chart != nil {
-			chartOption = buildComposedChart(res, comp.Chart, rows, *comp, ev)
+			chartOption = buildComposedChart(res, comp.Chart, rows, *comp, ev, presentation)
 		}
 		s.render(w, r, "page-report", map[string]any{
 			"Report":             rep,
-			"ComposedHTML":       renderComposedTablePresented(res, comp, s.compositionPresentation(rep, comp, &compiled, s.resolveLang(r)), drilldowns),
+			"ComposedHTML":       renderComposedTablePresented(res, comp, presentation, drilldowns),
 			"Capped":             res.Capped,
 			"ComposeWarnings":    res.Warnings,
 			"ChartOption":        chartOption,
