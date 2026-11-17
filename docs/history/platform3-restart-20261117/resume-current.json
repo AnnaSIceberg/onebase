@@ -1,0 +1,17 @@
+{
+    "owner":  "platform3",
+    "source":  "5bb3d995d98c6f23a6b38e3f5f76f62a49514eed",
+    "parent":  "71b3f92125125a59901e697401b7f410797e041b",
+    "branch":  "fix/platform3-report-output-privacy-20261116",
+    "pushed":  true,
+    "clean":  true,
+    "requested_review":  "bounded 71..5bb only",
+    "code_formatted":  true,
+    "whitespace_check":  "PASS",
+    "new_go_tests":  "NOTRUN_WAIT_NEW_PERENOS_ASSIGNMENT",
+    "lineage_frozen":  "90c23e981b138c2c7c5d5848c3c3db398920a547",
+    "old_assignments_reused":  false,
+    "date_assets_changed":  false,
+    "runtime_sdk_native":  "HOLD",
+    "next_contract":  "C:\\Users\\a.sevrjukova\\AppData\\Local\\Temp\\claude\\C--Users-a-sevrjukova-onebase\\cd50d987-9739-4c93-a5be-68d748529225\\scratchpad\\отчёты-для-analysis\\20261117-0850-platform3-ENG05-ENG06-interactive-reference-контракт.md"
+}
