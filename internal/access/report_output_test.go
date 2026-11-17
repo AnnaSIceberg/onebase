@@ -2,6 +2,7 @@ package access_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/ivantit66/onebase/internal/access"
@@ -78,14 +79,56 @@ func TestReportOutputPolicyMandatoryForEveryRole(t *testing.T) {
 		if rows[0]["contact"] != nil || rows[0]["title"] != nil || rows[0]["amount"] != 12345 {
 			t.Fatalf("output: %#v", rows)
 		}
+		// Отказ — только когда защищённое значение доходит до колонки
+		// результата, где маска его не закроет.
 		for _, text := range []string{
 			"ВЫБРАТЬ Amount ИЗ Справочник.Protected ГДЕ Phone = &Secret",
-			"ВЫБРАТЬ Label ИЗ Справочник.Protected УПОРЯДОЧИТЬ ПО Label",
+			"ВЫБРАТЬ Amount ИЗ Справочник.Protected ГДЕ ПОДСТРОКА(Phone, 1, 3) В (&A, &B)",
+			"ВЫБРАТЬ Т.N КАК N ИЗ (ВЫБРАТЬ P.Amount КАК N ИЗ Справочник.Protected КАК P ГДЕ &Secret = P.Phone) КАК Т",
 			"ВЫБРАТЬ МАКСИМУМ(Phone) КАК V ИЗ Справочник.Protected",
-			"ВЫБРАТЬ Amount ИЗ Справочник.Protected ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ Amount ИЗ Справочник.Protected",
+			"ВЫБРАТЬ ПОДСТРОКА(Phone, 1, 3) КАК V ИЗ Справочник.Protected",
+			"ВЫБРАТЬ Phone ИЗ Справочник.Protected ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ Label ИЗ Справочник.Protected",
+			"ВЫБРАТЬ Amount ИЗ Справочник.Protected ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ Phone ИЗ Справочник.Protected",
+			"ВЫБРАТЬ Т.Тел КАК X ИЗ (ВЫБРАТЬ P.Phone КАК Тел ИЗ Справочник.Protected КАК P) КАК Т",
+			"ВЫБРАТЬ Т.Y КАК X ИЗ (ВЫБРАТЬ Т2.Тел КАК Y ИЗ (ВЫБРАТЬ P.Phone КАК Тел ИЗ Справочник.Protected КАК P) КАК Т2) КАК Т",
+			"ВЫБРАТЬ ВЫБОР КОГДА Т.Amount > 0 ТОГДА Т.Тел ИНАЧЕ \"\" КОНЕЦ КАК X ИЗ (ВЫБРАТЬ P.Phone КАК Тел, P.Amount КАК Amount ИЗ Справочник.Protected КАК P) КАК Т",
+			"ВЫБРАТЬ * ИЗ (ВЫБРАТЬ P.Phone КАК Тел ИЗ Справочник.Protected КАК P) КАК Т",
+			"ВЫБРАТЬ (ВЫБРАТЬ МАКСИМУМ(P2.Phone) ИЗ Справочник.Protected КАК P2) КАК X, P.Amount ИЗ Справочник.Protected КАК P",
 		} {
 			if plan := access.ReportOutputQueryMaskPlan(user, compile(text), lookup); plan.Denied == "" {
 				t.Fatalf("unsafe query accepted: %s", text)
+			}
+		}
+		// ПДн в отборе/соединении/группировке/признаке текста отчёта, подзапрос
+		// и ОБЪЕДИНИТЬ над источником с ПДн без вывода ПДн — строятся (#kc1:
+		// 112 из 163 отчётов cc2 отклонялись целиком). Простая колонка ПДн
+		// маскируется.
+		for _, text := range []string{
+			"ВЫБРАТЬ Amount ИЗ Справочник.Protected ГДЕ Phone <> \"\" И (&Secret ЕСТЬ ПУСТО ИЛИ Amount = &Secret)",
+			"ВЫБРАТЬ Label ИЗ Справочник.Protected УПОРЯДОЧИТЬ ПО Label",
+			"ВЫБРАТЬ Amount ИЗ Справочник.Protected ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ Amount ИЗ Справочник.Protected",
+			"ВЫБРАТЬ Т.N КАК N ИЗ (ВЫБРАТЬ КОЛИЧЕСТВО(P.Phone) КАК N ИЗ Справочник.Protected КАК P СГРУППИРОВАТЬ ПО P.Phone) КАК Т",
+			"ВЫБРАТЬ ВЫБОР КОГДА Т.Тел ЕСТЬ NULL ТОГДА 0 ИНАЧЕ 1 КОНЕЦ КАК Флаг, Т.Amount КАК Amount ИЗ (ВЫБРАТЬ P.Phone КАК Тел, P.Amount КАК Amount ИЗ Справочник.Protected КАК P) КАК Т",
+			"ВЫБРАТЬ P.Amount ИЗ Справочник.Protected КАК P ЛЕВОЕ СОЕДИНЕНИЕ (ВЫБРАТЬ P2.Phone КАК Тел ИЗ Справочник.Protected КАК P2) КАК Т ПО Т.Тел = P.Phone",
+			"ВЫБРАТЬ P.Phone КАК Contact, КОЛИЧЕСТВО(P.Amount) КАК N ИЗ Справочник.Protected КАК P СГРУППИРОВАТЬ ПО P.Phone",
+		} {
+			plan := access.ReportOutputQueryMaskPlan(user, compile(text), lookup)
+			if plan.Denied != "" {
+				t.Fatalf("report without protected output denied (%s): %s", plan.Denied, text)
+			}
+			row := map[string]any{"amount": 1, "n": 1, "флаг": 1}
+			if strings.Contains(text, "КАК Contact") {
+				row["contact"] = "79990009987"
+			}
+			if strings.HasPrefix(text, "ВЫБРАТЬ Label") {
+				row["label"] = "HOUSE_987"
+			}
+			rows := []map[string]any{row}
+			if err := plan.Apply(rows); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(text, "КАК Contact") && rows[0]["contact"] != nil {
+				t.Fatalf("phone reached report output unmasked: %s", text)
 			}
 		}
 	}
