@@ -421,7 +421,7 @@ func (h *handler) runReportV2() http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
 			return
 		}
-		sourceSettings, err := reportpkg.ParseSourceSettings(r.URL.Query().Get("__settings"))
+		sourceSettings, err := h.loadReportResultSettingsV2(r, rep)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
 			return
@@ -456,54 +456,16 @@ func (h *handler) runReportV2() http.HandlerFunc {
 			writeError(w, http.StatusForbidden, "masked field: "+maskPlan.Denied, "", 0)
 			return
 		}
-		if sourceSettings != nil && len(sourceSettings.Filters) > 0 {
-			// Client filters require a COMPLETE input before pagination. Stay within
-			// the existing REST maximum rather than returning silently cropped input.
-			rows, cols, truncated, runErr := query.RunLimit(r.Context(), h.store, &compiled, restMaxLimit)
-			if runErr != nil {
-				writeError(w, http.StatusInternalServerError, runErr.Error(), "", 0)
-				return
-			}
-			if truncated {
-				writeError(w, http.StatusUnprocessableEntity, "filtered report source exceeds REST row budget; narrow the query or variant", "", 0)
-				return
-			}
-			if err := maskPlan.Apply(rows); err != nil {
-				writeError(w, http.StatusForbidden, "masked field: "+err.Error(), "", 0)
-				return
-			}
-			rows, err = compose.ApplySourceFilters(rows, sourceSettings.Filters, cols)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, err.Error(), "", 0)
-				return
-			}
-			total := len(rows)
-			if wantsReportComposition(r.URL.Query()) {
-				comp := rep.ActiveComposition(variant)
-				if comp == nil {
-					writeError(w, http.StatusBadRequest, "report has no composition", "", 0)
-					return
-				}
-				kind, data, err := h.composeReportV2(rows, comp)
-				if err != nil {
-					writeError(w, http.StatusBadRequest, "report composition error: "+err.Error(), "", 0)
-					return
-				}
-				writeJSONV2(w, http.StatusOK, restV2Envelope{Data: data, Meta: &restV2Meta{Total: total, Page: 1, Limit: total, TotalPages: totalPages(total, total), Columns: cols, Composed: true, Variant: variant, Kind: kind}})
-				return
-			}
-			offset, ok := reportPageOffset(page, limit)
-			if !ok {
-				writeError(w, http.StatusBadRequest, "invalid page", "", 0)
-				return
-			}
-			if offset > total {
-				offset = total
-			}
-			end := min(total, offset+limit)
-			writeJSONV2(w, http.StatusOK, restV2Envelope{Data: rows[offset:end], Meta: &restV2Meta{Total: total, Page: page, Limit: limit, TotalPages: totalPages(total, limit), Columns: cols, Variant: variant, Truncated: end < total}})
+		filterPlan, err := h.reportResultFilterPlanV2(r, compiled, sourceSettings)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
 			return
 		}
+		if !filterPlan.Empty() {
+			h.runReportResultFilteredV2(w, r, rep, &compiled, maskPlan, sourceSettings, filterPlan, page, limit)
+			return
+		}
+
 		if wantsReportComposition(r.URL.Query()) {
 			rows, cols, err := query.Run(r.Context(), h.store, &compiled)
 			if err != nil {

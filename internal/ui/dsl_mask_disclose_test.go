@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ivantit66/onebase/internal/access"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
 )
@@ -34,5 +35,19 @@ func TestDSLFieldMasked_DiscloseSeesValue(t *testing.T) {
 	ctx := auth.ContextWithUser(context.Background(), uiMaskUser([]string{"read", "write", "disclose"}, nil))
 	if s.dslFieldMasked(ctx, ent, "Телефон") {
 		t.Fatal("право disclose не сняло маску в DSL")
+	}
+}
+
+func TestDSLFieldMasked_ReportDiscloseCannotReveal(t *testing.T) {
+	ent := maskDSLEntity()
+	s, _ := newSubmitTestServer(t, []*metadata.Entity{ent})
+	for _, user := range []*auth.User{{IsAdmin: true}, uiMaskUser([]string{"read", "write", "disclose"}, nil)} {
+		ctx := auth.ContextWithUser(context.Background(), user)
+		if s.dslFieldMasked(ctx, ent, "Телефон") {
+			t.Fatal("ordinary privileged DSL access changed")
+		}
+		if !s.dslFieldMasked(access.WithReportOutput(ctx), ent, "Телефон") {
+			t.Fatal("privileged DSL bypassed mandatory report protection")
+		}
 	}
 }

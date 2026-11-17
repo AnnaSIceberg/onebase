@@ -3,10 +3,11 @@
 package resultfilter
 
 import (
+	"strings"
+
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/query"
 	"github.com/ivantit66/onebase/internal/typedempty"
-	"strings"
 )
 
 type Lookup func(kind, name string) *metadata.Entity
@@ -16,6 +17,7 @@ type Lookup func(kind, name string) *metadata.Entity
 type Allowed func(source query.SourceRef, meta *metadata.Entity, field string, uuid bool) bool
 
 type Field struct {
+	Values      []string        `json:"values,omitempty"`
 	Name        string          `json:"name"`
 	Type        string          `json:"type"`
 	RefEntity   string          `json:"ref_entity,omitempty"`
@@ -23,6 +25,7 @@ type Field struct {
 	Operators   []string        `json:"operators"`
 	Source      query.SourceRef `json:"-"`
 	SourceField string          `json:"-"`
+	SourceCount int             `json:"-"`
 }
 
 // Schema rejects ambiguous/derived output. Aliases only name a proven column.
@@ -108,6 +111,11 @@ func Schema(res query.Result, lookup Lookup, allowed Allowed) []Field {
 			continue
 		}
 		f := Field{Name: name, Type: string(desc.Type), RefEntity: desc.RefEntity, EnumName: desc.EnumName, Source: source.SourceRef, SourceField: sourceField}
+		for _, occurrence := range res.SourceOccurrences {
+			if occurrence.SourceRef == source.SourceRef {
+				f.SourceCount++
+			}
+		}
 		f.Operators = operators(f)
 		if len(f.Operators) > 0 {
 			out = append(out, f)

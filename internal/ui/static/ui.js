@@ -1524,8 +1524,7 @@ window.rsBeforeSubmit = function (ev) {
     form.dataset.skipCollect = '';
     return true;
   }
-  window.rsCollect();
-  return true;
+  return window.rsCollect() !== false;
 };
 
 window.rsChoosePreset = function (sel) {
@@ -1614,12 +1613,18 @@ window.rsCollect = function () {
     measures.push(m);
   });
   var filters = [];
+  var validFilters = true;
   document.querySelectorAll('.rs-filter-row').forEach(function (row) {
     var f = row.querySelector('.rs-f-field');
     var op = row.querySelector('.rs-f-op');
     var v = row.querySelector('.rs-f-value');
+    if (v && typeof window.obCommitDateInput === 'function' && !window.obCommitDateInput(v)) {
+      validFilters = false;
+      return;
+    }
     if (f && op && f.value) filters.push({ field: f.value, op: op.value, value: v ? v.value : '' });
   });
+  if (!validFilters) return false;
   var variantEl = document.querySelector('input[name="__variant"]');
   var lines = (document.getElementById('rs-lines') || {}).value || '';
   var zebra = !!(document.getElementById('rs-zebra') || {}).checked;

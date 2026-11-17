@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/access"
 	"github.com/ivantit66/onebase/internal/metadata"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/storage"
@@ -125,17 +126,22 @@ func recordValueFold(row map[string]any, name string) any {
 }
 
 func (s *Server) reportReferenceOptions(ctx context.Context, p reportpkg.Param, values map[string]any, target *metadata.Entity) ([]map[string]any, error) {
-	if !s.canCtx(ctx, string(target.Kind), target.Name, "read") {
+	ctx = access.WithReportOutput(ctx)
+	if target == nil || !s.canCtx(ctx, string(target.Kind), target.Name, "read") {
 		return nil, fmt.Errorf("report choice is unavailable")
 	}
-	if len(p.ChoiceFilter) == 0 && p.ChoiceLabelSuffix == "" {
-		return s.initialReferenceOptions(ctx, target, refOptionsFilter.withMarked(p.ChoiceShowDeleted), []string{refValueString(values[p.Name])})
+	if err := s.validateReportReferenceChoice(ctx, p, target); err != nil {
+		return nil, err
 	}
 	predicates, err := s.reportChoicePredicates(ctx, p, target, values)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.referenceOptionsWithParams(ctx, target, refOptionsFilter.withMarked(p.ChoiceShowDeleted), storage.ListParams{Limit: refPickerDefaultLimit, ChoicePredicates: predicates})
+	listParams := storage.ListParams{Limit: refPickerDefaultLimit, ChoicePredicates: predicates}
+	if len(access.ReportOutputDecisions(target)) > 0 {
+		listParams.Sort, listParams.Dir = "id", "asc"
+	}
+	rows, err := s.referenceOptionsWithParams(ctx, target, refOptionsFilter.withMarked(p.ChoiceShowDeleted), listParams)
 	if err != nil {
 		return nil, err
 	}
@@ -148,6 +154,12 @@ func (s *Server) reportReferenceOptions(ctx context.Context, p reportpkg.Param, 
 				rows = s.appendSelectedRefOptions(ctx, rows, target, []string{selected})
 			}
 		}
+	}
+	if len(access.ReportOutputDecisions(target)) > 0 {
+		for _, row := range rows {
+			row["_label"] = s.reportOutputRecordLabel(ctx, target, row)
+		}
+		s.markRefOptionLabels(ctx, rows)
 	}
 	s.reportChoiceLabels(ctx, p, target, rows)
 	return rows, nil

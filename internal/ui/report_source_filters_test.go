@@ -81,7 +81,7 @@ func TestReportResultSourceFiltersHTTPMatrix(t *testing.T) {
 					settings.Filters = []reportpkg.Filter{{Field: "RefValue", Op: "eq", Value: strings.ToUpper(a.String())}}
 				case "masked":
 					settings.Filters = []reportpkg.Filter{{Field: "Secret", Op: "eq", Value: "RAW_SECRET"}}
-					want = 0
+					status = http.StatusBadRequest // Protected fields cannot be used as a report oracle.
 				case "empty":
 					settings.Filters[0].Value = "NONE"
 					want = 0
@@ -111,7 +111,7 @@ func TestReportResultSourceFiltersHTTPMatrix(t *testing.T) {
 					status = 400
 				case "query-budget":
 					s.cfg.Limits.ReportMaxRows = 1
-					status = 422
+					want = 1 // The accepted ALPHA row fits; rejected rows do not consume the cap.
 				case "no-composition":
 					rep.Composition = nil
 				case "source-read-denied":

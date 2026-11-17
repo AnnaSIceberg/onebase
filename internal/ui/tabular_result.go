@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -368,12 +369,21 @@ func tabularAttribute(form *metadata.FormModule, entity *metadata.Entity, name s
 }
 
 func (s *Server) runTabularReport(w http.ResponseWriter, r *http.Request, rep *reportpkg.Report, params map[string]any, rows []map[string]any) error {
+	if _, filtered := r.Context().Value(reportSourceFilterKey{}).(*reportSourceFilterState); filtered {
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		r = r.WithContext(ctx)
+	}
 	decl := s.reg.GetProcedure(rep.Name, rep.ResultProc)
 	if decl == nil {
 		return fmt.Errorf("процедура результата отчёта не найдена")
 	}
 	vars, tx := s.buildDSLVarsTx(r.Context(), runtime.NewMovementsCollector("report", uuid.Nil))
 	defer rollbackDSLExecution(tx)
+	filteredVars, filtered := s.reportFilteredVars(r.Context(), tx)
+	if filtered {
+		vars = filteredVars
+	}
 	for name, fn := range interpreter.NewSpreadsheetFunctions() {
 		vars[name] = fn
 	}
@@ -385,7 +395,11 @@ func (s *Server) runTabularReport(w http.ResponseWriter, r *http.Request, rep *r
 	vars["Результат"] = resultRows
 	installTabularLayouts(vars, &tabularLayouts{s: s, owner: rep.Name})
 	var result any
-	err := s.interp.RunSandboxed(decl, &interpreter.MapThis{M: params}, interpreter.SandboxProfile{Context: r.Context(), MaxWallClock: 30 * time.Second}, &result, vars)
+	profile := interpreter.SandboxProfile{Context: r.Context(), MaxWallClock: 30 * time.Second}
+	if filtered {
+		profile.DenyNet, profile.DenyFile, profile.DenyExec, profile.DenySecrets = true, true, true, true
+	}
+	err := s.interp.RunSandboxed(decl, &interpreter.MapThis{M: params}, profile, &result, vars)
 	if err = finishDSLExecution(tx, err); err != nil {
 		return err
 	}

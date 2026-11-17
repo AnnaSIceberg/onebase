@@ -162,6 +162,9 @@ func (s *Server) dslFieldMasked(ctx context.Context, entity *metadata.Entity, fi
 	if !ok || !decision.Masked() {
 		return false
 	}
+	if access.IsReportOutput(ctx) {
+		return true
+	}
 	// Право disclose снимает маску в КОДЕ: обработка переносит значение из
 	// документа в документ (копия адреса, повторная заявка), и маска вместо
 	// телефона означала бы не защиту, а испорченные данные — звёздочки уехали
