@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/query"
 	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/storage"
 	"github.com/xuri/excelize/v2"
@@ -620,7 +621,11 @@ func TestUI_ReferenceLabelsMaskFirstStringField(t *testing.T) {
 	uctx := auth.ContextWithUser(ctx, user)
 
 	reportRows := []map[string]any{{"Клиент": id.String()}}
-	s.resolveUUIDsInReport(uctx, reportRows, "")
+	compiled, err := query.Compile("ВЫБРАТЬ Ссылка КАК Клиент ИЗ Справочник.Клиент", query.CompileOpts{Entities: []*metadata.Entity{client}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.resolveUUIDsInReport(uctx, reportRows, compiled, "")
 	if got := fmt.Sprint(reportRows[0]["Клиент"]); got == secret || got != "••••••" {
 		t.Fatalf("report UUID label = %q, want fixed mask", got)
 	}

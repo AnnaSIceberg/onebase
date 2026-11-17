@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/access"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/excel"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -215,6 +216,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		http.Error(w, "слишком много одновременно выполняемых отчётов, повторите позже", http.StatusTooManyRequests)
 		return
 	}
+	opCtx = access.WithReportOutput(opCtx)
 	opStatus := "ok"
 	opRows := 0
 	opTruncated := false
@@ -435,7 +437,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		}
 		drilldowns = &reportDrilldownRenderer{rep: rep, rowTitle: s.tr(s.resolveLang(r), "Действия")}
 	}
-	s.resolveUUIDsInReport(opCtx, rows, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
+	s.resolveUUIDsInReport(opCtx, rows, compiled, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
 
 	// Пользовательские отборы применяются к строкам до компоновки (план 70).
 	if comp != nil && settings != nil && len(settings.Filters) > 0 {
@@ -578,40 +580,6 @@ func (s *Server) runChartProc(ctx context.Context, rep *reportpkg.Report, rows [
 		return nil
 	}
 	return chart.ToEChartsOption()
-}
-
-// resolveUUIDsInReport replaces UUID-looking strings in report rows with entity
-// display names. skipCol (если непустой) исключается из подстановки — нужен для
-// колонки detail_link, где UUID должен остаться для ссылки на документ (issue #87).
-func (s *Server) resolveUUIDsInReport(ctx context.Context, rows []map[string]any, skipCols ...string) {
-	uuidToLabel := make(map[string]string)
-	for _, row := range rows {
-		for col, v := range row {
-			if reportColumnSkipped(col, skipCols) && !(len(skipCols) > 0 && strings.EqualFold(col, skipCols[0])) {
-				continue
-			}
-			if str, ok := v.(string); ok {
-				if _, err := uuid.Parse(str); err == nil {
-					uuidToLabel[str] = ""
-				}
-			}
-		}
-	}
-	if len(uuidToLabel) == 0 {
-		return
-	}
-	for _, entity := range s.reg.Entities() {
-		for idStr, label := range uuidToLabel {
-			if label != "" {
-				continue
-			}
-			id, _ := uuid.Parse(idStr)
-			if refRow, err := s.store.GetByID(ctx, entity.Name, id, entity); err == nil {
-				uuidToLabel[idStr] = s.maskedRecordLabel(ctx, entity, refRow)
-			}
-		}
-	}
-	applyResolvedLabels(rows, uuidToLabel, skipCols...)
 }
 
 // applyResolvedLabels подставляет наименования вместо UUID в строках отчёта,
@@ -778,6 +746,7 @@ func (s *Server) reportExportTable(r *http.Request, rep *reportpkg.Report) (head
 }
 
 func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Request, rep *reportpkg.Report, stats *reportExportStats) (headers []string, rows [][]any, err error) {
+	ctx = access.WithReportOutput(ctx)
 	if stats != nil {
 		stats.rowStyles = nil
 	}
@@ -860,7 +829,7 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 	if comp != nil {
 		detailLinkCol = comp.DetailLink
 	}
-	s.resolveUUIDsInReport(ctx, data, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
+	s.resolveUUIDsInReport(ctx, data, compiled, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
 
 	// Пользовательские отборы (план 70) — до компоновки, как в runReport.
 	if comp != nil && settings != nil && len(settings.Filters) > 0 {
