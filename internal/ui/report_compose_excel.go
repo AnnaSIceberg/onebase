@@ -109,7 +109,7 @@ func (e *excelComposeSink) rowWithDetail(label string, detail, vals map[string]a
 }
 
 func (e *excelComposeSink) group(g *compose.Group, level int, _ string) {
-	e.row(strings.Repeat("  ", level)+fmtVal(g.Key), g.Subtotals)
+	e.row(strings.Repeat("  ", level)+groupLabel(g.Key), g.Subtotals)
 	fill := composedGroupFill(level, len(e.spec.Groupings))
 	if explicit := sheet.ColorRGB(g.Styles[""].Background); explicit != "" {
 		fill = "#" + explicit

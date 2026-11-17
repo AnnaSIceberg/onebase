@@ -88,9 +88,9 @@ func writeCrossRow(b *strings.Builder, row *compose.CrossRow, cols []compose.Cro
 		if open {
 			text = "−"
 		}
-		marker = fmt.Sprintf(`<button type="button" class="rc-fold" aria-expanded="%t" aria-label="%s">%s</button> `, open, html.EscapeString(fmtVal(row.Key)), text)
+		marker = fmt.Sprintf(`<button type="button" class="rc-fold" aria-expanded="%t" aria-label="%s">%s</button> `, open, html.EscapeString(groupLabel(row.Key)), text)
 	}
-	fmt.Fprintf(b, `<tr class="grp" data-group="%s" data-level="%d" style="%s"><td style="%s">%s%s</td>`, html.EscapeString(path), level, html.EscapeString(rowStyle), pad, marker, html.EscapeString(fmtVal(row.Key)))
+	fmt.Fprintf(b, `<tr class="grp" data-group="%s" data-level="%d" style="%s"><td style="%s">%s%s</td>`, html.EscapeString(path), level, html.EscapeString(rowStyle), pad, marker, html.EscapeString(groupLabel(row.Key)))
 	for _, c := range cols {
 		m := measureAt(c)
 		ck := c.Key()

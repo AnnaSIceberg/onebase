@@ -45,7 +45,7 @@ func crossSheetRowsPresented(cr *compose.CrossResult, spec *report.Composition, 
 	var walk func(row *compose.CrossRow, level int)
 	walk = func(row *compose.CrossRow, level int) {
 		r := make([]any, colCount)
-		r[0] = strings.Repeat("  ", level) + fmtVal(row.Key)
+		r[0] = strings.Repeat("  ", level) + groupLabel(row.Key)
 		for i, c := range cr.Cols {
 			r[i+1] = measureCellForExcel(row.Cells[c.Key()], measureAt(c))
 		}

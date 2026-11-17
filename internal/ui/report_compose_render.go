@@ -151,10 +151,10 @@ func (h *htmlComposeSink) group(g *compose.Group, level int, path string) {
 		if open {
 			text = "−"
 		}
-		marker = fmt.Sprintf(`<button type="button" class="rc-fold" aria-expanded="%t" aria-label="%s">%s</button>`, open, html.EscapeString(fmtVal(g.Key)), text)
+		marker = fmt.Sprintf(`<button type="button" class="rc-fold" aria-expanded="%t" aria-label="%s">%s</button>`, open, html.EscapeString(groupLabel(g.Key)), text)
 	}
 	fmt.Fprintf(h.b, `<tr class="grp" data-group="%s" data-level="%d" style="%s"><td style="%s">%s %s</td>`,
-		html.EscapeString(path), level, html.EscapeString(rowStyle), pad, marker, html.EscapeString(fmtVal(g.Key)))
+		html.EscapeString(path), level, html.EscapeString(rowStyle), pad, marker, html.EscapeString(groupLabel(g.Key)))
 	h.measureCells(g.Subtotals, g.Styles)
 	if h.drilldowns.HasRows() {
 		h.b.WriteString(`<td></td>`)
@@ -326,7 +326,7 @@ func buildComposedChart(res *compose.Result, c *report.ChartSpec, rows []compose
 			return nil
 		}
 		for _, g := range res.Groups {
-			cd.XAxis = append(cd.XAxis, fmtVal(g.Key))
+			cd.XAxis = append(cd.XAxis, groupLabel(g.Key))
 		}
 		for _, sf := range fields {
 			s := widget.ChartSeries{Name: sf}
@@ -411,6 +411,12 @@ func detailFieldTitle(d report.DetailField) string {
 	}
 	return d.Field
 }
+
+// groupLabel — подпись группы отчёта. Ключ группы-даты (НачалоДня, НачалоЧаса,
+// поле-дата) приходит и time.Time, и строкой SQLite («2026-09-01 12:00:00») —
+// показывается как дата детальной записи, по-русски: «01.09.2026 12:00:00».
+// Путь группы (data-group) строится по сырому ключу и от подписи не зависит.
+func groupLabel(v any) string { return fmtDetailVal(v) }
 
 // fmtDetailVal — значение поля детальной записи: дата — по-русски в местном
 // времени приложения (время, только если оно есть), остальное — как fmtVal.
