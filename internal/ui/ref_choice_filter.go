@@ -921,6 +921,9 @@ func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity,
 			}
 			// The form holds the leading reference, not the attribute behind it.
 			sources[path] = formValueForPath(data["Values"], source.Root+"."+source.Field)
+			if element.KPIChoice != nil && path == element.KPIChoice.AllWhenEmpty {
+				sources[path] = kpiChoiceInitialSource(data["Values"], source.Field)
+			}
 		}
 		selected := formValueForPath(data["Values"], element.DataPath)
 		ownerID, ownerAsked := "", false

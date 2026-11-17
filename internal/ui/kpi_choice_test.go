@@ -216,6 +216,12 @@ func TestKPIManagedChoiceGuards(t *testing.T) {
 			t.Fatalf("external processor accepted: %d", w.Code)
 		}
 		f.proc.External = false
+		f.proc.Params[0].Default = " "
+		w := f.serve(t, f.user, "/ui/processor/"+f.proc.Name)
+		if strings.Contains(w.Body.String(), "Z first (Branch A)") {
+			t.Fatal("initial whitespace source became ALL")
+		}
+		f.proc.Params[0].Default = nil
 		f.user.Roles[0].Permissions.Processors[f.proc.Name] = nil
 		if w := f.picker(t, f.user, f.query("")); w.Code != 400 {
 			t.Fatalf("processor run denial bypassed: %d", w.Code)

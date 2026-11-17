@@ -13,6 +13,22 @@ import (
 
 type kpiChoiceOwnerKey struct{}
 
+// The initial page supplies declared blank defaults itself, but must not turn
+// a nonempty whitespace value into the opt-in ALL sentinel.
+func kpiChoiceInitialSource(values any, name string) string {
+	switch values := values.(type) {
+	case map[string]string:
+		return values[name]
+	case map[string]any:
+		if value, ok := values[name].(string); ok {
+			return value
+		}
+		return refValueString(values[name])
+	default:
+		return ""
+	}
+}
+
 func withKPIChoiceOwner(ctx context.Context, proc *processorpkg.Processor) context.Context {
 	return context.WithValue(ctx, kpiChoiceOwnerKey{}, proc)
 }
