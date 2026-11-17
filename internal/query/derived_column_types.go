@@ -2,6 +2,10 @@ package query
 
 import "github.com/ivantit66/onebase/internal/metadata"
 
+// A calendar hour is a local datetime, not a stored UTC moment. Keep this
+// internal proof distinct so a nested calendar function cannot localize twice.
+const scalarLocalHourType metadata.FieldType = "query:local_hour"
+
 // buildScalarColumnTypes propagates proven projection types from child SELECTs
 // to their derived-table aliases before calendar functions are rewritten.
 // Unknown expressions still reserve their output name, so a same-named date
@@ -254,11 +258,15 @@ func scalarProjectionFieldTypeAt(tokens []tok, ctx sourceContext, from, to int,
 
 // Only a direct field and MIN/MAX of a proven field preserve its type here.
 // Calendar results, casts, strings and arbitrary expressions are not moments.
+// НачалоЧаса has its own local-datetime output proof for result normalization.
 func scalarProjectionExpressionType(expr []tok, fields map[string]metadata.FieldType,
 	qualified map[string]map[string]metadata.FieldType,
 ) metadata.FieldType {
 	start, end := trimProjectionParentheses(expr, 0, len(expr))
 	expr = expr[start:end]
+	if isStartOfHourCall(expr, 0) && startOfHourEnd(expr, 0) == len(expr)-1 {
+		return scalarLocalHourType
+	}
 	if len(expr) >= 4 && expr[0].kind == tIdent && expr[1].kind == tLParen && expr[len(expr)-1].kind == tRParen {
 		if kw, ok := sqlAgg(expr[0].val); ok && (kw == "MIN" || kw == "MAX") {
 			return scalarProjectionExpressionType(expr[2:len(expr)-1], fields, qualified)

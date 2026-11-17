@@ -163,6 +163,9 @@ func Compile(src string, opts CompileOpts) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if err := validateStartOfHourCalls(tokens); err != nil {
+		return Result{}, err
+	}
 	tokens, opts = rewriteTablePartSources(tokens, opts)
 	res, err := translate(tokens, opts)
 	if err != nil {
@@ -7190,7 +7193,7 @@ func simpleProjectionDateOutputs(tokens []tok, p ProjectionPlan, ctx sourceConte
 	}
 	out := map[string]bool{}
 	for name, typ := range scalarProjectionTypes(tokens, ctx, scopeID, scoped[scopeID], qualified[scopeID], keys) {
-		if typ == metadata.FieldTypeDate {
+		if typ == metadata.FieldTypeDate || typ == scalarLocalHourType {
 			out[name] = true
 		}
 	}
@@ -7314,6 +7317,7 @@ func scalarFuncRewrites(dialect string) map[string]funcRewrite {
 		m["int"] = rw("CAST(", " AS INTEGER)")
 		m["началодня"] = rw("date(", ")")
 		m["startofday"] = rw("date(", ")")
+		m["началочаса"] = rw("strftime('%Y-%m-%d %H:00:00', ", ")")
 		m["конецдня"] = rw("datetime(date(", "), '+1 day', '-1 second')")
 		m["endofday"] = rw("datetime(date(", "), '+1 day', '-1 second')")
 		m["началомесяца"] = rw("date(", ", 'start of month')")
@@ -7334,6 +7338,7 @@ func scalarFuncRewrites(dialect string) map[string]funcRewrite {
 		m["int"] = rw("TRUNC(", ")")
 		m["началодня"] = rw("date_trunc('day',", ")")
 		m["startofday"] = rw("date_trunc('day',", ")")
+		m["началочаса"] = rw("date_trunc('hour', CAST(", " AS TIMESTAMPTZ))")
 		m["конецдня"] = rw("(date_trunc('day',", ") + INTERVAL '1 day' - INTERVAL '1 microsecond')")
 		m["endofday"] = rw("(date_trunc('day',", ") + INTERVAL '1 day' - INTERVAL '1 microsecond')")
 		m["началомесяца"] = rw("date_trunc('month',", ")")
@@ -7611,7 +7616,7 @@ func rewriteDateDiff(tokens []tok, at int, dialect string, scopedColTypes map[in
 
 func isCalendarDateFunc(name string) bool {
 	switch name {
-	case "началодня", "startofday", "конецдня", "endofday",
+	case "началочаса", "началодня", "startofday", "конецдня", "endofday",
 		"началомесяца", "startofmonth", "началогода", "startofyear",
 		"год", "year", "месяц", "month", "день", "day":
 		return true
