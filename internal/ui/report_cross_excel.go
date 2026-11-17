@@ -32,8 +32,16 @@ func crossSheetRowsPresented(cr *compose.CrossResult, spec *report.Composition, 
 	for _, c := range cr.Cols {
 		headers = append(headers, crossColTitle(c, measureAt(c), multiMeasure))
 	}
+	for _, m := range spec.Measures {
+		headers = append(headers, crossTotalTitle(presentation.grandTitle(), m, multiMeasure))
+	}
 
-	colCount := 1 + len(cr.Cols)
+	colCount := 1 + len(cr.Cols) + len(spec.Measures)
+	totalsAt := func(r []any, totals map[string]any) {
+		for mi, m := range spec.Measures {
+			r[1+len(cr.Cols)+mi] = measureCellForExcel(totals[compose.CrossTotalKey(mi)], m)
+		}
+	}
 	var walk func(row *compose.CrossRow, level int)
 	walk = func(row *compose.CrossRow, level int) {
 		r := make([]any, colCount)
@@ -41,6 +49,7 @@ func crossSheetRowsPresented(cr *compose.CrossResult, spec *report.Composition, 
 		for i, c := range cr.Cols {
 			r[i+1] = measureCellForExcel(row.Cells[c.Key()], measureAt(c))
 		}
+		totalsAt(r, row.Total)
 		rows = append(rows, r)
 		styles = append(styles, excel.RowStyle{Background: composedGroupFill(level, len(spec.Groupings)), Bold: true})
 		for _, ch := range row.Children {
@@ -56,6 +65,7 @@ func crossSheetRowsPresented(cr *compose.CrossResult, spec *report.Composition, 
 	for i, c := range cr.Cols {
 		tot[i+1] = measureCellForExcel(cr.RowTotal[c.Key()], measureAt(c))
 	}
+	totalsAt(tot, cr.GrandTotal)
 	rows = append(rows, tot)
 	styles = append(styles, excel.RowStyle{Bold: true})
 	return headers, rows, styles

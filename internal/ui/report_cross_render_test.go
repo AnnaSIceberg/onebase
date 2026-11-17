@@ -111,8 +111,12 @@ func TestCrossSheetRowsDuplicateField(t *testing.T) {
 	}
 	cr, _ := compose.ComposeCross(rows, *spec, nil)
 	headers, sheet := crossSheetRows(cr, spec)
-	if len(headers) != 3 {
-		t.Fatalf("ожидали 3 заголовка (измерение + 2 показателя), получили %v", headers)
+	// Измерение + 2 показателя + по колонке «Итого» на каждый показатель.
+	if len(headers) != 5 {
+		t.Fatalf("ожидали 5 заголовков (измерение + 2 показателя + 2 итога строки), получили %v", headers)
+	}
+	if headers[3] == headers[4] || !strings.Contains(headers[4], "НДС") {
+		t.Fatalf("итоги строки по показателям с одним Field затёрты: %v", headers)
 	}
 	// Подписи колонок различаются — каждая несёт свой Title показателя.
 	if headers[1] == headers[2] {
@@ -132,7 +136,7 @@ func TestCrossSheetRowsDuplicateField(t *testing.T) {
 }
 
 func TestCrossSheetRows(t *testing.T) {
-	// Excel-выгрузка кросс-таблицы: шапка = строковые измерения + колонки;
+	// Excel-выгрузка кросс-таблицы: шапка = строковые измерения + колонки + Итого;
 	// строки данных + нижняя строка ВСЕГО; значения — float64.
 	rows := []compose.Row{
 		{"Товар": "А", "Месяц": "01", "Сумма": "100"},
@@ -146,7 +150,7 @@ func TestCrossSheetRows(t *testing.T) {
 	}
 	cr, _ := compose.ComposeCross(rows, *spec, nil)
 	headers, sheet := crossSheetRows(cr, spec)
-	if len(headers) != 3 || headers[0] != "Товар" {
+	if len(headers) != 4 || headers[0] != "Товар" || headers[3] != "Итого" {
 		t.Fatalf("headers: %v", headers)
 	}
 	// Строки: А, Б, ВСЕГО.
@@ -163,5 +167,40 @@ func TestCrossSheetRows(t *testing.T) {
 	}
 	if last[2] != float64(200) {
 		t.Fatalf("итог колонки 02 ожидали 200.0, получили %v (%T)", last[2], last[2])
+	}
+}
+
+// Колонка «Итого» по строке справа (как в СКД 1С) — в HTML и в Excel.
+func TestCrossRowTotalColumnHTMLAndExcel(t *testing.T) {
+	rows := []compose.Row{
+		{"Товар": "А", "Месяц": "Янв", "Сумма": "100"},
+		{"Товар": "А", "Месяц": "Фев", "Сумма": "200"},
+		{"Товар": "Б", "Месяц": "Янв", "Сумма": "30"},
+	}
+	spec := &report.Composition{
+		Groupings: []string{"Товар"},
+		Columns:   []string{"Месяц"},
+		Measures:  []report.Measure{{Field: "Сумма", Agg: "sum"}},
+	}
+	cr, _ := compose.ComposeCross(rows, *spec, nil)
+	out := string(renderCrossTable(cr, spec))
+	if strings.Count(out, `rc-row-total`) != 1+2+1 { // шапка + две строки + угловой итог
+		t.Fatalf("колонка итога строки:\n%s", out)
+	}
+	for _, want := range []string{">300<", ">330<"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HTML без итога строки %q:\n%s", want, out)
+		}
+	}
+	headers, sheet := crossSheetRows(cr, spec)
+	if len(headers) != 4 || headers[3] != "Итого" {
+		t.Fatalf("Excel: шапка %v", headers)
+	}
+	last := len(headers) - 1
+	if got := fmtVal(sheet[0][last]); got != "300" {
+		t.Fatalf("Excel: итог строки А = %v, строки %v", got, sheet)
+	}
+	if got := fmtVal(sheet[len(sheet)-1][last]); got != "330" {
+		t.Fatalf("Excel: угловой итог = %v", got)
 	}
 }

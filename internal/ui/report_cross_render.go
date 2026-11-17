@@ -48,6 +48,11 @@ func renderCrossTablePresented(cr *compose.CrossResult, spec *report.Composition
 		b.WriteString(`<th class="num" style="` + html.EscapeString(measureAlign(m)) + `">` +
 			html.EscapeString(crossColTitle(c, m, multiMeasure)) + `</th>`)
 	}
+	// Итог строки по всем колонкам — справа, как в СКД 1С.
+	for _, m := range spec.Measures {
+		b.WriteString(`<th class="num rc-row-total" style="` + html.EscapeString(measureAlign(m)) + `">` +
+			html.EscapeString(crossTotalTitle(presentation.grandTitle(), m, multiMeasure)) + `</th>`)
+	}
 	b.WriteString(`</tr></thead><tbody>`)
 
 	// Тело: дерево строк.
@@ -62,6 +67,7 @@ func renderCrossTablePresented(cr *compose.CrossResult, spec *report.Composition
 		b.WriteString(`<td class="num" style="` + html.EscapeString(measureAlign(m)) + `">` +
 			html.EscapeString(fmtMeasure(cr.RowTotal[c.Key()], m)) + `</td>`)
 	}
+	writeCrossTotals(&b, cr.GrandTotal, spec)
 	b.WriteString(`</tr></tbody></table>`)
 	return template.HTML(b.String()) //nolint:gosec // G203: HTML собран с html.EscapeString на каждом значении
 }
@@ -91,6 +97,7 @@ func writeCrossRow(b *strings.Builder, row *compose.CrossRow, cols []compose.Cro
 		cell := joinStyles(measureAlign(m), cssOf(row.Styles[ck]))
 		fmt.Fprintf(b, `<td class="num" style="%s">%s</td>`, html.EscapeString(cell), html.EscapeString(fmtMeasure(row.Cells[ck], m)))
 	}
+	writeCrossTotals(b, row.Total, spec)
 	b.WriteString(`</tr>`)
 	for _, ch := range row.Children {
 		writeCrossRow(b, ch, cols, measureAt, level+1, path, spec)
@@ -107,6 +114,22 @@ func crossColTitle(c compose.CrossCol, m report.Measure, multiMeasure bool) stri
 	title := strings.Join(parts, " / ")
 	if multiMeasure {
 		title += " · " + measureTitle(m)
+	}
+	return title
+}
+
+// writeCrossTotals — ячейки итога строки по всем колонкам (CrossRow.Total).
+func writeCrossTotals(b *strings.Builder, totals map[string]any, spec *report.Composition) {
+	for mi, m := range spec.Measures {
+		fmt.Fprintf(b, `<td class="num rc-row-total" style="%s">%s</td>`, html.EscapeString(measureAlign(m)), html.EscapeString(fmtMeasure(totals[compose.CrossTotalKey(mi)], m)))
+	}
+}
+
+// crossTotalTitle — подпись колонки итога строки; при нескольких показателях
+// добавляется название показателя, как у обычных колонок.
+func crossTotalTitle(title string, m report.Measure, multiMeasure bool) string {
+	if multiMeasure {
+		return title + " · " + measureTitle(m)
 	}
 	return title
 }

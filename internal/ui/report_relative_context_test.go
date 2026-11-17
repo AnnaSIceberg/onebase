@@ -46,7 +46,10 @@ func TestReportRelativeContextHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 3 || len(rows[1]) != 9 || rows[1][2] != "20" || rows[1][3] != "" || rows[1][7] != "60" || rows[1][8] != "400" || rows[2][7] != "60" {
+	// Колонки «Итого» по строке (как в СКД): Amount и доля — по всей строке;
+	// Change/Ratio сравнивают соседние колонки и в итоге строки пусты (хвостовые
+	// пустые ячейки GetRows отбрасывает).
+	if len(rows) != 3 || len(rows[1]) != 11 || rows[1][2] != "20" || rows[1][3] != "" || rows[1][7] != "60" || rows[1][8] != "400" || rows[2][7] != "60" || rows[1][9] != "100" || rows[1][10] != "100" || rows[0][9] != "Итого · Amount" {
 		t.Fatalf("relative XLSX: %v", rows)
 	}
 	if !bytes.HasPrefix(get("/ui/report/Relative/pdf"), []byte("%PDF")) {

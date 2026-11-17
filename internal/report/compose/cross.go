@@ -35,13 +35,22 @@ func (c CrossCol) Key() string { return colKey(c.Path, c.MeasureIdx) }
 // агрегаты показателей по каждой колонке (ключ = CrossCol.Key()). Промежуточный
 // узел несёт подытоги по своему поддереву и Children; лист — только Cells.
 type CrossRow struct {
-	Field    string                      `json:"field"`
-	Key      any                         `json:"key"`
-	Count    int                         `json:"count"`
-	Cells    map[string]any              `json:"cells"`
-	Styles   map[string]report.CellStyle `json:"styles,omitempty"` // ключ = CrossCol.Key() → оформление ячейки
-	Children []*CrossRow                 `json:"children,omitempty"`
+	Field  string                      `json:"field"`
+	Key    any                         `json:"key"`
+	Count  int                         `json:"count"`
+	Cells  map[string]any              `json:"cells"`
+	Styles map[string]report.CellStyle `json:"styles,omitempty"` // ключ = CrossCol.Key() → оформление ячейки
+	// Total — итог строки по всем колонкам (колонка «Итого» справа, как в СКД
+	// 1С); ключ = CrossTotalKey(индекс показателя). Считается по исходным
+	// строкам группы, а не суммой ячеек: среднее и «количество различных» по
+	// строке не равны сумме по колонкам.
+	Total    map[string]any `json:"total,omitempty"`
+	Children []*CrossRow    `json:"children,omitempty"`
 }
+
+// CrossTotalKey — ключ итога строки (CrossRow.Total, CrossResult.GrandTotal)
+// для показателя с индексом measureIdx.
+func CrossTotalKey(measureIdx int) string { return "#" + strconv.Itoa(measureIdx) }
 
 // CrossResult — результат компоновки в режиме кросс-таблицы.
 type CrossResult struct {
@@ -50,8 +59,11 @@ type CrossResult struct {
 	Rows     []*CrossRow    `json:"rows"`      // дерево строк (верхний уровень)
 	RowTotal map[string]any `json:"row_total"` // итог по каждой колонке (ключ = CrossCol.Key())
 	Grand    map[string]any `json:"grand"`     // aggregate of original rows across both axes
-	RowCount int            `json:"row_count"`
-	Capped   bool           `json:"capped"`
+	// GrandTotal — правый нижний угол: итог по всем строкам и колонкам, ключ =
+	// CrossTotalKey(индекс показателя).
+	GrandTotal map[string]any `json:"grand_total,omitempty"`
+	RowCount   int            `json:"row_count"`
+	Capped     bool           `json:"capped"`
 	// Warnings — runtime-проблемы компоновки (ошибки вычисляемых показателей и
 	// условий оформления), как в обычном своде Result.Warnings (issue #26).
 	// Прежде кросс-режим их молча терял. Дедуплицированы.
@@ -87,6 +99,7 @@ func ComposeCrossN(rows []Row, spec report.Composition, ev Evaluator, maxRows in
 	}
 	res.Rows = buildCrossRows(rows, spec, 0, ev, wc, ctx)
 	res.RowTotal = crossCells(rows, spec, ev, wc, ctx)
+	res.GrandTotal = crossTotals(rows, spec, ev, wc, ctx)
 	res.Warnings = wc.msgs
 	return res, nil
 }
@@ -195,6 +208,7 @@ func buildCrossRows(rows []Row, spec report.Composition, level int, ev Evaluator
 			Count:  len(buckets[k]),
 			Cells:  cells,
 			Styles: styles,
+			Total:  crossTotals(buckets[k], spec, ev, wc, rowCtx),
 		}
 		if level+1 < len(spec.Groupings) {
 			cr.Children = buildCrossRows(buckets[k], spec, level+1, ev, wc, ctx)
@@ -230,6 +244,32 @@ func sortCrossRows(rows []*CrossRow, spec report.Composition) {
 		}
 		return false
 	})
+}
+
+// crossTotals агрегирует показатели подмножества строк без разбиения по
+// колонкам — итог строки кросс-таблицы. Область показателя (InScope/AtLevel) и
+// вычисляемые показатели — как в ячейках того же уровня.
+func crossTotals(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollector, ctx crossContext) map[string]any {
+	level := ctx.level
+	if level == "" {
+		level = report.MeasureScopeGrand
+	}
+	agg := aggregateContext(rows, spec.Measures, ev, wc, measureContext{grand: ctx.grand, level: level, grandSelf: ctx.level == ""})
+	out := make(map[string]any, len(spec.Measures))
+	for mi, m := range spec.Measures {
+		key := CrossTotalKey(mi)
+		if !m.InScope(level) {
+			out[key] = nil
+			continue
+		}
+		m = m.AtLevel(level)
+		if m.Expr != "" {
+			out[key] = agg[m.Field]
+		} else {
+			out[key] = aggMeasureAtLevel(rows, m, level, wc)
+		}
+	}
+	return out
 }
 
 // crossCells агрегирует показатели по каждому пути колонки (без оформления) —

@@ -277,3 +277,38 @@ func TestCrossRowsSorted(t *testing.T) {
 		}
 	}
 }
+
+// Колонка «Итого» по строке, как в СКД 1С: итог строки по всем колонкам и
+// угловой итог. Считается по исходным строкам, а не суммой ячеек: среднее по
+// строке — не сумма средних по колонкам.
+func TestCrossRowTotal(t *testing.T) {
+	rows := []Row{
+		{"Товар": "А", "Месяц": "Янв", "Сумма": "100"},
+		{"Товар": "А", "Месяц": "Янв", "Сумма": "300"},
+		{"Товар": "А", "Месяц": "Фев", "Сумма": "200"},
+		{"Товар": "Б", "Месяц": "Янв", "Сумма": "30"},
+	}
+	spec := report.Composition{
+		Groupings: []string{"Товар"},
+		Columns:   []string{"Месяц"},
+		Measures:  []report.Measure{{Field: "Сумма", Agg: "sum"}, {Field: "Сумма", Agg: "avg"}},
+	}
+	cr, err := ComposeCross(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rowA *CrossRow
+	for _, r := range cr.Rows {
+		if r.Key == "А" {
+			rowA = r
+		}
+	}
+	if rowA == nil {
+		t.Fatal("строка «А» не найдена")
+		return
+	}
+	decEq(t, rowA.Total[CrossTotalKey(0)], "600")
+	decEq(t, rowA.Total[CrossTotalKey(1)], "200") // (100+300+200)/3, а не 200+200
+	decEq(t, cr.GrandTotal[CrossTotalKey(0)], "630")
+	decEq(t, cr.GrandTotal[CrossTotalKey(1)], "157.5")
+}
