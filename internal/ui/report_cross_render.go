@@ -48,8 +48,9 @@ func renderCrossTablePresented(cr *compose.CrossResult, spec *report.Composition
 		b.WriteString(`<th class="num" style="` + html.EscapeString(measureAlign(m)) + `">` +
 			html.EscapeString(crossColTitle(c, m, multiMeasure, spec, presentation)) + `</th>`)
 	}
-	// Итог строки по всем колонкам — справа, как в СКД 1С.
-	for _, m := range spec.Measures {
+	// Итог строки по всем колонкам — справа, как в СКД 1С (row_totals: false
+	// его убирает).
+	for _, m := range crossTotalMeasures(spec) {
 		b.WriteString(`<th class="num rc-row-total" style="` + html.EscapeString(measureAlign(m)) + `">` +
 			html.EscapeString(crossTotalTitle(presentation.grandTitle(), m, multiMeasure)) + `</th>`)
 	}
@@ -117,6 +118,9 @@ func crossColTitle(c compose.CrossCol, m report.Measure, multiMeasure bool, spec
 		// функции периода — «01.09.2026 0:00:00».
 		parts[i] = presentation.groupLabel(field, p)
 	}
+	if c.Subtotal {
+		parts = append(parts, presentation.grandTitle())
+	}
 	title := strings.Join(parts, " / ")
 	if multiMeasure {
 		title += " · " + measureTitle(m)
@@ -126,7 +130,7 @@ func crossColTitle(c compose.CrossCol, m report.Measure, multiMeasure bool, spec
 
 // writeCrossTotals — ячейки итога строки по всем колонкам (CrossRow.Total).
 func writeCrossTotals(b *strings.Builder, totals map[string]any, spec *report.Composition) {
-	for mi, m := range spec.Measures {
+	for mi, m := range crossTotalMeasures(spec) {
 		fmt.Fprintf(b, `<td class="num rc-row-total" style="%s">%s</td>`, html.EscapeString(measureAlign(m)), html.EscapeString(fmtMeasure(totals[compose.CrossTotalKey(mi)], m)))
 	}
 }
@@ -138,4 +142,13 @@ func crossTotalTitle(title string, m report.Measure, multiMeasure bool) string {
 		return title + " · " + measureTitle(m)
 	}
 	return title
+}
+
+// crossTotalMeasures — показатели колонки «Итого» справа; пусто, если
+// composition.row_totals: false.
+func crossTotalMeasures(spec *report.Composition) []report.Measure {
+	if !spec.ShowRowTotals() {
+		return nil
+	}
+	return spec.Measures
 }

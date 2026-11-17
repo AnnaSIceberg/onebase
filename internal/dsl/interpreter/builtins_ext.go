@@ -75,6 +75,12 @@ func fmtBuiltin(args []any) (string, error) {
 	return fmtBuiltinBounded(args, 0)
 }
 
+// FormatValue — Формат(значение, строкаФормата) для Go-кода вне модулей:
+// подписи группировок и колонок компоновки отчёта (composition.formats).
+func FormatValue(v any, format string) (string, error) {
+	return fmtBuiltin([]any{v, format})
+}
+
 func fmtBuiltinBounded(args []any, maxDecimalPlaces int32) (string, error) {
 	if len(args) == 0 {
 		return "", nil
@@ -215,6 +221,14 @@ func formatDate(t time.Time, pattern string) string {
 	if hasHourToken(pattern) || isMinutesSecondsPattern(pattern) {
 		minute = goLayoutMinute
 	}
+	// «ММММ»/«МММ» — название месяца (именительный падеж), как ДФ='ММММ гг' в
+	// СКД: «Сентябрь 26». Раньше «ММММ» печаталось двумя номерами — «0909».
+	// Подставляется до шаблона Go: в русских названиях нет его токенов.
+	month := int(t.Month()) - 1
+	pattern = strings.NewReplacer(
+		"MMMM", monthNamesRU[month], "ММММ", monthNamesRU[month],
+		"MMM", monthShortRU[month], "МММ", monthShortRU[month],
+	).Replace(pattern)
 	return t.Format(strings.NewReplacer(
 		"yyyy", goLayoutYear4, "гггг", goLayoutYear4,
 		"yy", goLayoutYear2, "гг", goLayoutYear2,
@@ -226,6 +240,9 @@ func formatDate(t time.Time, pattern string) string {
 		"mm", minute, "мм", minute,
 	).Replace(pattern))
 }
+
+var monthNamesRU = [12]string{"Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"}
+var monthShortRU = [12]string{"янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"}
 
 // Токены эталонного времени Go (Mon Jan 2 15:04:05 MST 2006) — именами, чтобы
 // таблица замен читалась как «год → год», а не как набор чисел.

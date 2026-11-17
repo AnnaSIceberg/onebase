@@ -105,3 +105,24 @@ func TestReportGroupPeriodCallLabel(t *testing.T) {
 		t.Fatalf("час без ведущего нуля, как в 1С: %q", got)
 	}
 }
+
+// composition.formats — подпись значения колонки/группировки строкой Формат()
+// 1С: НачалоМесяца с ДФ='ММММ гг' → «Сентябрь 26»; порядок колонок — по дате.
+func TestReportCompositionFormats(t *testing.T) {
+	s, _ := newSubmitTestServer(t, nil)
+	spec := report.Composition{Groupings: []string{"Вид"}, Columns: []string{"Месяц"}, Measures: []report.Measure{{Field: "Задач", Agg: "sum"}},
+		Formats: map[string]string{"месяц": "ДФ='ММММ гг'"}}
+	presentation := s.compositionPresentation(&report.Report{}, &spec, nil, "ru")
+	rows := []compose.Row{
+		{"Вид": "А", "Месяц": "2026-09-01", "Задач": "1"},
+		{"Вид": "А", "Месяц": "2026-08-01", "Задач": "2"},
+	}
+	cr, _ := compose.ComposeCross(rows, spec, nil)
+	headers, _, _ := crossSheetRowsPresented(cr, &spec, presentation)
+	if len(headers) < 3 || headers[1] != "Август 26" || headers[2] != "Сентябрь 26" {
+		t.Fatalf("колонки по месяцам: %v", headers)
+	}
+	if out := string(renderCrossTablePresented(cr, &spec, presentation)); !strings.Contains(out, ">Август 26</th>") {
+		t.Fatalf("HTML:\n%s", out)
+	}
+}

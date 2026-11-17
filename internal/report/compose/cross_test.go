@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ivantit66/onebase/internal/report"
@@ -311,4 +312,71 @@ func TestCrossRowTotal(t *testing.T) {
 	decEq(t, rowA.Total[CrossTotalKey(1)], "200") // (100+300+200)/3, а не 200+200
 	decEq(t, cr.GrandTotal[CrossTotalKey(0)], "630")
 	decEq(t, cr.GrandTotal[CrossTotalKey(1)], "157.5")
+}
+
+// column_group_totals: после подколонок каждого года — итог года (1С
+// РасположениеГруппировки = Конец); относительные показатели по соседним
+// колонкам итог группы не задевает.
+func TestCrossColumnGroupTotals(t *testing.T) {
+	rows := []Row{
+		{"Направление": "А", "Год": "2025", "Месяц": "12", "Звонки": "5"},
+		{"Направление": "А", "Год": "2026", "Месяц": "01", "Звонки": "10"},
+		{"Направление": "А", "Год": "2026", "Месяц": "02", "Звонки": "20"},
+	}
+	spec := report.Composition{
+		Groupings:         []string{"Направление"},
+		Columns:           []string{"Год", "Месяц"},
+		Measures:          []report.Measure{{Field: "Звонки", Agg: "sum"}},
+		ColumnGroupTotals: true,
+	}
+	cr, err := ComposeCross(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range cr.Cols {
+		got = append(got, pathKey(c.Path))
+	}
+	want := []string{"2025\x1f12", "2025", "2026\x1f01", "2026\x1f02", "2026"}
+	if strings.Join(got, "|") != strings.Join(want, "|") || !cr.Cols[1].Subtotal || cr.Cols[0].Subtotal {
+		t.Fatalf("порядок колонок: %q", got)
+	}
+	decEq(t, cr.Rows[0].Cells[colKey([]any{"2026"}, 0)], "30")
+	decEq(t, cr.RowTotal[colKey([]any{"2025"}, 0)], "5")
+	decEq(t, cr.Rows[0].Total[CrossTotalKey(0)], "35")
+}
+
+// Сортировка групп по полю запроса вне группировок и показателей (1С —
+// порядок по полю «Сортировка400»): по наименьшему значению в группе.
+func TestSortGroupsByNonGroupingField(t *testing.T) {
+	rows := []Row{
+		{"Направление": "Б", "Сортировка400": "1", "Месяц": "01", "Звонки": "1"},
+		{"Направление": "А", "Сортировка400": "2", "Месяц": "01", "Звонки": "1"},
+		{"Направление": "В", "Сортировка400": "3", "Месяц": "01", "Звонки": "1"},
+	}
+	spec := report.Composition{
+		Groupings: []string{"Направление"},
+		Measures:  []report.Measure{{Field: "Звонки", Agg: "sum"}},
+		Sort:      []report.SortKey{{Field: "Сортировка400"}},
+	}
+	res, err := Compose(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tree []string
+	for _, g := range res.Groups {
+		tree = append(tree, toStr(g.Key))
+	}
+	spec.Columns = []string{"Месяц"}
+	cr, err := ComposeCross(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cross []string
+	for _, r := range cr.Rows {
+		cross = append(cross, toStr(r.Key))
+	}
+	if strings.Join(tree, "") != "БАВ" || strings.Join(cross, "") != "БАВ" {
+		t.Fatalf("порядок групп: дерево %v, кросс %v", tree, cross)
+	}
 }

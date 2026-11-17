@@ -1,0 +1,26 @@
+package interpreter
+
+import (
+	"testing"
+	"time"
+)
+
+// ДФ='ММММ гг' (Формат поля СКД) печатал «0909 26» вместо «Сентябрь 26».
+func TestFormatMonthName(t *testing.T) {
+	moment := time.Date(2026, 9, 1, 0, 0, 0, 0, time.Local)
+	for format, want := range map[string]string{
+		"ДФ='ММММ гг'":    "Сентябрь 26",
+		"ДФ='MMMM yyyy'":  "Сентябрь 2026",
+		"ДФ='МММ гггг'":   "сен 2026",
+		"ДФ='дд.ММ.гггг'": "01.09.2026",
+		"ДФ='ММММ'":       "Сентябрь",
+	} {
+		got, err := FormatValue(moment, format)
+		if err != nil || got != want {
+			t.Fatalf("%s: %q, %v (want %q)", format, got, err, want)
+		}
+	}
+	if got, _ := FormatValue("2026-05-01", "ДФ='ММММ гг'"); got != "Май 26" {
+		t.Fatalf("строка-дата SQLite: %q", got)
+	}
+}

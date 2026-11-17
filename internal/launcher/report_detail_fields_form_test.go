@@ -16,10 +16,13 @@ import (
 // поля формы, как их отправит браузер → штатный разбор.
 func TestReportBuilderKeepsDetailFieldsOnSave(t *testing.T) {
 	want := []report.DetailField{{Field: "Номер", Title: "Номер заявки"}, {Field: "Наименование"}}
+	off := false
 	page := renderConfiguratorReport(t, &report.Composition{
 		Groupings: []string{"Мастер"}, Detail: true,
 		Measures:     []report.Measure{{Field: "Штраф", Agg: "sum"}},
 		DetailFields: want,
+		Formats:      map[string]string{"Месяц": "ДФ='ММММ гг'"},
+		Columns:      []string{"Год", "Месяц"}, ColumnGroupTotals: true, RowTotals: &off,
 	})
 	doc, err := html.Parse(strings.NewReader(page))
 	if err != nil {
@@ -59,5 +62,8 @@ func TestReportBuilderKeepsDetailFieldsOnSave(t *testing.T) {
 	}
 	if !reflect.DeepEqual(c.DetailFields, want) {
 		t.Fatalf("detail_fields after save = %+v, want %+v", c.DetailFields, want)
+	}
+	if c.Formats["Месяц"] != "ДФ='ММММ гг'" || !c.ColumnGroupTotals || c.ShowRowTotals() {
+		t.Fatalf("formats/column_group_totals/row_totals after save = %v %v %v", c.Formats, c.ColumnGroupTotals, c.RowTotals)
 	}
 }

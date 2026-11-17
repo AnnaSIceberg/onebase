@@ -26,6 +26,9 @@ type CrossCol struct {
 	// но разным Agg/Expr (например sum(Сумма) и avg(Сумма)) — это РАЗНЫЕ колонки;
 	// при ключевании по Field второй затирал бы первый.
 	MeasureIdx int `json:"measure_idx"`
+	// Subtotal — итог значения верхних группировок колонок (Path короче
+	// spec.Columns): composition.column_group_totals.
+	Subtotal bool `json:"subtotal,omitempty"`
 }
 
 // Key — стабильный строковый ключ колонки (ключ в CrossRow.Cells / RowTotal).
@@ -46,6 +49,8 @@ type CrossRow struct {
 	// строке не равны сумме по колонкам.
 	Total    map[string]any `json:"total,omitempty"`
 	Children []*CrossRow    `json:"children,omitempty"`
+	// sortValues — как Group.sortValues: поля сортировки вне группировок.
+	sortValues map[string]any
 }
 
 // CrossTotalKey — ключ итога строки (CrossRow.Total, CrossResult.GrandTotal)
@@ -93,7 +98,12 @@ func ComposeCrossN(rows []Row, spec report.Composition, ev Evaluator, maxRows in
 	res.Grand = aggregate(rows, spec.Measures, ev, wc)
 	ctx := crossContext{grand: res.Grand}
 	for _, col := range res.Cols {
-		if col.MeasureIdx == 0 {
+		if col.MeasureIdx != 0 {
+			continue
+		}
+		if col.Subtotal {
+			ctx.groupPaths = append(ctx.groupPaths, col.Path)
+		} else {
 			ctx.paths = append(ctx.paths, col.Path)
 		}
 	}
@@ -171,9 +181,23 @@ func crossColumns(rows []Row, spec report.Composition) []CrossCol {
 		return comparePaths(paths[i], paths[j]) < 0
 	})
 	cols := make([]CrossCol, 0, len(paths)*len(spec.Measures))
-	for _, p := range paths {
+	add := func(p []any, subtotal bool) {
 		for mi, m := range spec.Measures {
-			cols = append(cols, CrossCol{Path: p, Measure: m.Field, MeasureIdx: mi})
+			cols = append(cols, CrossCol{Path: p, Measure: m.Field, MeasureIdx: mi, Subtotal: subtotal})
+		}
+	}
+	for i, p := range paths {
+		add(p, false)
+		if !spec.ColumnGroupTotals {
+			continue
+		}
+		// Итог префикса — после его последней подколонки, от глубокого к
+		// верхнему: «2026 / Янв, 2026 / Фев, 2026 / Итого».
+		for k := len(p) - 1; k >= 1; k-- {
+			if i+1 < len(paths) && comparePaths(paths[i+1][:k], p[:k]) == 0 {
+				break
+			}
+			add(append([]any(nil), p[:k]...), true)
 		}
 	}
 	return cols
@@ -209,6 +233,8 @@ func buildCrossRows(rows []Row, spec report.Composition, level int, ev Evaluator
 			Cells:  cells,
 			Styles: styles,
 			Total:  crossTotals(buckets[k], spec, ev, wc, rowCtx),
+
+			sortValues: sortFieldValues(buckets[k], spec),
 		}
 		if level+1 < len(spec.Groupings) {
 			cr.Children = buildCrossRows(buckets[k], spec, level+1, ev, wc, ctx)
@@ -232,10 +258,16 @@ func sortCrossRows(rows []*CrossRow, spec report.Composition) {
 	field := rows[0].Field
 	sort.SliceStable(rows, func(i, j int) bool {
 		for _, sk := range spec.Sort {
+			vi, vj := rows[i].Key, rows[j].Key
 			if sk.Field != field {
-				continue
+				// Поле запроса вне группировок (sortFieldValues).
+				var ok bool
+				if vi, ok = rows[i].sortValues[sk.Field]; !ok {
+					continue
+				}
+				vj = rows[j].sortValues[sk.Field]
 			}
-			if c := compareVals(rows[i].Key, rows[j].Key); c != 0 {
+			if c := compareVals(vi, vj); c != 0 {
 				if sk.Dir == "desc" {
 					return c > 0
 				}
@@ -296,7 +328,10 @@ func crossCells(rows []Row, spec report.Composition, ev Evaluator, wc *warnColle
 type crossContext struct {
 	grand Row
 	paths [][]any
-	level string
+	// groupPaths — префиксы колонок с итогом группы (column_group_totals): в
+	// цепочку «предыдущая/первая колонка» относительных показателей не входят.
+	groupPaths [][]any
+	level      string
 }
 
 func crossAgg(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollector, ctx crossContext) (map[string]any, map[string]report.CellStyle) {
@@ -312,6 +347,7 @@ func crossAgg(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollect
 	}
 	cells := map[string]any{}
 	var styles map[string]report.CellStyle
+	fill := crossFillCells(spec, ev, wc, level, cells, &styles)
 	var previous, first Row
 	for pi, p := range ctx.paths {
 		k := pathKey(p)
@@ -326,6 +362,25 @@ func crossAgg(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollect
 			first = agg
 		}
 		previous = agg
+		fill(p, sub, agg)
+	}
+	for _, p := range ctx.groupPaths {
+		var sub []Row
+		for _, r := range rows {
+			if comparePaths(colPath(r, spec)[:len(p)], p) == 0 {
+				sub = append(sub, r)
+			}
+		}
+		if len(sub) == 0 {
+			continue
+		}
+		fill(p, sub, aggregateContext(sub, spec.Measures, ev, wc, measureContext{grand: ctx.grand, level: level}))
+	}
+	return cells, styles
+}
+
+func crossFillCells(spec report.Composition, ev Evaluator, wc *warnCollector, level string, cells map[string]any, styles *map[string]report.CellStyle) func(p []any, sub []Row, agg Row) {
+	return func(p []any, sub []Row, agg Row) {
 		st := evalStyles(agg, spec, ev, wc)
 		for mi, m := range spec.Measures {
 			ck := colKey(p, mi)
@@ -350,12 +405,11 @@ func crossAgg(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollect
 				s, ok = st[""]
 			}
 			if ok {
-				if styles == nil {
-					styles = map[string]report.CellStyle{}
+				if *styles == nil {
+					*styles = map[string]report.CellStyle{}
 				}
-				styles[ck] = s
+				(*styles)[ck] = s
 			}
 		}
 	}
-	return cells, styles
 }

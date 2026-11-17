@@ -76,6 +76,23 @@ func Parse(f url.Values) (*report.Composition, bool) {
 			c.DetailFields = append(c.DetailFields, report.DetailField{Field: fld, Title: strings.TrimSpace(f.Get(p + ".title"))})
 		}
 	}
+	// formats, column_group_totals и row_totals тоже редактируются в YAML и
+	// едут скрытыми полями.
+	for name := range f {
+		if field, ok := strings.CutPrefix(name, "comp.format."); ok && strings.TrimSpace(field) != "" {
+			if format := f.Get(name); format != "" {
+				if c.Formats == nil {
+					c.Formats = map[string]string{}
+				}
+				c.Formats[field] = format
+			}
+		}
+	}
+	c.ColumnGroupTotals = f.Get("comp.column_group_totals") == "1"
+	if f.Get("comp.row_totals") == "0" {
+		off := false
+		c.RowTotals = &off
+	}
 
 	// Сортировка
 	for _, i := range rowIndexes(f, "comp.sort.", ".field") {

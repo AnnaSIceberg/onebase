@@ -69,13 +69,16 @@ func (w *warnCollector) add(msg string) {
 }
 
 type Group struct {
-	Field     string                      `json:"field"`
-	Key       any                         `json:"key"`
-	Subtotals map[string]any              `json:"subtotals"`
-	Count     int                         `json:"count"`
-	Children  []*Group                    `json:"children,omitempty"`
-	Details   []DetailRow                 `json:"details,omitempty"`
-	Styles    map[string]report.CellStyle `json:"styles,omitempty"` // условное оформление по подытогам; ключ "" = вся строка
+	Field     string         `json:"field"`
+	Key       any            `json:"key"`
+	Subtotals map[string]any `json:"subtotals"`
+	Count     int            `json:"count"`
+	Children  []*Group       `json:"children,omitempty"`
+	// sortValues — значения полей сортировки, которые не группировка и не
+	// показатель (sortFieldValues).
+	sortValues map[string]any
+	Details    []DetailRow                 `json:"details,omitempty"`
+	Styles     map[string]report.CellStyle `json:"styles,omitempty"` // условное оформление по подытогам; ключ "" = вся строка
 }
 
 type DetailRow struct {
@@ -187,10 +190,11 @@ func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, w
 	groups := make([]*Group, 0, len(order))
 	for _, k := range order {
 		gr := &Group{
-			Field:     field,
-			Key:       k,
-			Count:     len(buckets[k]),
-			Subtotals: aggregateContext(buckets[k], spec.Measures, ev, wc, measureContext{grand: grand, level: field}),
+			Field:      field,
+			Key:        k,
+			Count:      len(buckets[k]),
+			Subtotals:  aggregateContext(buckets[k], spec.Measures, ev, wc, measureContext{grand: grand, level: field}),
+			sortValues: sortFieldValues(buckets[k], spec),
 		}
 		// Условное оформление группы/подытога вычисляется по её подытогам плюс
 		// собственному полю группировки (field→Key) — чтобы правило вида
@@ -293,6 +297,16 @@ func sortGroups(groups []*Group, spec report.Composition) {
 			case sk.Field == groups[i].Field:
 				vi, vj = groups[i].Key, groups[j].Key
 			default:
+				vi, vj, ok := groups[i].sortValues[sk.Field], groups[j].sortValues[sk.Field], groups[i].sortValues != nil
+				if !ok {
+					continue
+				}
+				if c := compareVals(vi, vj); c != 0 {
+					if sk.Dir == "desc" {
+						return c > 0
+					}
+					return c < 0
+				}
 				continue
 			}
 			if c := compareVals(vi, vj); c != 0 {
@@ -304,6 +318,42 @@ func sortGroups(groups []*Group, spec report.Composition) {
 		}
 		return false
 	})
+}
+
+// sortFieldValues — для правил сортировки по полю запроса, которое не
+// группировка и не показатель (в 1С — порядок по пользовательскому полю,
+// например «Сортировка400»), — наименьшее значение поля в строках группы. По
+// нему группы и упорядочиваются; поле само в отчёт не выводится.
+func sortFieldValues(rows []Row, spec report.Composition) map[string]any {
+	if len(spec.Sort) == 0 {
+		return nil
+	}
+	skip := measureSet(spec)
+	for _, g := range spec.Groupings {
+		skip[g] = true
+	}
+	var out map[string]any
+	for _, sk := range spec.Sort {
+		if skip[sk.Field] {
+			continue
+		}
+		var best any
+		found := false
+		for _, r := range rows {
+			v, ok := r[sk.Field]
+			if !ok || v == nil {
+				continue
+			}
+			if !found || compareVals(v, best) < 0 {
+				best, found = v, true
+			}
+		}
+		if out == nil {
+			out = map[string]any{}
+		}
+		out[sk.Field] = best
+	}
+	return out
 }
 
 func sortDetails(rows []DetailRow, spec report.Composition) {

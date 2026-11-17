@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/query"
 	"github.com/ivantit66/onebase/internal/report"
@@ -20,6 +21,8 @@ type reportCompositionPresentation struct {
 	// (НачалоЧаса, НачалоДня…): в 1С это значение типа дата-время, и подпись
 	// группы несёт время и в полночь — «01.09.2026 0:00:00».
 	dateTimeGroups map[string]bool
+	// formats — composition.formats (ключ — поле в нижнем регистре).
+	formats map[string]string
 }
 
 // periodCalls — функции запроса, чей результат в 1С — дата-время.
@@ -32,6 +35,15 @@ var periodCalls = map[string]bool{
 // («01.09.2026 0:00:00», час без ведущего нуля), остальные — как дата
 // детальной записи.
 func (p reportCompositionPresentation) groupLabel(field string, v any) string {
+	if format := p.formats[strings.ToLower(field)]; format != "" && v != nil {
+		value := v
+		if t, ok := detailMoment(v); ok {
+			value = t.In(time.Local)
+		}
+		if text, err := interpreter.FormatValue(value, format); err == nil {
+			return text
+		}
+	}
 	if p.dateTimeGroups[strings.ToLower(field)] {
 		if t, ok := detailMoment(v); ok && !t.IsZero() {
 			t = t.In(time.Local)
@@ -57,6 +69,12 @@ func (p reportCompositionPresentation) grandTitle() string {
 
 func (s *Server) compositionPresentation(rep *report.Report, spec *report.Composition, compiled *query.Result, lang string) reportCompositionPresentation {
 	p := reportCompositionPresentation{grandLabel: s.tr(lang, "Итого")}
+	for field, format := range spec.Formats {
+		if p.formats == nil {
+			p.formats = map[string]string{}
+		}
+		p.formats[strings.ToLower(field)] = format
+	}
 	if compiled != nil {
 		for _, line := range compiled.Projection.Lineage {
 			if line.Result && line.Branch == 0 && line.Output != "" && periodCalls[line.Call] {

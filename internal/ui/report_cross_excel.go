@@ -32,13 +32,14 @@ func crossSheetRowsPresented(cr *compose.CrossResult, spec *report.Composition, 
 	for _, c := range cr.Cols {
 		headers = append(headers, crossColTitle(c, measureAt(c), multiMeasure, spec, presentation))
 	}
-	for _, m := range spec.Measures {
+	totalMeasures := crossTotalMeasures(spec)
+	for _, m := range totalMeasures {
 		headers = append(headers, crossTotalTitle(presentation.grandTitle(), m, multiMeasure))
 	}
 
-	colCount := 1 + len(cr.Cols) + len(spec.Measures)
+	colCount := 1 + len(cr.Cols) + len(totalMeasures)
 	totalsAt := func(r []any, totals map[string]any) {
-		for mi, m := range spec.Measures {
+		for mi, m := range totalMeasures {
 			r[1+len(cr.Cols)+mi] = measureCellForExcel(totals[compose.CrossTotalKey(mi)], m)
 		}
 	}

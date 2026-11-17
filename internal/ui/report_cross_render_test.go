@@ -204,3 +204,27 @@ func TestCrossRowTotalColumnHTMLAndExcel(t *testing.T) {
 		t.Fatalf("Excel: угловой итог = %v", got)
 	}
 }
+
+// row_totals: false убирает колонку «Итого» справа (1С
+// ГоризонтальноеРасположениеОбщихИтогов = Нет); колонка-итог года подписана.
+func TestCrossRowTotalsOffAndGroupTotalTitle(t *testing.T) {
+	rows := []compose.Row{
+		{"Товар": "А", "Год": "2026", "Месяц": "01", "Сумма": "100"},
+		{"Товар": "А", "Год": "2026", "Месяц": "02", "Сумма": "200"},
+	}
+	off := false
+	spec := &report.Composition{
+		Groupings: []string{"Товар"}, Columns: []string{"Год", "Месяц"},
+		Measures:          []report.Measure{{Field: "Сумма", Agg: "sum"}},
+		ColumnGroupTotals: true, RowTotals: &off,
+	}
+	cr, _ := compose.ComposeCross(rows, *spec, nil)
+	out := string(renderCrossTable(cr, spec))
+	if strings.Contains(out, "rc-row-total") || !strings.Contains(out, ">2026 / Итого</th>") {
+		t.Fatalf("HTML:\n%s", out)
+	}
+	headers, sheet := crossSheetRows(cr, spec)
+	if len(headers) != 4 || headers[3] != "2026 / Итого" || len(sheet[0]) != 4 {
+		t.Fatalf("Excel: %v %v", headers, sheet)
+	}
+}
