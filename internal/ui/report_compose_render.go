@@ -151,10 +151,10 @@ func (h *htmlComposeSink) group(g *compose.Group, level int, path string) {
 		if open {
 			text = "−"
 		}
-		marker = fmt.Sprintf(`<button type="button" class="rc-fold" aria-expanded="%t" aria-label="%s">%s</button>`, open, html.EscapeString(groupLabel(g.Key)), text)
+		marker = fmt.Sprintf(`<button type="button" class="rc-fold" aria-expanded="%t" aria-label="%s">%s</button>`, open, html.EscapeString(h.presentation.groupLabel(g.Field, g.Key)), text)
 	}
 	fmt.Fprintf(h.b, `<tr class="grp" data-group="%s" data-level="%d" style="%s"><td style="%s">%s %s</td>`,
-		html.EscapeString(path), level, html.EscapeString(rowStyle), pad, marker, html.EscapeString(groupLabel(g.Key)))
+		html.EscapeString(path), level, html.EscapeString(rowStyle), pad, marker, html.EscapeString(h.presentation.groupLabel(g.Field, g.Key)))
 	h.measureCells(g.Subtotals, g.Styles)
 	if h.drilldowns.HasRows() {
 		h.b.WriteString(`<td></td>`)

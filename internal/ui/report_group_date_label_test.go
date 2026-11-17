@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
+	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/query"
 	"github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/report/compose"
 )
@@ -57,5 +59,32 @@ func TestReportGroupDateLabel(t *testing.T) {
 	_, crossSheet := crossSheetRows(cr, &cross)
 	if got := strings.TrimSpace(crossSheet[0][0].(string)); got != "01.09.2026 12:00:00" && got != "02.09.2026 13:00:00" {
 		t.Fatalf("кросс-Excel: подпись %q", got)
+	}
+}
+
+// Группа по функции периода (НачалоЧаса/НачалоДня в запросе) — в 1С значение
+// типа дата-время: полночь подписывается «01.09.2026 0:00:00» и не сливается с
+// группой-днём; группа по обычному полю-дате — как прежде.
+func TestReportGroupPeriodCallLabel(t *testing.T) {
+	doc := &metadata.Entity{Name: "ПериодПроба", Kind: metadata.KindDocument, Fields: []metadata.Field{{Name: "Дата", Type: metadata.FieldTypeDate}}}
+	compiled, err := query.Compile(`ВЫБРАТЬ НачалоДня(З.Дата) КАК ДатаДня, НачалоЧаса(З.Дата) КАК Час, З.Дата КАК Дата, 1 КАК Задач
+		ИЗ Документ.ПериодПроба КАК З`, query.CompileOpts{Entities: []*metadata.Entity{doc}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := newSubmitTestServer(t, []*metadata.Entity{doc})
+	spec := report.Composition{Groupings: []string{"ДатаДня", "Час", "Дата"}, Measures: []report.Measure{{Field: "Задач", Agg: "sum"}}}
+	presentation := s.compositionPresentation(&report.Report{}, &spec, &compiled, "ru")
+	rows := []compose.Row{{"ДатаДня": "2026-09-01", "Час": "2026-09-01 00:00:00", "Дата": "2026-09-01 00:00:00", "Задач": "1"}}
+	res, err := compose.Compose(rows, spec, newInterpEvaluator(interpreter.New()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(renderComposedTablePresented(res, &spec, presentation))
+	if strings.Count(out, "> 01.09.2026 0:00:00</td>") != 2 || !strings.Contains(out, "> 01.09.2026</td>") {
+		t.Fatalf("подписи групп-периодов:\n%s", out)
+	}
+	if got := presentation.groupLabel("Час", "2026-09-01 09:05:00"); got != "01.09.2026 9:05:00" {
+		t.Fatalf("час без ведущего нуля, как в 1С: %q", got)
 	}
 }

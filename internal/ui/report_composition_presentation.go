@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/query"
@@ -15,6 +16,29 @@ import (
 type reportCompositionPresentation struct {
 	groupLabels []string
 	grandLabel  string
+	// dateTimeGroups — группировки, чья колонка запроса — вызов функции периода
+	// (НачалоЧаса, НачалоДня…): в 1С это значение типа дата-время, и подпись
+	// группы несёт время и в полночь — «01.09.2026 0:00:00».
+	dateTimeGroups map[string]bool
+}
+
+// periodCalls — функции запроса, чей результат в 1С — дата-время.
+var periodCalls = map[string]bool{
+	"началочаса": true, "началодня": true, "startofday": true, "конецдня": true, "endofday": true,
+	"началомесяца": true, "startofmonth": true, "началогода": true, "startofyear": true,
+}
+
+// groupLabel — подпись группы: группа по функции периода — дата-время 1С
+// («01.09.2026 0:00:00», час без ведущего нуля), остальные — как дата
+// детальной записи.
+func (p reportCompositionPresentation) groupLabel(field string, v any) string {
+	if p.dateTimeGroups[strings.ToLower(field)] {
+		if t, ok := detailMoment(v); ok && !t.IsZero() {
+			t = t.In(time.Local)
+			return fmt.Sprintf("%s %d:%02d:%02d", t.Format("02.01.2006"), t.Hour(), t.Minute(), t.Second())
+		}
+	}
+	return groupLabel(v)
 }
 
 func (p reportCompositionPresentation) groupHeader(spec *report.Composition) string {
@@ -33,6 +57,16 @@ func (p reportCompositionPresentation) grandTitle() string {
 
 func (s *Server) compositionPresentation(rep *report.Report, spec *report.Composition, compiled *query.Result, lang string) reportCompositionPresentation {
 	p := reportCompositionPresentation{grandLabel: s.tr(lang, "Итого")}
+	if compiled != nil {
+		for _, line := range compiled.Projection.Lineage {
+			if line.Result && line.Branch == 0 && line.Output != "" && periodCalls[line.Call] {
+				if p.dateTimeGroups == nil {
+					p.dateTimeGroups = map[string]bool{}
+				}
+				p.dateTimeGroups[strings.ToLower(line.Output)] = true
+			}
+		}
+	}
 	for _, name := range spec.Groupings {
 		label := name
 		if field := s.reportProjectionMetadata(compiled, name); field != nil {

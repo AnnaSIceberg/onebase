@@ -22,6 +22,9 @@ type ProjectionLineage struct {
 	Plain bool
 	// Star — элемент «*» или «Т.*».
 	Star bool
+	// Call — имя функции в нижнем регистре, если элемент целиком её вызов
+	// («НачалоЧаса(З.Дата) КАК Час»), иначе пусто.
+	Call string
 	// Result — элемент принадлежит SELECT, чьи строки являются результатом
 	// запроса: верхнему уровню или ветви ОБЪЕДИНИТЬ, а не подзапросу в ИЗ/ГДЕ.
 	Result bool
@@ -67,7 +70,7 @@ func projectionLineage(tokens []tok) []ProjectionLineage {
 		for pos, item := range splitProjectionItems(tokens[start:end]) {
 			col, _ := parseProjectionItem(item)
 			uses, paths := valueIdentifiers(item)
-			line := ProjectionLineage{Uses: uses, Paths: paths, Result: result, Star: col.Star, Branch: branch, Position: pos}
+			line := ProjectionLineage{Uses: uses, Paths: paths, Result: result, Star: col.Star, Branch: branch, Position: pos, Call: projectionCall(item)}
 			if !col.Star {
 				line.Output = col.Output
 				line.Plain = len(col.Fields) > 0
@@ -318,4 +321,34 @@ func paramPredicateIdentifiers(tokens []tok) []string {
 	}
 	flush()
 	return set.list()
+}
+
+// projectionCall — имя функции, если элемент выборки (без «КАК алиас») —
+// ровно один её вызов.
+func projectionCall(item []tok) string {
+	end := len(item)
+	for i := 0; i+1 < len(item); i++ {
+		if item[i].kind == tIdent {
+			if kw, isKW := sqlKW(item[i].val); isKW && kw == "AS" {
+				end = i
+				break
+			}
+		}
+	}
+	if end < 3 || item[0].kind != tIdent || item[1].kind != tLParen || item[end-1].kind != tRParen {
+		return ""
+	}
+	depth := 0
+	for i := 1; i < end; i++ {
+		switch item[i].kind {
+		case tLParen:
+			depth++
+		case tRParen:
+			depth--
+			if depth == 0 && i != end-1 {
+				return ""
+			}
+		}
+	}
+	return lowerFast(item[0].val)
 }
