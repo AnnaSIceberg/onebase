@@ -98,7 +98,7 @@ func TestReportParameterChoiceHTTPMatrix(t *testing.T) {
 		// Initial report form uses exactly the same labels and context as the picker.
 		w := httptest.NewRecorder()
 		s.reportForm(w, reqWithChi("GET", "/ui/report/"+rep.Name, nil, map[string]string{"name": rep.Name}))
-		if w.Code != 200 || !strings.Contains(w.Body.String(), "ЯПервый (Москва)") || !strings.Contains(w.Body.String(), "data-ref-choice-context=") {
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "ЯПервый (Москва)") || !strings.Contains(w.Body.String(), "data-ref-choice-context=") || !strings.Contains(w.Body.String(), `data-ref-empty-label="— все —"`) {
 			t.Fatalf("initial form: %d %s", w.Code, w.Body.String())
 		}
 		bad := url.Values{"Branch": {b1.String()}, "Direction": {d3.String()}}

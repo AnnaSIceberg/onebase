@@ -5738,6 +5738,10 @@ function obEmptyOptionLabel(sel) {
   // Поле без списка (choice_dropdown: false) пустое значение показывает
   // пустым, как в 1С: выбирают кнопкой «…», подсказке в нём не место.
   if (sel && sel.getAttribute && sel.getAttribute('data-ref-choice-dropdown') === 'false') return '';
+  // Report parameters use an empty reference for “all”, including after a
+  // dependent choice refresh. Keep the server-translated label.
+  var emptyLabel = sel && sel.getAttribute && sel.getAttribute('data-ref-empty-label');
+  if (emptyLabel != null) return emptyLabel;
   return sel && sel.disabled ? '—' : '— выбрать —';
 }
 window.obEmptyOptionLabel = obEmptyOptionLabel;
