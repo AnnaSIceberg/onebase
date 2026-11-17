@@ -22,6 +22,15 @@
   function sync(row) {
     var field = row.querySelector('.rs-f-field'), op = row.querySelector('.rs-f-op'), old = row.querySelector('.rs-f-value');
     if (!field || !op || !old) return;
+    // B38.1 keeps a focused date as a display draft. Commit it before replacing
+    // the control; otherwise datetime-local silently discards the display text.
+    var noValue = op.value === 'is_null' || op.value === 'not_null';
+    if (!noValue && typeof window.obCommitDateInput === 'function' && !window.obCommitDateInput(old)) {
+      if (row.dataset.filterField !== undefined) field.value = row.dataset.filterField;
+      if (row.dataset.filterOp !== undefined) op.value = row.dataset.filterOp;
+      if (old.reportValidity) old.reportValidity();
+      return;
+    }
     var spec = descriptor(field.value);
     Array.prototype.forEach.call(op.options, function (option) {
       option.disabled = !spec || spec.operators.indexOf(option.value) < 0;
@@ -41,10 +50,12 @@
     }
     control.className = 'rs-f-value'; control.value = raw;
     if (control.tagName === 'SELECT' && !control.value && control.options.length) control.selectedIndex = 0;
-    var noValue = op.value === 'is_null' || op.value === 'not_null';
+    noValue = op.value === 'is_null' || op.value === 'not_null';
     control.disabled = !spec || noValue; control.required = !!spec && !noValue && spec.type !== 'string';
     if (noValue) control.value = '';
     old.replaceWith(control);
+    row.dataset.filterField = field.value;
+    row.dataset.filterOp = op.value;
   }
   Array.prototype.forEach.call(rows.querySelectorAll('.rs-filter-row'), sync);
   rows.addEventListener('change', function (event) {

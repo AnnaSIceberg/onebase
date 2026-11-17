@@ -34,7 +34,25 @@ func (h *handler) reportResultFilterPlanV2(r *http.Request, res query.Result, se
 	}
 	return resultfilter.New(fields, filters, resultfilter.RegistryEnums(h.reg))
 }
-func (h *handler) runReportResultFilteredV2(w http.ResponseWriter, r *http.Request, rep *reportpkg.Report, res *query.Result, mask access.QueryMaskPlan, settings *reportpkg.UserReportSettings, plan *resultfilter.Plan, page, limit int) {
+
+// Presence matters: an explicit empty variant selects the main query, including
+// when a default preset stores a different variant.
+func reportResultVariantV2(r *http.Request, settings *reportpkg.UserReportSettings) string {
+	for _, key := range []string{"variant", "__variant"} {
+		if values, present := r.URL.Query()[key]; present {
+			if len(values) > 0 {
+				return values[0]
+			}
+			return ""
+		}
+	}
+	if settings != nil {
+		return settings.Variant
+	}
+	return ""
+}
+
+func (h *handler) runReportResultFilteredV2(w http.ResponseWriter, r *http.Request, rep *reportpkg.Report, res *query.Result, mask access.QueryMaskPlan, variant string, plan *resultfilter.Plan, page, limit int) {
 	composed := wantsReportComposition(r.URL.Query())
 	offset, ok := reportPageOffset(page, limit)
 	if !ok {
@@ -63,13 +81,6 @@ func (h *handler) runReportResultFilteredV2(w http.ResponseWriter, r *http.Reque
 		if result.Truncated {
 			writeError(w, http.StatusRequestEntityTooLarge, "filtered composition exceeds REST row budget", "", 0)
 			return
-		}
-		variant := r.URL.Query().Get("variant")
-		if variant == "" {
-			variant = r.URL.Query().Get("__variant")
-		}
-		if variant == "" && settings != nil {
-			variant = settings.Variant
 		}
 		comp := rep.ActiveComposition(variant)
 		if comp == nil {

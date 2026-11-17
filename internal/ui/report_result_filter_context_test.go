@@ -6,22 +6,26 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/ast"
+	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/runtime"
+	"github.com/ivantit66/onebase/internal/storage"
 )
 
-func TestReportResultFilterResultProcMultipleQueriesHTTP(t *testing.T) {
+func TestReportResultFilterInputQueriesAndUnprovenOutputHTTP(t *testing.T) {
 	for _, tc := range []struct {
 		name, prefix, source string
 		denied               bool
 	}{
 		{name: "two-sql-aliases", source: "FilterRow"},
-		{name: "readonly-filter", prefix: `Попытка ЭффективныеОтборы.Получить(0).Значение="DROP"; Исключение КонецПопытки;`, source: "FilterRow"},
+		{name: "readonly-filter", prefix: `Попытка ЭффективныеОтборы.Получить(0).Значение="DROP"; Исключение Caught=Истина; КонецПопытки; Если НЕ Caught Тогда ВызватьИсключение "readonly setter did not reject"; КонецЕсли;`, source: "FilterRow"},
+		{name: "readonly-uncaught", prefix: `ЭффективныеОтборы.Получить(0).Значение="DROP";`, source: "FilterRow", denied: true},
 		{name: "alias-does-not-prove-source", source: "OtherRow", denied: true},
 		{name: "untraced-manager", prefix: `X=Справочники.FilterRow.Выбрать();`, source: "FilterRow", denied: true},
 	} {
@@ -57,18 +61,52 @@ func TestReportResultFilterResultProcMultipleQueriesHTTP(t *testing.T) {
 			s.interp.LookupProc = s.reg.GetModuleProc
 			s.cfg.Limits.ReportMaxRows = 1
 			form := url.Values{"__settings": {`{"filters":[{"field":"bucket","op":"eq","value":"KEEP"}]}`}}
-			response := tabularHTTP(s, &auth.User{ID: uuid.NewString(), Login: "filter-runner", IsAdmin: true}, "filter-context-session", http.MethodPost, "/ui/report/"+rep.Name, form)
+			actor := &auth.User{ID: uuid.NewString(), Login: "filter-runner", IsAdmin: true}
+			response := tabularHTTP(s, actor, "filter-context-session", http.MethodPost, "/ui/report/"+rep.Name, form)
+			if response.Code != http.StatusUnprocessableEntity || len(s.tabularResults.items) != 0 || !strings.Contains(response.Body.String(), errReportFilterProducerUnproven.Error()) {
+				t.Fatal("unproven module output admitted", response.Code, response.Body.String())
+			}
+
+			// Exercise only the input capabilities, without publishing a snapshot
+			// or claiming that a successful DSL run establishes output lineage.
+			ctx = auth.ContextWithUser(ctx, actor)
+			compiled, err := s.compileReportVariantQuery(ctx, rep, "", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			settings := &reportpkg.UserReportSettings{Filters: []reportpkg.Filter{{Field: "bucket", Op: "eq", Value: "KEEP"}}}
+			rows, _, truncated, err := s.runReportResultRows(ctx, &compiled, settings, 1)
+			if err != nil || truncated {
+				t.Fatal("initial typed input", truncated, err)
+			}
+			ctx = storage.ReadOnlyContext(s.withReportSourceFilters(ctx, compiled, settings))
+			tx := interpreter.NewTxState(ctx)
+			defer rollbackDSLExecution(tx)
+			vars, ok := s.reportFilteredVars(ctx, tx)
+			if !ok {
+				t.Fatal("missing guarded input profile")
+			}
+			for name, fn := range interpreter.NewSpreadsheetFunctions() {
+				vars[name] = fn
+			}
+			input := &interpreter.Array{}
+			for _, row := range rows {
+				input.CallMethod("добавить", []any{interpreter.NewStructFromMap(row)})
+			}
+			vars["Результат"] = input
+			var output any
+			err = s.interp.RunSandboxed(s.reg.GetProcedure(rep.Name, rep.ResultProc), &interpreter.MapThis{}, interpreter.SandboxProfile{Context: ctx, MaxWallClock: time.Second, DenyNet: true, DenyFile: true, DenyExec: true, DenySecrets: true}, &output, vars)
 			if tc.denied {
-				if response.Code == http.StatusSeeOther || response.Header().Get("Location") != "" || len(s.tabularResults.items) != 0 {
-					t.Fatal("unproven source published", response.Code, response.Body.String())
+				if err == nil {
+					t.Fatal("unproven input capability admitted")
 				}
 				return
 			}
-			if response.Code != http.StatusSeeOther {
-				t.Fatalf("HTTP %d: %s", response.Code, response.Body.String())
+			if err != nil {
+				t.Fatal(err)
 			}
-			result := s.tabularResults.items[strings.TrimPrefix(response.Header().Get("Location"), "/ui/tabular/")]
-			if result == nil || result.doc.GetCell(0, 0).Text != "COUNTS:1:1:1" || result.doc.GetCell(1, 0).Text != "KEEP:KEEP:KEEP" {
+			result, ok := output.(*interpreter.SpreadsheetDocument)
+			if !ok || result == nil || result.Doc.GetCell(0, 0).Text != "COUNTS:1:1:1" || result.Doc.GetCell(1, 0).Text != "KEEP:KEEP:KEEP" {
 				t.Fatal("effective filters did not cover all successful SQL inputs")
 			}
 		})

@@ -156,6 +156,12 @@ func TestReportResultSourceFiltersHTTPMatrix(t *testing.T) {
 				}
 				before := len(s.tabularResults.items)
 				w := tabularHTTP(s, actor, "own-source-filter", method, target, form)
+				// Arbitrary DSL output needs a host producer proof even if its SQL
+				// inputs can be filtered. Keep native validation failures above;
+				// a previously successful filtered module must now stop explicitly.
+				if status == http.StatusSeeOther && settings != nil && len(settings.Filters) > 0 {
+					status = http.StatusUnprocessableEntity
+				}
 				if w.Code != status {
 					t.Fatalf("HTTP%d want%d: %s", w.Code, status, w.Body.String())
 				}

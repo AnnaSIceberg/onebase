@@ -426,13 +426,7 @@ func (h *handler) runReportV2() http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
 			return
 		}
-		variant := r.URL.Query().Get("variant")
-		if variant == "" {
-			variant = r.URL.Query().Get("__variant")
-		}
-		if variant == "" && sourceSettings != nil {
-			variant = sourceSettings.Variant
-		}
+		variant := reportResultVariantV2(r, sourceSettings)
 		text, values, err := rep.QueryForVariant(variant, params)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "query compile error: "+err.Error(), "", 0)
@@ -462,7 +456,7 @@ func (h *handler) runReportV2() http.HandlerFunc {
 			return
 		}
 		if !filterPlan.Empty() {
-			h.runReportResultFilteredV2(w, r, rep, &compiled, maskPlan, sourceSettings, filterPlan, page, limit)
+			h.runReportResultFilteredV2(w, r, rep, &compiled, maskPlan, variant, filterPlan, page, limit)
 			return
 		}
 

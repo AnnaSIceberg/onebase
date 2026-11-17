@@ -58,6 +58,13 @@ func TestReportResultFilterMountedHTTPAndExports(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "KEEP_C") || strings.Contains(w.Body.String(), "DROP_A") || strings.Contains(w.Body.String(), "DO_NOT_DISCLOSE") {
 		t.Fatalf("filtered HTML: %d %s", w.Code, w.Body.String())
 	}
+	if !strings.Contains(w.Body.String(), `src="/static/report-result-filter.js"`) {
+		t.Fatal("filter controller is not mounted in the report form")
+	}
+	asset := request("GET", "/static/report-result-filter.js", nil)
+	if asset.Code != 200 || !bytes.Equal(asset.Body.Bytes(), reportResultFilterJS) || !strings.Contains(asset.Header().Get("Content-Type"), "javascript") {
+		t.Fatalf("filter asset unavailable: HTTP %d", asset.Code)
+	}
 	marker := `id="report-result-filter-fields">`
 	begin := strings.Index(w.Body.String(), marker)
 	if begin < 0 {
@@ -131,6 +138,26 @@ func TestReportResultFilterMountedHTTPAndExports(t *testing.T) {
 	malformed := request("POST", path, url.Values{"__settings": {"{"}})
 	if malformed.Code != 400 {
 		t.Fatal("broken settings silently ignored", malformed.Code)
+	}
+	// Validate against the actual selected query, never a neighboring variant's
+	// aliases. Saving a variant must retain that query and its field schema.
+	rep.Variants = []reportpkg.ReportVariant{{Name: "Alternate", Query: "ВЫБРАТЬ Bucket КАК marker ИЗ Справочник.FilterProbe УПОРЯДОЧИТЬ ПО Bucket"}}
+	variantSettings := `{"filters":[{"field":"marker","op":"contains","value":"KEEP"}]}`
+	wrongSchema := request("POST", path, url.Values{"__settings": {variantSettings}})
+	if wrongSchema.Code != 400 {
+		t.Fatalf("neighboring variant schema accepted: %d", wrongSchema.Code)
+	}
+	variantSaved := request("POST", path+"/settings/save", url.Values{"__variant": {"Alternate"}, "__settings": {variantSettings}, "__preset_action": {"save_as"}, "__preset_name": {"Alternate filtered"}})
+	if variantSaved.Code != 303 {
+		t.Fatalf("variant save: %d %s", variantSaved.Code, variantSaved.Body.String())
+	}
+	variantTarget, err := url.Parse(variantSaved.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	variantRun := request("GET", path+"?__run=1&__variant=&__preset="+url.QueryEscape(variantTarget.Query().Get("__preset")), nil)
+	if variantRun.Code != 200 || !strings.Contains(variantRun.Body.String(), "KEEP_C") || strings.Contains(variantRun.Body.String(), "DROP_A") {
+		t.Fatalf("selected preset variant lost: %d %s", variantRun.Code, variantRun.Body.String())
 	}
 	start := request("GET", path+"/export/excel?"+q, nil)
 	if start.Code != 303 {

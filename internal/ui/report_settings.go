@@ -89,6 +89,12 @@ func (s *Server) reportSettingsForRequest(r *http.Request, rep *reportpkg.Report
 	if loadErr != nil {
 		return reportSettingsRequest{Err: loadErr}
 	}
+	// Choosing a named preset submits the previous form's variant too. The
+	// selected preset owns that variant; the standard preset and ordinary
+	// variant selector still accept an explicitly empty main variant.
+	if raw == "" && hasPreset && preset != "" && preset != standardReportPresetID {
+		return reportSettingsRequest{Settings: loaded.Settings, ActivePresetID: loaded.PresetID}
+	}
 	return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, loaded.Settings), ActivePresetID: loaded.PresetID}
 }
 

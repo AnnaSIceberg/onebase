@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -10,7 +11,10 @@ import (
 	"github.com/ivantit66/onebase/internal/query"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/report/resultfilter"
+	"github.com/ivantit66/onebase/internal/storage"
 )
+
+var errReportFilterProducerUnproven = errors.New("отбор для result_proc недоступен: происхождение результата модуля не подтверждено")
 
 type reportSourceFilterKey struct{}
 type reportSourceFilterState struct {
@@ -26,15 +30,15 @@ func (s *Server) withReportSourceFilters(ctx context.Context, compiled query.Res
 	return context.WithValue(ctx, reportSourceFilterKey{}, state)
 }
 
-// A filtered result_proc receives the already filtered source and a guarded
-// query factory. Other data managers cannot silently create unfiltered rows;
-// their broader lineage contract remains a separate capability.
+// Input-only foundation for a future host-sealed producer. These capabilities
+// are not an admission check for publishing arbitrary result_proc output.
 func (s *Server) reportFilteredVars(ctx context.Context, tx *interpreter.TxState) (map[string]any, bool) {
 	state, ok := ctx.Value(reportSourceFilterKey{}).(*reportSourceFilterState)
 	if !ok {
 		return nil, false
 	}
 	execute := func(ctx context.Context, res query.Result) ([]map[string]any, error) {
+		ctx = storage.ReadOnlyContext(ctx)
 		mask := s.reportOutputMaskPlan(ctx, res)
 		if mask.Denied != "" {
 			return nil, fmt.Errorf("дополнительный запрос использует защищённое поле: %s", mask.Denied)
