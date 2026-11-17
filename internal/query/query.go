@@ -7438,7 +7438,10 @@ func rewriteScalarFuncs(tokens []tok, dialect string, scopedColTypes map[int]map
 					wrapped = append(wrapped, inner[modifier:]...)
 					inner = append(wrapped, tokenizeFragment(" AS NUMERIC)")...)
 				}
-				if dialect == "sqlite" && isCalendarDateFunc(key) && dateArgumentIsMoment(rawInner, scopeColTypes, scopeQualified, params) {
+				// Only the new hour function additionally accepts a proven MIN/MAX
+				// date expression here; existing calendar rewrites keep their policy.
+				hourMoment := key == "началочаса" && scalarProjectionExpressionType(rawInner, scopeColTypes, scopeQualified) == metadata.FieldTypeDate
+				if dialect == "sqlite" && isCalendarDateFunc(key) && (dateArgumentIsMoment(rawInner, scopeColTypes, scopeQualified, params) || hourMoment) {
 					wrapped := tokenizeFragment("ob_local_datetime(")
 					wrapped = append(wrapped, inner...)
 					wrapped = append(wrapped, tokenizeFragment(")")...)

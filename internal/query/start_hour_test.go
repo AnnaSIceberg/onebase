@@ -88,6 +88,16 @@ func TestQueryStartOfHourMatrix(t *testing.T) {
 				require.Len(t, nested, 1)
 				assertLocalClock(t, nested[0]["час"], 2026, 11, 17, 0, 0, 0)
 				require.Equal(t, 17, intValue(t, nested[0]["день"]))
+
+				_, extremes := run("ВЫБРАТЬ НачалоЧаса(МИНИМУМ(З.Дата)) КАК Первый, НачалоЧаса(MAX(З.Дата)) КАК Последний ИЗ Документ.HourProbe КАК З", nil)
+				require.Len(t, extremes, 1)
+				require.IsType(t, time.Time{}, extremes[0]["первый"])
+				require.IsType(t, time.Time{}, extremes[0]["последний"])
+				assertLocalClock(t, extremes[0]["первый"], 2026, 11, 17, 0, 0, 0)
+				assertLocalClock(t, extremes[0]["последний"], 2026, 11, 18, 0, 0, 0)
+				_, empty := run("ВЫБРАТЬ НачалоЧаса(MIN(З.Дата)) КАК Час ИЗ Документ.HourProbe КАК З ГДЕ З.Номер = &Номер", map[string]any{"Номер": "missing"})
+				require.Len(t, empty, 1)
+				require.Nil(t, empty[0]["час"])
 			})
 		})
 	}
