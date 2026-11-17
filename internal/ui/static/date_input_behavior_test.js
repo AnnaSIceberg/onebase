@@ -28,8 +28,15 @@ function setup(type='date', value='') {
     submit(){const form={querySelectorAll(){return [input];},checkValidity(){return !input.error;},querySelector(){return input;}};const e=fire('submit',{target:form});if(!e.defaultPrevented)input.submitted=true;return e;}};
 }
 test('focus exposes the full date template without emitting changes',()=>{
-  const c=setup();c.focus();assert.equal(c.input.value,'__.__.____');assert.equal(c.input.type,'text');assert.deepEqual(c.events,[]);
-  assert.equal(c.input.getAttribute('placeholder'),'__.__.____');
+  const c=setup();c.focus();assert.equal(c.input.value,'  .  .    ');assert.equal(c.input.type,'text');assert.deepEqual(c.events,[]);
+  assert.equal(c.input.getAttribute('placeholder'),'  .  .    ');
+});
+for(const [type,display] of [['date','  .  .    '],['datetime-local','  .  .       :  :  ']])test('empty '+type+' display uses blank positions and separators only',()=>{
+  const c=setup(type);c.focus();
+  assert.equal(c.input.value,display);assert.equal(c.input.getAttribute('placeholder'),display);
+  assert.equal(c.input.value.includes('_'),false);assert.equal(c.input.type,'text');
+  assert.equal(c.input.value.length,type==='date'?10:19);
+  assert.equal(eventData(c).get('Day'),'');assert.deepEqual(c.events,[]);
 });
 
 function eventData(c,entries=[['Day',c.input.value]]) {
@@ -58,8 +65,8 @@ for(const digits of ['17','31022026'])test('FormData does not accept incomplete 
   assert.notEqual(c.input.error,'');
 });
 test('digits insert dots and advance over separators',()=>{
-  const c=setup();c.focus();c.type('16');assert.equal(c.input.value,'16.__.____');assert.equal(c.input.selectionStart,3);
-  c.type('11');assert.equal(c.input.value,'16.11.____');assert.equal(c.input.selectionStart,6);
+  const c=setup();c.focus();c.type('16');assert.equal(c.input.value,'16.  .    ');assert.equal(c.input.selectionStart,3);
+  c.type('11');assert.equal(c.input.value,'16.11.    ');assert.equal(c.input.selectionStart,6);
   c.type('2026');const e=c.key('Enter');assert.equal(c.input.value,'2026-11-16');assert.equal(c.input.type,'date');assert.equal(e.defaultPrevented,true);
   assert.equal(c.input.submitted,undefined);assert.equal(c.events.filter(x=>x==='change').length,1);
 });
@@ -73,11 +80,11 @@ for (const text of ['16.11.2026','16112026','2026-11-16']) test('clipboard canon
   const c=setup('date','2020-01-02');c.focus();const e=c.paste(text);c.key('Enter');assert.equal(e.defaultPrevented,true);assert.equal(c.input.value,'2026-11-16');
 });
 test('Backspace removes a digit and keeps punctuation and caret',()=>{
-  const c=setup();c.focus();c.type('16');c.key('Backspace');assert.equal(c.input.value,'1_.__.____');assert.equal(c.input.selectionStart,1);
+  const c=setup();c.focus();c.type('16');c.key('Backspace');assert.equal(c.input.value,'1 .  .    ');assert.equal(c.input.selectionStart,1);
   c.type('7112026');c.key('Enter');assert.equal(c.input.value,'2026-11-17');
 });
 test('Delete edits the current slot without shifting the date',()=>{
-  const c=setup('date','2026-11-16');c.focus();c.input.setSelectionRange(3,3);c.key('Delete');assert.equal(c.input.value,'16._1.2026');
+  const c=setup('date','2026-11-16');c.focus();c.input.setSelectionRange(3,3);c.key('Delete');assert.equal(c.input.value,'16. 1.2026');
   c.type('0');c.key('Enter');assert.equal(c.input.value,'2026-01-16');
 });
 test('selection replacement and clearing preserve mask positions',()=>{
@@ -85,7 +92,7 @@ test('selection replacement and clearing preserve mask positions',()=>{
   c.focus();c.input.select();c.key('Delete');c.key('Enter');assert.equal(c.input.value,'');assert.equal(c.input.type,'date');
 });
 test('date-time digits insert space and colons including seconds',()=>{
-  const c=setup('datetime-local');c.focus();assert.equal(c.input.value,'__.__.____ __:__:__');
+  const c=setup('datetime-local');c.focus();assert.equal(c.input.value,'  .  .       :  :  ');
   c.type('16112026235958');c.key('Enter');assert.equal(c.input.value,'2026-11-16T23:59:58');
 });
 test('partial date-time is not silently filled',()=>{
@@ -98,7 +105,7 @@ test('invalid time rejected',()=>{
   const c=setup('datetime-local');c.focus();c.type('16112026256000');c.key('Enter');assert.equal(c.input.error,'Invalid date');
 });
 test('letters are not inserted into the fixed template',()=>{
-  const c=setup();c.focus();assert.equal(c.key('x').defaultPrevented,true);assert.equal(c.input.value,'__.__.____');
+  const c=setup();c.focus();assert.equal(c.key('x').defaultPrevented,true);assert.equal(c.input.value,'  .  .    ');
 });
 test('Escape restores the original canonical field',()=>{
   const c=setup('date','2020-01-02');c.focus();c.input.select();c.type('16');c.key('Escape');assert.equal(c.input.value,'2020-01-02');assert.equal(c.input.type,'date');assert.equal(c.input.error,'');

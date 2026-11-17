@@ -16,7 +16,7 @@
   }
   function draw(el, state, caret) {
     var text = state.mask.split('');
-    state.slots.forEach(function (pos, i) { text[pos] = state.digits[i] || '_'; });
+    state.slots.forEach(function (pos, i) { text[pos] = state.digits[i] || ' '; });
     state.rendered = text.join(''); el.value = state.rendered;
     if (el.setSelectionRange && caret !== undefined) el.setSelectionRange(caret, caret);
   }
@@ -55,7 +55,7 @@
       paddingRight:el.style ? el.style.paddingRight : ''};
     if (state.type==='datetime-local' && el.hasAttribute && !el.hasAttribute('step')) el.setAttribute('step','1');
     editing.set(el, state); el.type = 'text';
-    if (el.setAttribute) { el.setAttribute('placeholder', mask); el.setAttribute('inputmode', 'numeric'); }
+    if (el.setAttribute) { el.setAttribute('placeholder', mask.replace(/_/g,' ')); el.setAttribute('inputmode', 'numeric'); }
     calendarButton(el); placeCalendar(el); buttonVisible(el, true); draw(el, state, 0); return state;
   }
   function restoreAttr(el, name, value) {
