@@ -184,6 +184,9 @@ type saveEntity struct {
 	ListRefreshOn []string  `yaml:"list_refresh_on,omitempty"`
 	ListFilters   []string  `yaml:"list_filters,omitempty"`
 	NotifyChanges bool      `yaml:"notify_changes,omitempty"`
+	// AudioPlayer — аудиоплеер вместо панели вложений (редактируется в YAML):
+	// без поля сохранение объекта из конфигуратора теряло ключ.
+	AudioPlayer bool `yaml:"audio_player,omitempty"`
 	// InteractiveCreate — указатель: явное `false` обязано пережить round-trip.
 	InteractiveCreate *bool `yaml:"interactive_create,omitempty"`
 	// ChoiceShowDeleted — choice_show_deleted справочника; редактор его не
