@@ -8,7 +8,7 @@ function setup(type='date', value='') {
   const labels={invalid:'Invalid date',incompleteDate:'Complete date required',incompleteDatetime:'Complete date and time required'};
   const document={activeElement:null,getElementById(){return {textContent:JSON.stringify(labels)};},addEventListener(k,fn){(handlers[k]??=[]).push(fn);}};
   const window={};
-  const input={tagName:'INPUT',type,value,disabled:false,readOnly:false,required:false,error:'',selectionStart:0,selectionEnd:0,
+  const input={tagName:'INPUT',name:'Day',type,value,disabled:false,readOnly:false,required:false,error:'',selectionStart:0,selectionEnd:0,
     setCustomValidity(v){this.error=v;},get validationMessage(){return this.error;},reportValidity(){this.reported=true;},
     getAttribute(k){return attributes[k]??null;},setAttribute(k,v){attributes[k]=String(v);},removeAttribute(k){delete attributes[k];},
     setSelectionRange(a,b){this.selectionStart=a;this.selectionEnd=b;},select(){this.setSelectionRange(0,this.value.length);},
@@ -30,6 +30,32 @@ function setup(type='date', value='') {
 test('focus exposes the full date template without emitting changes',()=>{
   const c=setup();c.focus();assert.equal(c.input.value,'__.__.____');assert.equal(c.input.type,'text');assert.deepEqual(c.events,[]);
   assert.equal(c.input.getAttribute('placeholder'),'__.__.____');
+});
+
+function eventData(c,entries=[['Day',c.input.value]]) {
+  const data=new FormData();
+  for(const [name,value] of entries)data.append(name,value);
+  c.fire('formdata',{target:{elements:[c.input],querySelectorAll(){return [c.input];}},formData:data});
+  return data;
+}
+for(const type of ['date','datetime-local'])test('managed opening serializes focused empty '+type+' without committing or firing change',()=>{
+  const c=setup(type);c.focus();const displayed=c.input.value;
+  assert.equal(eventData(c).get('Day'),'');
+  assert.equal(c.input.value,displayed);assert.equal(c.input.type,'text');assert.deepEqual(c.events,[]);
+  assert.equal(c.input.error,'');
+});
+for(const [type,digits,expected] of [['date','17112026','2026-11-17'],['datetime-local','17112026080910','2026-11-17T08:09:10']])test('focused complete '+type+' is canonical in programmatic FormData',()=>{
+  const c=setup(type);c.focus();c.type(digits);const displayed=c.input.value,events=c.events.slice();
+  assert.equal(eventData(c).get('Day'),expected);assert.equal(c.input.value,displayed);assert.deepEqual(c.events,events);
+});
+test('FormData keeps other fields, entry order and repeated names',()=>{
+  const c=setup();c.focus();
+  assert.deepEqual(Array.from(eventData(c,[['Other','before'],['Day',c.input.value],['Day','2026-01-01'],['Other','after']]).entries()),[['Other','before'],['Day',''],['Day','2026-01-01'],['Other','after']]);
+});
+for(const digits of ['17','31022026'])test('FormData does not accept incomplete or impossible draft '+digits,()=>{
+  const c=setup();c.focus();c.type(digits);const displayed=c.input.value;
+  assert.equal(eventData(c).get('Day'),displayed);assert.equal(c.submit().defaultPrevented,true);
+  assert.notEqual(c.input.error,'');
 });
 test('digits insert dots and advance over separators',()=>{
   const c=setup();c.focus();c.type('16');assert.equal(c.input.value,'16.__.____');assert.equal(c.input.selectionStart,3);

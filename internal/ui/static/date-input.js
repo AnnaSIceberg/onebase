@@ -103,6 +103,32 @@
     return true;
   }
   window.obCommitDateInput=commit;
+  // Programmatic managed events use new FormData(form), without submit/blur.
+  // Keep the focused display draft intact, but send empty/complete dates in
+  // the same canonical form as the native date control. Incomplete/invalid
+  // drafts still fail validation; this must not silently accept or clear them.
+  document.addEventListener('formdata',function (event) {
+    var form=event.target, data=event.formData;
+    if (!data || !form || !form.querySelectorAll) return;
+    var replacements=new Map();
+    Array.from(form.elements || form.querySelectorAll('input')).forEach(function (el) {
+      var state=editing.get(el);
+      if (!state || !el.name || el.disabled || state.badPaste) return;
+      var value=normalized(state);
+      if (typeof value!=='string') return;
+      if (!replacements.has(el.name)) replacements.set(el.name,new Map());
+      replacements.get(el.name).set(el.value,value);
+    });
+    if (!replacements.size) return;
+    // Preserve entry order, repeated names and File objects. Do not set(name),
+    // which would discard another successful control with the same name.
+    var entries=Array.from(data.entries());
+    Array.from(data.keys()).forEach(function (name) {data.delete(name);});
+    entries.forEach(function (entry) {
+      var values=replacements.get(entry[0]);
+      data.append(entry[0],values && values.has(entry[1]) ? values.get(entry[1]) : entry[1]);
+    });
+  },true);
   // Managed form handlers can replace a focused date without leaving an old
   // draft in the mask. Keep the same native control and emit no extra events.
   window.obSetDateInputValue=function (el, value) {
