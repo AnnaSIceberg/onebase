@@ -138,7 +138,7 @@ func (s *Server) reportReferenceOptions(ctx context.Context, p reportpkg.Param, 
 		return nil, err
 	}
 	listParams := storage.ListParams{Limit: refPickerDefaultLimit, ChoicePredicates: predicates}
-	if len(access.ReportOutputDecisions(target)) > 0 {
+	if access.ReportOutputLabelProtected(target) {
 		listParams.Sort, listParams.Dir = "id", "asc"
 	}
 	rows, err := s.referenceOptionsWithParams(ctx, target, refOptionsFilter.withMarked(p.ChoiceShowDeleted), listParams)
@@ -155,7 +155,7 @@ func (s *Server) reportReferenceOptions(ctx context.Context, p reportpkg.Param, 
 			}
 		}
 	}
-	if len(access.ReportOutputDecisions(target)) > 0 {
+	if access.ReportOutputLabelProtected(target) {
 		for _, row := range rows {
 			row["_label"] = s.reportOutputRecordLabel(ctx, target, row)
 		}

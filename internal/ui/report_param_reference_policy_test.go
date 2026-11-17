@@ -27,7 +27,7 @@ func TestReportParamReferencePrivacyHTTP(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
 		entity := &metadata.Entity{Name: "ParamSensitive", Kind: metadata.KindCatalog, Presentation: []string{"Label"}, OrderBy: []string{"Label"}, Fields: []metadata.Field{
-			{Name: "Label", Type: metadata.FieldTypeString},
+			{Name: "Label", Type: metadata.FieldTypeString, ReportPII: true},
 			{Name: "Phone", Type: metadata.FieldTypeString, PII: true},
 			{Name: "Address", Type: metadata.FieldTypeString, ReportPII: true},
 			{Name: "Allowed", Type: metadata.FieldTypeBool},

@@ -36,11 +36,23 @@ func TestReportOutputDiscloseAndCardPoliciesStaySeparate(t *testing.T) {
 			t.Fatal("report_pii altered ordinary card rights")
 		}
 		decisions := access.ReportOutputFieldDecisions(user, "catalog", meta.Name, meta)
-		for _, field := range []string{"Phone", "House", "Label"} {
+		for _, field := range []string{"Phone", "House"} {
 			if !decisions[field].Hidden() {
 				t.Fatal("report field not hidden", field)
 			}
 		}
+		// Представление из незащищённого поля (название филиала, номер
+		// заявки) — не ПДн и в отчёте видно.
+		if decisions["Label"].Masked() || access.ReportOutputLabelProtected(meta) {
+			t.Fatal("ordinary label hidden in report")
+		}
+	}
+	// Представление, собранное из поля под report_pii, скрыто.
+	addressLabel := &metadata.Entity{Name: "AddressLabel", Kind: metadata.KindCatalog, Presentation: []string{"House"}, Fields: []metadata.Field{
+		{Name: "House", Type: metadata.FieldTypeString, ReportPII: true}, {Name: "Label", Type: metadata.FieldTypeString},
+	}}
+	if !access.ReportOutputLabelProtected(addressLabel) {
+		t.Fatal("label built from a report_pii field must stay protected")
 	}
 	ordinaryCtx := context.Background()
 	if access.IsReportOutput(ordinaryCtx) || !access.IsReportOutput(access.WithReportOutput(ordinaryCtx)) {
@@ -76,7 +88,7 @@ func TestReportOutputPolicyMandatoryForEveryRole(t *testing.T) {
 		if err := plan.Apply(rows); err != nil {
 			t.Fatal(err)
 		}
-		if rows[0]["contact"] != nil || rows[0]["title"] != nil || rows[0]["amount"] != 12345 {
+		if rows[0]["contact"] != nil || rows[0]["title"] != "HOUSE_987 FLAT_654" || rows[0]["amount"] != 12345 {
 			t.Fatalf("output: %#v", rows)
 		}
 		// Отказ — только когда защищённое значение доходит до колонки
@@ -132,7 +144,7 @@ func TestReportOutputPolicyMandatoryForEveryRole(t *testing.T) {
 			}
 		}
 	}
-	if access.ReportOutputFilterAllowed(meta, "Phone") || access.ReportOutputFilterAllowed(meta, "LABEL") || access.ReportOutputFilterAllowed(meta, "Unknown") || !access.ReportOutputFilterAllowed(meta, "Amount") || !access.ReportOutputFilterAllowed(meta, "id") {
+	if access.ReportOutputFilterAllowed(meta, "Phone") || !access.ReportOutputFilterAllowed(meta, "LABEL") || access.ReportOutputFilterAllowed(meta, "Unknown") || !access.ReportOutputFilterAllowed(meta, "Amount") || !access.ReportOutputFilterAllowed(meta, "id") {
 		t.Fatal("source-field filter gate")
 	}
 	// The report gate must never change the ordinary card/admin query policy.

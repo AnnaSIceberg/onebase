@@ -35,7 +35,10 @@ func ReportOutputFieldDecisions(u *auth.User, kind, name string, meta *metadata.
 
 // ReportOutputDecisions is mandatory output policy, independent of roles and
 // admin/disclosure privileges. Full addresses are hidden rather than parsed
-// heuristically. Labels of a protected entity are untrusted derived data.
+// heuristically. Скрываются только поля pii/report_pii: представление
+// (Наименование/Номер) сущности с ПДн — название филиала, номер заявки — само
+// не ПДн и в отчёте нужно. Если представление собрано из ПДн, его поле
+// помечается report_pii в конфигурации, и тогда оно скрыто как любое другое.
 func ReportOutputDecisions(meta *metadata.Entity) map[string]FieldDecision {
 	if meta == nil {
 		return nil
@@ -49,10 +52,22 @@ func ReportOutputDecisions(meta *metadata.Entity) map[string]FieldDecision {
 	if len(out) == 0 {
 		return nil
 	}
-	for _, field := range metadata.LabelFields(meta) {
-		out[field.Name] = FieldDecision{Strategy: FieldHide}
-	}
 	return out
+}
+
+// ReportOutputLabelProtected — представление сущности в отчёте недоступно:
+// хотя бы одно поле представления под обязательной политикой ПДн.
+func ReportOutputLabelProtected(meta *metadata.Entity) bool {
+	decisions := ReportOutputDecisions(meta)
+	if len(decisions) == 0 {
+		return false
+	}
+	for _, field := range metadata.LabelFields(meta) {
+		if _, ok := decisions[field.Name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // ReportOutputFilterAllowed checks an already proven SOURCE field. The caller

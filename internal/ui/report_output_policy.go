@@ -16,10 +16,10 @@ func (s *Server) reportOutputMaskPlan(ctx context.Context, compiled query.Result
 	return access.ReportOutputQueryMaskPlan(auth.UserFromContext(ctx), compiled, s.sourceMeta)
 }
 
-// Stored presentation is untrusted derived data for an entity with protected
-// report fields. Keep its technical identity without reading a personal label.
+// A presentation built from protected report fields keeps only its technical
+// identity; an ordinary label (branch name, document number) stays readable.
 func (s *Server) reportOutputRecordLabel(ctx context.Context, entity *metadata.Entity, row map[string]any) string {
-	if len(access.ReportOutputDecisions(entity)) > 0 {
+	if access.ReportOutputLabelProtected(entity) {
 		return fmt.Sprint(row["id"])
 	}
 	return s.maskedRecordLabel(ctx, entity, row)

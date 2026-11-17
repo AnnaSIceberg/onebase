@@ -18,7 +18,15 @@ func TestReportOutputRecordLabelKeepsCardPolicy(t *testing.T) {
 	row := map[string]any{"id": id, "Label": "SYNTHETIC_HOUSE_FLAT", "House": "SYNTHETIC_HOUSE"}
 	s := &Server{}
 	ctx := auth.ContextWithUser(context.Background(), &auth.User{IsAdmin: true})
-	if got := s.reportOutputRecordLabel(access.WithReportOutput(ctx), entity, row); got != id {
+	// Представление из незащищённого поля в отчёте читается как обычно.
+	if got := s.reportOutputRecordLabel(access.WithReportOutput(ctx), entity, row); got != "SYNTHETIC_HOUSE_FLAT" {
+		t.Fatal("ordinary report label hidden", got)
+	}
+	// Представление из поля под report_pii сохраняет только UUID.
+	protected := &metadata.Entity{Name: "ProtectedLabel", Kind: metadata.KindCatalog, Presentation: []string{"House"}, Fields: []metadata.Field{
+		{Name: "House", Type: metadata.FieldTypeString, ReportPII: true}, {Name: "Label", Type: metadata.FieldTypeString},
+	}}
+	if got := s.reportOutputRecordLabel(access.WithReportOutput(ctx), protected, row); got != id {
 		t.Fatal("protected report label must retain only its UUID", got)
 	}
 	if got := s.maskedRecordLabel(ctx, entity, row); got != "SYNTHETIC_HOUSE_FLAT" {

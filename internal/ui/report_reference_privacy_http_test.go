@@ -30,7 +30,7 @@ func TestReportOutputPrivacyHTTPMatrix(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
 		entity := &metadata.Entity{Name: "SensitiveDoc", Kind: metadata.KindDocument, Presentation: []string{"Label"}, Fields: []metadata.Field{
-			{Name: "Label", Type: metadata.FieldTypeString}, {Name: "Phone", Type: metadata.FieldTypeString, PII: true}, {Name: "Address", Type: metadata.FieldTypeString, ReportPII: true}, {Name: "Amount", Type: metadata.FieldTypeNumber},
+			{Name: "Label", Type: metadata.FieldTypeString, ReportPII: true}, {Name: "Phone", Type: metadata.FieldTypeString, PII: true}, {Name: "Address", Type: metadata.FieldTypeString, ReportPII: true}, {Name: "Amount", Type: metadata.FieldTypeNumber},
 		}}
 		if err := db.Migrate(ctx, []*metadata.Entity{entity}); err != nil {
 			t.Fatal(err)
@@ -194,7 +194,7 @@ func TestReportUnknownUUIDDoesNotResolveUnrelatedLabelHTTP(t *testing.T) {
 
 func TestReportResultProcDiscloseCannotReadPrivateReferenceHTTP(t *testing.T) {
 	entity := &metadata.Entity{Name: "RefPrivacy", Kind: metadata.KindCatalog, Presentation: []string{"Label"}, Fields: []metadata.Field{
-		{Name: "Label", Type: metadata.FieldTypeString}, {Name: "Phone", Type: metadata.FieldTypeString, PII: true}, {Name: "House", Type: metadata.FieldTypeString, ReportPII: true},
+		{Name: "Label", Type: metadata.FieldTypeString, ReportPII: true}, {Name: "Phone", Type: metadata.FieldTypeString, PII: true}, {Name: "House", Type: metadata.FieldTypeString, ReportPII: true},
 	}}
 	rep := &reportpkg.Report{Name: "RefPrivacyModule", Query: "ВЫБРАТЬ Ссылка ИЗ Справочник.RefPrivacy", ResultProc: "Build"}
 	s, ctx := newSubmitTestServer(t, []*metadata.Entity{entity})

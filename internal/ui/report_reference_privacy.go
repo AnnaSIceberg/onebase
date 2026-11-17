@@ -112,7 +112,7 @@ func (s *Server) validateReportReferenceChoice(ctx context.Context, p reportpkg.
 			return fmt.Errorf("report reference suffix is unavailable")
 		}
 		ref := s.reg.GetEntity(field.RefEntity)
-		if ref == nil || len(access.ReportOutputDecisions(ref)) > 0 || !s.canCtx(ctx, string(ref.Kind), ref.Name, "read") {
+		if ref == nil || access.ReportOutputLabelProtected(ref) || !s.canCtx(ctx, string(ref.Kind), ref.Name, "read") {
 			return fmt.Errorf("report reference suffix is unavailable")
 		}
 	}
