@@ -11,8 +11,8 @@ import (
 	"github.com/ivantit66/onebase/internal/dsl/langref"
 )
 
-var languageCountsPattern = regexp.MustCompile(`([0-9]+) функций, ([0-9]+) метод(?:ов|а)`)
-var fullLanguageCountsPattern = regexp.MustCompile(`([0-9]+) функций,\s+([0-9]+) метод(?:ов|а)\s+объектов,\s+([0-9]+) конструкций(?:\s+и|,)\s+([0-9]+) элементов языка запросов`)
+var languageCountsPattern = regexp.MustCompile(`([0-9]+) функци[йи], ([0-9]+) метод(?:ов|а)`)
+var fullLanguageCountsPattern = regexp.MustCompile(`([0-9]+) функци[йи],\s+([0-9]+) метод(?:ов|а)\s+объектов,\s+([0-9]+) конструкций(?:\s+и|,)\s+([0-9]+) элементов языка запросов`)
 
 func TestPublicDocsLanguageCountsUpToDate(t *testing.T) {
 	counts := make(map[langref.Kind]int)
