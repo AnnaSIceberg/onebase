@@ -26,7 +26,7 @@ func TestDocumentXLSXKeepsLayoutStyles(t *testing.T) {
 	num.Text, num.Value = "1 250,50", decimal.RequireFromString("1250.5")
 	num.FontFamily, num.FontSize, num.Italic, num.Align = "Calibri", 11, true, "right"
 	date := d.GetOrCreateCell(1, 1)
-	date.Text, date.Value = "21.10.2026", time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC)
+	date.Text, date.Value = "21.10.2026", time.Date(2026, 10, 21, 0, 0, 0, 0, time.Local) // местная дата: в Excel пишутся стенные часы
 	date.FontFamily, date.FontSize = "Calibri", 11
 	code := d.GetOrCreateCell(1, 2)
 	code.Text, code.Value = "007", "007"

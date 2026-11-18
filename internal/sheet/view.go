@@ -87,6 +87,9 @@ type numberStyle struct {
 	group, percent           bool
 	decimal, separator, zero string
 	hasZero                  bool
+	// oneC — формат 1С (ЧДЦ/ЧГ/ЧН…), как Формат() модуля: без ЧДЦ число
+	// выводится со своими знаками, ноль без ЧН — пусто.
+	oneC bool
 }
 
 func parseNumberStyle(format string) numberStyle {
@@ -99,8 +102,9 @@ func parseNumberStyle(format string) numberStyle {
 				options[strings.TrimSpace(key)] = strings.Trim(strings.TrimSpace(value), "'\"")
 			}
 		}
-		st.digits = 2
-		st.minimum = 2
+		st.oneC = true
+		st.digits = -1 // без ЧДЦ — знаки самого значения, как Формат(1, "ЧН=0") = «1»
+		st.minimum = 0
 		st.decimal = ","
 		st.separator = " "
 		st.group = options["ЧГ"] != "0"
@@ -150,16 +154,19 @@ func (c *Cell) DisplayText() string {
 		return c.Text
 	}
 	st := parseNumberStyle(c.Format)
-	if st.digits < 0 || st.digits > 15 {
+	if (st.digits < 0 && !st.oneC) || st.digits > 15 {
 		return c.Text
 	}
-	if value.IsZero() && st.hasZero {
-		return st.zero
+	if value.IsZero() && (st.hasZero || st.oneC) {
+		return st.zero // формат 1С без ЧН: ноль пуст, как Формат(0, "ЧДЦ=2")
 	}
 	if st.percent {
 		value = value.Mul(decimal.NewFromInt(100))
 	}
-	text := value.StringFixed(int32(st.digits))
+	text := value.String()
+	if st.digits >= 0 {
+		text = value.StringFixed(int32(st.digits))
+	}
 	integral, fraction, _ := strings.Cut(text, ".")
 	for len(fraction) > st.minimum && strings.HasSuffix(fraction, "0") {
 		fraction = strings.TrimSuffix(fraction, "0")
@@ -189,12 +196,23 @@ func (c *Cell) DisplayText() string {
 }
 
 func (c *Cell) ExcelFormat() string {
+	// Формат даты 1С (ДЛФ/ДФ) Excel не понимает — переводим в его маску.
+	if mask, ok := excelDateMask(c.Format); ok {
+		return mask
+	}
 	if !strings.Contains(c.Format, "Ч") {
 		return c.Format
 	}
 	st := parseNumberStyle(c.Format)
-	if st.digits < 0 || st.digits > 15 {
+	if st.digits > 15 {
 		return "General"
+	}
+	if st.digits < 0 {
+		// Знаки самого значения; ноль без ЧН — пустая секция, как на экране.
+		if st.hasZero {
+			return "General;-General;\"" + strings.ReplaceAll(st.zero, "\"", "\"\"") + "\""
+		}
+		return "General;-General;"
 	}
 	f := "0"
 	if st.group {
@@ -205,6 +223,54 @@ func (c *Cell) ExcelFormat() string {
 	}
 	if st.hasZero {
 		f += ";-" + f + ";\"" + strings.ReplaceAll(st.zero, "\"", "\"\"") + "\""
+	} else {
+		f += ";-" + f + ";" // ноль без ЧН — пусто, как на экране
 	}
 	return f
+}
+
+// excelDateMask переводит формат даты 1С ячейки в маску Excel: ДЛФ D/DT/T/DD
+// (и Д/ДВ/В/ДД) и шаблон ДФ. Второе значение false — формат не датный.
+func excelDateMask(format string) (string, bool) {
+	upper := strings.ToUpper(format)
+	if i := strings.Index(upper, "ДЛФ="); i >= 0 || strings.Contains(upper, "DLF=") {
+		if i < 0 {
+			i = strings.Index(upper, "DLF=")
+		}
+		mode := strings.Trim(strings.TrimSpace(strings.SplitN(string([]rune(upper)[len([]rune(upper[:i]))+4:]), ";", 2)[0]), "'\"")
+		switch mode {
+		case "D", "Д":
+			return "dd.mm.yyyy", true
+		case "T", "В":
+			return "h:mm:ss", true
+		case "DT", "ДВ":
+			return "dd.mm.yyyy h:mm:ss", true
+		case "DD", "ДД":
+			return "d mmmm yyyy", true
+		case "DDT", "ДДВ":
+			return "d mmmm yyyy h:mm:ss", true
+		}
+		return "", false
+	}
+	lower := strings.ToLower(format)
+	if !strings.Contains(lower, "дф=") && !strings.Contains(lower, "df=") {
+		return "", false
+	}
+	pattern := ""
+	for _, key := range []string{"ДФ=", "дф=", "DF=", "df="} {
+		if i := strings.Index(format, key); i >= 0 {
+			pattern = strings.Trim(strings.TrimSpace(strings.SplitN(format[i+len(key):], ";", 2)[0]), "'")
+			break
+		}
+	}
+	if pattern == "" {
+		return "", false
+	}
+	return strings.NewReplacer(
+		"гггг", "yyyy", "гг", "yy",
+		"ММММ", "mmmm", "MMMM", "mmmm", "МММ", "mmm", "MMM", "mmm", "ММ", "mm", "MM", "mm",
+		"дд", "dd", "д", "d",
+		"ЧЧ", "hh", "HH", "hh", "Ч", "h", "H", "h",
+		"мм", "mm", "сс", "ss",
+	).Replace(pattern), true
 }
