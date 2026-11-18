@@ -175,7 +175,12 @@ func TestTabShellSingleSSEAndEventForwarding(t *testing.T) {
 	}
 	// Подписка несёт адрес оболочки (?shell=…): по нему сервер отдаёт команды
 	// формы самому себе только этой оболочке.
-	if got := strings.Count(src, "new EventSource('/ui/events'"); got != 1 {
+	// После переподключения с backoff (25ccce46b) адрес собирается в
+	// eventsURL; проверяем ровно один поток /ui/events с адресом оболочки.
+	if got := strings.Count(src, "var eventsURL = '/ui/events' + (shell ? '?shell=' + encodeURIComponent(shell) : '');"); got != 1 {
+		t.Errorf("ui.js должен собирать адрес SSE /ui/events с ?shell= ровно в одном месте, найдено %d", got)
+	}
+	if got := strings.Count(src, "new EventSource(eventsURL)"); got != 1 {
 		t.Errorf("ui.js должен содержать ровно один конструктор SSE /ui/events, найдено %d", got)
 	}
 	// Один поток в оболочке не должен ломать публичный JS-мост произвольных
