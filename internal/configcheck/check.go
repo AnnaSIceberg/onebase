@@ -451,7 +451,11 @@ func CheckQueries(proj *project.Project) []Issue {
 	for _, lq := range listFormFilterQueries(proj) {
 		o := opts
 		o.Params = listFormFilterQueryParams()
-		if _, err := query.Compile(lq.query, o); err != nil {
+		err := lq.err
+		if err == nil {
+			_, err = query.Compile(lq.query, o)
+		}
+		if err != nil {
 			issues = append(issues, Issue{File: lq.file, Object: lq.object, Kind: "Форма списка (запрос отбора)", Message: err.Error()})
 		}
 	}
@@ -545,7 +549,9 @@ func CheckQueriesExecutable(proj *project.Project, validate func(sqlText string)
 		}
 	}
 	for _, lq := range listFormFilterQueries(proj) {
-		check(lq.query, lq.file, lq.object, "Форма списка (исполнение запроса отбора)", listFormFilterQueryParams())
+		if lq.err == nil {
+			check(lq.query, lq.file, lq.object, "Форма списка (исполнение запроса отбора)", listFormFilterQueryParams())
+		}
 	}
 	for _, cq := range choiceFilterQueries(proj) {
 		check(cq.query, cq.file, cq.object, "Управляемая форма (исполнение запроса choice_filter)", cq.params)
@@ -558,6 +564,7 @@ func CheckQueriesExecutable(proj *project.Project, validate func(sqlText string)
 // ловить его надо здесь, а не по жалобе «список пуст».
 type listFormFilterQuery struct {
 	query, file, object string
+	err                 error
 }
 
 func listFormFilterQueries(proj *project.Project) []listFormFilterQuery {
@@ -575,7 +582,10 @@ func listFormFilterQueries(proj *project.Project) []listFormFilterQuery {
 				file = "forms/" + strings.ToLower(e.Name) + "/списка.form.yaml"
 			}
 			for _, c := range f.ListFilter {
-				if strings.TrimSpace(c.Query) != "" {
+				if c.ValueQuery != "" {
+					_, err := c.ValueQueryField(e)
+					out = append(out, listFormFilterQuery{query: c.ValueQuery, file: file, object: e.Name, err: err})
+				} else if strings.TrimSpace(c.Query) != "" {
 					out = append(out, listFormFilterQuery{query: c.Query, file: file, object: e.Name})
 				}
 			}
