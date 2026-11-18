@@ -282,6 +282,44 @@ func BuildAreaCells(area *LayoutArea) *sheet.Area {
 	return buildAreaSheet(area, nil, nil, 0, nil)
 }
 
+// IntersectionArea — область «Строки|Колонки», как ПолучитьОбласть в 1С:
+// строки именованной строковой области, колонки — именованной колоночной.
+// Ячейки вне колонок отбрасываются, объединение на границе обрезается.
+// Второе значение — ширины колонок области (с 1) по ИСХОДНЫМ колонкам макета,
+// чтобы Присоединить/Вывести переносили их правильно, а не с первой колонки.
+func (lt *LayoutTemplate) IntersectionArea(spec string) (*sheet.Area, map[int]float64, bool) {
+	rowName, colName, ok := strings.Cut(spec, "|")
+	if !ok {
+		return nil, nil, false
+	}
+	rowDef, colDef := lt.Area(strings.TrimSpace(rowName)), lt.ColumnArea(strings.TrimSpace(colName))
+	if rowDef == nil || colDef == nil {
+		return nil, nil, false
+	}
+	full := BuildAreaCells(rowDef)
+	from, to := colDef.From-1, colDef.To-1
+	out := sheet.NewArea(0, 0, full.Bottom-full.Top, to-from)
+	out.Name = spec
+	for key, cell := range full.Cells {
+		var r, c int
+		if _, err := fmt.Sscanf(key, "%d,%d", &r, &c); err != nil || c < from || c > to {
+			continue
+		}
+		copied := *cell
+		if span := copied.ColSpan; span > 1 && c+span-1 > to {
+			copied.ColSpan = to - c + 1
+		}
+		out.Cells[fmt.Sprintf("%d,%d", r, c-from)] = &copied
+	}
+	widths := map[int]float64{}
+	for col, px := range lt.ColumnWidthsPx() {
+		if col >= colDef.From && col <= colDef.To {
+			widths[col-colDef.From+1] = px
+		}
+	}
+	return out, widths, true
+}
+
 // ColumnWidthsPx — ширины колонок макета (columns:) в px модели, 1-based;
 // колонки без ширины, auto и проценты пропускаются.
 func (lt *LayoutTemplate) ColumnWidthsPx() map[int]float64 {

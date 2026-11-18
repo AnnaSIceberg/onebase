@@ -29,7 +29,17 @@ type LayoutTemplate struct {
 	Page     *sheet.PageSetup
 	Columns  []LayoutColumn
 	Areas    []*LayoutArea
-	Binding  *Binding
+	// ColumnAreas — именованные колоночные (вертикальные) области макета, как в
+	// 1С: ПолучитьОбласть("Строки|Колонки") — пересечение строковой и колоночной.
+	ColumnAreas []*LayoutColumnArea
+	Binding     *Binding
+}
+
+// LayoutColumnArea — колоночная область: колонки макета From..To (с 1).
+type LayoutColumnArea struct {
+	Name string `yaml:"name"`
+	From int    `yaml:"from"`
+	To   int    `yaml:"to"`
 }
 
 // LayoutColumn defines column-level properties (width applies to all areas).
@@ -121,7 +131,9 @@ type layoutTemplateMarshal struct {
 	Page     *sheet.PageSetup `yaml:"page,omitempty"`
 	Columns  []LayoutColumn   `yaml:"columns,omitempty"`
 	Areas    []*LayoutArea    `yaml:"areas,omitempty"`
-	Binding  *Binding         `yaml:"binding,omitempty"`
+	// ColumnAreas — см. LayoutTemplate.ColumnAreas.
+	ColumnAreas []*LayoutColumnArea `yaml:"column_areas,omitempty"`
+	Binding     *Binding            `yaml:"binding,omitempty"`
 }
 
 // MarshalYAML пишет макет в новом формате: areas — sequence элементов с name.
@@ -170,6 +182,15 @@ func (lt *LayoutTemplate) UnmarshalYAML(node *yaml.Node) error {
 				return err
 			}
 			lt.Areas = areas
+		case "column_areas":
+			if err := valNode.Decode(&lt.ColumnAreas); err != nil {
+				return fmt.Errorf("layout: column_areas: %w", err)
+			}
+			for _, ca := range lt.ColumnAreas {
+				if ca == nil || strings.TrimSpace(ca.Name) == "" || strings.Contains(ca.Name, "|") || ca.From < 1 || ca.To < ca.From {
+					return fmt.Errorf("layout: column_areas: нужны name без «|» и колонки 1 ≤ from ≤ to")
+				}
+			}
 		}
 	}
 	return nil
@@ -206,6 +227,19 @@ func decodeAreas(node *yaml.Node) ([]*LayoutArea, error) {
 }
 
 // Area возвращает область по имени (регистронезависимо) или nil.
+// ColumnArea — колоночная область по имени (без учёта регистра).
+func (lt *LayoutTemplate) ColumnArea(name string) *LayoutColumnArea {
+	if lt == nil {
+		return nil
+	}
+	for _, a := range lt.ColumnAreas {
+		if strings.EqualFold(a.Name, name) {
+			return a
+		}
+	}
+	return nil
+}
+
 func (lt *LayoutTemplate) Area(name string) *LayoutArea {
 	if lt == nil {
 		return nil

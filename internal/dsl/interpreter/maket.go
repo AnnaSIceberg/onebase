@@ -61,6 +61,15 @@ func (m *Макет) getArea(name string) *SpreadsheetDocumentArea {
 	if m.template == nil {
 		return nil
 	}
+	// «Строки|Колонки» — пересечение строковой и колоночной областей, как в 1С;
+	// ширины — по исходным колонкам макета.
+	if strings.Contains(name, "|") {
+		area, widths, ok := m.template.IntersectionArea(name)
+		if !ok {
+			return nil
+		}
+		return &SpreadsheetDocumentArea{Area: area, colWidths: widths}
+	}
 	areaDef := m.template.Area(name) // case-insensitive (см. LayoutTemplate.Area)
 	if areaDef == nil {
 		return nil
