@@ -121,10 +121,8 @@ func fmtBuiltinBounded(args []any, maxDecimalPlaces int32) (string, error) {
 	if f, ok := toFloat(val); ok {
 		// Ноль, как в 1С, — пустая строка, если не задано ЧН («ЧН=0» → «0»):
 		// Формат(0, "") = «», Формат(0, "ЧДЦ=2") = «».
-		if f == 0 {
-			if _, isBool := val.(bool); !isBool {
-				return extractFormatParam(fmtStr, "чн="), nil
-			}
+		if _, isString := val.(string); !isString && isExactZero(val, f) {
+			return extractFormatParam(fmtStr, "чн="), nil
 		}
 		// Без ЧДЦ — столько знаков, сколько есть в значении, как в 1С:
 		// Формат(21, "ЧГ=0") = «21». Раньше подставлялось два знака, и номер

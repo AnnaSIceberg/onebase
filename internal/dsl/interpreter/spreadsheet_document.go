@@ -773,12 +773,22 @@ func NewSpreadsheetFunctions() map[string]any {
 // cellText — текст значения параметра ячейки: числовой ноль, как в 1С, пуст
 // (ячейка без формата не показывает «0»); остальное — как strArg.
 func cellText(v any) string {
-	if _, isBool := v.(bool); !isBool {
-		if f, ok := toFloat(v); ok && f == 0 {
-			if _, isString := v.(string); !isString {
-				return ""
-			}
+	if _, isString := v.(string); !isString {
+		if f, ok := toFloat(v); ok && isExactZero(v, f) {
+			return ""
 		}
 	}
 	return strArg([]any{v}, 0)
+}
+
+// isExactZero — значение точно ноль: по десятичной записи, а не по float
+// (строка «1e-4096» во float обнуляется, но нулём не является). Булево — не число.
+func isExactZero(v any, f float64) bool {
+	if _, isBool := v.(bool); isBool {
+		return false
+	}
+	if d, ok := toDecimal(v); ok {
+		return d.IsZero()
+	}
+	return f == 0
 }
