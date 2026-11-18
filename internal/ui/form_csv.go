@@ -20,7 +20,7 @@ type listProcessorLink struct {
 }
 
 func (s *Server) listProcessorLinks(r *http.Request, entity *metadata.Entity, lang string) []listProcessorLink {
-	form := pickManagedForm(entity, "list")
+	form := pickManagedFormCtx(r.Context(), entity, "list")
 	if form == nil {
 		return nil
 	}

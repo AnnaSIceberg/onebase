@@ -40,7 +40,8 @@ func pickManagedFormForUser(entity *metadata.Entity, kind string, user *auth.Use
 	if entity == nil {
 		return nil
 	}
-	return pickManagedFromForms(entity.Forms, kind, user, strings.EqualFold(kind, "object"))
+	roleAware := strings.EqualFold(kind, "object") || strings.EqualFold(kind, "list")
+	return pickManagedFromForms(entity.Forms, kind, user, roleAware)
 }
 
 // Processor forms historically accept any kind, including blank/custom. Keep
