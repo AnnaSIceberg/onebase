@@ -376,7 +376,7 @@ func (d *SpreadsheetDocument) CallMethod(name string, args []any) any {
 		return d.area(args)
 	case "получитьобласть", "getarea":
 		if len(args) > 0 {
-			return d.getNamedArea(strArg(args, 0))
+			return areaValue(d.getNamedArea(strArg(args, 0)), strArg(args, 0))
 		}
 	case "показать", "show":
 		d.show()

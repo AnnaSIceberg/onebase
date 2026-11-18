@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ivantit66/onebase/internal/dsl/lexer"
@@ -90,5 +91,63 @@ column_areas:
 	}
 	if _, err := printform.ParseLayoutBytes([]byte("column_areas:\n  - name: X\n    from: 3\n    to: 2\n")); err == nil {
 		t.Fatal("from > to принят")
+	}
+}
+
+// Регрессия 96a202410 (kc2): макеты с областями, буквально названными «X|Y»
+// (ОтчетKPI «Шапка|Секция_1», финотчёт «ШапкаТаблицы|Раздел»), получали
+// Неопределено и падали nil pointer. Точное имя области — первым; пересечение —
+// только если такой области нет. Ненайденная область — исключение модуля.
+func TestMaketLiteralPipeAreaAndMissingAreaError(t *testing.T) {
+	lt, err := printform.ParseLayoutBytes([]byte(`name: KPI
+areas:
+  - name: Шапка|Секция_1
+    rows:
+      - cells:
+          - text: LITERAL
+  - name: Шапка
+    rows:
+      - cells:
+          - text: A
+          - text: B
+column_areas:
+  - name: Секция_1
+    from: 2
+    to: 2
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(src string) any {
+		t.Helper()
+		p, e := parser.New(lexer.New(src, "kpi.os")).ParseProgram()
+		if e != nil {
+			t.Fatal(e)
+		}
+		o := runtime.NewObject("Own", metadata.KindDocument)
+		vars := NewSpreadsheetFunctions()
+		vars["Макет"] = NewMaket(lt)
+		if e = New().Run(p.Procedures[0], o, vars); e != nil {
+			t.Fatal(e)
+		}
+		return o.Get("Result")
+	}
+	d, ok := run(`Процедура Main() Д = Новый ТабличныйДокумент; Д.Вывести(Макет.ПолучитьОбласть("Шапка|Секция_1")); this.Result = Д; КонецПроцедуры`).(*SpreadsheetDocument)
+	if !ok {
+		t.Fatal("no document")
+	}
+	if cell := d.Doc.GetCell(0, 0); cell == nil || cell.Text != "LITERAL" {
+		t.Fatal("буквальная область «Шапка|Секция_1» должна побеждать пересечение")
+	}
+	msg := run(`Процедура Main()
+		Попытка
+			О = Макет.ПолучитьОбласть("Нет|Такой");
+			this.Result = "без ошибки";
+		Исключение
+			this.Result = ОписаниеОшибки();
+		КонецПопытки;
+	КонецПроцедуры`)
+	if s, _ := msg.(string); !strings.Contains(s, "Область макета не найдена: Нет|Такой") {
+		t.Fatalf("ненайденная область — исключение модуля: %v", msg)
 	}
 }
