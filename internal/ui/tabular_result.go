@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -30,6 +31,7 @@ type tabularScope struct {
 }
 type tabularResult struct {
 	doc        *sheet.Document
+	workbook   *workbookDownload
 	owner      [32]byte
 	scope      tabularScope
 	expires    time.Time
@@ -41,8 +43,11 @@ type tabularResult struct {
 const tabularResultLifetime = time.Hour
 
 type tabularResultStore struct {
-	mu    sync.Mutex
-	items map[string]*tabularResult
+	mu            sync.Mutex
+	items         map[string]*tabularResult
+	workbooks     map[string]*tabularResult
+	workbookBytes int
+	reservedBooks int
 }
 
 func tabularOwner(r *http.Request) ([32]byte, error) {
@@ -80,6 +85,13 @@ func ensureTabularSession(w http.ResponseWriter, r *http.Request) error {
 		r.AddCookie(c)
 	}
 	return nil
+}
+
+func ensureTabularOwner(w http.ResponseWriter, r *http.Request) ([32]byte, error) {
+	if err := ensureTabularSession(w, r); err != nil {
+		return [32]byte{}, err
+	}
+	return tabularOwner(r)
 }
 
 func (s *Server) publishTabular(w http.ResponseWriter, r *http.Request, scope tabularScope, doc *sheet.Document) (string, error) {
@@ -189,6 +201,9 @@ func (s *Server) readableTabular(r *http.Request, token string) (*tabularResult,
 	store := &s.tabularResults
 	store.mu.Lock()
 	v := store.items[token]
+	if v == nil {
+		v = store.workbooks[token]
+	}
 	store.mu.Unlock()
 	var reason string
 	switch {
@@ -244,6 +259,16 @@ func (s *Server) tabularView(w http.ResponseWriter, r *http.Request) {
 	}
 	tabularLookupLog(r, token, "authorized")
 	w.Header().Set("Cache-Control", "private, no-store")
+	if v.workbook != nil {
+		if chi.URLParam(r, "format") != "xlsx" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": v.workbook.name}))
+		writeDownload(w, v.workbook.name, v.workbook.data)
+		return
+	}
 	base := "/ui/tabular/" + url.PathEscape(token)
 	switch chi.URLParam(r, "format") {
 	case "xlsx", "pdf", "print":
