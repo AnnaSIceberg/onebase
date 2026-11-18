@@ -126,7 +126,7 @@ const tplManagedForm = `
   {{$hChg := hasHandler $el "ПриИзменении"}}
   {{$choiceCtx := managedChoiceContext $ctx $el}}
   {{$fcVars := elFieldColorVars $el}}{{if $el.HiddenWhen}}<fieldset class="form-group ob-managed-control{{if elFill $el}} ob-el-fill{{end}}{{if $el.TextBold}} ob-text-bold{{end}}{{elFieldColorClass $el}}{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}" data-ob-control-fieldset="1"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{if elHiddenStyle $ctx $el}} disabled{{end}}{{$lay := elLayoutEx $ctx $el}}{{$tc := elTextColor $el}}{{if or $lay $fcVars $tc}} style="{{$lay}}{{$fcVars}}{{$tc}}"{{end}}>{{else}}<div class="form-group{{if elFill $el}} ob-el-fill{{end}}{{if $el.TextBold}} ob-text-bold{{end}}{{elFieldColorClass $el}}{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{$lay := elLayout $el}}{{$tc := elTextColor $el}}{{if or $lay $fcVars $tc}} style="{{$lay}}{{$fcVars}}{{$tc}}"{{end}}>{{end}}
-    <label>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}{{if and $el.Hint (not $el.HintInline)}} <span class="ob-hint" title="{{$el.Hint}}" aria-label="{{$el.Hint}}">ⓘ</span>{{end}}</label>
+    <label{{with fieldLabelStyle $el}} style="{{.}}"{{end}}>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}{{if and $el.Hint (not $el.HintInline)}} <span class="ob-hint" title="{{$el.Hint}}" aria-label="{{$el.Hint}}">ⓘ</span>{{end}}</label>
     {{if $f}}
       {{if isRef (str $f.Type)}}
         <div class="managed-control-row" style="display:flex;gap:6px;align-items:center">
