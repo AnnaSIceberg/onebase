@@ -52,3 +52,24 @@ func TestFormatDateQuotedLiteral(t *testing.T) {
 		}
 	}
 }
+
+// Ноль, как в 1С, — пустая строка, если не задан ЧН; ДЛФ — локальный формат.
+func TestFormatZeroAndLocalFormat(t *testing.T) {
+	for _, tc := range []struct {
+		value  any
+		format string
+		want   string
+	}{
+		{0, "", ""},
+		{0.0, "ЧДЦ=2", ""},
+		{0, "ЧН=0", "0"},
+		{0, "ЧН='-'", "-"},
+		{5, "", "5"},
+		{time.Date(2026, 11, 18, 3, 7, 9, 0, time.Local), "ДЛФ=DT", "18.11.2026 3:07:09"},
+		{time.Date(2026, 11, 18, 3, 7, 9, 0, time.Local), "ДЛФ=D", "18.11.2026"},
+	} {
+		if got, err := FormatValue(tc.value, tc.format); err != nil || got != tc.want {
+			t.Fatalf("Формат(%v, %q) = %q, %v (want %q)", tc.value, tc.format, got, err, tc.want)
+		}
+	}
+}

@@ -128,6 +128,15 @@ func buildAreaSheet(area *LayoutArea, ctx *RenderContext, row map[string]any, ro
 				} else {
 					cell.Text = resolveParameter(ld.Parameter, params, ctx, row, rowNum)
 					cell.Value = cell.Text
+					// Формат ячейки макета (ДЛФ=D…) применяется к самой дате, а
+					// не к её строке «… +0000 UTC».
+					if ld.Format != "" {
+						if expr, spec := splitExprFormat(paramExpr(ld.Parameter, params)); spec == "" {
+							if t, ok := toTime(ResolveExpr(expr, ctx, row, rowNum)); ok {
+								cell.Value = t
+							}
+						}
+					}
 				}
 			} else if strings.Contains(ld.Text, "{{") {
 				cell.Text = InterpolateText(ld.Text, ctx, row, rowNum)

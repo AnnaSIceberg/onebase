@@ -2,8 +2,10 @@ package sheet
 
 import (
 	"fmt"
+	"github.com/ivantit66/onebase/internal/format1c"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -135,6 +137,13 @@ func parseNumberStyle(format string) numberStyle {
 func (c *Cell) DisplayText() string {
 	if c.Format == "" || c.Format == "General" {
 		return c.Text
+	}
+	// Дата с форматом ДЛФ/ДФ — в местном времени приложения: драйвер SQLite
+	// отдаёт момент в UTC, и 10.09 00:00 МСК выводилось бы 09.09.
+	if t, ok := c.Value.(time.Time); ok {
+		if text, ok := format1c.Date(t.In(time.Local), c.Format); ok {
+			return text
+		}
 	}
 	value, err := decimal.NewFromString(fmt.Sprint(c.Value))
 	if err != nil {

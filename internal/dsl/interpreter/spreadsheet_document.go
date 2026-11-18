@@ -85,7 +85,7 @@ func (a *SpreadsheetDocumentArea) setParameter(name string, value any) {
 		return
 	}
 	cell := a.Area.GetOrCreateCell(row-1, col-1)
-	cell.Text = strArg([]any{value}, 0)
+	cell.Text = cellText(value)
 	cell.Value = value
 }
 
@@ -224,7 +224,7 @@ func (p *AreaParameters) Set(field string, v any) {
 	found := false
 	for _, cell := range p.area.Area.Cells {
 		if cell.ParameterName != "" && strings.EqualFold(cell.ParameterName, field) {
-			cell.Text = strArg([]any{v}, 0)
+			cell.Text = cellText(v)
 			cell.Value = v
 			found = true
 		}
@@ -724,7 +724,7 @@ func (w *SpreadsheetDocumentCellWrapper) Set(field string, v any) {
 		w.cell.Text = strArg([]any{v}, 0)
 	case "значение", "value":
 		w.cell.Value = v
-		w.cell.Text = strArg([]any{v}, 0)
+		w.cell.Text = cellText(v)
 	case "ширина", "width":
 		w.cell.Width = toFloatOr0(v)
 	case "высота", "height":
@@ -768,4 +768,17 @@ func NewSpreadsheetFunctions() map[string]any {
 		"__factory_КнигаТабличныхДокументов": newSpreadsheetWorkbook,
 		"__factory_SpreadsheetWorkbook":      newSpreadsheetWorkbook,
 	}
+}
+
+// cellText — текст значения параметра ячейки: числовой ноль, как в 1С, пуст
+// (ячейка без формата не показывает «0»); остальное — как strArg.
+func cellText(v any) string {
+	if _, isBool := v.(bool); !isBool {
+		if f, ok := toFloat(v); ok && f == 0 {
+			if _, isString := v.(string); !isString {
+				return ""
+			}
+		}
+	}
+	return strArg([]any{v}, 0)
 }
