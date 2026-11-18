@@ -11,6 +11,9 @@ import (
 //go:embed tabular_column_resize.js
 var tabularColumnResizeJS string
 
+//go:embed tabular_cell_open.js
+var tabularCellOpenJS string
+
 // HTMLOptions — параметры HTML-рендера табличного документа.
 // BackURL: если задан, кнопка «Назад» ведёт по ссылке, иначе history.back().
 // PDFURL: если задан, кнопка «PDF» в тулбаре ведёт на серверный PDF-endpoint;
@@ -120,6 +123,7 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 		}
 		sb.WriteString("</colgroup>")
 	}
+	hasDrilldown := false
 
 	// Ячейки, перекрытые colspan/rowspan.
 	covered := make(map[CellKey]bool)
@@ -191,6 +195,7 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 					text += img
 				}
 				if (cell.Drilldown != nil || (cell.DrilldownPayload != nil && opts.ParentDrilldown)) && opts.DrilldownURL != nil {
+					hasDrilldown = true
 					linkStyle := ""
 					// Explicit safe cell color also applies to its drilldown text. Keep the
 					// ordinary browser link color when the cell has no valid explicit color.
@@ -216,6 +221,11 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 	if resizeColumns {
 		sb.WriteString(`<style>.sheet-column-widths-set td{overflow-wrap:anywhere}</style><script>`)
 		sb.WriteString(tabularColumnResizeJS)
+		sb.WriteString("</script>")
+	}
+	if hasDrilldown {
+		sb.WriteString("<script>")
+		sb.WriteString(tabularCellOpenJS)
 		sb.WriteString("</script>")
 	}
 	sb.WriteString(`</body>
