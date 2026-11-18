@@ -60,6 +60,10 @@ type Report struct {
 	Composition *Composition      `yaml:"composition"`          // nil = плоская таблица (старое поведение)
 	Variants    []ReportVariant   `yaml:"variants"`             // именованные компоновки и источники данных
 	Drilldowns  []Drilldown       `yaml:"drilldowns,omitempty"` // trusted root metadata, shared by variants
+
+	// ComparePhoneField opts a project report's result procedure into request-local comparison.
+	ComparePhoneField string `yaml:"compare_phone_field,omitempty"`
+
 	// OutputFormat — предпочтительный формат выгрузки отчёта (issue #218): пусто|html
 	// (интерактивный просмотр + кнопки Excel/PDF), pdf, excel или совместимый
 	// legacy-синоним excel_html. Реальная выгрузка идёт через /ui/report/<name>/pdf
