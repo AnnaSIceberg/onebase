@@ -47,7 +47,7 @@ func TestGlobalFormDensityThroughHTTPKeepsOperatorsAndOwnDensity(t *testing.T) {
 				t.Run(profile.name, func(t *testing.T) {
 					u := &auth.User{ID: "density-test-user", Login: "density-test-user", IsAdmin: profile.admin}
 					for _, name := range profile.roles {
-						u.Roles = append(u.Roles, &auth.Role{Name: name, Permissions: auth.Permission{Catalogs: map[string][]string{auto.Name: {"read", "write"}, managed.Name: {"read", "write"}, own.Name: {"read", "write"}}, Documents: map[string][]string{doc.Name: {"read", "write"}}}})
+						u.Roles = append(u.Roles, &auth.Role{Name: name, Permissions: auth.Permission{Catalogs: map[string][]string{auto.Name: {"read", "write"}, managed.Name: {"read", "write"}, own.Name: {"read", "write"}}, Documents: map[string][]string{doc.Name: {"read", "write"}}, Processors: map[string][]string{"AutoProcessor": {"run"}}}})
 					}
 					for _, page := range []struct {
 						path           string

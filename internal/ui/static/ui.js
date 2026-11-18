@@ -6835,7 +6835,7 @@ window.onebaseDevice = {
       if (ev.source !== window.parent || ev.origin !== window.location.origin) return;
       var msg = ev.data;
       if (!msg || msg.source !== 'obRealtime' || typeof msg.name !== 'string' || !msg.name) return;
-      emitOnebaseEvent('onebase:' + msg.name, msg.data, msg.closeSource);
+      emitOnebaseEvent('onebase:' + msg.name, msg.data);
       forwardOnebaseEvent(msg);
     });
   }

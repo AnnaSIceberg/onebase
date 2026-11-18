@@ -197,8 +197,9 @@ func TestResultFormConsumesOnlyTransientDisplayAfterSave(t *testing.T) {
 						t.Fatalf("explicit handoff rejected consumed display state: %+v", resp)
 					}
 				case "ordinary":
-					if !resp.OK || resp.ResultForm != nil || resp.Dirty == nil || !*resp.Dirty {
-						t.Fatalf("ordinary form dirty contract was weakened: %+v", resp)
+					if !resp.OK || resp.ResultForm != nil || resp.Dirty == nil || *resp.Dirty ||
+						resp.Values["DisplayText"] != "computed after the durable save" {
+						t.Fatalf("nonpersistent display state should be returned without marking the saved form dirty: %+v", resp)
 					}
 				case "entity-mutation":
 					if resp.OK || resp.ResultForm != nil || resp.Dirty == nil || !*resp.Dirty {

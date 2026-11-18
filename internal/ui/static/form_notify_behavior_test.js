@@ -71,8 +71,14 @@ function page(parent = null, notify = true) {
   window.parent = parent || window;
   function CustomEvent(type, options) { this.type = type; this.detail = options.detail; }
   window.CustomEvent = CustomEvent;
-  function EventSource(url) { assert.equal(url, '/ui/events'); }
-  vm.runInNewContext(transport, {window, document, CustomEvent, EventSource, obShellId: () => ''});
+  function EventSource(url) { this.url = url; }
+  vm.runInNewContext(transport, {window, document, CustomEvent, EventSource, obShellId: () => 'fixture-shell'});
+  if (!parent) {
+    const subscription = new URL(window.__obEvents.url, window.location.origin);
+    assert.equal(subscription.pathname, '/ui/events');
+    assert.equal(subscription.searchParams.get('shell'), 'fixture-shell');
+    assert.equal(subscription.searchParams.get('resume_protocol'), '1');
+  }
   window.addEventListener('onebase:ui.оповестить', ctx.listener({notify}, (...args) => fired.push(args)));
   return {
     window, fired,
