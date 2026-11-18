@@ -247,7 +247,9 @@ func TestTabularManagedFieldHTTPMatrix(t *testing.T) {
 
 		view := tabularHTTP(s, user, "own-session", "GET", path, nil)
 		if html := view.Body.String(); view.Code != 200 || !strings.Contains(html, "Нативный результат") ||
-			!strings.Contains(html, ">Excel</a>") || strings.Contains(html, "tr:nth-child(even)") || !strings.Contains(html, ".doc-content{padding:4px}") {
+			!strings.Contains(html, `href="`+path+`/xlsx" data-sheet-xlsx>Excel</a>`) ||
+			!strings.Contains(html, `role="status" data-sheet-export-status`) ||
+			strings.Contains(html, "tr:nth-child(even)") || !strings.Contains(html, ".doc-content{padding:4px}") {
 			t.Fatalf("unexpected field viewer: HTTP %d", view.Code)
 		}
 		// The LPC workbook was requested more than 21 minutes after viewing.
@@ -269,6 +271,9 @@ func TestTabularManagedFieldHTTPMatrix(t *testing.T) {
 		value, err := book.GetCellValue(book.GetSheetName(0), "A2")
 		if err != nil || value != "19.2" {
 			t.Fatalf("XLSX A2 = %q, %v", value, err)
+		}
+		if !strings.HasPrefix(xlsx.Header().Get("Content-Disposition"), "attachment; filename*=UTF-8''") {
+			t.Fatalf("missing XLSX attachment name: %v", xlsx.Header())
 		}
 		if got := tabularHTTP(s, user, "foreign-session", "GET", path+"/xlsx", nil).Code; got != 404 {
 			t.Fatalf("foreign session: HTTP %d", got)

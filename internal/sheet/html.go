@@ -100,7 +100,14 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 		if opts.Compact {
 			label = "Excel"
 		}
-		sb.WriteString(`<a class="btn" href="` + escapeHTML(opts.XLSXURL) + `">` + label + `</a>`)
+		sb.WriteString(`<a class="btn" href="` + escapeHTML(opts.XLSXURL) + `"`)
+		if opts.Embedded {
+			sb.WriteString(` data-sheet-xlsx`)
+		}
+		sb.WriteString(`>` + label + `</a>`)
+		if opts.Embedded {
+			sb.WriteString(` <span role="status" data-sheet-export-status></span>`)
+		}
 	}
 	sb.WriteString(`
 </div>
@@ -197,6 +204,9 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 	sb.WriteString("</table>\n</div>\n")
 	if opts.XLSXURL != "" {
 		d.viewerScript(&sb, opts.ParentDrilldown)
+		if opts.Embedded {
+			sb.WriteString(embeddedXLSXScript)
+		}
 	}
 	sb.WriteString(`</body>
 </html>`)

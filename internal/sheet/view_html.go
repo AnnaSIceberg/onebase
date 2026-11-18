@@ -17,3 +17,36 @@ var top=document.querySelector('.doc-toolbar').getBoundingClientRect().height;ro
 if(%t&&window.parent!==window)document.addEventListener('click',function(e){var a=e.target.closest('[data-sheet-drilldown]');if(!a)return;e.preventDefault();window.parent.postMessage({type:'ob-tabular-cell',url:a.href},location.origin);});
 })();</script>`, groups, d.FreezeRows, d.FreezeCols, d.FreezeRows, d.FreezeRows, notifyParent)
 }
+
+// Keep the table open if the result expires or the download fails.
+const embeddedXLSXScript = `<script>(function(){
+  const link = document.querySelector('[data-sheet-xlsx]');
+  const status = document.querySelector('[data-sheet-export-status]');
+  let downloading = false;
+  link.addEventListener('click', async function(event){
+    event.preventDefault();
+    if (downloading) return;
+    downloading = true;
+    status.textContent = '';
+    try {
+      const response = await fetch(link.href, {mode: 'same-origin', redirect: 'error'});
+      if (response.status === 404) {
+        status.textContent = 'Результат недоступен. Нажмите «Сформировать» ещё раз.';
+        return;
+      }
+      const filename = /^attachment; filename\*=UTF-8''(.+)$/i.exec(response.headers.get('Content-Disposition') || '');
+      if (!response.ok || !filename) throw new Error('XLSX download failed');
+      const name = decodeURIComponent(filename[1]);
+      const url = URL.createObjectURL(await response.blob());
+      const download = document.createElement('a');
+      download.href = url;
+      download.download = name;
+      download.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    } catch {
+      status.textContent = 'Не удалось скачать Excel. Попробуйте ещё раз.';
+    } finally {
+      downloading = false;
+    }
+  });
+})();</script>`
