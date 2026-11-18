@@ -37,7 +37,7 @@ func (s *Server) processorForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mf := proc.ManagedForm()
+	mf := pickProcessorManagedFormCtx(r.Context(), proc)
 	initialValues, tablePartRows, err := processorInitialValues(r.URL.Query(), proc, mf)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -260,7 +260,7 @@ func (s *Server) processorRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	maxSize := s.effectiveUploadLimit()
-	requestControls := processorRequestControlsForForm(proc, proc.ManagedForm())
+	requestControls := processorRequestControlsForForm(proc, pickProcessorManagedFormCtx(r.Context(), proc))
 	if requestControls.formTablesErr != nil {
 		http.Error(w, requestControls.formTablesErr.Error(), http.StatusBadRequest)
 		return
@@ -311,7 +311,7 @@ func (s *Server) processorRun(w http.ResponseWriter, r *http.Request) {
 		// отказы запуска ниже. У обработки с управляемой формой page-processor
 		// не её страница: человек получил бы вместо своей формы автогенерённую,
 		// без введённых значений и без табличных частей.
-		if proc.ManagedForm() != nil {
+		if pickProcessorManagedFormCtx(r.Context(), proc) != nil {
 			s.renderProcessorManagedResult(w, r, proc, paramValues, nil, runErr)
 			return
 		}
@@ -329,7 +329,7 @@ func (s *Server) processorRun(w http.ResponseWriter, r *http.Request) {
 	procDecl := s.reg.GetProcedure(proc.Name, "Выполнить")
 	if procDecl == nil {
 		runErr := s.tr(s.resolveLang(r), "Процедура Выполнить() не найдена в src/") + strings.ToLower(string([]rune(proc.Name)[:1])) + string([]rune(proc.Name)[1:]) + ".proc.os"
-		if proc.ManagedForm() != nil {
+		if pickProcessorManagedFormCtx(r.Context(), proc) != nil {
 			s.renderProcessorManagedResult(w, r, proc, paramValues, nil, runErr)
 		} else {
 			refOpts := s.loadProcessorRefOpts(r.Context(), proc.Params, paramValues)
@@ -372,7 +372,7 @@ func (s *Server) processorRun(w http.ResponseWriter, r *http.Request) {
 		runErr = callErr.Error()
 	}
 
-	if proc.ManagedForm() != nil {
+	if pickProcessorManagedFormCtx(r.Context(), proc) != nil {
 		s.renderProcessorManagedResult(w, r, proc, paramValues, messages, runErr)
 	} else {
 		refOpts := s.loadProcessorRefOpts(r.Context(), proc.Params, paramValues)
@@ -404,7 +404,7 @@ func (s *Server) renderProcessorManagedResult(w http.ResponseWriter, r *http.Req
 	}
 	data := map[string]any{
 		"Entity":        virtEntity,
-		"Form":          proc.ManagedForm(),
+		"Form":          pickProcessorManagedFormCtx(r.Context(), proc),
 		"IsNew":         true,
 		"Values":        strValues,
 		"RefOptions":    refOpts,
@@ -420,8 +420,8 @@ func (s *Server) renderProcessorManagedResult(w http.ResponseWriter, r *http.Req
 	}
 	s.setProcessorManagedContext(r, data, proc)
 	s.applyProcessorChoiceFilters(r.Context(), proc, data)
-	data["ChoiceOptions"] = loadChoiceOptions(proc.ManagedForm(), s.resolveLang(r))
-	s.prepareManagedFormData(r.Context(), data, proc.ManagedForm())
+	data["ChoiceOptions"] = loadChoiceOptions(pickProcessorManagedFormCtx(r.Context(), proc), s.resolveLang(r))
+	s.prepareManagedFormData(r.Context(), data, pickProcessorManagedFormCtx(r.Context(), proc))
 	s.render(w, r, "page-managed-form", data)
 }
 
