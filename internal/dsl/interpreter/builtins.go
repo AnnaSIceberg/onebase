@@ -628,6 +628,7 @@ func KnownBuiltinNames() map[string]struct{} {
 		"выполнитькоманду", "executecommand",
 		"заменитьлистыexcel", "replaceexcelsheets",
 		"скачатькнигуexcel", "downloadexcelworkbook",
+		"показатьпериод", "showperiod",
 		"ссылканаобъект", "objectref",
 		"сохранитькартинку", "putimage",
 		"добавитьправилооформления", "addformattingrule",
