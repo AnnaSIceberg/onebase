@@ -134,9 +134,12 @@ func allSchemas() map[string]map[string]any {
 			"titles":              stringMapSchema(),
 			"type":                stringSchema("string|number|date|bool|text|richtext|image|reference:<Объект>|enum:<Перечисление>|number(10,2)"),
 			"allow_inline_create": map[string]any{"type": "boolean"},
+			"choice_show_deleted": boolSchema("Показывать в выборе элементы, помеченные на удаление: true — показывать, false — скрывать. По умолчанию при вводе данных скрыты, в параметрах отчётов и отборах списков показаны с отметкой"),
 			"id":                  stringSchema("Устойчивый идентификатор реквизита: не меняется при переименовании, по нему миграция переименовывает колонку, а не заводит новую"),
 			"required":            boolSchema("Реквизит обязателен к заполнению; проверяется при записи"),
 			"pii":                 boolSchema("Реквизит содержит персональные данные: закрыт маской для роли, которая про него не сказала read: full"),
+			"report_pii":          boolSchema("Поле скрыто в отчётах независимо от роли; политика карточки не меняется"),
+			"pii_open_when":       stringSchema("Условие над полями той же записи (синтаксис условий формы), при котором поле с pii: true открыто в форме объекта этой записи; только у реквизита шапки справочника и документа — в табличных частях и регистрах check отвергает ключ"),
 			// default читается как исходный текст скаляра: metadata.defaultScalar
 			// принимает любой скаляр, потому что `сейчас`, `12` и `Истина` YAML
 			// разбирает строкой, числом и булевым. Сузить тип до строки значило
@@ -159,6 +162,7 @@ func allSchemas() map[string]map[string]any {
 			"title": fieldProperties["title"], "label": fieldProperties["label"],
 			"titles": fieldProperties["titles"], "required": fieldProperties["required"],
 			"default": fieldProperties["default"], "pii": fieldProperties["pii"],
+			"report_pii": fieldProperties["report_pii"],
 		},
 	}
 	tablePart := map[string]any{
@@ -195,13 +199,18 @@ func allSchemas() map[string]map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"name", "type"},
 		"properties": map[string]any{
-			"name":       stringSchema("Имя параметра"),
-			"type":       stringSchema("Тип параметра"),
-			"label":      stringSchema("Подпись"),
-			"labels":     stringMapSchema(),
-			"default":    stringSchema("Значение параметра по умолчанию"),
-			"options":    arrayOf(stringSchema("Значение")),
-			"period_end": boolSchema("Для type: date — использовать конец выбранного дня (23:59:59)"),
+			"name":                stringSchema("Имя параметра"),
+			"type":                stringSchema("Тип параметра"),
+			"label":               stringSchema("Подпись"),
+			"labels":              stringMapSchema(),
+			"default":             stringSchema("Значение параметра по умолчанию"),
+			"options":             arrayOf(stringSchema("Значение")),
+			"period_end":          boolSchema("Для type: date — использовать конец выбранного дня (23:59:59)"),
+			"choice_show_deleted": boolSchema("Показывать в выборе элементы, помеченные на удаление: true — показывать, false — скрывать. По умолчанию при вводе данных скрыты, в параметрах отчётов и отборах списков показаны с отметкой"),
+			"context":             reportContextSchema(),
+			"choice_label_suffix": stringSchema("Ссылочный реквизит: добавить представление в скобках к подписи выбора"),
+			"choice_filter":       arrayOf(map[string]any{"type": "object", "additionalProperties": false, "required": []string{"field", "param"}, "properties": map[string]any{"field": stringSchema("Ссылочный реквизит выбора"), "param": stringSchema("Ведущий параметр отчёта; пустой не ограничивает выбор")}}),
+			"visible_when":        map[string]any{"type": "object", "additionalProperties": false, "required": []string{"param", "equals"}, "properties": map[string]any{"param": stringSchema("Другой bool-параметр отчёта"), "equals": boolSchema("Значение флажка, при котором поле видно")}},
 		},
 	}
 	// Параметр ОБРАБОТКИ знает обязательность, параметр отчёта — нет
@@ -212,13 +221,15 @@ func allSchemas() map[string]map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"name", "type"},
 		"properties": map[string]any{
-			"name":     stringSchema("Имя параметра"),
-			"type":     stringSchema("Тип параметра"),
-			"label":    stringSchema("Подпись"),
-			"labels":   stringMapSchema(),
-			"default":  map[string]any{"description": "Значение параметра по умолчанию"},
-			"options":  arrayOf(stringSchema("Значение")),
-			"required": boolSchema("Обязательный параметр"),
+			"name":                stringSchema("Имя параметра"),
+			"type":                stringSchema("Тип параметра"),
+			"label":               stringSchema("Подпись"),
+			"labels":              stringMapSchema(),
+			"default":             map[string]any{"description": "Значение параметра по умолчанию"},
+			"options":             arrayOf(stringSchema("Значение")),
+			"required":            boolSchema("Обязательный параметр"),
+			"choice_show_deleted": boolSchema("Показывать в выборе элементы, помеченные на удаление: true — показывать, false — скрывать. По умолчанию при вводе данных скрыты, в параметрах отчётов и отборах списков показаны с отметкой"),
+			"multiple":            boolSchema("type: binary — несколько файлов сразу: DSL получает Массив Структур {Путь, ИмяФайла, Размер, ТипMIME}"),
 		},
 	}
 	detailPanelTab := map[string]any{
@@ -318,6 +329,7 @@ func allSchemas() map[string]map[string]any {
 				"posting":               map[string]any{"type": "boolean"},
 				"post_caption":          stringSchema("Подпись кнопки проведения (пусто → «Провести»)"),
 				"post_and_close_hidden": map[string]any{"type": "boolean"},
+				"audio_player":          boolSchema("Аудиоплеер вместо общей панели вложений; по умолчанию false"),
 				"hierarchical":          map[string]any{"type": "boolean"},
 				"hierarchy_kind":        stringSchema("folders_and_items|items_only"),
 				"based_on":              arrayOf(stringSchema("Имя исходного объекта")),
@@ -348,7 +360,8 @@ func allSchemas() map[string]map[string]any {
 				// `presentation: [Артикул, Наименование]` — иначе редактор
 				// подчёркивал бы как ошибку ровно тот вариант, который в
 				// документации назван основным.
-				"choice_preview": stringSchema("Реквизит, текст которого показывается в области просмотра формы выбора (диалога подбора)"),
+				"choice_preview":      stringSchema("Реквизит, текст которого показывается в области просмотра формы выбора (диалога подбора)"),
+				"choice_show_deleted": boolSchema("Показывать в выборе элементы, помеченные на удаление: true — показывать, false — скрывать. По умолчанию при вводе данных скрыты, в параметрах отчётов и отборах списков показаны с отметкой"),
 				"choice_row_style": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
@@ -370,18 +383,23 @@ func allSchemas() map[string]map[string]any {
 						"rules": arrayOf(map[string]any{
 							"type":                 "object",
 							"additionalProperties": false,
-							"required":             []string{"when"},
 							"properties": map[string]any{
-								"when":       stringSchema("Условие на реквизиты элемента: имя булева реквизита или выражение"),
-								"color":      stringSchema("Цвет текста: hex, rgb() или имя цвета"),
-								"background": stringSchema("Цвет фона: hex, rgb() или имя цвета"),
-								"bold":       boolSchema("Жирный"),
-								"italic":     boolSchema("Курсив"),
+								"when":            stringSchema("Условие на реквизиты элемента: имя булева реквизита или выражение"),
+								"when_param":      stringSchema("Флаг формы, где выбирают: правило действует, если поле передало его истинным (choice_style_params поля)"),
+								"when_in_folder":  stringSchema("Предопределённая группа: правило действует для элементов в ней на любой глубине"),
+								"color_from":      stringSchema("Цвет текста из реквизита элемента: «Реквизит» или «Ссылка.Реквизит»"),
+								"background_from": stringSchema("Цвет фона из реквизита элемента: «Реквизит» или «Ссылка.Реквизит»"),
+								"disabled":        boolSchema("Строка видна, но не выбирается"),
+								"color":           stringSchema("Цвет текста: hex, rgb() или имя цвета"),
+								"background":      stringSchema("Цвет фона: hex, rgb() или имя цвета"),
+								"bold":            boolSchema("Жирный"),
+								"italic":          boolSchema("Курсив"),
 							},
 						}),
 					},
 				},
 				"choice_preview_proc": stringSchema("«Модуль.Функция», собирающая тексты просмотра формы выбора с учётом контекста подбора: Функция(Ссылки, Контекст) → Соответствие"),
+				"choice_search_proc":  stringSchema("«Модуль.Функция» поиска подбора по набранному тексту (как ОбработкаПолученияДанныхВыбора 1С): Функция(Текст, Параметры) → упорядоченный Массив ссылок"),
 				"presentation": map[string]any{
 					"description": "Реквизит(ы) представления объекта; по умолчанию — правило по именам, «Код» последним",
 					"oneOf": []any{
@@ -477,7 +495,14 @@ func allSchemas() map[string]map[string]any {
 			"type":                 "object",
 			"required":             []string{"name"},
 			"additionalProperties": true,
-			"properties":           map[string]any{"name": stringSchema("Имя"), "title": stringSchema("Синоним"), "params": arrayOf(param), "query": stringSchema("Текст запроса"), "chart_proc": stringSchema("Процедура диаграммы"), "result_proc": stringSchema("Функция результата ТабличныйДокумент"), "composition": map[string]any{"type": "object"}},
+			"properties": map[string]any{"drilldowns": reportDrilldownSchema(), "name": stringSchema("Имя"), "title": stringSchema("Синоним"), "params": arrayOf(param), "query": stringSchema("Текст запроса"), "chart_proc": stringSchema("Процедура диаграммы"), "result_proc": stringSchema("Функция результата ТабличныйДокумент"), "composition": map[string]any{"type": "object"}, "variants": arrayOf(map[string]any{
+				"type": "object", "required": []string{"name"}, "properties": map[string]any{
+					"name": stringSchema("Имя варианта"), "query": stringSchema("Запрос варианта; пусто — основной"), "composition": map[string]any{"type": "object"},
+					"filters": arrayOf(map[string]any{"type": "object", "required": []string{"field", "op", "value"}, "properties": map[string]any{
+						"field": stringSchema("Поле результата запроса"), "op": map[string]any{"type": "string", "enum": []string{"eq", "ne", "gt", "ge", "lt", "le"}}, "value": map[string]any{"type": []string{"string", "number", "boolean", "null"}},
+					}}),
+				},
+			})},
 		},
 		"widget": {
 			"$schema":              "https://json-schema.org/draft/2020-12/schema",
@@ -487,9 +512,12 @@ func allSchemas() map[string]map[string]any {
 			"additionalProperties": false,
 			"properties": map[string]any{
 				"name": stringSchema("Имя"), "type": enumSchema("kpi", "list", "chart", "actions", "recent"), "title": stringSchema("Заголовок"), "titles": stringMapSchema(),
-				"query": stringSchema("Запрос"), "params": stringMapSchema(), "format": stringSchema("money|number|percent"), "compare_to": stringSchema("prev_period"), "limit": map[string]any{"type": "integer"},
-				"columns":    arrayOf(map[string]any{"type": "object", "properties": map[string]any{"field": stringSchema("Поле"), "label": stringSchema("Подпись"), "labels": stringMapSchema(), "format": stringSchema("Формат"), "align": stringSchema("left|right|center")}}),
-				"chart_kind": stringSchema("bar|line|pie"), "chart_type": stringSchema("legacy alias: bar|line|pie"), "x_field": stringSchema("Поле X"), "y_fields": arrayOf(stringSchema("Поле Y")),
+				"query": stringSchema("Запрос"), "params": stringMapSchema(), "format": stringSchema("money|number|percent|date|time"), "compare_to": stringSchema("prev_period"), "limit": map[string]any{"type": "integer"},
+				"roles": arrayOf(stringSchema("Разрешённая роль")), "except_roles": arrayOf(stringSchema("Исключённая роль")), "background": stringSchema("Безопасный CSS-цвет фона контейнера"),
+				"role_overrides": roleOverridesSchema(),
+				"row_style":      map[string]any{"type": "object", "properties": map[string]any{"background": stringSchema("Колонка цвета фона"), "bold": stringSchema("Колонка признака жирного"), "color": stringSchema("Колонка цвета текста #RGB/#RRGGBB")}},
+				"columns":        arrayOf(map[string]any{"type": "object", "properties": map[string]any{"field": stringSchema("Поле"), "label": stringSchema("Подпись"), "labels": stringMapSchema(), "format": stringSchema("money|number|percent|date|time (HH:mm:ss, местная зона)"), "align": stringSchema("left|right|center")}}),
+				"chart_kind":     stringSchema("bar|line|pie"), "chart_type": stringSchema("legacy alias: bar|line|pie"), "x_field": stringSchema("Поле X"), "y_fields": arrayOf(stringSchema("Поле Y")),
 				"items":    arrayOf(map[string]any{"type": "object", "properties": map[string]any{"label": stringSchema("Подпись"), "labels": stringMapSchema(), "entity": stringSchema("Объект"), "url": stringSchema("URL"), "new_tab": boolSchema("Открывать в новой вкладке")}}),
 				"entities": arrayOf(stringSchema("Объект")), "scope": stringSchema("current_user|all"),
 			},
@@ -612,17 +640,35 @@ func managedFormSchema() map[string]any {
 		"properties": map[string]any{
 			"id":                  stringSchema("Устойчивый уникальный id элемента формы"),
 			"kind":                stringSchema("Вид элемента формы"),
-			"data_path":           stringSchema("Путь к значению элемента"),
+			"data_path":           stringSchema("Путь к значению элемента; у Аудиоплеер — строковый UUID защищённого вложения"),
+			"title_from":          stringSchema("Реквизит подписи Аудиоплеер или заголовка колонки ТЧ"),
 			"equal_columns":       boolSchema("Равная ширина детей горизонтальной ГруппаФормы без scroll_x; по умолчанию false"),
+			"choice_show_deleted": boolSchema("Показывать в выборе элементы, помеченные на удаление: true — показывать, false — скрывать. По умолчанию при вводе данных скрыты, в параметрах отчётов и отборах списков показаны с отметкой"),
+
+			"hint_from":           stringSchema("Всплывающая подсказка из реквизита формы: значение реквизита вместо hint, обновляется после событий формы"),
+			"choice_style_params": stringMapSchema(),
+			"choice_style_value":  boolSchema("Показывать выбранное значение поля тем же оформлением, что строку в списке выбора (choice_row_style справочника)."),
 			"choice_folders":      boolSchema("Разрешить выбор элементов и групп иерархического справочника в ссылочном поле; по умолчанию false"),
-			"choice_dropdown":     boolSchema("Предзагружать варианты в выпадающий список ссылочного поля; отсутствие ключа или true включает варианты, false оставляет плейсхолдер и текущее значение для выбора через форму подбора"),
+			"choice_dropdown":     boolSchema("Предзагружать варианты в выпадающий список ссылочного поля; отсутствие ключа или true включает варианты, false — поле без списка: щелчок, Enter или F4 открывают форму подбора, ✕ или Shift+F4 очищают"),
 			"editable_admin_only": boolSchema("Разрешить редактирование поля только администратору; сервер отклоняет изменения от остальных пользователей; по умолчанию false"),
 			"primary":             boolSchema("Выделить кнопку основного действия акцентным стилем; по умолчанию false"),
 			"deadline_warn":       map[string]any{"type": "integer", "minimum": 1, "description": "Поле-срок: за столько минут до срока — жёлтая подсветка, срок прошёл — красная (по часам браузера)"},
+			"choice_free_input":   boolSchema("У ПолеСписка с choices: поле ввода текста со своим выпадающим списком вариантов — можно выбрать вариант или вписать своё значение (1С: СписокВыбора + РедактированиеТекста)"),
 			"hint_inline":         boolSchema("Печатать hint текстом под полем; по умолчанию подсказка всплывающая (значок ⓘ у подписи)"),
 			"conceal":             boolSchema("Скрытое string-поле объекта, включая multiline: раскрывает только серверный обработчик, разрешение до 10 минут"),
 			"reveal_when":         stringSchema("Булев реквизит формы либо НЕ/NOT перед ним; только явное присваивание успешным серверным обработчиком выдаёт или отзывает разрешение"),
-			"scroll_x":            boolSchema("Прокручивать горизонтальную ГруппаФормы вместо переноса содержимого на следующую строку; по умолчанию false"),
+			"rows":                map[string]any{"type": "integer", "minimum": 1, "maximum": 50, "description": "ТабличнаяЧасть над ValueTable: видимых строк, шапка закреплена, остальное — прокрутка внутри"},
+			"show_count":          boolSchema("ТабличнаяЧасть над ValueTable: число записей в заголовке таблицы — «Заявки клиента (5)»"),
+			"empty_text":          stringSchema("ТабличнаяЧасть над ValueTable: надпись пустой таблицы — «Заявок нет»"),
+
+			"fit_window":   boolSchema("СтраницыФормы: страницы занимают остаток высоты окна, рамка формы без прокрутки, длинная страница прокручивается внутри; ГруппаФормы рядом — высота этих страниц; ТабличнаяЧасть — сетка на остаток высоты окна, строки прокручиваются внутри"),
+			"equal_height": boolSchema("СтраницыФормы: область страниц высотой с самую высокую страницу; переключение закладок не сдвигает форму"),
+
+			"placement": map[string]any{"type": "string", "enum": []string{"header", "header_end"}, "description": "Кнопка, ПолеВвода, Флажок (поле — только чтение): header_end — после «? Справка»; header — в строке команд документа после «История», а не в теле формы"},
+
+			"text_color": stringSchema("Цвет текста ПолеВвода или Надпись (подпись и значение, у нередактируемого поля тоже): hex, rgb(...) или имя CSS-цвета"),
+			"importance": map[string]any{"type": "string", "enum": []any{"error"}, "description": "Смысловое выделение ПолеВвода или Надпись: error — красный текст ошибки; text_color сильнее"},
+			"scroll_x":   boolSchema("Прокручивать горизонтальную ГруппаФормы вместо переноса содержимого на следующую строку; по умолчанию false"),
 			"children": map[string]any{
 				"type":  "array",
 				"items": map[string]any{"$dynamicRef": "#formElement"},
@@ -635,6 +681,14 @@ func managedFormSchema() map[string]any {
 				"uniqueItems": false,
 				"items":       map[string]any{"oneOf": []any{condition, queryCondition}},
 				"description": "Условия зависимого подбора; соединяются через AND",
+			},
+			"kpi_choice": map[string]any{
+				"type": "object", "additionalProperties": false,
+				"required": []string{"all_when_empty", "label_suffix"},
+				"properties": map[string]any{
+					"all_when_empty": stringSchema("Только managed kind:kpi: прямой Объект.<Параметр>; явное пустое значение снимает ровно соответствующий eq"),
+					"label_suffix":   stringSchema("Разрешённый ссылочный реквизит того же eq; подпись в скобках с учётом read/RLS/PII"),
+				},
 			},
 		},
 	}
@@ -651,6 +705,10 @@ func managedFormSchema() map[string]any {
 				"properties": map[string]any{
 					"ref_card_button":            boolSchema("false — убрать кнопку «Открыть карточку» у всех ссылочных полей формы"),
 					"ref_card_button_admin_only": boolSchema("true — кнопку «Открыть карточку» видит только администратор; настройка интерфейса, не защита"),
+					"row_style": map[string]any{"type": "object", "properties": map[string]any{
+						"background_from": stringSchema("Путь цвета фона"), "bold_from": stringSchema("Путь признака жирного"), "color_from": stringSchema("Путь цвета текста"),
+						"rules": arrayOf(map[string]any{"type": "object", "properties": map[string]any{"field": stringSchema("Путь значения"), "equals": stringSchema("Литерал или @ТекущийПользователь (ID учётки)"), "background": stringSchema("#RGB/#RRGGBB"), "color": stringSchema("#RGB/#RRGGBB"), "bold": boolSchema("Жирный шрифт")}}),
+					}},
 				},
 			},
 			"elements": arrayOf(element),

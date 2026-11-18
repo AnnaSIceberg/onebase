@@ -34,6 +34,30 @@ func init() {
 		}
 		return revision.String(), nil
 	})
+	// Регистры допускают старые RFC3339-строки и штатную привязку time.Time.
+	// Общий UTC-ключ нужен только для их сравнений с параметром-моментом.
+	// Фиксированная дробная часть сохраняет порядок и точность; datetime() и
+	// julianday() SQLite округляют дробные секунды.
+	sqlite.MustRegisterDeterministicScalarFunction("ob_utc_datetime", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		if len(args) != 1 || args[0] == nil {
+			return nil, nil
+		}
+		var value string
+		switch v := args[0].(type) {
+		case string:
+			value = v
+		case []byte:
+			value = string(v)
+		default:
+			return nil, nil
+		}
+		for _, layout := range []string{sqliteTimeLayout, time.RFC3339Nano} {
+			if parsed, err := time.Parse(layout, value); err == nil {
+				return parsed.UTC().Format("2006-01-02 15:04:05.000000000"), nil
+			}
+		}
+		return nil, nil
+	})
 	sqlite.MustRegisterDeterministicScalarFunction("ob_lower", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
 		if len(args) != 1 || args[0] == nil {
 			return nil, nil
@@ -69,6 +93,15 @@ func init() {
 		for _, layout := range []string{sqliteTimeLayout, time.RFC3339Nano, time.RFC3339} {
 			if parsed, err := time.Parse(layout, strings.TrimSpace(value)); err == nil {
 				return parsed.In(time.Local).Format("2006-01-02 15:04:05.999999999"), nil
+			}
+		}
+		// Старые значения SQLite без смещения — местные стенные часы, как их
+		// читает и storage (ParseRegPeriod). Без этого НачалоДня/НачалоЧаса и
+		// вся локализация дат (#1243) давали на таких базах NULL: группировка
+		// отчёта по дню выводилась с пустой подписью.
+		for _, layout := range localRegPeriodLayouts {
+			if parsed, err := time.ParseInLocation(layout, strings.TrimSpace(value), time.Local); err == nil {
+				return parsed.Format("2006-01-02 15:04:05.999999999"), nil
 			}
 		}
 		return nil, nil

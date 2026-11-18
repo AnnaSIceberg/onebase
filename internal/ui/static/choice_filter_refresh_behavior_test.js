@@ -218,6 +218,43 @@ test('server selected_allowed keeps a value outside the page and clears only an 
   assert.equal(env.select.changeCount, 1);
 });
 
+test('locked select keeps its value and fires no change when the filter rejects it', async () => {
+  const env = runtime(async () => response({items: [], total: 0, selected_allowed: false}), 'legacy-location');
+  env.select.disabled = true;
+
+  env.sourceControl.value = 'warehouse-c';
+  await env.api.obRefreshChoiceSelect(env.select, false);
+  assert.equal(env.select.value, 'legacy-location', 'запертое поле не очищается отбором');
+  assert.equal(env.select.options.some((option) => option.value === 'legacy-location'), true);
+  assert.equal(env.select.changeCount, 0, 'запертое поле не шлёт change (ПриИзменении)');
+});
+
+test('report branch changes clear an incompatible direction and keep the translated all option', async () => {
+  const calls = [];
+  const env = runtime(async (url) => {
+    calls.push(url);
+    return response({items: [{id: 'new-direction', _label: 'Repair (Branch B)'}], total: 1, selected_allowed: false});
+  }, 'old-direction');
+  env.attrs['data-ref-empty-label'] = '— all —';
+  env.attrs['data-ref-choice-context'] = JSON.stringify({
+    form_kind: 'report', form_entity: 'BranchReport', form: 'params', element: 'Direction',
+    sources: {Branch: 'Склад'},
+  });
+  env.sourceControl.value = 'branch-b';
+  await env.api.window.obRefreshChoiceFilters();
+  assert.equal(env.select.value, '');
+  assert.equal(env.select.options[0].textContent, '— all —');
+  assert.equal(env.select.options[1].textContent, 'Repair (Branch B)');
+  assert.equal(env.select.changeCount, 1);
+  assert.match(calls[0], /form_kind=report/);
+  assert.equal(JSON.parse(new URL('http://local/' + calls[0]).searchParams.get('sources')).Branch, 'branch-b');
+
+  env.sourceControl.value = '';
+  await env.api.window.obRefreshChoiceFilters();
+  assert.equal(env.select.options[0].textContent, '— all —');
+  assert.equal(JSON.parse(new URL('http://local/' + calls.at(-1)).searchParams.get('sources')).Branch, '');
+});
+
 test('network failure is visible and preserves the previously filtered options and value', async () => {
   const env = runtime(async () => { throw new Error('offline'); }, 'legacy-location');
   const before = env.select.options.map((option) => [option.value, option.textContent]);

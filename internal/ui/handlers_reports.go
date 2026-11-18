@@ -13,9 +13,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/access"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/excel"
-	"github.com/ivantit66/onebase/internal/query"
+	"github.com/ivantit66/onebase/internal/metadata"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/report/compose"
 	"github.com/ivantit66/onebase/internal/runtime"
@@ -60,7 +61,7 @@ func (s *Server) reportForm(w http.ResponseWriter, r *http.Request) {
 	activePreset := activeReportPreset(presets, activePresetID)
 	// Если у отчёта нет ни параметров, ни вариантов компоновки, ни пользовательских
 	// пресетов — строим сразу. Варианты/пресеты требуют формы с выбором.
-	if len(rep.Params) == 0 && len(rep.Variants) == 0 && len(presets) == 0 {
+	if len(rep.InputParams()) == 0 && len(rep.Variants) == 0 && len(presets) == 0 {
 		s.runReport(w, r, rep, map[string]any{})
 		return
 	}
@@ -71,10 +72,14 @@ func (s *Server) reportForm(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, derr)
 		return
 	}
+	if err := reportpkg.ValidateEnumParams(rep.Params, defaults, s.reg); err != nil {
+		s.serverError(w, r, err)
+		return
+	}
 	s.render(w, r, "page-report", map[string]any{
 		"Report":         rep,
 		"ParamValues":    defaults,
-		"ReportParams":   s.buildReportParams(r.Context(), s.resolveLang(r), rep.Params, defaults),
+		"ReportParams":   s.buildReportParams(r.Context(), s.resolveLang(r), rep.Params, defaults, rep),
 		"ActiveVariant":  r.FormValue("__variant"),
 		"ReportPresets":  presets,
 		"ActivePresetID": activePresetID,
@@ -124,6 +129,9 @@ func reportParamDefault(p reportpkg.Param, res scheduler.ConstantResolver) (stri
 func reportParamDefaults(params []reportpkg.Param, res scheduler.ConstantResolver) (map[string]any, error) {
 	values := make(map[string]any, len(params))
 	for _, p := range params {
+		if p.Context != nil {
+			continue
+		}
 		val, err := reportParamDefault(p, res)
 		if err != nil {
 			return nil, err
@@ -168,6 +176,9 @@ func reportParamRequestValue(r *http.Request, p reportpkg.Param) (string, bool) 
 func reportParamValuesFromRequest(r *http.Request, rep *reportpkg.Report, res scheduler.ConstantResolver) (map[string]any, error) {
 	paramValues := make(map[string]any, len(rep.Params))
 	for _, p := range rep.Params {
+		if p.Context != nil {
+			continue
+		}
 		val, ok := reportParamRequestValue(r, p)
 		if !ok {
 			d, err := reportParamDefault(p, res)
@@ -204,11 +215,32 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		http.Error(w, "слишком много одновременно выполняемых отчётов, повторите позже", http.StatusTooManyRequests)
 		return
 	}
+	opCtx = access.WithReportOutput(opCtx)
 	opStatus := "ok"
 	opRows := 0
 	opTruncated := false
 	var opAttrs []slog.Attr
 	defer func() { finish(opStatus, opRows, opTruncated, opAttrs...) }()
+	// Bind before every execution path, including result_proc in runtime.
+	var contextErr error
+	paramValues, contextErr = reportpkg.ResolveContextParams(opCtx, rep, paramValues, s.reg, s.store)
+	if contextErr != nil {
+		opStatus = "error"
+		http.Error(w, "report context unavailable", http.StatusForbidden)
+		return
+	}
+
+	if err := reportpkg.ValidateEnumParams(rep.Params, paramValues, s.reg); err != nil {
+		opStatus = "error"
+		http.Error(w, s.errText(r, err), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.validateReportChoiceValues(opCtx, rep, paramValues); err != nil {
+		opStatus = "error"
+		http.Error(w, s.errText(r, err), http.StatusBadRequest)
+		return
+	}
 
 	// Выбранный вариант компоновки (параметр __variant); пусто → основной.
 	variant := r.FormValue("__variant") //nolint:gosec // G120: предел тела ставит вызывающий обработчик; gosec видит только присваивание r.Body в той же функции
@@ -218,7 +250,25 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		presets = loadReportPresets(opCtx, s.store, rep.Name, user)
 	}
 	rs := s.reportSettingsForRequest(r, rep)
+	if rs.Err != nil {
+		opStatus = "error"
+		http.Error(w, s.errText(r, rs.Err), http.StatusBadRequest)
+		return
+	}
 	settings := rs.Settings
+	if rep.ResultProc != "" {
+		if raw, present := requestFormValue(r, "__settings"); present {
+			explicit, err := reportpkg.ParseSourceSettings(raw)
+			if err != nil {
+				opStatus = "error"
+				http.Error(w, s.errText(r, err), http.StatusBadRequest)
+				return
+			}
+			if explicit != nil {
+				settings = reportSettingsWithRequestVariant(r, explicit)
+			}
+		}
+	}
 	activePreset := activeReportPreset(presets, rs.ActivePresetID)
 	if settings != nil {
 		variant = settings.Variant
@@ -233,6 +283,9 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		queryValues[k] = v
 	}
 	for _, p := range rep.Params {
+		if p.Context != nil {
+			continue
+		}
 		// Числовые параметры констант сохраняют принятый тип и на экране:
 		// строка меняет сравнение на SQLite и не сравнима с числом на PG.
 		if p.Type == "number" {
@@ -251,15 +304,23 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		}
 		queryValues[p.Name] = v
 	}
-	if rep.ResultProc != "" && strings.TrimSpace(rep.Query) == "" {
-		if err := s.runTabularReport(w, r.WithContext(opCtx), rep, queryValues, nil); err != nil {
-			opStatus = "error"
-			http.Error(w, s.errText(r, err), 500)
+	if rep.ResultProc != "" {
+		resultQuery, _, variantErr := rep.QueryForVariant(variant, queryValues)
+		if variantErr == nil && strings.TrimSpace(resultQuery) == "" {
+			if settings != nil && len(settings.Filters) > 0 {
+				opStatus = "error"
+				http.Error(w, "source filters cannot be applied to a queryless result_proc", http.StatusUnprocessableEntity)
+				return
+			}
+			if err := s.runTabularReport(w, r.WithContext(opCtx), rep, queryValues, nil); err != nil {
+				opStatus = "error"
+				http.Error(w, s.errText(r, err), reportResultErrorStatus(err))
+			}
+			return
 		}
-		return
 	}
-	compiled, err := s.compileQueryWithRowAccess(opCtx, rep.Query, queryValues)
-	reportParams := s.buildReportParams(opCtx, s.resolveLang(r), rep.Params, paramValues)
+	compiled, err := s.compileReportVariantQuery(opCtx, rep, variant, queryValues)
+	reportParams := s.buildReportParams(opCtx, s.resolveLang(r), rep.Params, paramValues, rep)
 	if err != nil {
 		opStatus = "error"
 		s.render(w, r, "page-report", map[string]any{
@@ -285,7 +346,12 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 	// чтения, а поле под маской в отборе/группировке/агрегате отклоняет отчёт —
 	// имена результирующих колонок могут быть заменены КАК/AS и сами по себе не
 	// годятся как security provenance.
-	maskPlan := s.queryMaskPlan(opCtx, compiled)
+	if _, err := s.reportResultFilterPlan(opCtx, compiled, settings); err != nil {
+		opStatus = "error"
+		http.Error(w, s.errText(r, err), http.StatusBadRequest)
+		return
+	}
+	maskPlan := s.reportOutputMaskPlan(opCtx, compiled)
 	if maskPlan.Denied != "" {
 		opStatus = "error"
 		s.render(w, r, "page-report", map[string]any{
@@ -303,7 +369,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		return
 	}
 	opAttrs = []slog.Attr{slog.String("sql_hash", sqlHash(compiled.SQL))}
-	rows, cols, truncated, err := query.RunLimit(opCtx, s.store, &compiled, s.cfg.Limits.ReportMaxRows)
+	rows, cols, truncated, err := s.runReportResultRows(opCtx, &compiled, settings, s.cfg.Limits.ReportMaxRows)
 	opTruncated = truncated
 	opRows = len(rows)
 	queryWarning := ""
@@ -352,9 +418,10 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 			http.Error(w, s.tr(s.resolveLang(r), "Табличный документ не сформирован: входной запрос превысил report_max_rows. Уточните параметры отчёта."), http.StatusUnprocessableEntity)
 			return
 		}
-		if err := s.runTabularReport(w, r.WithContext(opCtx), rep, queryValues, rows); err != nil {
+		resultContext := s.withReportSourceFilters(opCtx, compiled, settings)
+		if err := s.runTabularReport(w, r.WithContext(resultContext), rep, queryValues, rows); err != nil {
 			opStatus = "error"
-			http.Error(w, s.errText(r, err), 500)
+			http.Error(w, s.errText(r, err), reportResultErrorStatus(err))
 		}
 		return
 	}
@@ -362,12 +429,18 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 	if comp != nil {
 		detailLinkCol = comp.DetailLink
 	}
-	s.resolveUUIDsInReport(opCtx, rows, detailLinkCol)
-
-	// Пользовательские отборы применяются к строкам до компоновки (план 70).
-	if comp != nil && settings != nil && len(settings.Filters) > 0 {
-		rows = compose.ApplyFilters(rows, settings.Filters)
+	var drilldowns *reportDrilldownRenderer
+	if len(rep.Drilldowns) > 0 {
+		if err := reportpkg.ValidateDrilldowns(rep, s.reg); err != nil {
+			opStatus = "error"
+			http.Error(w, "invalid report drilldown metadata", http.StatusBadRequest)
+			return
+		}
+		drilldowns = &reportDrilldownRenderer{rep: rep, rowTitle: s.tr(s.resolveLang(r), "Действия")}
 	}
+	s.resolveUUIDsInReport(opCtx, rows, compiled, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
+
+	// Typed source filters have already run before the accepted-row cap.
 
 	if comp != nil {
 		ev := newInterpEvaluator(s.interp)
@@ -392,7 +465,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 			}
 			s.render(w, r, "page-report", map[string]any{
 				"Report":             rep,
-				"ComposedHTML":       renderCrossTable(cr, comp),
+				"ComposedHTML":       renderCrossTablePresented(cr, comp, s.compositionPresentation(rep, comp, &compiled, s.resolveLang(r))),
 				"Capped":             cr.Capped,
 				"ComposeWarnings":    cr.Warnings,
 				"ParamValues":        paramValues,
@@ -424,13 +497,14 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 			})
 			return
 		}
+		presentation := s.compositionPresentation(rep, comp, &compiled, s.resolveLang(r))
 		var chartOption map[string]any
 		if comp.Chart != nil {
-			chartOption = buildComposedChart(res, comp.Chart, rows, *comp, ev)
+			chartOption = buildComposedChart(res, comp.Chart, rows, *comp, ev, presentation)
 		}
 		s.render(w, r, "page-report", map[string]any{
 			"Report":             rep,
-			"ComposedHTML":       renderComposedTable(res, comp),
+			"ComposedHTML":       renderComposedTablePresented(res, comp, presentation, drilldowns),
 			"Capped":             res.Capped,
 			"ComposeWarnings":    res.Warnings,
 			"ChartOption":        chartOption,
@@ -457,6 +531,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		"Report":             rep,
 		"Cols":               cols,
 		"Rows":               rows,
+		"Drilldowns":         drilldowns,
 		"ParamValues":        paramValues,
 		"ChartOption":        chartOption,
 		"ReportParams":       reportParams,
@@ -506,47 +581,23 @@ func (s *Server) runChartProc(ctx context.Context, rep *reportpkg.Report, rows [
 	return chart.ToEChartsOption()
 }
 
-// resolveUUIDsInReport replaces UUID-looking strings in report rows with entity
-// display names. skipCol (если непустой) исключается из подстановки — нужен для
-// колонки detail_link, где UUID должен остаться для ссылки на документ (issue #87).
-func (s *Server) resolveUUIDsInReport(ctx context.Context, rows []map[string]any, skipCol string) {
-	uuidToLabel := make(map[string]string)
-	for _, row := range rows {
-		for _, v := range row {
-			if str, ok := v.(string); ok {
-				if _, err := uuid.Parse(str); err == nil {
-					uuidToLabel[str] = ""
-				}
-			}
-		}
-	}
-	if len(uuidToLabel) == 0 {
-		return
-	}
-	for _, entity := range s.reg.Entities() {
-		for idStr, label := range uuidToLabel {
-			if label != "" {
-				continue
-			}
-			id, _ := uuid.Parse(idStr)
-			if refRow, err := s.store.GetByID(ctx, entity.Name, id, entity); err == nil {
-				uuidToLabel[idStr] = s.maskedRecordLabel(ctx, entity, refRow)
-			}
-		}
-	}
-	applyResolvedLabels(rows, uuidToLabel, skipCol)
-}
-
 // applyResolvedLabels подставляет наименования вместо UUID в строках отчёта,
 // пропуская колонку skipCol. Колонка detail_link хранит UUID регистратора для
 // ссылки на документ — его нельзя превращать в имя, иначе drill-down строит
 // /ui/.../<имя> вместо /<uuid> и ломается (issue #87). Имя колонки сравнивается
 // регистронезависимо: колонки запроса приходят в нижнем регистре, а detail_link
 // в composition — в исходном.
-func applyResolvedLabels(rows []map[string]any, uuidToLabel map[string]string, skipCol string) {
+func applyResolvedLabels(rows []map[string]any, uuidToLabel map[string]string, skipCols ...string) {
 	for _, row := range rows {
 		for col, v := range row {
-			if skipCol != "" && strings.EqualFold(col, skipCol) {
+			if reportColumnSkipped(col, skipCols) {
+				// UUID остаётся для ссылки, а представление кладём рядом: то же
+				// поле может быть и колонкой detail_fields, где нужен текст.
+				if str, ok := v.(string); ok && len(skipCols) > 0 && strings.EqualFold(col, skipCols[0]) {
+					if label, found := uuidToLabel[str]; found && label != "" {
+						row[reportDetailLinkLabelKey] = label
+					}
+				}
 				continue
 			}
 			if str, ok := v.(string); ok {
@@ -560,31 +611,44 @@ func applyResolvedLabels(rows []map[string]any, uuidToLabel map[string]string, s
 
 // reportParamUI is a template-friendly wrapper around a report parameter.
 type reportParamUI struct {
-	Name   string
-	Label  string
-	Type   string // raw type string
-	IsDate bool
+	VisibleWhen *reportpkg.ParamVisibility
+	Hidden      bool
+	Choice      reportpkg.Param
+	Name        string
+	Label       string
+	Type        string // raw type string
+	IsDate      bool
 	// IsDateTime — тип datetime: поле принимает время суток, а не только дату.
-	IsDateTime bool
-	IsNum      bool
-	IsBool     bool
-	IsSel      bool
-	IsRef      bool
-	Options    []string         // for IsSel
-	Opts       []map[string]any // for IsRef: [{id, _label}]
+	IsDateTime  bool
+	IsNum       bool
+	IsBool      bool
+	IsSel       bool
+	IsEnum      bool
+	EnumOptions []EnumOption
+	IsRef       bool
+	Options     []string         // for IsSel
+	Opts        []map[string]any // for IsRef: [{id, _label}]
+	// ChoiceShowDeleted — ключ choice_show_deleted параметра.
+	ChoiceShowDeleted *bool
 	// RefEntity — имя сущности (для IsRef), используется на UI для лупы
 	// в picker'е (открытие карточки через /ui/_ref-open/<entity>/<id>).
 	RefEntity string
 }
 
 // buildReportParams builds UI-ready param descriptors with bounded reference options.
-func (s *Server) buildReportParams(ctx context.Context, lang string, params []reportpkg.Param, values map[string]any) []reportParamUI {
+func (s *Server) buildReportParams(ctx context.Context, lang string, params []reportpkg.Param, values map[string]any, reports ...*reportpkg.Report) []reportParamUI {
 	out := make([]reportParamUI, 0, len(params))
 	for _, p := range params {
+		if p.Context != nil {
+			continue
+		}
 		ui := reportParamUI{
-			Name:  p.Name,
-			Label: p.DisplayLabel(lang),
-			Type:  p.Type,
+			VisibleWhen: p.VisibleWhen,
+			Hidden:      !reportpkg.ParamVisible(params, p, values),
+			Choice:      p,
+			Name:        p.Name,
+			Label:       p.DisplayLabel(lang),
+			Type:        p.Type,
 		}
 		switch {
 		case p.Type == "date":
@@ -598,12 +662,18 @@ func (s *Server) buildReportParams(ctx context.Context, lang string, params []re
 		case p.Type == "select":
 			ui.IsSel = true
 			ui.Options = p.Options
+		case strings.HasPrefix(p.Type, "enum:"):
+			ui.IsEnum = true
+			// Use the same ordered and localized choices as native enum fields.
+			opts := s.loadEnumOptions(&metadata.Entity{Fields: []metadata.Field{{Name: p.Name, EnumName: strings.TrimPrefix(p.Type, "enum:")}}}, lang)
+			ui.EnumOptions = opts[p.Name]
 		case strings.HasPrefix(p.Type, "reference:"):
 			ui.IsRef = true
 			entityName := strings.TrimPrefix(p.Type, "reference:")
 			ui.RefEntity = entityName
+			ui.ChoiceShowDeleted = p.ChoiceShowDeleted
 			if entity := s.reg.GetEntity(entityName); entity != nil {
-				rows, _ := s.initialReferenceOptions(ctx, entity, refOptionsChoice, []string{refValueString(values[p.Name])})
+				rows, _ := s.reportInitialChoiceOptions(ctx, p, params, values, entity, reports...)
 				ui.Opts = rows
 			}
 		}
@@ -638,6 +708,7 @@ type reportExportStats struct {
 	rows      int
 	truncated bool
 	attrs     []slog.Attr
+	rowStyles []excel.RowStyle
 }
 
 func reportExportOpStatus(ctx context.Context, err error) string {
@@ -650,17 +721,16 @@ func reportExportOpStatus(ctx context.Context, err error) string {
 	return operationStatus(ctx, err)
 }
 
-// reportExcel runs a report query with GET params and returns XLSX.
-// reportExportRows вычисляет табличные данные отчёта для выгрузки (Excel/PDF):
+// reportExportTable вычисляет данные и стили отчёта для выгрузки (Excel/PDF):
 // заголовки и строки с учётом эффективной компоновки (план 70), кросс-таблицы
 // (pivot) или плоского результата. Параметры берутся из query-строки (экспорт —
 // GET). HTTP-ответ об ошибке пишет вызывающий. Общий код reportExcel и reportPDF
 // (issue #218) — чтобы обе выгрузки шли из одних и тех же данных и не расходились
 // с экраном (runReport использует те же crossSheetRows/composedRows).
-func (s *Server) reportExportRows(r *http.Request, rep *reportpkg.Report) (headers []string, rows [][]any, err error) {
+func (s *Server) reportExportTable(r *http.Request, rep *reportpkg.Report) (headers []string, rows [][]any, styles []excel.RowStyle, err error) {
 	opCtx, finish, ok := s.beginOperation(r, opReportExport, rep.Name)
 	if !ok {
-		return nil, nil, newReportExportError(http.StatusTooManyRequests, "export limit", fmt.Errorf("слишком много одновременно выполняемых выгрузок, повторите позже"))
+		return nil, nil, nil, newReportExportError(http.StatusTooManyRequests, "export limit", fmt.Errorf("слишком много одновременно выполняемых выгрузок, повторите позже"))
 	}
 	stats := &reportExportStats{}
 	opStatus := "ok"
@@ -669,14 +739,22 @@ func (s *Server) reportExportRows(r *http.Request, rep *reportpkg.Report) (heade
 	headers, rows, err = s.reportExportRowsWithContext(opCtx, r, rep, stats)
 	if err != nil {
 		opStatus = reportExportOpStatus(opCtx, err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return headers, rows, nil
+	return headers, rows, stats.rowStyles, nil
 }
 
 func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Request, rep *reportpkg.Report, stats *reportExportStats) (headers []string, rows [][]any, err error) {
+	if stats != nil {
+		stats.rowStyles = nil
+	}
+	ctx = access.WithReportOutput(ctx)
 	r = r.WithContext(ctx)
-	settings := s.reportSettingsForRequest(r, rep).Settings
+	rs := s.reportSettingsForRequest(r, rep)
+	if rs.Err != nil {
+		return nil, nil, newReportExportError(http.StatusBadRequest, "report settings", rs.Err)
+	}
+	settings := rs.Settings
 	comp := effectiveComposition(rep, settings)
 	paramValues := make(map[string]any, len(rep.Params))
 	// Ссылка выгрузки — снимок формы: reportParamQuery выкладывает в неё ВСЕ
@@ -685,6 +763,9 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 	// ссылке нет вовсе (прямой вызов /export/excel без параметров).
 	qs := r.URL.Query()
 	for _, p := range rep.Params {
+		if p.Context != nil {
+			continue
+		}
 		val := qs.Get(p.Name)
 		if _, ok := qs[p.Name]; !ok {
 			d, derr := reportParamDefault(p, s.constantResolver(ctx))
@@ -703,21 +784,38 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 		}
 		paramValues[p.Name] = v
 	}
-	compiled, err := s.compileQueryWithRowAccess(ctx, rep.Query, paramValues)
+	paramValues, err = reportpkg.ResolveContextParams(ctx, rep, paramValues, s.reg, s.store)
+	if err != nil {
+		return nil, nil, newReportExportError(http.StatusForbidden, "report context", err)
+	}
+	if err := reportpkg.ValidateEnumParams(rep.Params, paramValues, s.reg); err != nil {
+		return nil, nil, newReportExportError(http.StatusBadRequest, "invalid report parameter", err)
+	}
+	if err := s.validateReportChoiceValues(ctx, rep, paramValues); err != nil {
+		return nil, nil, newReportExportError(http.StatusBadRequest, "report parameters", err)
+	}
+	variant := r.FormValue("__variant")
+	if settings != nil {
+		variant = settings.Variant
+	}
+	compiled, err := s.compileReportVariantQuery(ctx, rep, variant, paramValues)
 	if err != nil {
 		return nil, nil, newReportExportError(http.StatusBadRequest, "query compile error", err)
 	}
 	if denied := s.deniedQuerySource(ctx, compiled.Sources); denied != "" {
 		return nil, nil, newReportExportError(http.StatusForbidden, "source access", fmt.Errorf("нет доступа к объекту: %s", denied))
 	}
-	maskPlan := s.queryMaskPlan(ctx, compiled)
+	if _, err := s.reportResultFilterPlan(ctx, compiled, settings); err != nil {
+		return nil, nil, newReportExportError(http.StatusBadRequest, "report filter", err)
+	}
+	maskPlan := s.reportOutputMaskPlan(ctx, compiled)
 	if maskPlan.Denied != "" {
 		return nil, nil, newReportExportError(http.StatusForbidden, "masked field", fmt.Errorf("отчёт содержит защищённое поле: %s", maskPlan.Denied))
 	}
 	if stats != nil {
 		stats.attrs = []slog.Attr{slog.String("sql_hash", sqlHash(compiled.SQL))}
 	}
-	data, cols, truncated, err := query.RunLimit(ctx, s.store, &compiled, s.cfg.Limits.ExportMaxRows)
+	data, cols, truncated, err := s.runReportResultRows(ctx, &compiled, settings, s.cfg.Limits.ExportMaxRows)
 	if stats != nil {
 		stats.rows = len(data)
 		stats.truncated = truncated
@@ -737,12 +835,9 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 	if comp != nil {
 		detailLinkCol = comp.DetailLink
 	}
-	s.resolveUUIDsInReport(ctx, data, detailLinkCol)
+	s.resolveUUIDsInReport(ctx, data, compiled, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
 
-	// Пользовательские отборы (план 70) — до компоновки, как в runReport.
-	if comp != nil && settings != nil && len(settings.Filters) > 0 {
-		data = compose.ApplyFilters(data, settings.Filters)
-	}
+	// The export consumes the same filtered source as the screen.
 
 	// Если отчёт использует компоновщик — строим дерево групп/итогов.
 	if comp != nil {
@@ -753,14 +848,20 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 			if cerr != nil {
 				return nil, nil, newReportExportError(http.StatusInternalServerError, "compose error", cerr)
 			}
-			h, xr := crossSheetRows(cr, comp)
+			h, xr, styles := crossSheetRowsPresented(cr, comp, s.compositionPresentation(rep, comp, &compiled, s.resolveLang(r)))
+			if stats != nil {
+				stats.rowStyles = styles
+			}
 			return h, xr, nil
 		}
 		res, cerr := compose.Compose(data, *comp, ev)
 		if cerr != nil {
 			return nil, nil, newReportExportError(http.StatusInternalServerError, "compose error", cerr)
 		}
-		h, xr := composedRows(res, comp)
+		h, xr, styles := composedRowsPresented(res, comp, s.compositionPresentation(rep, comp, &compiled, s.resolveLang(r)))
+		if stats != nil {
+			stats.rowStyles = styles
+		}
 		return h, xr, nil
 	}
 
@@ -784,12 +885,12 @@ func (s *Server) reportExcel(w http.ResponseWriter, r *http.Request) {
 	if !s.requirePerm(w, r, "report", rep.Name, "run") {
 		return
 	}
-	headers, rows, err := s.reportExportRows(r, rep)
+	headers, rows, styles, err := s.reportExportTable(r, rep)
 	if err != nil {
 		s.writeReportExportError(w, r, err)
 		return
 	}
-	data, err := excel.ExportList(headers, rows)
+	data, err := excel.ExportListWithRowStyles(headers, rows, styles)
 	if err != nil {
 		http.Error(w, "Excel error: "+s.errText(r, err), 500)
 		return

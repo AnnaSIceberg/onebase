@@ -58,6 +58,15 @@ type ProjectionPlan struct {
 	// по значению колонки ровно так же, как ссылка по имени, и точно так же
 	// раскрывает порядок скрытых значений.
 	UnmaskableOrdinals []int
+	// Lineage — элементы списков выборки всех SELECT запроса (см.
+	// ProjectionLineage). Заполняется и для Simple == false.
+	Lineage []ProjectionLineage
+	// ParamPredicateFields — идентификаторы, сравниваемые с параметром запроса
+	// в одном условии (см. paramPredicateIdentifiers).
+	ParamPredicateFields []string
+	// SourceAliases — алиас источника (нижний регистр) → все объекты, которые
+	// под этим алиасом встречаются (одинаковый алиас в разных подзапросах).
+	SourceAliases map[string][]SourceRef
 }
 
 // analyzeProjection разбирает список выборки запроса. Работает по исходному
@@ -72,10 +81,10 @@ func analyzeProjection(tokens []tok) ProjectionPlan {
 		// потому что запасной путь смотрит только список выборки.
 		// Собираем все идентификаторы: перебор намеренно избыточен — лишнее имя
 		// лишь ужесточает проверку, пропущенное открывает утечку.
-		return ProjectionPlan{UnmaskableFields: allIdentifiers(tokens)}
+		return ProjectionPlan{UnmaskableFields: allIdentifiers(tokens), Lineage: projectionLineage(tokens), ParamPredicateFields: paramPredicateIdentifiers(tokens), SourceAliases: projectionSourceAliases(tokens)}
 	}
 	end := topLevelFrom(tokens, start)
-	plan := ProjectionPlan{Simple: true}
+	plan := ProjectionPlan{Simple: true, Lineage: projectionLineage(tokens), ParamPredicateFields: paramPredicateIdentifiers(tokens), SourceAliases: projectionSourceAliases(tokens)}
 	unmask := newFieldSet()
 	for _, item := range splitProjectionItems(tokens[selectProjectionStart(tokens, start):end]) {
 		col, used := parseProjectionItem(item)

@@ -6,6 +6,8 @@
 package compform
 
 import (
+	"encoding/json"
+	"io"
 	"net/url"
 	"sort"
 	"strconv"
@@ -49,12 +51,14 @@ func Parse(f url.Values) (*report.Composition, bool) {
 			continue
 		}
 		c.Measures = append(c.Measures, report.Measure{
-			Field:  fld,
-			Agg:    f.Get(p + ".agg"),
-			Title:  strings.TrimSpace(f.Get(p + ".title")),
-			Align:  f.Get(p + ".align"),
-			Format: strings.TrimSpace(f.Get(p + ".format")),
-			Expr:   strings.TrimSpace(f.Get(p + ".expr")),
+			Field:        fld,
+			Agg:          f.Get(p + ".agg"),
+			Title:        strings.TrimSpace(f.Get(p + ".title")),
+			Align:        f.Get(p + ".align"),
+			Format:       strings.TrimSpace(f.Get(p + ".format")),
+			Expr:         strings.TrimSpace(f.Get(p + ".expr")),
+			Scope:        parseMeasureScope(f.Get(p + ".scope")),
+			Calculations: parseCalculations(f.Get(p + ".calculations")),
 		})
 	}
 
@@ -64,6 +68,31 @@ func Parse(f url.Values) (*report.Composition, bool) {
 	c.Detail = f.Get("comp.detail") != ""
 	c.DetailLink = strings.TrimSpace(f.Get("comp.detail_link"))
 	c.DetailEntity = strings.TrimSpace(f.Get("comp.detail_entity"))
+	// Поля детальной записи редактируются в YAML; форма конфигуратора несёт
+	// их скрытыми полями, чтобы сохранение отчёта их не теряло.
+	for _, i := range rowIndexes(f, "comp.detail_field.", ".field") {
+		p := "comp.detail_field." + strconv.Itoa(i)
+		if fld := strings.TrimSpace(f.Get(p + ".field")); fld != "" {
+			c.DetailFields = append(c.DetailFields, report.DetailField{Field: fld, Title: strings.TrimSpace(f.Get(p + ".title"))})
+		}
+	}
+	// formats, column_group_totals и row_totals тоже редактируются в YAML и
+	// едут скрытыми полями.
+	for name := range f {
+		if field, ok := strings.CutPrefix(name, "comp.format."); ok && strings.TrimSpace(field) != "" {
+			if format := f.Get(name); format != "" {
+				if c.Formats == nil {
+					c.Formats = map[string]string{}
+				}
+				c.Formats[field] = format
+			}
+		}
+	}
+	c.ColumnGroupTotals = f.Get("comp.column_group_totals") == "1"
+	if f.Get("comp.row_totals") == "0" {
+		off := false
+		c.RowTotals = &off
+	}
 
 	// Сортировка
 	for _, i := range rowIndexes(f, "comp.sort.", ".field") {
@@ -203,4 +232,37 @@ func rowIndexes(f url.Values, prefix, suffix string) []int {
 	}
 	sort.Ints(out)
 	return out
+}
+
+func parseMeasureScope(raw string) []string {
+	var scope []string
+	for _, level := range strings.Split(raw, ",") {
+		if level = strings.TrimSpace(level); level != "" {
+			scope = append(scope, level)
+		}
+	}
+	return scope
+}
+
+// Invalid submitted metadata remains visibly invalid; it must never silently
+// erase a trusted calculation when a configurator form is saved.
+func parseCalculations(raw string) []report.MeasureCalculation {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	invalid := func() []report.MeasureCalculation { return []report.MeasureCalculation{{Level: ""}} }
+	if len(raw) > 64<<10 {
+		return invalid()
+	}
+	var rules []report.MeasureCalculation
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&rules); err != nil {
+		return invalid()
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		return invalid()
+	}
+	return rules
 }

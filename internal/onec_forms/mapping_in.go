@@ -176,6 +176,9 @@ func ToFormModule(form *IRForm) *metadata.FormModule {
 		AutoSaveDataInSettings: form.AutoSaveDataInSettings,
 		VerticalScroll:         form.VerticalScroll,
 		EnterSubmitsForm:       form.EnterSubmitsForm,
+		Density:                form.Density,
+		GroupTitles:            form.GroupTitles,
+		HeaderInline:           form.HeaderInline,
 		Handlers:               irEventsToFormEvents(form.Events),
 		Procedures:             map[string]*metadata.FormProcedure{},
 	}

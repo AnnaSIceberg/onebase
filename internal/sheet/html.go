@@ -129,7 +129,7 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 	covered := make(map[CellKey]bool)
 
 	for row := 0; row <= maxRow; row++ {
-		if opts.XLSXURL != "" {
+		if opts.XLSXURL != "" || len(d.Groups) > 0 {
 			fmt.Fprintf(&sb, `<tr data-sheet-row="%d">`, row)
 		} else {
 			sb.WriteString("<tr>")
@@ -215,7 +215,7 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 		sb.WriteString("</tr>\n")
 	}
 	sb.WriteString("</table>\n</div>\n")
-	if opts.XLSXURL != "" {
+	if opts.XLSXURL != "" || len(d.Groups) > 0 {
 		d.viewerScript(&sb, opts.ParentDrilldown)
 	}
 	if resizeColumns {

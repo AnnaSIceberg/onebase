@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -15,6 +17,7 @@ const (
 	MaxSections = 100
 	MaxGroups   = 500
 	MaxItems    = 5000
+	MaxDepth    = metadata.MaxMenuFolderDepth
 )
 
 // Object is a metadata projection, independent of HTTP, SQL and user access.
@@ -25,6 +28,9 @@ type Object struct {
 	Periodic bool              `json:"periodic,omitempty"`
 	External bool              `json:"external,omitempty"`
 	Trusted  bool              `json:"trusted,omitempty"`
+	// Variants is host metadata used during normalization, not client authority
+	// or part of old menus' canonical hashes.
+	Variants []string `json:"-"`
 }
 
 // Label shares target-specific suffixes across metadata preview and rendering.
@@ -63,9 +69,33 @@ func ResolveItem(item Item, lang, context string, translate func(string) string,
 	label := DisplayTitle(item.Title, item.Titles, lang)
 	if label == "" {
 		label = item.Object.Label(lang, translate, flat)
+		if item.Action == ActionNew {
+			label = translate("Создать") + ": " + label
+		}
 	}
 	t := item.Object.Target
-	return ResolvedItem{ID: item.ID, Label: label, URL: t.URL(context), Kind: t.Kind, Name: t.Name, Action: t.Action()}
+	link := t.URL(context)
+	if item.Action == ActionNew {
+		// Новый объект — тот же маршрут формы, что кнопка «Создать» списка; в
+		// меню видна только ролям с правом create.
+		// Контекст подсистемы приходит в запросе (?subsystem=…): «/new» — к пути.
+		if u, err := url.Parse(link); err == nil {
+			u.Path, u.RawPath = u.Path+"/new", ""
+			link = u.String()
+		}
+		return ResolvedItem{ID: item.ID, Label: label, URL: link, Kind: t.Kind, Name: t.Name, Action: "create"}
+	}
+	if item.Variant != "" && t.Kind == "report" {
+		// A fixed configuration variant opens with standard settings, rather
+		// than an unrelated personal default preset overriding its composition.
+		u, _ := url.Parse(link)
+		q := u.Query()
+		q.Set("__variant", item.Variant)
+		q.Set("__preset", "__standard")
+		u.RawQuery = q.Encode()
+		link = u.String()
+	}
+	return ResolvedItem{ID: item.ID, Label: label, URL: link, Kind: t.Kind, Name: t.Name, Action: t.Action()}
 }
 
 // Scope contains the permitted metadata targets before per-request RBAC.
@@ -91,6 +121,8 @@ type Section struct {
 	Icon          string            `json:"icon,omitempty"`
 	Items         []Item            `json:"items,omitempty"`
 	Groups        []Group           `json:"groups,omitempty"`
+	Nodes         []Node            `json:"nodes,omitempty"`
+	RoleClauses   [][]string        `json:"role_clauses,omitempty"`
 }
 
 type Group struct {
@@ -102,12 +134,16 @@ type Group struct {
 }
 
 type Item struct {
-	ID     string            `json:"id"`
-	Target string            `json:"target"`
-	Title  string            `json:"title"`
-	Titles map[string]string `json:"titles,omitempty"`
-	Icon   string            `json:"icon,omitempty"`
-	Object Object            `json:"object"`
+	ID      string `json:"id"`
+	Target  string `json:"target"`
+	Variant string `json:"variant,omitempty"`
+	// Action "new" — команда создаёт документ/элемент (metadata.MenuNode.Action).
+	Action      string            `json:"action,omitempty"`
+	Title       string            `json:"title"`
+	Titles      map[string]string `json:"titles,omitempty"`
+	Icon        string            `json:"icon,omitempty"`
+	Object      Object            `json:"object"`
+	RoleClauses [][]string        `json:"role_clauses,omitempty"`
 }
 
 type Diagnostic struct {
@@ -123,6 +159,9 @@ var nodeID = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 // absent menu projects the legacy sections; an explicit menu appends unplaced
 // allowed targets to the reserved section cfg:other.
 func Normalize(context string, menu *metadata.Menu, scope Scope) (Tree, []Diagnostic) {
+	if usesRecursiveMenu(menu) {
+		return normalizeRecursive(context, menu, scope)
+	}
 	tree := Tree{Version: 1, Context: context}
 	if menu == nil {
 		tree.Sections = cloneSections(scope.Sections)
@@ -163,11 +202,20 @@ func Normalize(context string, menu *metadata.Menu, scope Scope) (Tree, []Diagno
 				add("navigation.membership", item.ID, fmt.Sprintf("target %q отсутствует в допустимом наборе contents/nav", item.Target), false)
 				continue
 			}
-			if seen[target.key()] {
+			if item.Variant != "" && (target.Kind != "report" || !slices.Contains(object.Variants, item.Variant)) {
+				add("navigation.variant", item.ID, "variant должен именовать существующий вариант отчёта", false)
+				continue
+			}
+			if msg := actionProblem(item.Action, target); msg != "" {
+				add("navigation.action", item.ID, msg, false)
+				continue
+			}
+			binding := target.key() + "\x00" + item.Variant + "\x00" + item.Action
+			if seen[binding] {
 				add("navigation.duplicate-target", item.ID, "повтор target в одном родителе: "+item.Target, true)
 			}
-			seen[target.key()], placed[target.key()] = true, true
-			output = append(output, Item{ID: "cfg:" + item.ID, Target: object.Target.String(), Title: item.Title,
+			seen[binding], placed[target.key()] = true, true
+			output = append(output, Item{ID: "cfg:" + item.ID, Target: object.Target.String(), Variant: item.Variant, Action: item.Action, Title: item.Title,
 				Titles: copyTitles(item.Titles), Icon: metadata.NormalizeIconName(item.Icon), Object: cloneObject(object)})
 		}
 		return output
@@ -235,9 +283,14 @@ func copyTitles(input map[string]string) map[string]string {
 	return output
 }
 
-func cloneObject(o Object) Object { o.Titles = copyTitles(o.Titles); return o }
+func cloneObject(o Object) Object {
+	o.Titles = copyTitles(o.Titles)
+	o.Variants = slices.Clone(o.Variants)
+	return o
+}
 func cloneItem(i Item) Item {
 	i.Titles = copyTitles(i.Titles)
+	i.RoleClauses = cloneClauses(i.RoleClauses)
 	i.Object = cloneObject(i.Object)
 	return i
 }
@@ -245,6 +298,17 @@ func cloneSections(input []Section) []Section {
 	var output []Section
 	for _, s := range input {
 		s.Titles = copyTitles(s.Titles)
+		s.RoleClauses = cloneClauses(s.RoleClauses)
+		s.Nodes = CloneNodes(s.Nodes)
+		s.Groups = append([]Group(nil), s.Groups...)
+		for j := range s.Groups {
+			g := &s.Groups[j]
+			g.Titles = copyTitles(g.Titles)
+			g.Items = append([]Item(nil), g.Items...)
+			for k := range g.Items {
+				g.Items[k] = cloneItem(g.Items[k])
+			}
+		}
 		var items []Item
 		for _, i := range s.Items {
 			items = append(items, cloneItem(i))
@@ -261,4 +325,22 @@ func DisplayTitle(title string, titles map[string]string, lang string) string {
 		return v
 	}
 	return title
+}
+
+// ActionNew — команда меню создаёт новый документ или элемент справочника.
+const ActionNew = "new"
+
+// actionProblem — причина отказа action команды: допустим только "new" и
+// только у документа или справочника.
+func actionProblem(action string, target Target) string {
+	switch action {
+	case "":
+		return ""
+	case ActionNew:
+		if target.Kind == "document" || target.Kind == "catalog" {
+			return ""
+		}
+		return "action: new допустим только у document: или catalog:"
+	}
+	return fmt.Sprintf("неизвестный action %q: допустим только new", action)
 }

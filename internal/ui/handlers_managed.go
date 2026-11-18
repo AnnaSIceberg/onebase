@@ -116,6 +116,8 @@ func formRolesMatch(fm *metadata.FormModule, user *auth.User) bool {
 // автоматически активирует managed-рендер для выбранной сущности; без
 // .form.yaml продолжает работать существующая авто-форма без изменений.
 func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind string, data map[string]any) {
+	// formData — сборка данных управляемой формы до отрисовки шаблона.
+	endFormData := serverTimingSpan(r.Context(), "formData")
 	entity, _ := data["Entity"].(*metadata.Entity)
 	// #481: заголовок вкладки/карточки = представление записи (Наименование…),
 	// а не имя сущности. Для существующей записи кладём TabTitle (его читает
@@ -161,6 +163,12 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 	}
 	managed := pickManagedFormCtx(r.Context(), entity, kind)
 	if managed != nil {
+		// ПриСозданииНаСервере — до всего, что читает значения: варианты
+		// ссылок, условия и разметка видят заполненные им реквизиты формы.
+		if err := s.runFormCreateHook(r.Context(), entity, managed, data); err != nil {
+			s.renderReadHookDenied(w, r, err)
+			return
+		}
 		data["Form"] = managed
 		s.issueConcealInstance(w, r, entity, managed, data)
 		// Фикс A: команды формы, не размещённые вручную элементом kind: Кнопка,
@@ -181,9 +189,19 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 		// точка покрывает все пути рендера (new/edit/повторный показ с ошибкой).
 		data["ChoiceOptions"] = loadChoiceOptions(managed, s.resolveLang(r))
 		s.prepareManagedFormData(r.Context(), data, managed)
+		if title, err := s.managedFormTitle(r.Context(), entity, managed, titleObjectFromData(entity, data)); title != nil {
+			if err != nil {
+				http.Error(w, "form title evaluation failed", http.StatusInternalServerError)
+				return
+			}
+			data["RecordTitle"], data["TabTitle"] = *title, *title
+			data["DisplayTitleConfigured"] = true
+		}
+		endFormData()
 		s.render(w, r, "page-managed-form", data)
 		return
 	}
+	endFormData()
 	s.render(w, r, "page-form", data)
 }
 
@@ -248,6 +266,16 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 	}
 	entity, _ := data["Entity"].(*metadata.Entity)
 	header := managedFormHeaderValues(entity, data["Values"])
+	// Реквизиты формы — тоже по своему типу, как в ответе события: иначе
+	// булев реквизит в hidden_when первой отрисовки был бы строкой «true».
+	for _, attr := range form.Attributes {
+		if !formAttrIsScalar(attr) {
+			continue
+		}
+		if raw, ok := header[attr.Name].(string); ok {
+			header[attr.Name] = typeFormAttrValue(attr.TypeRef, raw)
+		}
+	}
 
 	// Якори размещений нужны и без интерпретатора: editable_admin_only
 	// вычисляется независимо от DSL и возвращается после события формы.
@@ -374,8 +402,25 @@ func managedFormElementStates(form *metadata.FormModule, header map[string]any, 
 			}
 			ro[visit.path] = state
 		}
-		if strings.TrimSpace(el.HiddenWhen) != "" {
-			hidden[visit.path] = eval(el.HiddenWhen, "условие hidden_when", el.Name)
+		hasHidden := strings.TrimSpace(el.HiddenWhen) != ""
+		hiddenState := false
+		if hasHidden {
+			hiddenState = eval(el.HiddenWhen, "условие hidden_when", el.Name)
+		}
+		// Header commands leave their ancestor DOM containers. Carry those
+		// containers' visibility to the command's own placement key, including
+		// false states so a later form event can reveal it again.
+		if metadata.FormHeaderPlaced(el) {
+			for path := visit.path; strings.Contains(path, "."); {
+				path = path[:strings.LastIndex(path, ".")]
+				if state, ok := hidden[path]; ok {
+					hasHidden = true
+					hiddenState = hiddenState || state
+				}
+			}
+		}
+		if hasHidden {
+			hidden[visit.path] = hiddenState
 		}
 	})
 	return ro, hidden, paths, wc.msgs

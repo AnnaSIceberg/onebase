@@ -13,8 +13,20 @@ import (
 //go:embed static/ui.js
 var uiJS []byte
 
+//go:embed static/audio.js
+var audioJS []byte
+
 //go:embed static/managed.js
 var managedJS []byte
+
+//go:embed static/list-controls.js
+var listControlsJS []byte
+
+//go:embed static/date-input.js
+var dateInputJS []byte
+
+//go:embed static/report-controls.js
+var reportControlsJS []byte
 
 //go:embed static/tabular.js
 var tabularJS []byte
@@ -25,13 +37,22 @@ var queryBuilderJS []byte
 //go:embed static/settings-navigation.js
 var settingsNavigationJS []byte
 
+//go:embed static/report_params.js
+var reportParamsJS []byte
+
 // ETag'и приложенческого JS считаются один раз при старте по содержимому.
 var (
-	uiJSETag                 = assetETag(uiJS)
-	managedJSETag            = assetETag(managedJS)
+	audioJSETag        = assetETag(audioJS)
+	uiJSETag           = assetETag(uiJS)
+	managedJSETag      = assetETag(managedJS)
+	listControlsJSETag = assetETag(listControlsJS)
+
+	dateInputJSETag          = assetETag(dateInputJS)
+	reportControlsJSETag     = assetETag(reportControlsJS)
 	tabularJSETag            = assetETag(tabularJS)
 	queryBuilderJSETag       = assetETag(queryBuilderJS)
 	settingsNavigationJSETag = assetETag(settingsNavigationJS)
+	reportParamsJSETag       = assetETag(reportParamsJS)
 )
 
 func assetETag(b []byte) string {
@@ -62,7 +83,23 @@ func serveAppJS(w http.ResponseWriter, r *http.Request, body []byte, etag string
 // тем же путём, что и в конфигураторе лаунчера, чтобы рабочий стол и
 // предпросмотр виджетов рисовались идентично.
 func mountStatic(r chi.Router) {
+	mountReportResultFilters(r)
+
+	r.Get("/static/list-controls.js", func(w http.ResponseWriter, req *http.Request) {
+		serveAppJS(w, req, listControlsJS, listControlsJSETag)
+	})
+	r.Get("/static/audio.js", func(w http.ResponseWriter, req *http.Request) {
+		serveAppJS(w, req, audioJS, audioJSETag)
+	})
+	r.Get("/static/date-input.js", func(w http.ResponseWriter, req *http.Request) { serveAppJS(w, req, dateInputJS, dateInputJSETag) })
+	r.Get("/static/report-controls.js", func(w http.ResponseWriter, req *http.Request) {
+		serveAppJS(w, req, reportControlsJS, reportControlsJSETag)
+	})
 	r.Get("/static/tabular.js", func(w http.ResponseWriter, r *http.Request) { serveAppJS(w, r, tabularJS, tabularJSETag) })
+	mountNavigationTree(r)
+	r.Get("/static/report_params.js", func(w http.ResponseWriter, req *http.Request) {
+		serveAppJS(w, req, reportParamsJS, reportParamsJSETag)
+	})
 	r.Get("/static/settings-navigation.js", func(w http.ResponseWriter, req *http.Request) {
 		serveAppJS(w, req, settingsNavigationJS, settingsNavigationJSETag)
 	})

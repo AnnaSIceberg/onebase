@@ -572,6 +572,46 @@ func reportSettingsKey(report, user string) string {
 	return fmt.Sprintf("report.settings.%d:%s.%d:%s", len(report), report, len(user), user)
 }
 
+// listSettingsKey — пользовательская «Настройка списка» документа/справочника.
+func listSettingsKey(kind, entity, user string) string {
+	return fmt.Sprintf("list.settings.%d:%s.%d:%s.%d:%s", len(kind), kind, len(entity), entity, len(user), user)
+}
+
+// GetListUserSettings — сырой JSON настройки списка пользователя ("" — нет).
+func (db *DB) GetListUserSettings(ctx context.Context, kind, entity, user string) (string, error) {
+	d := db.dialect
+	var v string
+	if err := db.QueryRow(ctx, `SELECT value FROM _settings WHERE key = `+d.Placeholder(1),
+		listSettingsKey(kind, entity, user)).Scan(&v); err != nil {
+		return "", nil
+	}
+	return v, nil
+}
+
+// SaveListUserSettings сохраняет настройку списка пользователя.
+func (db *DB) SaveListUserSettings(ctx context.Context, kind, entity, user, raw string) error {
+	if err := db.EnsureSettingsSchema(ctx); err != nil {
+		return err
+	}
+	d := db.dialect
+	q := fmt.Sprintf(`INSERT INTO _settings (key, value) VALUES (%s, %s)
+		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, d.Placeholder(1), d.Placeholder(2))
+	if _, err := db.Exec(ctx, q, listSettingsKey(kind, entity, user), raw); err != nil {
+		return fmt.Errorf("settings: save list settings: %w", err)
+	}
+	return nil
+}
+
+// DeleteListUserSettings возвращает список к стандартным настройкам.
+func (db *DB) DeleteListUserSettings(ctx context.Context, kind, entity, user string) error {
+	d := db.dialect
+	if _, err := db.Exec(ctx, `DELETE FROM _settings WHERE key = `+d.Placeholder(1),
+		listSettingsKey(kind, entity, user)); err != nil {
+		return fmt.Errorf("settings: delete list settings: %w", err)
+	}
+	return nil
+}
+
 func journalSettingsKey(journal, user string) string {
 	return fmt.Sprintf("journal.settings.%d:%s.%d:%s", len(journal), journal, len(user), user)
 }
@@ -851,6 +891,44 @@ func reportPresetBoolLit(d Dialect, v bool) string {
 		return "TRUE"
 	}
 	return "FALSE"
+}
+
+// listSortSettingsKey — ключ выбранной пользователем сортировки списка
+// («поле|asc» / «поле|desc») отдельно для пользователя и сущности.
+func listSortSettingsKey(entity, user string) string {
+	return fmt.Sprintf("listsort.%d:%s.%d:%s", len(entity), entity, len(user), user)
+}
+
+// GetListSortUserSettings возвращает сохранённую сортировку списка
+// пользователя для сущности: поле и направление. Отсутствие ключа/таблицы — не
+// ошибка, возвращаются пустые строки.
+func (db *DB) GetListSortUserSettings(ctx context.Context, entity, user string) (field, dir string, err error) {
+	d := db.dialect
+	var v string
+	if err := db.QueryRow(ctx,
+		`SELECT value FROM _settings WHERE key = `+d.Placeholder(1),
+		listSortSettingsKey(entity, user)).Scan(&v); err != nil {
+		return "", "", nil
+	}
+	field, dir, _ = strings.Cut(v, "|")
+	return field, dir, nil
+}
+
+// SaveListSortUserSettings сохраняет сортировку списка пользователя для
+// сущности одним upsert. Конфигурацию (YAML) не трогает.
+func (db *DB) SaveListSortUserSettings(ctx context.Context, entity, user, field, dir string) error {
+	if err := db.EnsureSettingsSchema(ctx); err != nil {
+		return err
+	}
+	d := db.dialect
+	q := fmt.Sprintf(
+		`INSERT INTO _settings (key, value) VALUES (%s, %s)
+		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+		d.Placeholder(1), d.Placeholder(2))
+	if _, err := db.Exec(ctx, q, listSortSettingsKey(entity, user), field+"|"+dir); err != nil {
+		return fmt.Errorf("settings: save list sort: %w", err)
+	}
+	return nil
 }
 
 // listViewSettingsKey — ключ настройки вида списка (Список/Плитка) отдельно

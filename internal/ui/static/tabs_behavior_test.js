@@ -79,6 +79,12 @@ class Element {
     this.classList.reset(value);
   }
 
+  set src(value) {
+    this._src = String(value);
+    if (this.contentWindow) this.contentWindow.location = {href: new URL(this._src, 'http://127.0.0.1:8080').href};
+  }
+  get src() { return this._src || ''; }
+
   get className() {
     return this._className;
   }
@@ -183,6 +189,7 @@ function shell(storage, search = '', confirmClose = () => true, requestFrameClos
     document,
     sessionStorage: storage,
     location: {search, origin: 'http://127.0.0.1:8080', href: '/ui/app'},
+    history: {state: null, replaceState(state) { this.state = state; }, pushState(state) { this.state = state; }},
     URL,
     URLSearchParams,
     crypto: {
@@ -221,6 +228,11 @@ function shell(storage, search = '', confirmClose = () => true, requestFrameClos
       for (const listener of windowListeners.get('message') || []) {
         listener({origin, source, data});
       }
+    },
+    postTitle(index, title, origin = context.location.origin) {
+      const frame = frames()[index];
+      const data = {source:'obSetTitle', title, url:frame.contentWindow.location.href, documentToken:frame.contentWindow.obFrameCloseDocumentToken};
+      for (const listener of windowListeners.get('message') || []) listener({origin, source:frame.contentWindow, data});
     },
     markDirty(index, dirty = true) {
       const frame = frames()[index];
@@ -373,7 +385,7 @@ test('a delayed title from an inactive loading frame updates that tab and surviv
   app.open('/ui/b', 'B');
   const active = savedActive(storage);
 
-  app.post({source: 'obSetTitle', title: 'A loaded'}, 0);
+  app.postTitle(0, 'A loaded');
   assert.deepEqual(app.titles(), ['A loaded', 'B']);
   assert.deepEqual(app.labels(), ['A loaded', 'B']);
   assert.deepEqual(savedTabs(storage).map(tab => tab.title), ['A loaded', 'B']);
@@ -395,7 +407,7 @@ test('a title message selects its frame identity when two tabs share the same UR
   const ids = savedTabs(storage).map(tab => tab.id);
   const title = '<b>first loaded</b>';
 
-  app.post({source: 'obSetTitle', title}, 0);
+  app.postTitle(0, title);
   assert.deepEqual(app.titles(), [title, 'second']);
   assert.deepEqual(app.labels(), [title, 'second']);
   assert.deepEqual(savedTabs(storage).map(tab => tab.id), ids);
@@ -412,14 +424,14 @@ test('unknown or foreign title senders are ignored and the active frame can stil
   const active = savedActive(storage);
 
   app.post({source: 'obSetTitle', title: 'unknown'});
-  app.post({source: 'obSetTitle', title: 'foreign'}, 0, 'https://example.invalid');
+  app.postTitle(0, 'foreign', 'https://example.invalid');
   app.post({source: 'obSetTitle', title: ''}, 0);
   assert.deepEqual(app.titles(), ['A', 'B']);
   assert.deepEqual(app.labels(), ['A', 'B']);
   assert.equal(storage.getItem('obTabs'), before);
   assert.deepEqual(savedActive(storage), active);
 
-  app.post({source: 'obSetTitle', title: 'B loaded'}, 1);
+  app.postTitle(1, 'B loaded');
   assert.deepEqual(app.titles(), ['A', 'B loaded']);
   assert.deepEqual(app.labels(), ['A', 'B loaded']);
   assert.deepEqual(savedTabs(storage).map(tab => tab.title), ['A', 'B loaded']);
@@ -433,7 +445,7 @@ test('a known frame can update its title while the shell home is selected', () =
   const active = savedActive(storage);
   assert.equal(app.activeIndex(), -1);
 
-  app.post({source: 'obSetTitle', title: 'A loaded'}, 0);
+  app.postTitle(0, 'A loaded');
   assert.deepEqual(app.titles(), ['A loaded', 'B', 'C']);
   assert.deepEqual(app.labels(), ['A loaded', 'B', 'C']);
   assert.deepEqual(savedTabs(storage).map(tab => tab.title), ['A loaded', 'B', 'C']);
@@ -460,6 +472,36 @@ test('same-origin iframe navigation refreshes persistence, restore and URL dedup
   app.open(createURL, 'Purchase again');
   assert.equal(app.count(), 2);
   assert.deepEqual(savedTabs(storage).map(tab => tab.url), [listURL, createURL]);
+});
+
+test('return notification reuses a saved Cyrillic card across URL encodings and case', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  const id = '00000000-0000-0000-0000-000000000024';
+  const widgetURL = '/ui/document/' + encodeURIComponent('А_Задача').toLowerCase() + '/' + id;
+  const notificationURL = '/ui/document/' + encodeURIComponent('а_задача') + '/' + id;
+  const task = app.open(widgetURL, 'Task');
+  app.markDirty(0);
+  // A saved form reports the entity spelling used by the server. The iframe
+  // and its unsaved values must survive a return command from another form.
+  app.navigate(0, '/ui/document/' + encodeURIComponent('А_Задача') + '/' + id + '?_ob_conceal=synthetic-form-token');
+  app.open('/ui/processor/Search', 'Search');
+  app.post({source: 'obOpenTab', url: notificationURL, title: 'Task'}, 1);
+  assert.equal(app.count(), 2, 'return opened another task document');
+  assert.equal(app.activeIndex(), 0);
+  assert.strictEqual(app.open(notificationURL, 'Task'), task);
+  assert.equal(task.dirty, true, 'return lost the edit state');
+  assert.ok(savedTabs(storage)[0].url.endsWith('?_ob_conceal=synthetic-form-token'), 'return replaced the live form context');
+});
+
+test('same record with distinct parameters, fragments or an explicit duplicate keeps separate tabs', () => {
+  const app = shell(new FakeStorage());
+  const base = '/ui/document/' + encodeURIComponent('А_Задача') + '/24';
+  app.open(base + '?mode=one', 'First');
+  app.open(base + '?mode=two', 'Other parameters');
+  app.open(base + '?mode=one#details', 'Other fragment');
+  app.open(base + '?mode=one', 'Explicit duplicate', {allowDup: true});
+  assert.equal(app.count(), 4);
 });
 
 test('history replacement refreshes persistence, restore and URL deduplication without iframe load', () => {
@@ -906,7 +948,7 @@ test('open-access deployment preserves F5 and is discarded on the first authenti
 // перезагрузка теряла введённое в незаписанных формах (браузер спрашивал
 // «Уверены, что хотите закрыть страницу?»). Оболочка берёт страницу раздела
 // фоном и подменяет строку разделов, боковое меню и рабочий стол.
-function sectionShell({fetchImpl} = {}) {
+function sectionShell({fetchImpl, initialState = null} = {}) {
   const storage = new FakeStorage();
   const elements = {};
   for (const id of ['ob-tabstrip', 'ob-tabbody', 'ob-tabempty', 'ob-tabhome', 'ob-widget-charts']) {
@@ -971,14 +1013,15 @@ function sectionShell({fetchImpl} = {}) {
   const documentListeners = new Map();
   const windowListeners = new Map();
   const pushed = [];
-  const location = {origin: 'http://127.0.0.1:8080', pathname: '/ui/app', search: '?home=1', href: '/ui/app?home=1'};
+  const guards = [];
+  const location = {origin: 'http://127.0.0.1:8080', pathname: '/ui/app', search: '?home=1', hash: '', href: '/ui/app?home=1'};
   const setLocation = url => {
     const u = new URL(url, location.origin);
     location.pathname = u.pathname;
     location.search = u.search;
     location.href = u.pathname + u.search;
   };
-  const calls = {nav: [], dashboard: 0};
+  const calls = {nav: [], dashboard: 0, forward: 0};
   const document = {
     body: new Element('body'),
     readyState: 'complete',
@@ -999,7 +1042,12 @@ function sectionShell({fetchImpl} = {}) {
     URL,
     URLSearchParams,
     DOMParser: FakeDOMParser,
-    history: {pushState(state, title, url) { pushed.push(url); setLocation(url); }},
+    // Защитная запись оболочки (obGuard) — отдельно от переходов разделов.
+    history: {state: initialState, replaceState(state) { this.state = state; }, forward() { calls.forward++; }, pushState(state, title, url) {
+      this.state = state;
+      if (state && state.obGuard) guards.push(url); else pushed.push(url);
+      setLocation(url);
+    }},
     fetch(url, options) {
       fetched.push({url, options});
       if (fetchImpl) return fetchImpl(url);
@@ -1031,10 +1079,14 @@ function sectionShell({fetchImpl} = {}) {
       for (const listener of documentListeners.get('click') || []) listener(event);
       return event;
     },
-    popstate(url) {
+    // Возврат к записи раздела (её положила сама оболочка) — state obSection;
+    // Входная граница имеет отдельную метку; фильтры могут иметь пустой state.
+    popstate(url, state = {obSection: true}) {
       setLocation(url);
-      for (const listener of windowListeners.get('popstate') || []) listener({});
+      context.history.state = state;
+      for (const listener of windowListeners.get('popstate') || []) listener({state});
     },
+    guards() { return guards.slice(); },
     tabCount() { return elements['ob-tabstrip'].children.length; },
     markDirty(index) {
       const frame = elements['ob-tabbody'].children.filter(element => element.tagName === 'IFRAME')[index];
@@ -1044,6 +1096,31 @@ function sectionShell({fetchImpl} = {}) {
     },
   };
 }
+
+test('«Назад» до входной границы идёт вперёд, сохраняя историю и незаписанную вкладку', async () => {
+  const app = sectionShell();
+  app.context.obOpenTab('/ui/document/Ордер/new', 'Insert');
+  app.markDirty(0);
+  assert.deepEqual(app.guards(), ['/ui/app?home=1']);
+  app.popstate('/ui/app?home=1', {obShellBoundary: true});
+  await app.settle();
+  assert.equal(app.calls.forward, 1);
+  assert.deepEqual(app.guards(), ['/ui/app?home=1'], 'новая запись обрезала бы историю вперёд');
+  assert.equal(app.fetched.length, 0);
+  assert.equal(app.tabCount(), 1);
+  for (const state of [null, {}, {obGuard: true}, {obWidgetFilters: true}]) {
+    app.popstate('/ui/app?home=1', state);
+    await app.settle();
+  }
+  assert.equal(app.guards().length, 1, 'записи внутри оболочки не заменяются защитой');
+  assert.equal(app.calls.forward, 1);
+});
+
+test('перезагрузка записи фильтра не добавляет новую границу истории', () => {
+  const app = sectionShell({initialState: {obWidgetFilters: true}});
+  assert.equal(app.guards().length, 0);
+  assert.equal(app.context.history.state.obWidgetFilters, true);
+});
 
 test('раздел меняется без перезагрузки: незаписанная вкладка остаётся', async () => {
   const app = sectionShell();
@@ -1269,4 +1346,20 @@ test('a waiting close belongs to the original Document even when its replacement
   app.replaceWithoutLoad(0, 'http://127.0.0.1:8080/ui/document/call/42');
   assert.equal(app.count(), 1);
   assert.equal(app.posted(0).length, 0);
+});
+
+
+test('title metadata rejects missing, wrong and stale document generations', () => {
+  const storage = new FakeStorage();
+  const app = shell(storage);
+  app.open('/ui/a', 'A');
+  const url = 'http://127.0.0.1:8080/ui/a';
+  app.post({source:'obSetTitle',title:'missing',url},0);
+  app.post({source:'obSetTitle',title:'wrong',url,documentToken:'wrong'},0);
+  app.post({source:'obSetTitle',title:'missing URL',documentToken:'initial-document'},0);
+  app.installManagedDocument(0,'next-document',()=>true);
+  app.post({source:'obSetTitle',title:'stale',url,documentToken:'initial-document'},0);
+  assert.deepEqual(app.titles(),['A']);
+  app.postTitle(0,'current');
+  assert.deepEqual(app.titles(),['current']);
 });

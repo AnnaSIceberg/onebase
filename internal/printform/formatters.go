@@ -51,14 +51,14 @@ func ApplyFormat(value any, spec string) string {
 
 func formatDate(v any) string {
 	if t, ok := toTime(v); ok {
-		return t.Format("02.01.2006")
+		return t.In(time.Local).Format("02.01.2006")
 	}
 	return anyToString(v)
 }
 
 func formatDateTime(v any) string {
 	if t, ok := toTime(v); ok {
-		return t.Format("02.01.2006 15:04")
+		return t.In(time.Local).Format("02.01.2006 15:04")
 	}
 	return anyToString(v)
 }

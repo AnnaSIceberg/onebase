@@ -61,9 +61,53 @@ func sourceMeta(kind, name, tablePart string, lookup func(kind, name string) *me
 // QueryMaskPlanFor строит план маскирования результата скомпилированного
 // запроса для пользователя u. lookup разрешает метаданные объекта-источника.
 func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity) QueryMaskPlan {
-	masked, columns, fieldColumns := maskedSourceFields(u, res.Sources, lookup)
+	return queryMaskPlanFor(u, res, lookup, false)
+}
+
+func queryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity, reportOutput bool) QueryMaskPlan {
+	// Unknown/ambiguous metadata must not erase default PII, including outside
+	// reports. Known ordinary sources keep their existing policy below.
+	for _, src := range res.Sources {
+		if sourceMeta(src.Kind, src.Name, src.TablePart, lookup) == nil {
+			name := src.Name
+			if strings.TrimSpace(name) == "" {
+				name = "неизвестный источник"
+			}
+			return QueryMaskPlan{Denied: name}
+		}
+	}
+	masked, columns, fieldColumns := maskedSourceFieldsWithOutput(u, res.Sources, lookup, reportOutput)
 	if len(masked) == 0 {
 		return QueryMaskPlan{}
+	}
+	// blocking — поля, чьё чтение вне простой колонки выборки отклоняет запрос.
+	// В обычном запросе это вся маска. В отчёте маска шире: она скрывает и
+	// представления (Наименование/Номер/Код) сущности с ПДн, но сами
+	// представления не ПДн, а имя без источника совпадает с представлением
+	// любой другой таблицы запроса. Поэтому отказ вызывают только pii/report_pii
+	// и ролевая маска, а представления на выходе по-прежнему скрываются.
+	//
+	// Ролевая маска (FieldAccess) в отчёте действует по прежним правилам
+	// обычного запроса: отбор по ней — отказ (план 88E). Смягчение касается
+	// только обязательной политики ПДн отчёта.
+	blocking := masked
+	var roleMasked map[string]FieldDecision
+	if reportOutput {
+		blocking = reportBlockingFields(u, res.Sources, lookup, masked)
+		roleMasked, _, _ = maskedSourceFieldsWithOutput(u, res.Sources, lookup, false)
+		if denied := deniedReportOutput(res, blocking); denied != "" {
+			return QueryMaskPlan{Denied: denied}
+		}
+		if !res.Projection.Simple {
+			for _, field := range res.Projection.UnmaskableFields {
+				if _, ok := roleMasked[fieldKey(field)]; ok {
+					return QueryMaskPlan{Denied: field}
+				}
+			}
+			// ПДн до результата не доходят: маскировать нечего. Ролевая маска
+			// на выборке несопоставимого запроса — прежний отказ.
+			return QueryMaskPlan{Denied: DeniedMaskedColumn(u, res.Sources, res.ProjectionFields, lookup)}
+		}
 	}
 	if !res.Projection.Simple {
 		// Подзапрос/ОБЪЕДИНИТЬ: сопоставить элемент выборки с колонкой
@@ -82,6 +126,20 @@ func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 	// его не защищает — значение либо перебирается условием, либо уже свёрнуто.
 	// Хвост запроса ссылается на колонку и по выходному алиасу, и по номеру —
 	// оба варианта дают тот же оракул, что и ссылка по имени поля.
+	searchable := searchableMaskedFields(u, res.Sources, lookup)
+	if reportOutput {
+		// Disclosure rights apply to ordinary queries, never to mandatory
+		// report restrictions or predicates over protected report inputs.
+		searchable = nil
+	}
+	if reportOutput {
+		// Отбор без параметра, соединение, группировка и сортировка по ПДн в
+		// тексте отчёта (конфигурация, а не ввод пользователя) значения не
+		// выводят; условие с параметром и вывод проверены deniedReportOutput,
+		// простая колонка маскируется ниже. Пользовательские отборы по ПДн
+		// отсекает ReportOutputFilterAllowed. Ролевая маска — как раньше.
+		blocking = roleMasked
+	}
 	aliasFields := map[string][]string{}
 	for _, col := range res.Projection.Columns {
 		if col.Output != "" && len(col.Fields) > 0 {
@@ -89,11 +147,11 @@ func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 		}
 	}
 	for _, name := range res.Projection.UnmaskableFields {
-		if _, ok := masked[fieldKey(name)]; ok {
+		if _, ok := blocking[fieldKey(name)]; ok && !searchable[fieldKey(name)] {
 			return QueryMaskPlan{Denied: name}
 		}
 		if fields, ok := aliasFields[fieldKey(name)]; ok {
-			if denied, hit := firstMaskedField(masked, fields); hit {
+			if denied, hit := firstMaskedField(blocking, fields); hit && !searchable[fieldKey(denied)] {
 				return QueryMaskPlan{Denied: denied}
 			}
 		}
@@ -103,12 +161,12 @@ func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 			continue
 		}
 		col := res.Projection.Columns[n-1]
-		if col.Star {
+		if col.Star && len(blocking) > 0 {
 			// «ВЫБРАТЬ * … УПОРЯДОЧИТЬ ПО 1»: какая колонка таблицы окажется
 			// первой, разбор не знает — путь fail-closed.
 			return QueryMaskPlan{Denied: anyMaskedName(masked)}
 		}
-		if denied, hit := firstMaskedField(masked, col.Fields); hit {
+		if denied, hit := firstMaskedField(blocking, col.Fields); hit && !searchable[fieldKey(denied)] {
 			return QueryMaskPlan{Denied: denied}
 		}
 	}
@@ -228,8 +286,8 @@ func applyDecision(row map[string]any, key string, dec FieldDecision) {
 // имени поля и, отдельно, по имени колонки таблицы (для проекции «*»). Третья
 // карта — обратная: логическое имя поля → его физические колонки, чтобы явную
 // проекцию ссылки сопоставлять с той же колонкой, которую покрывает «*».
-func maskedSourceFields(u *auth.User, sources []query.SourceRef, lookup func(kind, name string) *metadata.Entity) (byField, byColumn map[string]FieldDecision, fieldColumns map[string][]string) {
-	if u == nil || (u.IsAdmin && !MaskAdmin()) {
+func maskedSourceFieldsWithOutput(u *auth.User, sources []query.SourceRef, lookup func(kind, name string) *metadata.Entity, reportOutput bool) (byField, byColumn map[string]FieldDecision, fieldColumns map[string][]string) {
+	if !reportOutput && (u == nil || (u.IsAdmin && !MaskAdmin())) {
 		return nil, nil, nil
 	}
 	byField = map[string]FieldDecision{}
@@ -247,7 +305,11 @@ func maskedSourceFields(u *auth.User, sources []query.SourceRef, lookup func(kin
 		if lookup != nil {
 			meta = sourceMeta(src.Kind, src.Name, src.TablePart, lookup)
 		}
-		for field, dec := range FieldDecisions(u, src.Kind, src.Name, meta) {
+		decisions := FieldDecisions(u, src.Kind, src.Name, meta)
+		if reportOutput {
+			decisions = ReportOutputFieldDecisions(u, src.Kind, src.Name, meta)
+		}
+		for field, dec := range decisions {
 			put(byField, field, dec)
 			if f, ok := concreteMetaField(meta, field); ok {
 				col := metadata.ColumnName(f)
@@ -414,6 +476,40 @@ func ambiguousMaskedOutput(p query.ProjectionPlan, masked, columns map[string]Fi
 	return denied, denied != ""
 }
 
+// searchableMaskedFields — поля под маской, по которым пользователю ВСЁ РАВНО
+// можно отбирать: у его роли есть право disclose на этот источник.
+//
+// Запрет отбора по защищённому полю защищает от подбора значения по ответу
+// («оракул»). Но тому, кто и так вправе запросить полное значение кнопкой
+// «показать» (право disclose, план 88 + CC-SEC-004), подбор ничего нового не
+// даёт — зато без отбора он не может сделать свою работу: оператор ищет заявку
+// по номеру телефона, который ему только что назвал клиент.
+//
+// Вывод при этом остаётся замаскированным: право разрешает ИСКАТЬ, а не
+// ЧИТАТЬ столбцом.
+func searchableMaskedFields(u *auth.User, sources []query.SourceRef, lookup func(kind, name string) *metadata.Entity) map[string]bool {
+	if u == nil {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, src := range sources {
+		if !u.Has(src.Kind, src.Name, "disclose") {
+			continue
+		}
+		var meta *metadata.Entity
+		if lookup != nil {
+			meta = lookup(src.Kind, src.Name)
+		}
+		for field := range FieldDecisions(u, src.Kind, src.Name, meta) {
+			out[fieldKey(field)] = true
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // firstMaskedField возвращает первое из полей, на которое стоит маска.
 func firstMaskedField(masked map[string]FieldDecision, fields []string) (string, bool) {
 	for _, field := range fields {
@@ -422,6 +518,94 @@ func firstMaskedField(masked map[string]FieldDecision, fields []string) (string,
 		}
 	}
 	return "", false
+}
+
+// deniedReportOutput — отказ обязательной политики отчёта: защищённое поле
+// сравнивается с параметром или его значение доходит до колонки результата, где
+// маска его не закроет. Значение
+// прослеживается через алиасы подзапросов (Projection.Lineage) до SELECT
+// результата. Простая ссылка на поле в простом запросе маскируется и отказа не
+// даёт; выражение над защищённым значением, любая такая колонка подзапроса/
+// ОБЪЕДИНИТЬ и «*» в несопоставимом запросе — отказ. Источник с ПДн, из
+// которого в результат идут только незащищённые поля, отчёт не запрещает.
+func deniedReportOutput(res query.Result, blocking map[string]FieldDecision) string {
+	if len(blocking) == 0 {
+		return ""
+	}
+	// Условие по защищённому полю с параметром — оракул перебора: значение
+	// задаёт пользователь, ответ виден по составу строк. Право disclose и
+	// маска на выходе его не закрывают.
+	for _, name := range res.Projection.ParamPredicateFields {
+		if _, ok := blocking[fieldKey(name)]; ok {
+			return name
+		}
+	}
+	tainted := make(map[string]bool, len(blocking))
+	for key := range blocking {
+		tainted[key] = true
+	}
+	taintedUse := func(line query.ProjectionLineage) string {
+		for _, name := range line.Uses {
+			if tainted[fieldKey(name)] {
+				return name
+			}
+		}
+		return ""
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, line := range res.Projection.Lineage {
+			if line.Output == "" || tainted[fieldKey(line.Output)] || taintedUse(line) == "" {
+				continue
+			}
+			tainted[fieldKey(line.Output)] = true
+			changed = true
+		}
+	}
+	for _, line := range res.Projection.Lineage {
+		if !line.Result {
+			continue
+		}
+		if line.Star {
+			if !res.Projection.Simple {
+				return anyMaskedName(blocking)
+			}
+			continue
+		}
+		name := taintedUse(line)
+		if name == "" || (res.Projection.Simple && line.Plain) {
+			continue
+		}
+		return name
+	}
+	return ""
+}
+
+// reportBlockingFields сужает маску отчёта до полей, чьё чтение запрещено:
+// pii/report_pii источника и ролевая маска пользователя.
+func reportBlockingFields(u *auth.User, sources []query.SourceRef, lookup func(kind, name string) *metadata.Entity, masked map[string]FieldDecision) map[string]FieldDecision {
+	out := map[string]FieldDecision{}
+	keep := func(field string) {
+		key := fieldKey(field)
+		if dec, ok := masked[key]; ok {
+			out[key] = dec
+		}
+	}
+	for _, src := range sources {
+		meta := sourceMeta(src.Kind, src.Name, src.TablePart, lookup)
+		for field := range FieldDecisions(u, src.Kind, src.Name, meta) {
+			keep(field)
+		}
+		if meta == nil {
+			continue
+		}
+		for _, f := range meta.Fields {
+			if f.PII || f.ReportPII {
+				keep(f.Name)
+			}
+		}
+	}
+	return out
 }
 
 // anyMaskedName — имя защищённого поля для сообщения об отказе, когда конкретную

@@ -85,7 +85,7 @@ func (a *SpreadsheetDocumentArea) setParameter(name string, value any) {
 		return
 	}
 	cell := a.Area.GetOrCreateCell(row-1, col-1)
-	cell.Text = strArg([]any{value}, 0)
+	cell.Text = cellText(value)
 	cell.Value = value
 }
 
@@ -224,7 +224,7 @@ func (p *AreaParameters) Set(field string, v any) {
 	found := false
 	for _, cell := range p.area.Area.Cells {
 		if cell.ParameterName != "" && strings.EqualFold(cell.ParameterName, field) {
-			cell.Text = strArg([]any{v}, 0)
+			cell.Text = cellText(v)
 			cell.Value = v
 			found = true
 		}
@@ -376,7 +376,7 @@ func (d *SpreadsheetDocument) CallMethod(name string, args []any) any {
 		return d.area(args)
 	case "получитьобласть", "getarea":
 		if len(args) > 0 {
-			return d.getNamedArea(strArg(args, 0))
+			return areaValue(d.getNamedArea(strArg(args, 0)), strArg(args, 0))
 		}
 	case "показать", "show":
 		d.show()
@@ -724,7 +724,7 @@ func (w *SpreadsheetDocumentCellWrapper) Set(field string, v any) {
 		w.cell.Text = strArg([]any{v}, 0)
 	case "значение", "value":
 		w.cell.Value = v
-		w.cell.Text = strArg([]any{v}, 0)
+		w.cell.Text = cellText(v)
 	case "ширина", "width":
 		w.cell.Width = toFloatOr0(v)
 	case "высота", "height":
@@ -768,4 +768,27 @@ func NewSpreadsheetFunctions() map[string]any {
 		"__factory_КнигаТабличныхДокументов": newSpreadsheetWorkbook,
 		"__factory_SpreadsheetWorkbook":      newSpreadsheetWorkbook,
 	}
+}
+
+// cellText — текст значения параметра ячейки: числовой ноль, как в 1С, пуст
+// (ячейка без формата не показывает «0»); остальное — как strArg.
+func cellText(v any) string {
+	if _, isString := v.(string); !isString {
+		if f, ok := toFloat(v); ok && isExactZero(v, f) {
+			return ""
+		}
+	}
+	return strArg([]any{v}, 0)
+}
+
+// isExactZero — значение точно ноль: по десятичной записи, а не по float
+// (строка «1e-4096» во float обнуляется, но нулём не является). Булево — не число.
+func isExactZero(v any, f float64) bool {
+	if _, isBool := v.(bool); isBool {
+		return false
+	}
+	if d, ok := toDecimal(v); ok {
+		return d.IsZero()
+	}
+	return f == 0
 }

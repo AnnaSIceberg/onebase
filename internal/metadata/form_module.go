@@ -10,22 +10,31 @@ import (
 // FormEventType represents types of form events (1C-style)
 type FormEventType string
 
+// FormEventAfterOpen — отложенная загрузка данных группы или таблицы: клиент
+// шлёт её после ответа ПриОткрытии мимо очереди событий, с индикатором на
+// элементе; ответ несёт только изменённое обработчиком.
+const FormEventAfterOpen FormEventType = "ПослеОткрытия"
+
 const (
-	FormEventOnOpen         FormEventType = "ПриОткрытии"        // OnOpen (client-side, after render)
-	FormEventOnReadAtServer FormEventType = "ПриЧтенииНаСервере" // OnReadAtServer (server-side, before render → может запретить чтение)
-	FormEventBeforeWrite    FormEventType = "ПередЗаписью"       // BeforeWrite
-	FormEventOnWrite        FormEventType = "ПриЗаписи"          // OnWrite
-	FormEventAfterWrite     FormEventType = "ПослеЗаписи"        // AfterWrite
-	FormEventBeforeClose    FormEventType = "ПередЗакрытием"     // BeforeClose
-	FormEventOnClose        FormEventType = "ПриЗакрытии"        // OnClose
-	FormEventOnActivate     FormEventType = "ПриАктивации"       // OnActivate
-	FormEventItemChoice     FormEventType = "ОбработкаВыбора"    // ItemChoice
-	FormEventStartChoice    FormEventType = "НачалоВыбора"       // StartChoice
-	FormEventOnChange       FormEventType = "ПриИзменении"       // OnChange
-	FormEventOnCreate       FormEventType = "ПриСоздании"        // OnCreate
-	FormEventBeforeDelete   FormEventType = "ПередУдалением"     // BeforeDelete
-	FormEventOnDelete       FormEventType = "ПриУдалении"        // OnDelete
-	FormEventAfterDelete    FormEventType = "ПослеУдаления"      // AfterDelete
+	FormEventOnOpen FormEventType = "ПриОткрытии" // OnOpen (client-side, after render)
+	// FormEventOnCreateAtServer — ПриСозданииНаСервере: серверный обработчик
+	// формы при GET, до отрисовки; реквизиты формы, заполненные им, участвуют в
+	// hidden_when/readonly_when первой отрисовки (form_hidden_until.go).
+	FormEventOnCreateAtServer FormEventType = "ПриСозданииНаСервере"
+	FormEventOnReadAtServer   FormEventType = "ПриЧтенииНаСервере" // OnReadAtServer (server-side, before render → может запретить чтение)
+	FormEventBeforeWrite      FormEventType = "ПередЗаписью"       // BeforeWrite
+	FormEventOnWrite          FormEventType = "ПриЗаписи"          // OnWrite
+	FormEventAfterWrite       FormEventType = "ПослеЗаписи"        // AfterWrite
+	FormEventBeforeClose      FormEventType = "ПередЗакрытием"     // BeforeClose
+	FormEventOnClose          FormEventType = "ПриЗакрытии"        // OnClose
+	FormEventOnActivate       FormEventType = "ПриАктивации"       // OnActivate
+	FormEventItemChoice       FormEventType = "ОбработкаВыбора"    // ItemChoice
+	FormEventStartChoice      FormEventType = "НачалоВыбора"       // StartChoice
+	FormEventOnChange         FormEventType = "ПриИзменении"       // OnChange
+	FormEventOnCreate         FormEventType = "ПриСоздании"        // OnCreate
+	FormEventBeforeDelete     FormEventType = "ПередУдалением"     // BeforeDelete
+	FormEventOnDelete         FormEventType = "ПриУдалении"        // OnDelete
+	FormEventAfterDelete      FormEventType = "ПослеУдаления"      // AfterDelete
 	// События для табличных частей (замечание #15): даём YAML-конфигу
 	// возможность их объявлять. UI дёргает их generic-маршрутом через
 	// handleManagedFormEvent (resolveHandlerProc + interp.Run) — кастомные
@@ -73,12 +82,19 @@ const (
 	// переменная ТекущаяСтраница; сервер принимает только страницу этого же
 	// набора.
 	FormEventOnPageChange FormEventType = "ПриСменеСтраницы" // OnCurrentPageChange
-	FormEventDrilldown    FormEventType = "ОбработкаРасшифровки"
+	// ОбработкаОповещения — открытая форма получила оповещение, отправленное
+	// серверной функцией Оповестить(ИмяСобытия, Параметр, Источник) (как
+	// Оповестить/ОбработкаОповещения 1С). Обработчик выполняется на ТЕКУЩЕМ
+	// состоянии формы, с несохранёнными правками, и получает переменные
+	// ИмяСобытия, Параметр, Источник; изменения применяются к форме как после
+	// любого события — без записи и без закрытия.
+	FormEventNotify    FormEventType = "ОбработкаОповещения" // NotificationProcessing
+	FormEventDrilldown FormEventType = "ОбработкаРасшифровки"
 )
 
 var knownFormEventTypes = map[FormEventType]bool{
 	FormEventDrilldown: true,
-	FormEventOnOpen:    true, FormEventOnReadAtServer: true,
+	FormEventAudioPlay: true, FormEventOnOpen: true, FormEventAfterOpen: true, FormEventOnReadAtServer: true, FormEventOnCreateAtServer: true,
 	FormEventBeforeWrite: true, FormEventOnWrite: true, FormEventAfterWrite: true,
 	FormEventBeforeClose: true, FormEventOnClose: true, FormEventOnActivate: true,
 	FormEventItemChoice: true, FormEventStartChoice: true, FormEventOnChange: true,
@@ -92,6 +108,7 @@ var knownFormEventTypes = map[FormEventType]bool{
 	FormEventOnAnswer:     true,
 	FormEventOnPageChange: true,
 	FormEventBeforePost:   true,
+	FormEventNotify:       true,
 }
 
 // formTablePartContextVars — имена, которые платформа инжектирует в обработчик
@@ -130,6 +147,11 @@ func IsKnownFormEventType(event FormEventType) bool {
 // FormElementType represents types of form elements
 type FormElementType string
 
+// FormElementAudio is a lazy, authenticated attachment player. Its Play event
+// prepares an attachment only when the user requests playback.
+const FormElementAudio FormElementType = "Аудиоплеер"
+
+const FormEventAudioPlay FormEventType = "Воспроизведение"
 const FormElementSpreadsheet FormElementType = "ПолеТабличногоДокумента"
 
 const (
@@ -169,7 +191,7 @@ var knownFormElementTypes = map[FormElementType]bool{
 	FormElementInputList: true, FormElementDatePicker: true, FormElementFormField: true,
 	FormElementTablePart: true, FormElementColumn: true, FormElementCommandBar: true,
 	FormElementPicture: true, FormElementCommandBarButton: true,
-	FormElementCodeField: true,
+	FormElementCodeField: true, FormElementAudio: true,
 }
 
 // IsKnownFormElementType сообщает, поддерживается ли вид элемента формы движком.
@@ -199,7 +221,25 @@ const (
 	FormLayoutManaged = "managed"
 )
 
+// FormPlacementHeader — элемент в строке команд документа перед «? Справка»
+// (FormElement.Placement); FormPlacementHeaderEnd — после «? Справка».
+const (
+	FormPlacementHeader    = "header"
+	FormPlacementHeaderEnd = "header_end"
+)
+
+// FormHeaderPlaced — элемент рисуется в строке команд документа: кнопка, поле
+// ввода или флажок с placement: header/header_end. Поле там только для
+// чтения: «Подпись: значение» одной строкой.
+func FormHeaderPlaced(el *FormElement) bool {
+	if el == nil || (el.Placement != FormPlacementHeader && el.Placement != FormPlacementHeaderEnd) {
+		return false
+	}
+	return el.Kind == FormElementAudio || el.Kind == FormElementButton || el.Kind == FormElementField || el.Kind == FormElementCheckbox
+}
+
 // FormElement represents a single form element (field, button, etc.)
+
 type FormElement struct {
 	ID   string          `yaml:"id,omitempty"`
 	Name string          `yaml:"name,omitempty"`
@@ -243,8 +283,42 @@ type FormElement struct {
 	// и половина кнопок читается как отдельный блок. По умолчанию перенос, как
 	// было.
 	ScrollX    bool   `yaml:"scroll_x,omitempty"`
-	Background string `yaml:"background,omitempty"` // фон контейнера; читается только у ГруппаФормы (#1547), цвет проверяет csssafe.Color
-	ReadOnly   bool   `yaml:"readonly,omitempty"`   // только чтение
+	Background string `yaml:"background,omitempty"` // фон: ГруппаФормы (#1547), СтраницыФормы (весь набор с полосой закладок), Кнопка, у ПолеВвода — фон самого ввода; цвет проверяет csssafe.Color
+	// BorderColor — цвет рамки ввода ПолеВвода (вместе с background выделяет
+	// поле, как в ТЗ форм колл-центра); цвет проверяет csssafe.Color.
+	BorderColor string `yaml:"border_color,omitempty"`
+	// HeaderBackground / HeaderBorderColor — фон и цвет границы шапки таблицы
+	// ТабличнаяЧасть: на цветном фоне формы шапка иначе сливается со строками.
+	// Цвета проверяет csssafe.Color.
+	HeaderBackground  string `yaml:"header_background,omitempty"`
+	HeaderBorderColor string `yaml:"header_border_color,omitempty"`
+	ReadOnly          bool   `yaml:"readonly,omitempty"` // только чтение
+	// Frame — рамка ГруппаФормы: frame: false убирает рамку, внутренние
+	// отступы и заголовок, оставляя только раскладку детей. Так собирают
+	// строку полей внутри раздела (как в карточке 1С: рамка у раздела, а не у
+	// каждой строки). nil и true — рамка, как было.
+	Frame *bool `yaml:"frame,omitempty"`
+	// Grow — элемент горизонтальной группы занимает остаток её строки
+	// (flex:1 1 0): рядом с соседями, а не отдельной строкой, как stretch.
+	Grow bool `yaml:"grow,omitempty"`
+	// TitleHidden — у ТабличнаяЧасть не рисовать заголовок над таблицей: без
+	// title платформа подставляет имя таблицы, а таблице-выдаче (результат
+	// поиска) подпись не нужна и стоит строки высоты формы.
+	TitleHidden bool `yaml:"title_hidden,omitempty"`
+	// TextColor — цвет текста поля ввода или надписи (подпись и значение,
+	// у нередактируемого поля тоже); цвет проверяет csssafe.Color, как у
+	// background. Importance — смысловое выделение вместо конкретного цвета:
+	// error — красный текст ошибки (например, «Не отправлена в 1С»). Если
+	// заданы оба, text_color сильнее. См. FormElementTextColorCSS.
+	TextColor  string `yaml:"text_color,omitempty"`
+	Importance string `yaml:"importance,omitempty"`
+	// TitleColor / TitleBold — у kind: Страница: цвет и жирность заголовка её
+	// закладки; цвет — и у нижней черты активной закладки. TabTitlesBold — у
+	// СтраницыФормы: все заголовки набора жирные и крупнее (15px). Цвет
+	// проверяет csssafe.Color, недопустимый игнорируется.
+	TitleColor    string `yaml:"title_color,omitempty"`
+	TitleBold     bool   `yaml:"title_bold,omitempty"`
+	TabTitlesBold bool   `yaml:"tab_titles_bold,omitempty"`
 	// EditableAdminOnly — поле редактирует только администратор, остальным оно
 	// нередактируемо всегда. В отличие от ReadOnlyWhen условие тут не от данных
 	// записи, а от того, кто смотрит, поэтому вычисляется на сервере при
@@ -287,7 +361,11 @@ type FormElement struct {
 	NoGrid    bool   `yaml:"no_grid,omitempty"`  // отключить SlickGrid у ТЧ (вернуть простую таблицу)
 	AutoSum   bool   `yaml:"auto_sum,omitempty"` // ТЧ: авто Сумма = Количество × Цена по именам колонок — opt-in (#215.1)
 	Hint      string `yaml:"hint,omitempty"`     // всплывающая подсказка
-	Mask      string `yaml:"mask,omitempty"`     // регулярное выражение проверки (HTML pattern), НЕ шаблон ввода
+	// HintFrom — всплывающая подсказка из реквизита формы (`hint_from`): текст
+	// берётся из значения реквизита при отрисовке и после каждого события
+	// формы. Пустое значение — статический hint. Как title_from у колонок ТЧ.
+	HintFrom string `yaml:"hint_from,omitempty"`
+	Mask     string `yaml:"mask,omitempty"` // регулярное выражение проверки (HTML pattern), НЕ шаблон ввода
 	// InputMask — настоящая маска ввода: заполнители подставляются по мере
 	// набора, разделители ставятся сами (#763, п. 3). Отдельный ключ, потому что
 	// `mask` — это regexp, и переиспользовать его под шаблон значило бы сломать
@@ -321,12 +399,27 @@ type FormElement struct {
 	// считает недопустимым. Так ведёт себя населённый пункт адресного
 	// классификатора — у города есть улицы, поэтому он группа.
 	ChoiceFolders bool `yaml:"choice_folders,omitempty"`
+	// ChoiceShowDeleted — показывать ли в выборе этого поля помеченные на
+	// удаление элементы (`choice_show_deleted`); перекрывает ключ реквизита и
+	// справочника. nil — как у реквизита.
+	ChoiceShowDeleted *bool `yaml:"choice_show_deleted,omitempty"`
+	// ChoiceStyleParams — флаги оформления строк выбора (choice_row_style
+	// справочника, when_param) из данных этой формы: «имя → путь», путь —
+	// Объект.Реквизит или Объект.Ссылка.БулевРеквизит (как источник
+	// choice_filter). Так подкраска брендов зависит от направления заявки.
+	ChoiceStyleParams map[string]string `yaml:"choice_style_params,omitempty"`
+	// ChoiceStyleValue — само поле показывает выбранное значение тем же
+	// оформлением, что его строка в списке выбора (choice_row_style
+	// справочника): ограниченное направление красным и т. п. Включается на
+	// поле явно: по умолчанию поля ссылок не меняют вид.
+	ChoiceStyleValue bool `yaml:"choice_style_value,omitempty"`
 	// ChoiceDropdown — разворачивать ли варианты прямо в выпадающем списке
 	// ссылочного поля. По умолчанию да: <select> получает предзагруженную
 	// страницу, и мелкий справочник выбирается одним кликом.
 	//
-	// `choice_dropdown: false` оставляет в списке плейсхолдер и текущее значение,
-	// а выбор уходит в форму подбора. Это нужно там, где предзагруженная страница
+	// `choice_dropdown: false` превращает поле в поле значения без списка:
+	// стрелки нет, щелчок, Enter, F4 и Alt+↓ открывают форму подбора, ✕ и
+	// Shift+F4 / Delete очищают. Это нужно там, где предзагруженная страница
 	// вводит в заблуждение: у большого справочника она показывает произвольные
 	// первые N записей, и оператор выбирает из них, не подозревая, что видит не
 	// весь список. Указатель отличает явное false от отсутствующего ключа.
@@ -345,11 +438,20 @@ type FormElement struct {
 	// контракт не входят. Порядок условий сохраняется для стабильного YAML
 	// round-trip, семантика списка — AND.
 	ChoiceFilter []FormChoiceCondition `yaml:"choice_filter,omitempty"`
+	// KPIChoice is an explicit managed KPI processor extension; ordinary forms
+	// retain the existing empty-source semantics of choice_filter.
+	KPIChoice *FormKPIChoice `yaml:"kpi_choice,omitempty"`
 	// Choices — декларативный список значений для выбора (аналог 1С СписокВыбора).
 	// Задаётся в .form.yaml на элементе kind: ПолеСписка; рендерер показывает
 	// <select> с этими значениями, а выбор дёргает событие ПриИзменении.
-	Choices    []FormChoice `yaml:"choices,omitempty"`
-	UnknownXML []byte       `yaml:"unknown_xml,omitempty"` // экзотический XML, сохраняется как есть
+	Choices []FormChoice `yaml:"choices,omitempty"`
+	// ChoiceFreeInput — у ПолеСписка с choices: поле ввода текста со своим
+	// выпадающим списком вариантов (1С: ПолеВвода со СписокВыбора и
+	// РедактированиеТекста). Вариант из списка и вписанный вручную текст пишутся
+	// одинаково и одинаково вызывают ПриИзменении; значение не из списка
+	// сохраняется и показывается как есть.
+	ChoiceFreeInput bool   `yaml:"choice_free_input,omitempty"`
+	UnknownXML      []byte `yaml:"unknown_xml,omitempty"` // экзотический XML, сохраняется как есть
 
 	// Набор значений Переключателя/ПолеСписка (план 71b, batch C1). Options —
 	// явный список значение→представление; для enum-поля рантайм берёт значения
@@ -382,6 +484,31 @@ type FormElement struct {
 	// Disclosure is session/form/object-bound server state, never browser input.
 	Conceal    bool   `yaml:"conceal,omitempty"`
 	RevealWhen string `yaml:"reveal_when,omitempty"`
+
+	// Rows / ShowCount / EmptyText — таблица значений формы как «выдача»
+	// (история клиента, результат поиска): ровно Rows видимых строк с
+	// закреплённой шапкой и прокруткой внутри, число записей в заголовке,
+	// надпись пустой таблицы. Действуют у ТабличнаяЧасть над реквизитом формы
+	// типа ValueTable.
+	Rows      int    `yaml:"rows,omitempty"`
+	ShowCount bool   `yaml:"show_count,omitempty"`
+	EmptyText string `yaml:"empty_text,omitempty"`
+
+	// EqualHeight — у СтраницыФормы: область страниц высотой с самую высокую
+	// страницу, переключение закладок не сдвигает то, что ниже набора.
+	EqualHeight bool `yaml:"equal_height,omitempty"`
+	// FitWindow — у СтраницыФормы: набор страниц занимает остаток высоты окна,
+	// у ГруппаФормы — высоту fit_window-набора страниц той же строки (или остаток
+	// окна), с прокруткой содержимого внутри. У СтраницыФормы:
+	// рамка формы помещается без прокрутки, длинная страница прокручивается
+	// внутри. У ТабличнаяЧасть — сетка занимает остаток высоты окна (или
+	// подогнанной страницы, на которой стоит), строки прокручиваются внутри.
+	FitWindow bool `yaml:"fit_window,omitempty"`
+
+	// Placement — где рисуется элемент: "" — в теле формы, "header" — в строке
+	// команд документа после «История», "header_end" — в ней же после
+	// «? Справка». Кнопка, ПолеВвода и Флажок (поле — только чтение).
+	Placement string `yaml:"placement,omitempty"`
 }
 
 // FormChoiceOperator — закрытый набор операторов choice_filter v1.
@@ -712,6 +839,13 @@ type FormCellStyle struct {
 }
 
 // FormModule represents a form module with event handlers
+// FormDensityCompact — плотная раскладка формы (FormModule.Density).
+const FormDensityCompact = "compact"
+
+// FormDensityDense — ещё плотнее compact (поле 25px, шрифт 12.5px, подпись
+// 10.5px): для формы, которой compact не хватает, чтобы влезть в экран.
+const FormDensityDense = "dense"
+
 type FormModule struct {
 	EntityName string                    `yaml:"entity,omitempty"`
 	Name       string                    `yaml:"name,omitempty"`
@@ -721,7 +855,7 @@ type FormModule struct {
 	Procedures map[string]*FormProcedure `yaml:"-"`
 
 	// Actions — переопределение стандартных действий формы объекта. Ключи
-	// delete/save/ok/close управляют видимостью платформенных кнопок, а
+	// delete/save/ok/close/copy управляют видимостью платформенных кнопок, а
 	// attachments — панелью вложений (plan 181C, #1621); права и серверные
 	// проверки они не ослабляют.
 	Actions map[string]*FormAction `yaml:"actions,omitempty"`
@@ -732,6 +866,7 @@ type FormModule struct {
 
 	// Поля, добавленные планом 37 для управляемых форм.
 	LayoutKind             string            `yaml:"layout_kind,omitempty"`      // "managed"|"autogen" (пусто=autogen)
+	TitleProc              string            `yaml:"title_proc,omitempty"`       // display-only function of this form
 	Title                  map[string]string `yaml:"title,omitempty"`            // локализованный заголовок формы
 	OriginalID             string            `yaml:"original_id,omitempty"`      // id корневого узла из 1С
 	Attributes             []*FormAttribute  `yaml:"attributes,omitempty"`       // реквизиты формы
@@ -764,6 +899,8 @@ type FormModule struct {
 	ListFilter []FormListCondition `yaml:"filter,omitempty"`
 	// ListProcessors adds links to runnable processors in the list toolbar.
 	ListProcessors []FormListProcessor `yaml:"list_processors,omitempty"`
+	// ListRowStyle — оформление строк формы списка (`row_style`), только kind: list.
+	ListRowStyle *FormListRowStyle `yaml:"row_style,omitempty"`
 
 	// RefCardButtonAdminOnly — кнопку «Открыть карточку» видит только
 	// администратор (#1876). Оператору справочники вести не положено, и лупа у
@@ -790,6 +927,28 @@ type FormModule struct {
 	// вводящий данные потоком (#1486). Ctrl+S, Ctrl+Enter и кнопки записи
 	// работают всегда, независимо от этого ключа.
 	EnterSubmitsForm bool `yaml:"enter_submits_form,omitempty"`
+	// Density — плотность раскладки этой формы: "" — обычная, "compact" —
+	// плотная (поле 28px, шрифт 13px, подпись 11px, меньшие отступы), "dense"
+	// — ещё плотнее (поле 25px, шрифт 12.5px, подпись 10.5px). Нужна рабочим
+	// формам, которые обязаны поместиться в экран без прокрутки, не меняя
+	// остальные страницы системы.
+	Density string `yaml:"density,omitempty"`
+
+	// TabSkipReadonly — нередактируемые поля и ячейки таблиц не входят в порядок
+	// Tab: оператор переходит только по тому, что можно ввести.
+	TabSkipReadonly bool `yaml:"tab_skip_readonly,omitempty"`
+	// Autofocus — курсор при открытии формы: "first_empty" — в первое пустое
+	// доступное поле формы, имя группы — в первое пустое поле этой группы.
+	Autofocus string `yaml:"autofocus,omitempty"`
+
+	// GroupTitles — оформление заголовков групп и таблиц этой формы:
+	// "" — обычное (полужирный серый), "bold" — жирный тёмный, как заголовки
+	// разделов в ТЗ форм колл-центра. Другие формы не меняются.
+	GroupTitles string `yaml:"group_titles,omitempty"`
+	// HeaderInline — заголовок формы и строка команд («История», печать,
+	// кнопки placement: header) одной строкой, как в карточке 1С: экономит
+	// строку высоты рабочей формы. По умолчанию — две строки, как было.
+	HeaderInline bool `yaml:"header_inline,omitempty"`
 	// OneCMeta — служебный блок, используемый только конвертером 1С,
 	// рантайм его игнорирует. Может содержать version, unknown_xml и т.п.
 	OneCMeta map[string]any `yaml:"oneC_meta,omitempty"`
@@ -827,10 +986,32 @@ type FormListProcessor struct {
 	Title map[string]string `yaml:"title,omitempty"`
 }
 
+// FormListRowStyle — оформление строк формы списка (`row_style` в блоке form:),
+// как ПриВыводеСтроки динамического списка 1С. Фон — первое совпавшее правило
+// Rules, иначе цвет из пути BackgroundFrom; жирный — по признаку из пути
+// BoldFrom. Пути — реквизиты записи, через точку по ссылкам
+// (Реклама.ЦветЗадачиВСписке.Цвет). Цвет принимается только как #RGB/#RRGGBB.
+type FormListRowStyle struct {
+	Rules          []FormListRowStyleRule `yaml:"rules,omitempty"`
+	BackgroundFrom string                 `yaml:"background_from,omitempty"`
+	ColorFrom      string                 `yaml:"color_from,omitempty"`
+	BoldFrom       string                 `yaml:"bold_from,omitempty"`
+}
+
+// FormListRowStyleRule — «значение пути равно Equals → фон Background» и/или
+// жирный шрифт.
+type FormListRowStyleRule struct {
+	Field      string `yaml:"field"`
+	Equals     string `yaml:"equals"`
+	Background string `yaml:"background,omitempty"`
+	Bold       bool   `yaml:"bold,omitempty"`
+	Color      string `yaml:"color,omitempty"`
+}
+
 // FormListCondition — одно условие постоянного отбора формы списка.
 type FormListCondition struct {
 	Field string `yaml:"field"`
-	Op    string `yaml:"op,omitempty"`    // пока только eq (умолчание)
+	Op    string `yaml:"op,omitempty"`    // eq (умолчание), ne, empty, not_empty
 	Value string `yaml:"value,omitempty"` // литерал или @ТекущийПользователь
 	// Roles — условие действует только для пользователя с одной из этих
 	// ролей; пусто — для всех. «Мои записи» нужны оператору, а сотрудник
@@ -1152,4 +1333,13 @@ func FormTitleSourceName(source string) string {
 		}
 	}
 	return name
+}
+
+// FormGroupTitlesBold — жирные тёмные заголовки групп и таблиц формы
+// (FormModule.GroupTitles).
+const FormGroupTitlesBold = "bold"
+
+// Frameless — ГруппаФормы с frame: false: без рамки, отступов и заголовка.
+func (el *FormElement) Frameless() bool {
+	return el != nil && el.Kind == FormElementGroupBox && el.Frame != nil && !*el.Frame
 }

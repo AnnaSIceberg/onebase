@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ivantit66/onebase/internal/csssafe"
 	"github.com/shopspring/decimal"
 	"github.com/xuri/excelize/v2"
 )
@@ -366,6 +367,7 @@ func xlsxCellStyle(cell *Cell) (*excelize.Style, bool) {
 	isDate := false
 	if t, ok := cell.Value.(time.Time); ok && !t.IsZero() {
 		isDate = true
+		t = t.In(time.Local)
 		if t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0 {
 			st.NumFmt = 14 // дата
 		} else {
@@ -393,7 +395,10 @@ func setXLSXValue(f *excelize.File, sheetName, ref string, cell *Cell, isDate bo
 		return f.SetCellValue(sheetName, ref, v.InexactFloat64())
 	case time.Time:
 		if isDate {
-			return f.SetCellValue(sheetName, ref, v)
+			// Excel хранит дату без зоны: пишем местные стенные часы, иначе
+			// 10.09 00:00 МСК из UTC драйвера легла бы как 09.09 21:00.
+			local := v.In(time.Local)
+			return f.SetCellValue(sheetName, ref, time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), local.Minute(), local.Second(), local.Nanosecond(), time.UTC))
 		}
 	}
 	text := cell.DisplayText()
@@ -491,6 +496,15 @@ var xlsxNamedColors = map[string]string{
 }
 
 var xlsxRGBRe = regexp.MustCompile(`^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})`)
+
+// ColorRGB returns a safe export color in RRGGBB form. Unsupported CSS and
+// transparent values return an empty string, so callers retain their defaults.
+func ColorRGB(s string) string {
+	if csssafe.Color(s) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(s)), "rgba(") {
+		return ""
+	}
+	return xlsxColor(s)
+}
 
 // xlsxColor — цвет документа (#rgb, #rrggbb, rgb(), CSS-имя) в RRGGBB; "" —
 // цвет не задан или не распознан.

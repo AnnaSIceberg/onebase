@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,12 +13,24 @@ import (
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/realtime"
+	"github.com/ivantit66/onebase/internal/storage"
 )
 
 // hubNotifier адаптирует *realtime.Hub к interpreter.Notifier: DSL-функция
 // ОтправитьУведомление(Кому, Событие, Данные) → Hub.Publish(Кому, Event{...}).
+//
+// Команды формы самому себе (ui.открытьФорму / ui.закрытьФорму из обработчика
+// формы) уходят только в оболочку, откуда пришло событие. Иначе у
+// пользователя с двумя вкладками браузера форма открывалась копией и во
+// второй — с повторным ПриОткрытии, — а закрыть копию в фоновой вкладке
+// команде было нечем, и пользователь работал в незакрытой форме.
 type hubNotifier struct {
 	hub         *realtime.Hub
+	shell       string
+	forms       *formNotifyStore
+	login       string
+	ctxSource   interpreter.CtxSource
+	commands    *uiResponseCommands
 	closeSource string
 }
 
@@ -29,24 +42,91 @@ func (n hubNotifier) Publish(target, name string, data any) {
 	if name == "ui.закрытьФорму" {
 		ev.CloseSource = n.closeSource
 	}
-	n.hub.Publish(target, ev)
-}
-
-// Only this request's opaque snapshot token can identify its originating form.
-// A missing/invalid token keeps ordinary dirty confirmation in every recipient.
-func (s *Server) bindFormCloseSource(vars map[string]any, r *http.Request) {
-	source := r.Header.Get("X-OneBase-Form-Close-Source")
-	if _, err := uuid.Parse(source); err != nil {
+	if shellScopedEvent(name) {
+		ev.CommandID = uuid.NewString()
+	}
+	if n.shell != "" && n.login != "" && target == n.login && shellScopedEvent(name) {
+		ev.Shell = n.shell
+	}
+	publish := func() {
+		n.hub.Publish(target, ev)
+		if n.login != "" && target == n.login && shellScopedEvent(name) {
+			n.commands.add(uiResponseCommand{Name: name, Data: data, CommandID: ev.CommandID, CloseSource: ev.CloseSource})
+		}
+	}
+	if n.ctxSource != nil && storage.DeferUntilTxCommit(n.ctxSource.Ctx(), publish) {
 		return
 	}
-	for key, value := range interpreter.NewNotifyFunctions(hubNotifier{hub: s.hub, closeSource: source}) {
-		vars[key] = value
+	publish()
+}
+
+type formCloseSourceKey struct{}
+
+func withFormCloseSource(r *http.Request) *http.Request {
+	source := r.Header.Get("X-OneBase-Form-Close-Source")
+	if _, err := uuid.Parse(source); err == nil {
+		return r.WithContext(context.WithValue(r.Context(), formCloseSourceKey{}, source))
 	}
+	return r
+}
+
+func formCloseSourceFrom(ctx context.Context) string {
+	source, _ := ctx.Value(formCloseSourceKey{}).(string)
+	return source
+}
+
+// shellScopedEvent — команды, которые относятся к оболочке-источнику, а не ко
+// всем сеансам пользователя. Тосты и обновление списков по-прежнему идут во
+// все оболочки: там они уместны.
+func shellScopedEvent(name string) bool {
+	return name == "ui.открытьФорму" || name == "ui.закрытьФорму"
 }
 
 // notifier возвращает издателя уведомлений для инжекции в DSL-переменные.
-func (s *Server) notifier() interpreter.Notifier {
-	return hubNotifier{hub: s.hub}
+// Адрес оболочки и логин берутся из контекста запроса: у фоновых заданий их
+// нет, и уведомление уходит всем сеансам, как раньше.
+func (s *Server) notifier(ctxSource interpreter.CtxSource) interpreter.Notifier {
+	ctx := ctxSource.Ctx()
+	n := hubNotifier{hub: s.hub, shell: shellIDFrom(ctx), ctxSource: ctxSource, commands: responseCommandsFrom(ctx), closeSource: formCloseSourceFrom(ctx)}
+	if s.hub != nil {
+		n.forms = s.formNotifies()
+	}
+	if u := auth.UserFromContext(ctx); u != nil {
+		n.login = u.Login
+	}
+	return n
+}
+
+// shellHeader — адрес оболочки в запросах формы (managed.js). Адрес — id
+// верхнего окна браузера, тот же, с которым оно подписано на /ui/events.
+const shellHeader = "X-OneBase-Shell"
+
+type shellIDKey struct{}
+
+// withShellID кладёт в контекст адрес оболочки из запроса. Адрес — случайный
+// id окна; всё, что на него не похоже, отбрасывается.
+func withShellID(ctx context.Context, raw string) context.Context {
+	if id := validShellID(raw); id != "" {
+		return context.WithValue(ctx, shellIDKey{}, id)
+	}
+	return ctx
+}
+
+func shellIDFrom(ctx context.Context) string {
+	id, _ := ctx.Value(shellIDKey{}).(string)
+	return id
+}
+
+func validShellID(raw string) string {
+	if raw == "" || len(raw) > 64 {
+		return ""
+	}
+	for _, c := range raw {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+			return ""
+		}
+	}
+	return raw
 }
 
 const (
@@ -86,8 +166,21 @@ func (s *Server) eventsStream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	lastID, _ := strconv.ParseInt(r.Header.Get("Last-Event-ID"), 10, 64)
-	_, ch, cancel := s.hub.SubscribeSince(userID, login, roles, lastID)
+	cursor := r.Header.Get("Last-Event-ID")
+	if cursor == "" {
+		cursor = r.URL.Query().Get("last_event_id")
+	}
+	lastID, parseErr := strconv.ParseInt(cursor, 10, 64)
+	if parseErr != nil || lastID < 0 {
+		lastID = 0
+	}
+	resumeProtocol := r.URL.Query().Get("resume_protocol") == "1"
+	if resumeProtocol && r.URL.Query().Get("resume") == "1" && (lastID == 0 || (r.URL.Query().Get("generation") != "" && r.URL.Query().Get("generation") != s.hub.Generation())) {
+		// Internal -1 means all still-buffered events. Authentication, current
+		// roles and shell matching stay in Hub; no replay on a fresh page.
+		lastID = -1
+	}
+	_, ch, cancel := s.hub.SubscribeShellSince(userID, login, roles, validShellID(r.URL.Query().Get("shell")), lastID)
 	defer cancel()
 
 	h := w.Header()
@@ -97,6 +190,16 @@ func (s *Server) eventsStream(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Accel-Buffering", "no") // не буферизировать за reverse-proxy (nginx)
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
+	if resumeProtocol {
+		frame, err := json.Marshal(map[string]any{"system": "stream-generation", "data": s.hub.Generation()})
+		if err != nil {
+			return
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", frame); err != nil {
+			return
+		}
+		flusher.Flush()
+	}
 
 	// Dev-режим: сервер представляется меткой своего запуска. Клиент сравнивает
 	// её с прошлой и, увидев другую, перечитывает страницу — так браузер
@@ -133,6 +236,9 @@ func (s *Server) eventsStream(w http.ResponseWriter, r *http.Request) {
 			payload := map[string]any{"name": ev.Name, "data": ev.Data, "system": ev.System}
 			if ev.CloseSource != "" {
 				payload["closeSource"] = ev.CloseSource
+			}
+			if ev.CommandID != "" {
+				payload["commandId"] = ev.CommandID
 			}
 			frame, err := json.Marshal(payload)
 			if err != nil {

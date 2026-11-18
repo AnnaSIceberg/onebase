@@ -105,6 +105,12 @@ func TestCheckFormKeyPlacementWarnsAboutIgnoredKeys(t *testing.T) {
 		{"группы у неиерархического справочника", &metadata.FormElement{
 			Kind: metadata.FormElementField, Name: "ПолеФилиал", DataPath: "Объект.Филиал", ChoiceFolders: true,
 		}, "нет иерархии"},
+		{"ввод со списком у обычного поля", &metadata.FormElement{
+			Kind: metadata.FormElementField, Name: "ПолеКомментарий", DataPath: "Объект.Комментарий", ChoiceFreeInput: true,
+		}, "choice_free_input игнорируется"},
+		{"ввод со списком без вариантов", &metadata.FormElement{
+			Kind: metadata.FormElementInputList, Name: "ПолеКомментарий", DataPath: "Объект.Комментарий", ChoiceFreeInput: true,
+		}, "choice_free_input игнорируется"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -119,6 +125,8 @@ func TestCheckFormKeyPlacementWarnsAboutIgnoredKeys(t *testing.T) {
 		&metadata.FormElement{Kind: metadata.FormElementGroupBox, Name: "Действия", Orientation: "horizontal", ScrollX: true},
 		&metadata.FormElement{Kind: metadata.FormElementButton, Name: "КнОК", Primary: true},
 		&metadata.FormElement{Kind: metadata.FormElementField, Name: "ПолеГород", DataPath: "Объект.НаселённыйПункт", ChoiceFolders: true, ChoiceDropdown: &collapsed},
+		&metadata.FormElement{Kind: metadata.FormElementInputList, Name: "ПолеВремя", DataPath: "Объект.Комментарий", ChoiceFreeInput: true,
+			Choices: []metadata.FormChoice{{Value: "8-14"}}},
 	)
 	if warns := CheckFormKeyPlacement(good); len(warns) != 0 {
 		t.Fatalf("корректные объявления получили предупреждение: %s", messages(warns))
@@ -208,5 +216,84 @@ elements:
 				t.Fatalf("поддержанный ключ объявлен неизвестным: %+v", warning)
 			}
 		}
+	}
+}
+
+// rows/show_count/empty_text у таблицы над ValueTable — без предупреждений;
+// у табличной части документа — ключи не действуют, check об этом говорит.
+func TestRunFullValueTableOutputKeys(t *testing.T) {
+	dir := t.TempDir()
+	mkFile(t, filepath.Join(dir, "documents", "звонок.yaml"), `name: Звонок
+fields:
+  - {name: Номер, type: string}
+tableparts:
+  - name: Товары
+    fields:
+      - {name: Наименование, type: string}
+`)
+	mkFile(t, filepath.Join(dir, "forms", "звонок", "объекта.form.yaml"), `schema: onebase.form/v1
+form:
+  name: Объекта
+  kind: object
+  entity: Звонок
+attributes:
+  - name: ИсторияЗаявок
+    type: ValueTable
+    columns:
+      - { name: Дата, type: string }
+elements:
+  - kind: ТабличнаяЧасть
+    name: ТЧИсторияЗаявок
+    table_part: ИсторияЗаявок
+    rows: 5
+    show_count: true
+    empty_text: Заявок нет
+  - kind: ТабличнаяЧасть
+    name: ТЧТовары
+    data_path: Объект.Товары
+    rows: 3
+`)
+	result := RunFullWithOptions(dir, Options{Lint: true})
+	got := messages(append(append([]Issue{}, result.Issues...), result.Warnings...))
+	if strings.Contains(got, "rows") && strings.Contains(got, "неизвест") {
+		t.Fatalf("линт не знает ключи таблицы-выдачи: %s", got)
+	}
+	if strings.Count(got, "form.vt-output") != 1 || !strings.Contains(got, "ТЧТовары") {
+		t.Fatalf("ожидалось одно предупреждение form.vt-output у ТЧТовары, получено: %s", got)
+	}
+}
+
+// density: compact и dense проходят check без «неизвестного ключа»;
+// неизвестное значение — предупреждение form.density.
+func TestRunFullFormDensity(t *testing.T) {
+	for _, tc := range []struct {
+		value, want string
+		warn        bool
+	}{{"compact", "", false}, {"dense", "", false}, {"wide", "form.density", true}} {
+		dir := t.TempDir()
+		mkFile(t, filepath.Join(dir, "documents", "звонок.yaml"), "name: Звонок\nfields:\n  - {name: Номер, type: string}\n")
+		mkFile(t, filepath.Join(dir, "forms", "звонок", "объекта.form.yaml"), "schema: onebase.form/v1\nform:\n  name: Объекта\n  kind: object\n  entity: Звонок\n  density: "+tc.value+"\nelements:\n  - kind: ПолеВвода\n    name: ПолеНомер\n    data_path: Объект.Номер\n")
+		result := RunFullWithOptions(dir, Options{Lint: true})
+		got := messages(append(append([]Issue{}, result.Issues...), result.Warnings...))
+		if strings.Contains(got, "density") && strings.Contains(got, "неизвест") {
+			t.Fatalf("линт не знает ключ density: %s", got)
+		}
+		if strings.Contains(got, "form.density") != tc.warn {
+			t.Fatalf("density: %s — предупреждение form.density ожидалось=%v, получено: %s", tc.value, tc.warn, got)
+		}
+	}
+}
+
+// hint_from называет реквизит формы или объекта; опечатка — ошибка проверки,
+// а не тихо оставшаяся статическая подсказка.
+func TestCheckFormHintFromRequiresKnownAttribute(t *testing.T) {
+	ok := formKeysProject(&metadata.FormElement{Kind: metadata.FormElementButton, Name: "КнПримечание", HintFrom: "Комментарий"})
+	if issues := CheckFormHintFrom(ok); len(issues) != 0 {
+		t.Fatalf("реквизит объекта отклонён: %s", messages(issues))
+	}
+	bad := formKeysProject(&metadata.FormElement{Kind: metadata.FormElementButton, Name: "КнПримечание", HintFrom: "Коментарий"})
+	issues := CheckFormHintFrom(bad)
+	if len(issues) != 1 || !strings.Contains(issues[0].Message, "Коментарий") {
+		t.Fatalf("опечатка в hint_from не найдена: %s", messages(issues))
 	}
 }

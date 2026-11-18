@@ -38,12 +38,18 @@ type Result struct {
 	// RefreshOn — имена событий для клиентской подписки карточки (план 182B),
 	// пробелом разделённые для атрибута data-ob-refresh-on. Заполняется вместе
 	// с остальными презентационными полями после Run.
-	RefreshOn string
+	RefreshOn  string
+	Background string
 	// Filters — презентационные модели контролов интерактивных фильтров
 	// (план 182D), заполняются HTTP-слоем после Run вместе с PartialURL.
 	Filters []FilterControl
 	// ResetLabel — подпись кнопки сброса фильтров карточки (i18n HTTP-слоя).
-	ResetLabel string
+	CellFilterKey        string
+	CellFilterJSON       string
+	CellFilterLabel      string
+	CellFilterClearLabel string
+	InvalidCellFilter    bool
+	ResetLabel           string
 	// AccessDenied — у пользователя нет прав на источник данных виджета (или на
 	// все его кнопки-действия). Дашборд такие карточки не рендерит вовсе, в
 	// отличие от настоящих ошибок (compile/SQL), которые остаются видимыми.
@@ -55,6 +61,10 @@ type Result struct {
 	// list / recent
 	Rows    []map[string]any
 	Columns []ColumnSpec
+	// User-specific presentation, filled after the shared query cache.
+	WidthsURL    string
+	ColumnWidths map[string]int
+	TableWidth   int
 
 	// chart
 	Chart *ChartData
@@ -187,8 +197,10 @@ type Runner struct {
 // are resolved and merged here. Fresh bypasses the exact cache entry and
 // replaces it after a successful run.
 type RunOptions struct {
-	Params map[string]any
-	Fresh  bool
+	Params            map[string]any
+	CellFilter        *CellFilter
+	CaptureCellValues bool
+	Fresh             bool
 }
 
 // New creates a Runner. The Resolve hook is optional — when non-nil it is
@@ -208,6 +220,9 @@ func (r *Runner) Run(ctx context.Context, w *metadata.Widget) Result {
 
 // RunWithOptions executes a widget with explicit effective options.
 func (r *Runner) RunWithOptions(ctx context.Context, w *metadata.Widget, opts RunOptions) Result {
+	if !VisibleFor(w, r.User) {
+		return Result{Name: w.Name, Type: string(w.Type), Title: w.Title, AccessDenied: true}
+	}
 	params := make(map[string]any, len(w.Params)+len(opts.Params))
 	for k, v := range w.Params {
 		params[k] = v
@@ -245,14 +260,20 @@ func (r *Runner) RunWithOptions(ctx context.Context, w *metadata.Widget, opts Ru
 		}
 	}
 
+	if opts.CellFilter != nil {
+		return r.runOnce(ctx, w, params, opts.CellFilter, true)
+	}
 	if r.Cache != nil && w.Type != metadata.WidgetTypeActions {
 		security, cacheable := securityFingerprint(r.User)
 		if !cacheable {
-			return r.runOnce(ctx, w, params)
+			return r.runOnce(ctx, w, params, nil, opts.CaptureCellValues)
 		}
 		paramsKey, cacheable := paramsFingerprint(params)
 		if !cacheable {
-			return r.runOnce(ctx, w, params)
+			return r.runOnce(ctx, w, params, nil, opts.CaptureCellValues)
+		}
+		if opts.CaptureCellValues {
+			paramsKey += "|cell-values"
 		}
 		key := cacheKey(w.Name, r.CurrentUser, security, paramsKey)
 		if !opts.Fresh {
@@ -260,7 +281,7 @@ func (r *Runner) RunWithOptions(ctx context.Context, w *metadata.Widget, opts Ru
 				return cached
 			}
 		}
-		res := r.runOnce(ctx, w, params)
+		res := r.runOnce(ctx, w, params, nil, opts.CaptureCellValues)
 		// Don't cache transient errors — they're often "compile" errors during
 		// the editing loop, and a stale failure looks worse than a fresh retry.
 		if res.Error == "" {
@@ -268,16 +289,20 @@ func (r *Runner) RunWithOptions(ctx context.Context, w *metadata.Widget, opts Ru
 		}
 		return res
 	}
-	return r.runOnce(ctx, w, params)
+	return r.runOnce(ctx, w, params, nil, opts.CaptureCellValues)
 }
 
-func (r *Runner) runOnce(ctx context.Context, w *metadata.Widget, params map[string]any) Result {
+func (r *Runner) runOnce(ctx context.Context, w *metadata.Widget, params map[string]any, filter *CellFilter, capture bool) Result {
 	res := Result{Name: w.Name, Type: string(w.Type), Title: w.Title, Link: safeWidgetLink(w.Link)}
 	switch w.Type {
 	case metadata.WidgetTypeKPI:
 		r.runKPI(ctx, w, params, &res)
 	case metadata.WidgetTypeList:
-		r.runList(ctx, w, params, &res)
+		if capture || filter != nil {
+			r.runListEnhanced(ctx, w, params, &res, filter)
+		} else {
+			r.runList(ctx, w, params, &res)
+		}
 	case metadata.WidgetTypeChart:
 		r.runChart(ctx, w, params, &res)
 	case metadata.WidgetTypeActions:
@@ -318,7 +343,9 @@ func (r *Runner) runList(ctx context.Context, w *metadata.Widget, params map[str
 	// именно на объявленную сущность. Любая неоднозначность — строки просто
 	// остаются некликабельными, виджет продолжает работать.
 	idCol, rawIDs := r.navigationIDs(w, cols, rows, compiled)
-	r.resolveUUIDs(ctx, rows)
+	// row_style: оформление строк из колонок выборки — до resolveUUIDs, пока
+	// значения колонок сырые.
+	styleCols := applyRowStyle(w, cols, rows)
 	if len(rawIDs) > 0 {
 		entity := r.Reg.GetEntity(w.Source.Entity)
 		for i, row := range rows {
@@ -330,18 +357,83 @@ func (r *Runner) runList(ctx context.Context, w *metadata.Widget, params map[str
 		}
 	}
 	displayCols := cols
-	if idCol != "" && len(w.Columns) == 0 {
-		// Сырой идентификатор — навигационная деталь, а не данные для таблицы:
-		// из авто-колонок (автор не объявил свои) он исключается.
+	if (idCol != "" || len(styleCols) > 0) && len(w.Columns) == 0 {
+		// Сырой идентификатор и колонки оформления (row_style) — служебные
+		// детали, а не данные для таблицы: из авто-колонок (автор не объявил
+		// свои) они исключаются.
+		hidden := map[string]bool{idCol: idCol != ""}
+		for _, c := range styleCols {
+			hidden[c] = true
+		}
 		displayCols = make([]string, 0, len(cols))
 		for _, c := range cols {
-			if c != idCol {
+			if !hidden[c] {
 				displayCols = append(displayCols, c)
 			}
 		}
 	}
 	res.Rows = rows
 	res.Columns = columnsForList(w, displayCols)
+	visible := make(map[string]bool, len(res.Columns))
+	for _, col := range res.Columns {
+		visible[col.Field] = true
+	}
+	r.resolveUUIDsForColumns(ctx, rows, visible)
+}
+
+func (r *Runner) runListEnhanced(ctx context.Context, w *metadata.Widget, params map[string]any, res *Result, filter *CellFilter) {
+	rows, cols, compiled, err := r.runQuery(ctx, w, params)
+	if err != nil {
+		setResultError(res, err)
+		return
+	}
+	idCol, _ := r.navigationIDs(w, cols, rows, compiled)
+	styleCols := applyRowStyle(w, cols, rows)
+	displayCols := cols
+	if (idCol != "" || len(styleCols) > 0) && len(w.Columns) == 0 {
+		hidden := map[string]bool{idCol: idCol != ""}
+		for _, c := range styleCols {
+			hidden[c] = true
+		}
+		displayCols = make([]string, 0, len(cols))
+		for _, c := range cols {
+			if !hidden[c] {
+				displayCols = append(displayCols, c)
+			}
+		}
+	}
+	res.Columns = columnsForList(w, displayCols)
+	// With no equality filter, tokenize only the rows actually displayed.
+	if filter == nil && w.Limit > 0 && len(rows) > w.Limit {
+		rows = rows[:w.Limit]
+	}
+	captureCellValues(rows, res.Columns)
+	rows, err = filterCells(rows, res.Columns, filter)
+	if err != nil {
+		res.InvalidCellFilter = true
+		setResultError(res, err)
+		return
+	}
+	if w.Limit > 0 && len(rows) > w.Limit {
+		rows = rows[:w.Limit]
+	}
+	_, rawIDs := r.navigationIDs(w, cols, rows, compiled)
+	if len(rawIDs) > 0 {
+		entity := r.Reg.GetEntity(w.Source.Entity)
+		for i, row := range rows {
+			id, err := uuid.Parse(rawIDs[i])
+			if err != nil || id == uuid.Nil || entity == nil {
+				continue
+			}
+			row["_row_url"] = "/ui/" + string(entity.Kind) + "/" + entity.Name + "/" + rawIDs[i]
+		}
+	}
+	visible := make(map[string]bool, len(res.Columns))
+	for _, col := range res.Columns {
+		visible[col.Field] = true
+	}
+	r.resolveUUIDsForColumns(ctx, rows, visible)
+	res.Rows = rows
 }
 
 func (r *Runner) runChart(ctx context.Context, w *metadata.Widget, params map[string]any, res *Result) {
@@ -530,9 +622,19 @@ func (r *Runner) runRecent(ctx context.Context, w *metadata.Widget, res *Result)
 // ui.resolveUUIDsInReport but kept inside the widget package to avoid a
 // circular import.
 func (r *Runner) resolveUUIDs(ctx context.Context, rows []map[string]any) {
+	r.resolveUUIDsForColumns(ctx, rows, nil)
+}
+
+// Hidden navigation/style columns never reach the rendered table. Looking up
+// their UUIDs can scan every readable entity for each row without showing a
+// single label. Visible columns keep the same lookup, masking and row access.
+func (r *Runner) resolveUUIDsForColumns(ctx context.Context, rows []map[string]any, visible map[string]bool) {
 	uuidToLabel := make(map[string]string)
 	for _, row := range rows {
-		for _, v := range row {
+		for col, v := range row {
+			if visible != nil && !visible[col] {
+				continue
+			}
 			if str, ok := v.(string); ok {
 				if _, err := uuid.Parse(str); err == nil {
 					uuidToLabel[str] = ""
@@ -581,6 +683,9 @@ func (r *Runner) resolveUUIDs(ctx context.Context, rows []map[string]any) {
 	}
 	for _, row := range rows {
 		for col, v := range row {
+			if visible != nil && !visible[col] {
+				continue
+			}
 			if str, ok := v.(string); ok {
 				if label, found := uuidToLabel[str]; found && label != "" {
 					row[col] = label

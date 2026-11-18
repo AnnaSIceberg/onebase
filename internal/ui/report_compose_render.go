@@ -4,38 +4,66 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"math"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ivantit66/onebase/internal/csssafe"
+	"github.com/ivantit66/onebase/internal/query"
 	"github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/report/compose"
+	"github.com/ivantit66/onebase/internal/sheet"
 	"github.com/ivantit66/onebase/internal/widget"
 )
 
 // renderComposedTable строит единую <table> с раскрываемыми группами,
-// подитогами, общим итогом и условным оформлением деталей. Порядок строк задаёт
+// итогами в строках групп, общим итогом и условным оформлением деталей. Порядок строк задаёт
 // walkComposed (общий с Excel-выгрузкой); htmlComposeSink рисует каждую строку.
-func renderComposedTable(res *compose.Result, spec *report.Composition) template.HTML {
+func renderComposedTable(res *compose.Result, spec *report.Composition, drilldowns ...*reportDrilldownRenderer) template.HTML {
+	return renderComposedTablePresented(res, spec, reportCompositionPresentation{}, drilldowns...)
+}
+
+func renderComposedTablePresented(res *compose.Result, spec *report.Composition, presentation reportCompositionPresentation, drilldowns ...*reportDrilldownRenderer) template.HTML {
 	var b strings.Builder
+	var links *reportDrilldownRenderer
+	if len(drilldowns) > 0 {
+		links = drilldowns[0]
+	}
 	depth, collapsed := collapseLevel(spec)
 	b.WriteString(`<table class="` + appearanceClass(spec) + `"`)
 	if collapsed {
 		fmt.Fprintf(&b, ` data-collapse-to="%d"`, depth)
 	}
 	b.WriteString(`>`)
-	b.WriteString(`<thead><tr><th>` + html.EscapeString(strings.Join(spec.Groupings, " / ")) + `</th>`)
+	b.WriteString(`<thead><tr>`)
+	if composedLabelColumn(spec) {
+		b.WriteString(`<th>` + html.EscapeString(presentation.groupHeader(spec)) + `</th>`)
+	}
+	for _, d := range spec.DetailFields {
+		b.WriteString(`<th class="detail-field">` + html.EscapeString(detailFieldTitle(d)) + `</th>`)
+	}
 	for _, m := range spec.Measures {
 		b.WriteString(`<th class="num" style="` + html.EscapeString(measureAlign(m)) + `">` + html.EscapeString(measureTitle(m)) + `</th>`)
 	}
+	if links.HasRows() {
+		b.WriteString(`<th>` + html.EscapeString(links.RowTitle()) + `</th>`)
+	}
 	b.WriteString(`</tr></thead><tbody>`)
-	sink := &htmlComposeSink{b: &b, spec: spec, collapseTo: depth}
+	sink := &htmlComposeSink{b: &b, spec: spec, collapseTo: depth, drilldowns: links, presentation: presentation}
 	if !collapsed {
 		sink.collapseTo = -1
 	}
 	walkComposed(res, spec, sink)
 	b.WriteString(`</tbody></table>`)
 	return template.HTML(b.String()) //nolint:gosec // G203: HTML собран с html.EscapeString на каждом значении
+}
+
+// Flat details need no group/indent column. An explicitly configured drilldown
+// still needs its own cell, and grouped/aggregate-only layouts keep their labels.
+func composedLabelColumn(spec *report.Composition) bool {
+	return len(spec.Groupings) > 0 || !spec.Detail || (spec.DetailLink != "" && spec.DetailEntity != "")
 }
 
 // collapseLevel читает начальное состояние групп из компоновки (issue #575):
@@ -59,14 +87,15 @@ func collapseLevel(spec *report.Composition) (int, bool) {
 // «▶»: раскрытие идёт по одному уровню за клик, иначе первый же клик по
 // свёрнутой группе снова вываливал всё поддерево.
 type htmlComposeSink struct {
-	b          *strings.Builder
-	spec       *report.Composition
-	collapseTo int
+	b            *strings.Builder
+	spec         *report.Composition
+	collapseTo   int
+	drilldowns   *reportDrilldownRenderer
+	presentation reportCompositionPresentation
 }
 
 // hiddenStyle возвращает display:none для строк, скрытых начальным
-// сворачиванием. Уровень строки уже учитывает вложенность: детали и подытог
-// группы уровня L приходят с level = L+1.
+// сворачиванием. Детали группы уровня L приходят с level = L+1.
 func (h *htmlComposeSink) hiddenStyle(level int) string {
 	if h.collapseTo >= 0 && level > h.collapseTo {
 		return "display:none"
@@ -74,30 +103,62 @@ func (h *htmlComposeSink) hiddenStyle(level int) string {
 	return ""
 }
 
-// groupMarker — треугольник состояния группы: свёрнута (▶) или развёрнута (▼).
-func (h *htmlComposeSink) groupMarker(level int) string {
-	if h.collapseTo >= 0 && level >= h.collapseTo {
-		return "▶"
-	}
-	return "▼"
-}
-
 // measureCells выводит ячейки показателей строки: выравнивание + условное
 // оформление по styles[поле]. Общий код для строк группы, подытога и детали
 // (раньше один и тот же цикл был скопирован трижды).
 func (h *htmlComposeSink) measureCells(vals map[string]any, styles map[string]report.CellStyle) {
+	h.detailFieldCells(nil, nil)
+	h.measureOnlyCells(vals, styles)
+}
+
+// detailFieldCells — ячейки полей детальной записи. Строки групп и итогов
+// передают nil: колонки есть, значений в них нет.
+func (h *htmlComposeSink) detailFieldCells(vals map[string]any, styles map[string]report.CellStyle) {
+	for _, d := range h.spec.DetailFields {
+		v := ""
+		if vals != nil {
+			v = fmtDetailVal(detailFieldValue(h.spec, vals, d.Field))
+		}
+		h.b.WriteString(`<td class="detail-field" style="` + html.EscapeString(cssOf(styles[d.Field])) + `">` + string(h.drilldowns.Cell(d.Field, vals, v)) + `</td>`)
+	}
+}
+
+func (h *htmlComposeSink) measureOnlyCells(vals map[string]any, styles map[string]report.CellStyle, detail ...bool) {
 	for _, m := range h.spec.Measures {
 		cell := joinStyles(measureAlign(m), cssOf(styles[m.Field]))
-		h.b.WriteString(`<td class="num" style="` + html.EscapeString(cell) + `">` + html.EscapeString(fmtMeasure(vals[m.Field], m)) + `</td>`)
+		text := html.EscapeString(fmtMeasure(vals[m.Field], m))
+		if len(detail) > 0 && detail[0] {
+			text = string(h.drilldowns.Cell(m.Field, vals, fmtMeasure(vals[m.Field], m)))
+		}
+		h.b.WriteString(`<td class="num" style="` + html.EscapeString(cell) + `">` + text + `</td>`)
 	}
 }
 
 func (h *htmlComposeSink) group(g *compose.Group, level int, path string) {
 	pad := fmt.Sprintf("padding-left:%dpx", 8+level*18)
+	fill, darkFill := composedGroupFill(level, len(h.spec.Groupings)), composedGroupDarkFill(level, len(h.spec.Groupings))
+	if explicit := csssafe.Color(g.Styles[""].Background); explicit != "" {
+		fill, darkFill = explicit, explicit
+	}
 	rowStyle := joinStyles(cssOf(g.Styles[""]), h.hiddenStyle(level))
+	if fill != "" {
+		rowStyle = joinStyles(rowStyle, "--rc-group-fill:"+fill+";--rc-group-dark:"+darkFill)
+	}
+	marker := ""
+	if len(g.Children) > 0 || (h.spec.Detail && len(g.Details) > 0) {
+		open := h.collapseTo < 0 || level < h.collapseTo
+		text := "+"
+		if open {
+			text = "−"
+		}
+		marker = fmt.Sprintf(`<button type="button" class="rc-fold" aria-expanded="%t" aria-label="%s">%s</button>`, open, html.EscapeString(h.presentation.groupLabel(g.Field, g.Key)), text)
+	}
 	fmt.Fprintf(h.b, `<tr class="grp" data-group="%s" data-level="%d" style="%s"><td style="%s">%s %s</td>`,
-		html.EscapeString(path), level, html.EscapeString(rowStyle), pad, h.groupMarker(level), html.EscapeString(fmtVal(g.Key)))
+		html.EscapeString(path), level, html.EscapeString(rowStyle), pad, marker, html.EscapeString(h.presentation.groupLabel(g.Field, g.Key)))
 	h.measureCells(g.Subtotals, g.Styles)
+	if h.drilldowns.HasRows() {
+		h.b.WriteString(`<td></td>`)
+	}
 	h.b.WriteString(`</tr>`)
 }
 
@@ -107,39 +168,73 @@ func (h *htmlComposeSink) detail(d compose.DetailRow, level int, path string) {
 	// Первая ячейка: ссылка-расшифровка на исходный документ (если настроено).
 	// Ссылка строится только когда заданы DetailLink, DetailEntity и значение поля
 	// непустое. Без DetailEntity переход бессмыслен — выводим пустую ячейку.
-	linked := false
-	if h.spec.DetailLink != "" && h.spec.DetailEntity != "" {
-		if v := fmtVal(d.Values[h.spec.DetailLink]); v != "" {
-			href := "/ui/document/" + url.PathEscape(h.spec.DetailEntity) + "/" + url.PathEscape(v)
-			fmt.Fprintf(h.b, `<td style="padding-left:%dpx"><a href="%s">→</a></td>`, 8+level*18, html.EscapeString(href))
-			linked = true
+	if composedLabelColumn(h.spec) {
+		linked := false
+		if h.spec.DetailLink != "" && h.spec.DetailEntity != "" {
+			if v := fmtVal(d.Values[h.spec.DetailLink]); v != "" {
+				href := "/ui/document/" + url.PathEscape(h.spec.DetailEntity) + "/" + url.PathEscape(v)
+				fmt.Fprintf(h.b, `<td style="padding-left:%dpx"><a href="%s">→</a></td>`, 8+level*18, html.EscapeString(href))
+				linked = true
+			}
+		}
+		if !linked {
+			fmt.Fprintf(h.b, `<td style="padding-left:%dpx"></td>`, 8+level*18)
 		}
 	}
-	if !linked {
-		fmt.Fprintf(h.b, `<td style="padding-left:%dpx"></td>`, 8+level*18)
+	h.detailFieldCells(d.Values, d.Styles)
+	h.measureOnlyCells(d.Values, d.Styles, true)
+	if h.drilldowns.HasRows() {
+		h.b.WriteString(`<td>` + string(h.drilldowns.Row(d.Values)) + `</td>`)
 	}
-	h.measureCells(d.Values, d.Styles)
-	h.b.WriteString(`</tr>`)
-}
-
-func (h *htmlComposeSink) subtotal(g *compose.Group, level int, path string) {
-	rowStyle := joinStyles(cssOf(g.Styles[""]), h.hiddenStyle(level))
-	fmt.Fprintf(h.b, `<tr class="subtotal" data-parent="%s" style="%s"><td style="padding-left:%dpx">··· Итого: %s ···</td>`,
-		html.EscapeString(path), html.EscapeString(rowStyle), 8+level*18, html.EscapeString(fmtVal(g.Key)))
-	h.measureCells(g.Subtotals, g.Styles)
 	h.b.WriteString(`</tr>`)
 }
 
 func (h *htmlComposeSink) grand(grand map[string]any) {
 	// У общего итога нет условного оформления — measureCells с nil-стилями даёт
 	// те же ячейки (только выравнивание), что и прежний отдельный код.
-	h.b.WriteString(`<tr class="grand"><td>ВСЕГО</td>`)
+	h.b.WriteString(`<tr class="grand">`)
+	if composedLabelColumn(h.spec) {
+		h.b.WriteString(`<td>` + html.EscapeString(h.presentation.grandTitle()) + `</td>`)
+	}
 	h.measureCells(grand, nil)
+	if h.drilldowns.HasRows() {
+		h.b.WriteString(`<td></td>`)
+	}
 	h.b.WriteString(`</tr>`)
 }
 
 func cssOf(s report.CellStyle) string {
-	return cssStyle(s.Color, s.Background, s.Bold, s.Italic)
+	color := s.Color
+	if csssafe.Color(color) == "" {
+		color = reportBackgroundForeground(s.Background)
+	}
+	return cssStyle(color, s.Background, s.Bold, s.Italic)
+}
+
+// An explicit opaque background keeps the same foreground in either theme.
+// Pick the higher-contrast black/white text only when Color was not supplied.
+// Shared form/journal cssStyle semantics are deliberately unchanged.
+func reportBackgroundForeground(background string) string {
+	rgb := sheet.ColorRGB(background)
+	if rgb == "" {
+		return ""
+	}
+	value, err := strconv.ParseUint(rgb, 16, 24)
+	if err != nil {
+		return ""
+	}
+	linear := func(channel uint64) float64 {
+		c := float64(channel) / 255
+		if c <= 0.04045 {
+			return c / 12.92
+		}
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+	luminance := 0.2126*linear((value>>16)&255) + 0.7152*linear((value>>8)&255) + 0.0722*linear(value&255)
+	if (luminance+0.05)/0.05 >= 1.05/(luminance+0.05) {
+		return "#000"
+	}
+	return "#fff"
 }
 
 func cssStyle(color, background string, bold, italic bool) string {
@@ -218,7 +313,7 @@ func joinStyles(a, b string) string {
 // совпадает с верхней группировкой — берём ключи верхнего уровня (как раньше);
 // иначе сворачиваем плоские строки rows отдельным проходом по полю Category
 // (раньше Category игнорировался и ось всегда шла по группировке).
-func buildComposedChart(res *compose.Result, c *report.ChartSpec, rows []compose.Row, spec report.Composition, ev compose.Evaluator) map[string]any {
+func buildComposedChart(res *compose.Result, c *report.ChartSpec, rows []compose.Row, spec report.Composition, ev compose.Evaluator, presentation reportCompositionPresentation) map[string]any {
 	if c == nil {
 		return nil
 	}
@@ -231,7 +326,7 @@ func buildComposedChart(res *compose.Result, c *report.ChartSpec, rows []compose
 			return nil
 		}
 		for _, g := range res.Groups {
-			cd.XAxis = append(cd.XAxis, fmtVal(g.Key))
+			cd.XAxis = append(cd.XAxis, presentation.groupLabel(g.Field, g.Key))
 		}
 		for _, sf := range fields {
 			s := widget.ChartSeries{Name: sf}
@@ -292,6 +387,74 @@ func composeFloat(v any) float64 {
 		return f
 	}
 	return 0
+}
+
+// reportDetailLinkLabelKey — служебный ключ строки отчёта с представлением
+// ссылки из колонки detail_link: сама колонка хранит UUID для перехода «→».
+const reportDetailLinkLabelKey = "_ob_detail_link_label"
+
+// detailFieldValue — значение поля детальной записи. Поле, которое служит и
+// detail_link, показывается представлением ссылки, а не её UUID.
+func detailFieldValue(spec *report.Composition, vals map[string]any, field string) any {
+	if spec != nil && spec.DetailLink != "" && strings.EqualFold(field, spec.DetailLink) {
+		if label, ok := vals[reportDetailLinkLabelKey]; ok {
+			return label
+		}
+	}
+	return vals[field]
+}
+
+// detailFieldTitle — заголовок колонки детальной записи (пустой = имя поля).
+func detailFieldTitle(d report.DetailField) string {
+	if d.Title != "" {
+		return d.Title
+	}
+	return d.Field
+}
+
+// groupLabel — подпись группы отчёта. Ключ группы-даты (НачалоДня, НачалоЧаса,
+// поле-дата) приходит и time.Time, и строкой SQLite («2026-09-01 12:00:00») —
+// показывается как дата детальной записи, по-русски: «01.09.2026 12:00:00».
+// Путь группы (data-group) строится по сырому ключу и от подписи не зависит.
+func groupLabel(v any) string { return fmtDetailVal(v) }
+
+// fmtDetailVal — значение поля детальной записи: дата — по-русски в местном
+// времени приложения (время, только если оно есть), остальное — как fmtVal.
+// Момент приходит и time.Time (в зоне драйвера: SQLite — UTC), и строкой
+// (колонка запроса без типа, «2026-11-20T09:00:00Z»): обе формы — одна дата.
+func fmtDetailVal(v any) string {
+	t, ok := detailMoment(v)
+	if !ok {
+		return fmtVal(v)
+	}
+	if t.IsZero() {
+		return ""
+	}
+	t = t.In(time.Local)
+	if t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0 {
+		return t.Format("02.01.2006")
+	}
+	return t.Format("02.01.2006 15:04:05")
+}
+
+// detailMoment распознаёт момент: time.Time или строку, начинающуюся с
+// ГГГГ-ММ-ДД и разбираемую как момент. Прочие строки остаются текстом.
+func detailMoment(v any) (time.Time, bool) {
+	switch x := v.(type) {
+	case time.Time:
+		return x, true
+	case string:
+		if len(x) < 10 || x[4] != '-' || x[7] != '-' {
+			return time.Time{}, false
+		}
+		for _, i := range []int{0, 1, 2, 3, 5, 6, 8, 9} {
+			if x[i] < '0' || x[i] > '9' {
+				return time.Time{}, false
+			}
+		}
+		return query.ToDateValue(x)
+	}
+	return time.Time{}, false
 }
 
 func fmtVal(v any) string {

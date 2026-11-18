@@ -22,13 +22,18 @@ type rawField struct {
 	// AllowInlineCreate — pointer to differ unset from explicit false. nil
 	// means «keep context default» (true в шапке, false в ТЧ).
 	AllowInlineCreate *bool `yaml:"allow_inline_create"`
+	// ChoiceShowDeleted — choice_show_deleted (см. Field.ChoiceShowDeleted).
+	ChoiceShowDeleted *bool `yaml:"choice_show_deleted"`
 	Required          bool  `yaml:"required"`
 	// Default — значение по умолчанию при создании нового объекта (план 153).
 	// Читается строкой: и `сейчас`, и `12`, и `Истина` попадают сюда как есть,
 	// разбирает их metadata.ParseDefault.
 	Default defaultScalar `yaml:"default"`
 	// PII — реквизит содержит персональные данные (Field.PII).
-	PII bool `yaml:"pii"`
+	PII       bool `yaml:"pii"`
+	ReportPII bool `yaml:"report_pii"`
+	// PIIOpenWhen — условие раскрытия ПДн в форме записи (Field.PIIOpenWhen).
+	PIIOpenWhen string `yaml:"pii_open_when"`
 }
 
 type rawTablePart struct {
@@ -51,19 +56,20 @@ type rawNumerator struct {
 // rawNumeratorField contains only properties that can vary on the synthesized
 // string field. Its identity and type always come from the entity kind.
 type rawNumeratorField struct {
-	Title    string            `yaml:"title"`
-	Label    string            `yaml:"label"`
-	Titles   map[string]string `yaml:"titles"`
-	Required bool              `yaml:"required"`
-	Default  defaultScalar     `yaml:"default"`
-	PII      bool              `yaml:"pii"`
+	Title     string            `yaml:"title"`
+	Label     string            `yaml:"label"`
+	Titles    map[string]string `yaml:"titles"`
+	Required  bool              `yaml:"required"`
+	Default   defaultScalar     `yaml:"default"`
+	PII       bool              `yaml:"pii"`
+	ReportPII bool              `yaml:"report_pii"`
 }
 
 func (f *rawNumeratorField) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.MappingNode {
 		return fmt.Errorf("numerator.field: expected a mapping")
 	}
-	allowed := map[string]bool{"title": true, "label": true, "titles": true, "required": true, "default": true, "pii": true}
+	allowed := map[string]bool{"title": true, "label": true, "titles": true, "required": true, "default": true, "pii": true, "report_pii": true}
 	seen := map[string]bool{}
 	for i := 0; i < len(node.Content); i += 2 {
 		key := node.Content[i].Value
@@ -106,6 +112,7 @@ type rawStages struct {
 }
 
 type rawEntity struct {
+	AudioPlayer        bool              `yaml:"audio_player"`
 	Name               string            `yaml:"name"`
 	Title              string            `yaml:"title"`
 	Description        string            `yaml:"description"`
@@ -127,8 +134,10 @@ type rawEntity struct {
 	ChoicePreview string `yaml:"choice_preview"`
 	// ChoicePreviewProc — «Модуль.Функция», собирающая тексты просмотра с учётом
 	// контекста подбора (Entity.ChoicePreviewProc).
-	ChoicePreviewProc string          `yaml:"choice_preview_proc"`
-	Predefined        []rawPredefined `yaml:"predefined"`
+	ChoicePreviewProc string `yaml:"choice_preview_proc"`
+	// ChoiceSearchProc — «Модуль.Функция» поиска подбора (Entity.ChoiceSearchProc).
+	ChoiceSearchProc string          `yaml:"choice_search_proc"`
+	Predefined       []rawPredefined `yaml:"predefined"`
 	// Owner — справочник-владелец (1С: подчинённый справочник). См. Entity.Owner.
 	Owner         string   `yaml:"owner"`
 	Hierarchical  bool     `yaml:"hierarchical"`
@@ -139,6 +148,8 @@ type rawEntity struct {
 	ItemForm []rawItemFormField `yaml:"item_form"`
 	BasedOn  []string           `yaml:"based_on"`
 	Activity *rawActivity       `yaml:"activity"`
+	// ChoiceShowDeleted — choice_show_deleted (см. Entity.ChoiceShowDeleted).
+	ChoiceShowDeleted *bool `yaml:"choice_show_deleted"`
 	// ChoiceRowStyle — choice_row_style (см. Entity.ChoiceRowStyle).
 	ChoiceRowStyle *rawChoiceRowStyle `yaml:"choice_row_style"`
 	ListMode       string             `yaml:"list_mode"`
@@ -264,6 +275,7 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 	e.NotifyChanges = raw.NotifyChanges
 	e.NoInteractiveCreate = raw.InteractiveCreate != nil && !*raw.InteractiveCreate
 	e.ListFilters = trimStringList(raw.ListFilters)
+	e.AudioPlayer = raw.AudioPlayer
 	if raw.TileView != nil {
 		e.TileView = &TileView{
 			Image:    strings.TrimSpace(raw.TileView.Image),
@@ -345,7 +357,9 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 	e.OrderBy = raw.OrderBy.values()
 	e.ChoicePreview = strings.TrimSpace(raw.ChoicePreview)
 	e.ChoicePreviewProc = strings.TrimSpace(raw.ChoicePreviewProc)
+	e.ChoiceShowDeleted = raw.ChoiceShowDeleted
 	e.ChoiceRowStyle = parseChoiceRowStyle(raw.ChoiceRowStyle)
+	e.ChoiceSearchProc = strings.TrimSpace(raw.ChoiceSearchProc)
 	if raw.Numerator != nil {
 		n := &Numerator{
 			Prefix:     raw.Numerator.Prefix,
@@ -401,6 +415,7 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 		} else if nf := raw.Numerator.Field; nf != nil {
 			rf.Title, rf.Label, rf.Titles = nf.Title, nf.Label, nf.Titles
 			rf.Required, rf.Default, rf.PII = nf.Required, nf.Default, nf.PII
+			rf.ReportPII = nf.ReportPII
 		}
 		// Legacy IDs can be random. The standard field has one identity in
 		// memory regardless of which compatible YAML representation was read.
@@ -527,7 +542,24 @@ func LoadRegisterFile(path string) (*Register, error) {
 	for _, rf := range raw.Attributes {
 		reg.Attributes = append(reg.Attributes, parseField(rf))
 	}
+	if err := rejectRegisterPIIOpenWhen(raw.Dimensions, raw.Resources, raw.Attributes); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return reg, nil
+}
+
+// rejectRegisterPIIOpenWhen — pii_open_when живёт только у полей справочника
+// и документа: у регистра нет формы записи, где условие могло бы открыть
+// поле. Принятый и никогда не исполняемый ключ читался бы как настройка.
+func rejectRegisterPIIOpenWhen(groups ...[]rawField) error {
+	for _, fields := range groups {
+		for _, rf := range fields {
+			if strings.TrimSpace(rf.PIIOpenWhen) != "" {
+				return fmt.Errorf("поле %s: pii_open_when у регистра не поддерживается", rf.Name)
+			}
+		}
+	}
+	return nil
 }
 
 type rawInfoRegister struct {
@@ -563,6 +595,9 @@ func LoadInfoRegisterFile(path string) (*InfoRegister, error) {
 	}
 	for _, ri := range raw.Indexes {
 		ir.Indexes = append(ir.Indexes, IndexSpec{Fields: trimStringList(ri.Fields), Unique: ri.Unique})
+	}
+	if err := rejectRegisterPIIOpenWhen(raw.Dimensions, raw.Resources); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := ValidateInfoRegisterIndexes(ir); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -725,7 +760,8 @@ func parseField(rf rawField) Field {
 		title = rf.Label
 	}
 	f := Field{ID: strings.TrimSpace(rf.ID), Name: rf.Name, Title: title, Titles: rf.Titles, Type: FieldType(rf.Type),
-		AllowInlineCreate: rf.AllowInlineCreate, Required: rf.Required, Default: string(rf.Default), PII: rf.PII}
+		AllowInlineCreate: rf.AllowInlineCreate, ChoiceShowDeleted: rf.ChoiceShowDeleted, Required: rf.Required, Default: string(rf.Default), PII: rf.PII, ReportPII: rf.ReportPII,
+		PIIOpenWhen: strings.TrimSpace(rf.PIIOpenWhen)}
 	if strings.HasPrefix(rf.Type, "reference:") {
 		f.RefEntity = strings.TrimPrefix(rf.Type, "reference:")
 	} else if strings.HasPrefix(rf.Type, "enum:") {

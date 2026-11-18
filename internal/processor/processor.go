@@ -17,6 +17,10 @@ type Param struct {
 	Labels  map[string]string `yaml:"labels"`  // переводы подписи по языкам (lang code → перевод)
 	Default any               `yaml:"default"` // значение по умолчанию
 	Options []string          `yaml:"options"` // для type: choice — список вариантов выбора
+	// ChoiceShowDeleted — для reference-параметра: показывать ли в выборе
+	// помеченные на удаление (`choice_show_deleted`). nil — скрывать: параметр
+	// обработки — ввод данных.
+	ChoiceShowDeleted *bool `yaml:"choice_show_deleted"`
 
 	// Required помечает параметр обязательным: форма не отправится пустой, а
 	// сервер откажет до запуска. Нужен прежде всего файловым параметрам —
@@ -24,6 +28,11 @@ type Param struct {
 	// страницы, поэтому повторное «Выполнить» уходило на сервер с пустым файлом,
 	// и человек получал ошибку прикладного модуля вместо подсказки формы.
 	Required bool `yaml:"required"`
+
+	// Multiple — у type: binary: можно выбрать несколько файлов сразу. DSL
+	// получает Массив Структур {Путь, ИмяФайла, Размер, ТипMIME} (пустой, если
+	// ничего не выбрано), а не путь к одному файлу.
+	Multiple bool `yaml:"multiple"`
 }
 
 type Processor struct {
@@ -37,6 +46,9 @@ type Processor struct {
 	Params     []Param                `yaml:"params"`
 	TableParts []metadata.TablePart   `yaml:"table_parts"`
 	Forms      []*metadata.FormModule `yaml:"-"`
+	// ResultCapabilities is a closed readonly lookup declaration, usable only
+	// with a server-validated result-form context. No catalog data is returned.
+	ResultCapabilities map[string]ResultCapability `yaml:"result_capabilities,omitempty"`
 
 	// External помечает обработку из внешнего контура (таблица
 	// _ext_processors), а не из конфигурации проекта. Trusted — признак того,
@@ -104,9 +116,10 @@ func (p *Processor) VirtualEntity() *metadata.Entity {
 	fields := make([]metadata.Field, 0, len(p.Params))
 	for _, param := range p.Params {
 		f := metadata.Field{
-			Name:   param.Name,
-			Title:  param.Label,
-			Titles: param.Labels,
+			Name:              param.Name,
+			Title:             param.Label,
+			Titles:            param.Labels,
+			ChoiceShowDeleted: param.ChoiceShowDeleted,
 		}
 		switch {
 		case param.Type == "string", param.Type == "text":

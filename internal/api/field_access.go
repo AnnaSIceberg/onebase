@@ -19,21 +19,29 @@ import (
 // plain projection column comes back masked, one that drives a filter, grouping
 // or aggregate denies the query (plan.Denied).
 func (h *handler) queryMaskPlan(ctx context.Context, res query.Result) access.QueryMaskPlan {
-	return access.QueryMaskPlanFor(auth.UserFromContext(ctx), res, h.sourceMeta)
+	return access.ReportOutputQueryMaskPlan(auth.UserFromContext(ctx), res, h.sourceMeta)
 }
 
 func (h *handler) sourceMeta(kind, name string) *metadata.Entity {
-	if e := h.reg.GetEntity(name); e != nil {
-		return e
-	}
-	if r := h.reg.GetRegister(name); r != nil {
-		return storage.RegisterPredicateEntity(r)
-	}
-	if ir := h.reg.GetInfoRegister(name); ir != nil {
-		return storage.InfoRegisterPredicateEntity(ir)
-	}
-	if ar := h.reg.GetAccountRegister(name); ar != nil {
-		return storage.AccountRegisterPredicateEntity(ar)
+	switch strings.ToLower(kind) {
+	case "catalog", "document":
+		if e := h.reg.GetEntity(name); e != nil && strings.EqualFold(string(e.Kind), kind) {
+			return e
+		}
+	case "register":
+		if h.reg.GetRegister(name) != nil && h.reg.GetAccountRegister(name) != nil {
+			return nil
+		}
+		if r := h.reg.GetRegister(name); r != nil {
+			return storage.RegisterPredicateEntity(r)
+		}
+		if ar := h.reg.GetAccountRegister(name); ar != nil {
+			return storage.AccountRegisterPredicateEntity(ar)
+		}
+	case "inforeg":
+		if ir := h.reg.GetInfoRegister(name); ir != nil {
+			return storage.InfoRegisterPredicateEntity(ir)
+		}
 	}
 	return nil
 }
@@ -57,18 +65,11 @@ func (h *handler) maskRecords(ctx context.Context, entity *metadata.Entity, rows
 	access.MaskRecords(h.fieldDecisions(ctx, entity), rows)
 }
 
-// protectMaskedFieldsOnWrite restores the real stored value for every field
+// protectMaskedFieldsFromRow restores the real stored value for every field
 // masked or hidden for this user before a REST update, mirroring the UI guard —
 // a masked user cannot overwrite the real value with the mask or a crafted one.
-func (h *handler) protectMaskedFieldsOnWrite(ctx context.Context, entity *metadata.Entity, id uuid.UUID, fields map[string]any) error {
+func (h *handler) protectMaskedFieldsFromRow(ctx context.Context, entity *metadata.Entity, row, fields map[string]any) {
 	dec := h.fieldDecisions(ctx, entity)
-	if len(dec) == 0 || fields == nil {
-		return nil
-	}
-	row, err := h.store.GetByID(ctx, entity.Name, id, entity)
-	if err != nil {
-		return err
-	}
 	for field, decision := range dec {
 		key, ok := restCIKey(fields, field)
 		if !ok {
@@ -84,7 +85,6 @@ func (h *handler) protectMaskedFieldsOnWrite(ctx context.Context, entity *metada
 			delete(fields, key)
 		}
 	}
-	return nil
 }
 
 func restCIKey(m map[string]any, field string) (string, bool) {
@@ -141,6 +141,10 @@ func (h *handler) discloseField(kind metadata.Kind) http.HandlerFunc {
 		dec, masked := h.fieldDecisions(r.Context(), entity)[field.Name]
 
 		if parseReportBool(r.URL.Query().Get("disclose")) {
+			if access.FieldDiscloseDenied(auth.UserFromContext(r.Context()), string(kind), entityName, field.Name) {
+				writeError(w, http.StatusForbidden, "forbidden", "", 0)
+				return
+			}
 			reason := strings.TrimSpace(r.URL.Query().Get("reason"))
 			if masked {
 				if !canREST(r.Context(), string(kind), entityName, "disclose") {

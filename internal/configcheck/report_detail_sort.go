@@ -1,0 +1,109 @@
+package configcheck
+
+import (
+	"strings"
+
+	"github.com/ivantit66/onebase/internal/project"
+	"github.com/ivantit66/onebase/internal/query"
+	"github.com/ivantit66/onebase/internal/report"
+)
+
+// reportDetailSortColumns names known, unique outputs of an ordinary report.
+// It does not turn an arbitrary spelling in sort into a declared result field.
+func reportDetailSortColumns(proj *project.Project, rep *report.Report, queryText string) map[string]bool {
+	if queryText == "" {
+		return nil
+	}
+	params := make(map[string]any, len(rep.Params))
+	for _, p := range rep.Params {
+		params[p.Name] = nil
+	}
+	compiled, err := query.Compile(queryText, query.CompileOpts{Params: params, Entities: proj.Entities, Registers: proj.Registers, InfoRegs: proj.InfoRegisters, AccountRegs: proj.AccountRegisters})
+	if err != nil {
+		return nil
+	}
+	if !compiled.Projection.Simple {
+		return outerQuerySortColumns(compiled)
+	}
+	counts := map[string]int{}
+	for _, col := range compiled.Projection.Columns {
+		if col.Star || col.Output == "" {
+			return nil
+		}
+		key := strings.ToLower(col.Output)
+		if col.Alias == "" {
+			if actual := compiled.DSLColumnAliases[key]; actual != "" {
+				key = actual
+			}
+			if len(col.Path) > 0 && (strings.EqualFold(col.Path[len(col.Path)-1], "Ссылка") || strings.EqualFold(col.Path[len(col.Path)-1], "Ref")) {
+				// Implicit reference names are rewritten by the compiler. If more than
+				// one such key exists, require an explicit alias rather than guess it.
+				if len(compiled.RefColumns) != 1 {
+					continue
+				}
+				for actual := range compiled.RefColumns {
+					key = actual
+				}
+			}
+		}
+		if full := compiled.LongIdents[key]; full != "" {
+			key = full
+		}
+		counts[strings.ToLower(key)]++
+	}
+	fields := map[string]bool{}
+	for name, count := range counts {
+		if count == 1 {
+			fields[name] = true
+		}
+	}
+	return fields
+}
+
+// querySortColumns — колонки результата запроса, допустимые в sort кроме
+// группировок и показателей: детальные записи упорядочиваются по значению, а
+// группы (в том числе в кросс-таблице) — по наименьшему значению поля в группе
+// (compose.sortFieldValues, 1С — порядок по полю «Сортировка400»). Колонка
+// обязана однозначно существовать в результате.
+func querySortColumns(c *report.Composition, outputs map[string]bool) map[string]bool {
+	fields := map[string]bool{}
+	for name := range outputs {
+		fields[name] = true
+	}
+	// Keep existing grouping/measure validation semantics: this extension is
+	// only for source columns used to order the leaf records.
+	for _, name := range c.Groupings {
+		delete(fields, strings.ToLower(name))
+	}
+	for _, m := range c.Measures {
+		delete(fields, strings.ToLower(m.Field))
+	}
+	return fields
+}
+
+// outerQuerySortColumns — колонки результата запроса с подзапросом или
+// ОБЪЕДИНИТЬ (Сортировка400 у А_ЗвонкиПоНаправлениям «…(с архивом)»): имена
+// задаёт первая ветвь внешнего SELECT. «*» делает набор недоказанным;
+// безымянное выражение в набор не входит (по нему не сортируют), повторяющееся
+// имя не допускается.
+func outerQuerySortColumns(compiled query.Result) map[string]bool {
+	counts := map[string]int{}
+	for _, line := range compiled.Projection.Lineage {
+		if !line.Result || line.Branch != 0 {
+			continue
+		}
+		if line.Star {
+			return nil
+		}
+		if line.Output != "" {
+			counts[strings.ToLower(line.Output)]++
+		}
+	}
+	fields := map[string]bool{}
+	for name, count := range counts {
+		if count == 1 {
+			fields[name] = true
+		}
+	}
+	return fields
+}

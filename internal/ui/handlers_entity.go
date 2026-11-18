@@ -26,6 +26,7 @@ import (
 	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/storage"
 	"github.com/ivantit66/onebase/internal/webhook"
+	"github.com/ivantit66/onebase/internal/widget"
 )
 
 type basedOnAction struct {
@@ -73,6 +74,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.resolveListSort(r, entity, &params)
 
 	params = s.applyListFormFilter(r, entity, params)
 
@@ -151,6 +153,10 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	// Маскирование ПДн (план 88) — до resolveRefs: если чувствительное поле
 	// ссылочное, скрытый UUID уже не резолвится в подпись.
 	s.maskRecords(r.Context(), entity, rows)
+	// row_style формы списка — после маски и до разрешения ссылок.
+	s.applyListRowStyle(r.Context(), entity, rows)
+
+	s.captureListCellFilters(r.Context(), entity, rows)
 	s.resolveRefs(r.Context(), entity, rows)
 	markActivityRows(entity, rows)
 	if searchAll {
@@ -169,6 +175,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 			Limit:              storage.MaxListPageSize,
 		})
 		s.maskRecords(r.Context(), entity, allRows)
+		s.applyListRowStyle(r.Context(), entity, allRows)
 		s.resolveRefs(r.Context(), entity, allRows)
 		markActivityRows(entity, allRows)
 		treeRows = buildCatalogTree(allRows)
@@ -198,7 +205,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lang := s.resolveLang(r)
-	s.render(w, r, "page-list", map[string]any{
+	data := map[string]any{
 		"Entity":           entity,
 		"Rows":             rows,
 		"Params":           params,
@@ -226,7 +233,9 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"ListFormToggles":  s.listFormFilterToggles(r, entity),
 		"ListFormOff":      r.URL.Query().Get(listFormFilterOffParam),
 		"ListFilterExtra":  listFilterExtra,
-	})
+	}
+	s.listSettingsData(r, entity, data)
+	s.render(w, r, "page-list", data)
 }
 
 // listSearchesWholeHierarchy — поиск или отбор в списке иерархического
@@ -452,14 +461,15 @@ func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 		folderOpts = s.loadFolderOptions(r.Context(), entity, values["parent_id"])
 	}
 	refOptions, _ := s.loadInitialRefOptions(r.Context(), entity, values)
-	tpRefOpts, _ := s.loadInitialTPRefOptions(r.Context(), entity, tablePartRows, values)
+	tpRefOpts, _ := s.loadTPReferenceData(r.Context(), entity, tablePartRows, values)
 	s.renderEntityForm(w, r, "object", map[string]any{
 		"Entity":        entity,
 		"IsNew":         true,
 		"Values":        values,
 		"RefOptions":    refOptions,
 		"EnumOptions":   enumOpts,
-		"TPRefOptions":  tpRefOpts,
+		"TPRefOptions":  tpRefOpts.Labels,
+		"TPRefChoices":  tpRefOpts.Choices,
 		"TPEnumLabels":  tpEnumLabels,
 		"TPEnumOrder":   s.buildTPEnumOrder(entity),
 		"TPRefMeta":     tpRefMeta(entity),
@@ -974,7 +984,7 @@ func (s *Server) renderObjectFormError(w http.ResponseWriter, r *http.Request, e
 	}
 	tablePartRows := serializeTablePartRowsForEntity(tpRows, entity, managedForm)
 	refOptions, _ := s.loadInitialRefOptions(r.Context(), entity, values)
-	tpRefOpts, _ := s.loadInitialTPRefOptions(r.Context(), entity, tablePartRows, values)
+	tpRefOpts, _ := s.loadTPReferenceData(r.Context(), entity, tablePartRows, values)
 	lang := s.resolveLang(r)
 	data := map[string]any{
 		"Entity":        entity,
@@ -984,7 +994,8 @@ func (s *Server) renderObjectFormError(w http.ResponseWriter, r *http.Request, e
 		"Values":        values,
 		"RefOptions":    refOptions,
 		"EnumOptions":   s.loadEnumOptions(entity, lang),
-		"TPRefOptions":  tpRefOpts,
+		"TPRefOptions":  tpRefOpts.Labels,
+		"TPRefChoices":  tpRefOpts.Choices,
 		"TPEnumLabels":  s.buildTPEnumLabels(entity, lang),
 		"TPEnumOrder":   s.buildTPEnumOrder(entity),
 		"TPRefMeta":     tpRefMeta(entity),
@@ -1155,7 +1166,7 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 		values := formValues(r, entity)
 		tablePartRows := serializeTablePartRowsForEntity(tpRows, entity, pickManagedFormCtx(r.Context(), entity, "object"))
 		refOptions, _ := s.loadInitialRefOptions(r.Context(), entity, values)
-		tpRefOpts, _ := s.loadInitialTPRefOptions(r.Context(), entity, tablePartRows, values)
+		tpRefOpts, _ := s.loadTPReferenceData(r.Context(), entity, tablePartRows, values)
 		langErr := s.resolveLang(r)
 		var fOpts []map[string]any
 		if entity.Hierarchical {
@@ -1169,7 +1180,8 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 			"Values":       values,
 			"RefOptions":   refOptions,
 			"EnumOptions":  s.loadEnumOptions(entity, langErr),
-			"TPRefOptions": tpRefOpts,
+			"TPRefOptions": tpRefOpts.Labels,
+			"TPRefChoices": tpRefOpts.Choices,
 			"TPEnumLabels": s.buildTPEnumLabels(entity, langErr),
 			"TPEnumOrder":  s.buildTPEnumOrder(entity),
 			"TPRefMeta":    tpRefMeta(entity),
@@ -1325,13 +1337,53 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 			extra.ChoicePredicates = choice.Predicates
 			extra.IncludeFolders = choice.Folders
 		}
-		items, total, err = s.referenceOptionsPageWithParams(r.Context(), ent, r.URL.Query().Get("q"), limit, offset, extra)
+		// Помеченные на удаление: признаки поля из разметки (search/marked),
+		// поверх — ключ элемента формы из доверенного контекста выбора.
+		mode := refOptionsModeFromRequest(r)
+		optCtx := withLang(r.Context(), s.resolveLang(r))
+		if choice != nil {
+			if choice.ReportParam != nil {
+				mode = refOptionsFilter.withMarked(choice.ShowDeleted)
+			} else {
+				mode = mode.withMarked(choice.ShowDeleted)
+			}
+			optCtx = withChoiceStyleParams(optCtx, choice.StyleParams)
+		}
+		items, total, err = s.referenceOptionsPageWithParams(optCtx, ent, mode, r.URL.Query().Get("q"), limit, offset, extra)
+		if errors.Is(err, errChoiceSearch) {
+			s.choiceSearchUnavailable(w, r)
+			return
+		}
 		if err != nil {
 			s.serverError(w, r, err)
 			return
 		}
 	}
 	// Динамический preview (choice_preview_proc) обслуживается POST /page:
+	if choice != nil && choice.KPIChoice != nil {
+		if err := s.kpiChoiceLabels(r.Context(), ent, choice.KPIChoice, items); err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+		for i, row := range items {
+			item := map[string]any{"id": row["id"], "_label": row["_label"]}
+			// Preserve native disabled/style transport; these keys are produced
+			// by the server and cannot be catalog field names.
+			for _, key := range []string{refOptionStyleKey, refOptionStyleBgKey, refOptionDisabledKey} {
+				if value, ok := row[key]; ok {
+					item[key] = value
+				}
+			}
+			items[i] = item
+		}
+	}
+	if choice != nil && choice.ReportParam != nil {
+		s.reportChoiceLabels(r.Context(), *choice.ReportParam, ent, items)
+		// A report picker returns only its public option representation.
+		for i, row := range items {
+			items[i] = map[string]any{"id": row["id"], "_label": row["_label"]}
+		}
+	}
 	// GET остаётся статическим и обратно совместимым (план 168, инвариант 1).
 	previewField := canonicalChoicePreviewField(ent)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -1342,13 +1394,22 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 		"offset": offset,
 	}
 	response["preview"] = previewField
+	// Выдачу уже подобрала функция поиска: клиент не дофильтровывает её
+	// подстрокой («15к1» не входит в «д.15, корп.1»).
+	if choiceSearchActive(ent, r.URL.Query().Get("q")) {
+		response["matched"] = true
+	}
 	if choice != nil && choice.Selected != nil {
 		allowed := false
 		if !choice.Empty && fltOK {
 			check := base
 			check.ChoicePredicates = choice.Predicates
 			check.IncludeFolders = choice.Folders
-			allowed, err = s.choiceSelectedAllowedWithParams(r.Context(), ent, *choice.Selected, check)
+			if choice.ReportParam != nil {
+				allowed, err = s.reportChoiceSelectedAllowedWithParams(r.Context(), ent, *choice.Selected, check)
+			} else {
+				allowed, err = s.choiceSelectedAllowedWithParams(r.Context(), ent, *choice.Selected, check)
+			}
 			if err != nil {
 				s.serverError(w, r, err)
 				return
@@ -1365,27 +1426,31 @@ type treeChildrenResponse struct {
 }
 
 type treeChildRow struct {
-	ID               string   `json:"id"`
-	ParentID         string   `json:"parent_id"`
-	Depth            int      `json:"depth"`
-	IsFolder         bool     `json:"is_folder"`
-	Predefined       bool     `json:"predefined"`
-	Posted           bool     `json:"posted"`
-	Marked           bool     `json:"marked"`
-	ActivityEnabled  bool     `json:"activity_enabled"`
-	ActivityInactive bool     `json:"activity_inactive"`
-	TreeCell         int      `json:"tree_cell"`
-	Cells            []string `json:"cells"`
-	DetailURL        string   `json:"detail_url"`
-	OpenURL          string   `json:"open_url"`
-	CopyURL          string   `json:"copy_url"`
-	FolderURL        string   `json:"folder_url"`
-	MarkURL          string   `json:"mark_url"`
-	DeleteURL        string   `json:"delete_url"`
-	UnpostURL        string   `json:"unpost_url"`
-	UnmarkURL        string   `json:"unmark_url"`
-	ActivityHideURL  string   `json:"activity_hide_url"`
-	ActivityShowURL  string   `json:"activity_show_url"`
+	ID               string                `json:"id"`
+	ParentID         string                `json:"parent_id"`
+	Depth            int                   `json:"depth"`
+	IsFolder         bool                  `json:"is_folder"`
+	Predefined       bool                  `json:"predefined"`
+	Posted           bool                  `json:"posted"`
+	Marked           bool                  `json:"marked"`
+	ActivityEnabled  bool                  `json:"activity_enabled"`
+	ActivityInactive bool                  `json:"activity_inactive"`
+	RowBackground    string                `json:"row_background,omitempty"`
+	RowTextColor     string                `json:"row_text_color,omitempty"`
+	RowBold          bool                  `json:"row_bold,omitempty"`
+	TreeCell         int                   `json:"tree_cell"`
+	Cells            []string              `json:"cells"`
+	DetailURL        string                `json:"detail_url"`
+	OpenURL          string                `json:"open_url"`
+	CopyURL          string                `json:"copy_url"`
+	FolderURL        string                `json:"folder_url"`
+	MarkURL          string                `json:"mark_url"`
+	DeleteURL        string                `json:"delete_url"`
+	UnpostURL        string                `json:"unpost_url"`
+	UnmarkURL        string                `json:"unmark_url"`
+	ActivityHideURL  string                `json:"activity_hide_url"`
+	ActivityShowURL  string                `json:"activity_show_url"`
+	CellFilters      []listCellFilterValue `json:"cell_filters,omitempty"`
 }
 
 func (s *Server) treeChildrenJSON(w http.ResponseWriter, r *http.Request) {
@@ -1436,6 +1501,8 @@ func (s *Server) treeChildrenJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Ветка дерева — тот же список: постоянный отбор формы списка действует и
+	// здесь, иначе раскрытие папки показало бы записи, скрытые в её списке.
 	params = s.applyListFormFilter(r, ent, params)
 	rows, err := s.store.List(r.Context(), ent.Name, ent, params)
 	if err != nil {
@@ -1443,6 +1510,9 @@ func (s *Server) treeChildrenJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.maskRecords(r.Context(), ent, rows) // план 88: маска ПДн в ячейках дерева
+	s.applyListRowStyle(r.Context(), ent, rows)
+
+	s.captureListCellFilters(r.Context(), ent, rows)
 	s.resolveRefs(r.Context(), ent, rows)
 	markActivityRows(ent, rows)
 
@@ -1496,6 +1566,11 @@ func (s *Server) treeChildRows(r *http.Request, entity *metadata.Entity, rows []
 		for i, col := range cols {
 			cells[i] = treeCellText(row[col.Name], col, enumLabels)
 		}
+		background := widget.NormalizeRowColor(row[listRowBackgroundKey])
+		textColor := ""
+		if background != "" {
+			textColor = widget.RowTextColor(background)
+		}
 		out = append(out, treeChildRow{
 			ID:               id,
 			ParentID:         refValueString(row["parent_id"]),
@@ -1506,8 +1581,12 @@ func (s *Server) treeChildRows(r *http.Request, entity *metadata.Entity, rows []
 			Marked:           asBool(row["deletion_mark"]),
 			ActivityEnabled:  entity.Activity != nil,
 			ActivityInactive: asBool(row["_activity_inactive"]),
+			RowBackground:    background,
+			RowTextColor:     textColor,
+			RowBold:          asBool(row[listRowBoldKey]),
 			TreeCell:         treeCell,
 			Cells:            cells,
+			CellFilters:      listCellFilters(row, cols),
 			DetailURL:        base + "/" + url.PathEscape(id) + "/detail-panel",
 			OpenURL:          openURL,
 			CopyURL:          copyURL,
@@ -1632,7 +1711,9 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 	// Маскирование ПДн (план 88): значения строятся из row ниже, поэтому
 	// маскируем строку до сборки vals — на форме поле показывается замаскированным,
 	// а submitEdit защищает реальное значение от перезаписи маской.
-	s.maskRecord(r.Context(), entity, row)
+	// pii_open_when: поле, открытое условием по этой (сохранённой) записи,
+	// показывается целиком (recordFieldDecisions).
+	s.maskRecordWithDecisions(s.recordFieldDecisions(r.Context(), entity, row), row)
 	langEdit := s.resolveLang(r)
 	enumOpts := s.loadEnumOptions(entity, langEdit)
 	tpEnumLabelsEdit := s.buildTPEnumLabels(entity, langEdit)
@@ -1734,7 +1815,14 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	refOptions, _ := s.loadInitialRefOptions(r.Context(), entity, vals)
-	tpRefOpts, _ := s.loadInitialTPRefOptions(r.Context(), entity, tpRows, vals)
+	// vals originate from the authorized, masked persisted object above, not
+	// from submitted fields. Preserve its current reference outside the picker.
+	refOptions, err = s.retainCurrentObjectRefOptions(r.Context(), entity, vals, refOptions)
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	tpRefOpts, _ := s.loadTPReferenceData(r.Context(), entity, tpRows, vals)
 
 	editUser := auth.UserFromContext(r.Context())
 	editIsAdmin := editUser == nil || editUser.IsAdmin
@@ -1754,7 +1842,8 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 		"Values":        vals,
 		"RefOptions":    refOptions,
 		"EnumOptions":   enumOpts,
-		"TPRefOptions":  tpRefOpts,
+		"TPRefOptions":  tpRefOpts.Labels,
+		"TPRefChoices":  tpRefOpts.Choices,
 		"TPEnumLabels":  tpEnumLabelsEdit,
 		"TPEnumOrder":   s.buildTPEnumOrder(entity),
 		"TPRefMeta":     tpRefMeta(entity),
@@ -1916,7 +2005,7 @@ func (s *Server) submitEdit(w http.ResponseWriter, r *http.Request) {
 		values := formValues(r, entity)
 		tablePartRows := serializeTablePartRowsForEntity(tpRows, entity, pickManagedFormCtx(r.Context(), entity, "object"))
 		refOptions, _ := s.loadInitialRefOptions(r.Context(), entity, values)
-		tpRefOpts2, _ := s.loadInitialTPRefOptions(r.Context(), entity, tablePartRows, values)
+		tpRefOpts2, _ := s.loadTPReferenceData(r.Context(), entity, tablePartRows, values)
 		values["_version"] = r.FormValue("_version")
 		langSubmit := s.resolveLang(r)
 		var fOpts []map[string]any
@@ -1931,7 +2020,8 @@ func (s *Server) submitEdit(w http.ResponseWriter, r *http.Request) {
 			"Values":       values,
 			"RefOptions":   refOptions,
 			"EnumOptions":  s.loadEnumOptions(entity, langSubmit),
-			"TPRefOptions": tpRefOpts2,
+			"TPRefOptions": tpRefOpts2.Labels,
+			"TPRefChoices": tpRefOpts2.Choices,
 			"TPEnumLabels": s.buildTPEnumLabels(entity, langSubmit),
 			"TPEnumOrder":  s.buildTPEnumOrder(entity),
 			"TPRefMeta":    tpRefMeta(entity),
@@ -2934,6 +3024,73 @@ func parseLegacyTablePartRows(r *http.Request, entity *metadata.Entity) (map[str
 }
 
 // parseListParams reads filter, search, sort and pagination URL params.
+// resolveListSort запоминает сортировку, которую пользователь выбрал щелчком по
+// заголовку колонки, и возвращает её при следующем открытии того же списка.
+//
+// Без этого порядок жил только в адресе страницы: ушёл в другой список,
+// вернулся — и строки снова в порядке по умолчанию, хотя человек его менял.
+// Хранится как вид списка (#1485) — по пользователю и сущности. Явный ?sort
+// без sort_snapshot перекрывает и обновляет сохранённое. Сохраняется и
+// восстанавливается только поле, которое есть у сущности: исчезнувшее из
+// метаданных молча забывается.
+func (s *Server) resolveListSort(r *http.Request, entity *metadata.Entity, params *storage.ListParams) {
+	user := auth.UserFromContext(r.Context())
+	if user == nil || user.Login == "" || s.store == nil {
+		return
+	}
+	known := func(name string) bool {
+		for _, f := range entity.Fields {
+			if f.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	q := r.URL.Query()
+	if q.Has("sort_snapshot") {
+		// This is a continuation of an already rendered list, not a new
+		// preference. Apply its parsed Sort/Dir through the usual storage
+		// validation, without reading or writing another tab's choice.
+		// Malformed/incomplete snapshot state must not write settings either.
+		return
+	}
+	if params.Sort != "" {
+		if !known(params.Sort) {
+			return
+		}
+		dir := "asc"
+		if strings.EqualFold(params.Dir, "desc") {
+			dir = "desc"
+		}
+		_ = s.store.SaveListSortUserSettings(r.Context(), entity.Name, user.Login, params.Sort, dir)
+		// A header click supersedes this list's captured default state.
+		q.Del("sort_default")
+		q.Set("sort_snapshot", "1")
+		r.URL.RawQuery = q.Encode()
+		return
+	}
+	if q.Get("sort_default") == "1" {
+		// Continue the order this list opened with, without reading or writing
+		// a preference that another tab may have changed. Keep Sort/Dir intact:
+		// storage owns metadata order_by, hierarchy and document defaults.
+		return
+	}
+	field, dir, err := s.store.GetListSortUserSettings(r.Context(), entity.Name, user.Login)
+	if err != nil || field == "" || !known(field) {
+		q.Set("sort_default", "1")
+		r.URL.RawQuery = q.Encode()
+		return
+	}
+	params.Sort = field
+	params.Dir = dir
+	// Pin the restored order in this list's links, forms and refresh URL.
+	// Another tab may change the saved preference before the next page loads.
+	q.Set("sort", field)
+	q.Set("dir", dir)
+	q.Set("sort_snapshot", "1")
+	r.URL.RawQuery = q.Encode()
+}
+
 // listModeCookie — кука с per-сущностными предпочтениями режима списка
 // (pages|feed). Значение — URL-escaped JSON map: "kind/name" → режим.
 const listModeCookie = "ob_listmodes"
@@ -3036,6 +3193,14 @@ func parseListParams(r *http.Request, entity *metadata.Entity, defaultLimit int)
 				params.Filters[f.Name] = storage.FilterValue{From: from, To: to}
 			}
 		default:
+			if values, ok := q["f."+f.Name+".eq"]; ok {
+				val := ""
+				if len(values) > 0 {
+					val = values[0]
+				}
+				params.Filters[f.Name] = storage.FilterValue{Value: val, Exact: true}
+				continue
+			}
 			val := q.Get("f." + f.Name)
 			if val != "" {
 				params.Filters[f.Name] = storage.FilterValue{Value: val}

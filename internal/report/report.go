@@ -12,6 +12,15 @@ type Param struct {
 	Label   string            `yaml:"label"`   // display label; falls back to Name
 	Labels  map[string]string `yaml:"labels"`  // per-language labels (lang code → translation)
 	Options []string          `yaml:"options"` // for type: select
+	// ChoiceShowDeleted — для reference-параметра: показывать ли в выборе
+	// помеченные на удаление (`choice_show_deleted`). nil — показывать с
+	// отметкой: параметр отчёта ищет по истории, а не вводит данные.
+	ChoiceShowDeleted *bool `yaml:"choice_show_deleted"`
+	// ChoiceFilter связывает ссылочный выбор с другими параметрами отчёта.
+	// Пустой ведущий параметр не ограничивает выбор (поиск по всем филиалам).
+	ChoiceFilter []ParamChoiceFilter `yaml:"choice_filter,omitempty"`
+	// ChoiceLabelSuffix — ссылочный реквизит, чья подпись добавляется в скобках.
+	ChoiceLabelSuffix string `yaml:"choice_label_suffix,omitempty"`
 	// Default — значение параметра, когда пользователь его не задал. Понимает ту
 	// же грамматику подстановок, что параметры виджетов и регламентных заданий
 	// ({{today}}, {{now|-7d}} и т.п.). Раньше линтер ключ `default` принимал, а
@@ -28,6 +37,16 @@ type Param struct {
 	// хранят время суток, и «Дата <= &По» с полночью теряло всё, что было в этот
 	// день после 00:00.
 	PeriodEnd bool `yaml:"period_end"`
+	// VisibleWhen controls presentation only. Hidden values remain independent
+	// and are still submitted/validated; the server query chooses its own bounds.
+	VisibleWhen *ParamVisibility `yaml:"visible_when,omitempty"`
+	// Context is a trusted server binding, not an editable/default form value.
+	Context *ParamContext `yaml:"context,omitempty"`
+}
+
+type ParamChoiceFilter struct {
+	Field string `yaml:"field"`
+	Param string `yaml:"param"`
 }
 
 type Report struct {
@@ -37,9 +56,10 @@ type Report struct {
 	Params      []Param           `yaml:"params"`
 	Query       string            `yaml:"query"`
 	ChartProc   string            `yaml:"chart_proc"`
-	ResultProc  string            `yaml:"result_proc,omitempty"` // .rep.os function returning SpreadsheetDocument
-	Composition *Composition      `yaml:"composition"`           // nil = плоская таблица (старое поведение)
-	Variants    []ReportVariant   `yaml:"variants"`              // доп. именованные компоновки по тому же запросу
+	ResultProc  string            `yaml:"result_proc,omitempty"`
+	Composition *Composition      `yaml:"composition"`          // nil = плоская таблица (старое поведение)
+	Variants    []ReportVariant   `yaml:"variants"`             // именованные компоновки и источники данных
+	Drilldowns  []Drilldown       `yaml:"drilldowns,omitempty"` // trusted root metadata, shared by variants
 	// OutputFormat — предпочтительный формат выгрузки отчёта (issue #218): пусто|html
 	// (интерактивный просмотр + кнопки Excel/PDF), pdf, excel или совместимый
 	// legacy-синоним excel_html. Реальная выгрузка идёт через /ui/report/<name>/pdf
@@ -52,12 +72,14 @@ type Report struct {
 	External bool `yaml:"-"`
 }
 
-// ReportVariant — именованная компоновка по тому же запросу отчёта («вариант
-// отчёта», как в 1С). На форме отчёта пользователь выбирает вариант; пустой
-// выбор соответствует основному блоку composition.
+// ReportVariant — именованный вариант компоновки и данных отчёта. Пустой Query
+// наследует основной запрос; Filters задают постоянный отбор до лимита строк.
+// Пустой выбор соответствует основному запросу и блоку composition.
 type ReportVariant struct {
-	Name        string       `yaml:"name"`
-	Composition *Composition `yaml:"composition"`
+	Name        string          `yaml:"name"`
+	Composition *Composition    `yaml:"composition"`
+	Query       string          `yaml:"query,omitempty"`
+	Filters     []VariantFilter `yaml:"filters,omitempty"`
 }
 
 // Composition описывает настройки компоновки данных отчёта.
@@ -73,16 +95,46 @@ type Composition struct {
 	Chart        *ChartSpec `yaml:"chart"`
 	DetailLink   string     `yaml:"detail_link"`   // поле строки с UUID регистратора/ссылки
 	DetailEntity string     `yaml:"detail_entity"` // имя сущности для перехода по ссылке
+	// DetailFields — поля детальной записи (аналог «Выбранных полей» 1С):
+	// колонки, которые в строке детализации показывают значения записи
+	// (номер, наименование, даты), а в строках групп и итогов пусты.
+	DetailFields []DetailField `yaml:"detail_fields,omitempty"`
+	// Formats — формат подписи значения группировки или колонки кросс-таблицы,
+	// строкой Формат() 1С (как «Формат» поля схемы СКД): {Месяц: "ДФ='ММММ гг'"}
+	// → «Сентябрь 26». Меняет только подпись: группировка и сортировка — по
+	// значению.
+	Formats map[string]string `yaml:"formats,omitempty"`
+	// ColumnGroupTotals — в кросс-таблице с несколькими группировками колонок
+	// после подколонок каждого значения верхней группировки идёт её итог
+	// (1С: РасположениеГруппировки = Конец).
+	ColumnGroupTotals bool `yaml:"column_group_totals,omitempty"`
+	// RowTotals — общий итог строки справа в кросс-таблице; nil = выводится,
+	// false = нет (1С: ГоризонтальноеРасположениеОбщихИтогов = Нет).
+	RowTotals *bool `yaml:"row_totals,omitempty"`
+}
+
+// ShowRowTotals — выводить ли общий итог строки справа в кросс-таблице.
+func (c *Composition) ShowRowTotals() bool { return c == nil || c.RowTotals == nil || *c.RowTotals }
+
+// DetailField — колонка детальной записи отчёта: поле строки запроса и
+// заголовок (пустой = имя поля).
+type DetailField struct {
+	Field string `yaml:"field"`
+	Title string `yaml:"title,omitempty"`
 }
 
 // Measure описывает измеримый показатель (поле + агрегат) в компоновке.
 type Measure struct {
 	Field  string `yaml:"field"`
-	Agg    string `yaml:"agg"` // sum|count|avg|min|max ("" = sum)
+	Agg    string `yaml:"agg"` // sum|count|count_distinct|avg|min|max ("" = sum)
 	Title  string `yaml:"title"`
 	Align  string `yaml:"align"`  // left|right|center ("" = right)
 	Format string `yaml:"format"` // "" | "#,##0.00" | "#,##0" | "0.0%" и т.п.
 	Expr   string `yaml:"expr"`   // непустое = вычисляемый показатель (DSL-выражение по другим полям)
+	// Scope limits resource values to named row groupings, $grand and/or $detail.
+	// Empty means every level, preserving existing reports.
+	Scope        []string             `yaml:"scope,omitempty" json:",omitempty"`
+	Calculations []MeasureCalculation `yaml:"calculations,omitempty" json:",omitempty"`
 }
 
 // Totals управляет выводом итогов в отчёте.

@@ -50,8 +50,11 @@ func dialectOrDefault(d storage.Dialect) storage.Dialect {
 
 // Result holds compiled PostgreSQL SQL and positional arguments.
 type Result struct {
-	SQL  string
-	Args []any
+	// Limited records an author-supplied FIRST/LIMIT. Runtime result filters
+	// cannot pretend this already bounded source is the full report dataset.
+	Limited bool
+	SQL     string
+	Args    []any
 	// Sources перечисляет объекты-источники запроса (для объектного RBAC, план 54).
 	// Имя — исходное имя сущности/регистра; Kind — секция прав ("catalog"|
 	// "document"|"register"|"inforeg"; "" — для неизвестных типов).
@@ -163,6 +166,9 @@ func Compile(src string, opts CompileOpts) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if err := validateStartOfHourCalls(tokens); err != nil {
+		return Result{}, err
+	}
 	tokens, opts = rewriteTablePartSources(tokens, opts)
 	res, err := translate(tokens, opts)
 	if err != nil {
@@ -176,6 +182,7 @@ func Compile(src string, opts CompileOpts) (Result, error) {
 	// он окажется после WHERE/GROUP/HAVING/ORDER BY. Составные запросы выше
 	// отклоняются: ПЕРВЫЕ относится к отдельной ветви ОБЪЕДИНИТЬ, а глобальный
 	// LIMIT молча изменил бы результат.
+	res.Limited = true
 	res.SQL += " LIMIT " + strconv.FormatInt(limit, 10)
 	return res, nil
 }
@@ -1140,6 +1147,9 @@ type translator struct {
 	derivedAs           map[int]string    // позиция закрывающей скобки → отложенный AS простой ссылки
 	mainRef             mainRefSource     // главный источник запроса: чья ссылка стоит за голым «Ссылка»
 
+	// grouped belongs to the active SELECT, independently of expression parentheses.
+	grouped bool
+
 	joinedRefs      []joinedRefSource // ссылочные поля присоединённых источников (#1385)
 	pendingRefJoins []pendingRefJoin  // авто-JOIN присоединённых источников ждут конца ПО
 	onSourceAliases map[int]string    // текущий источник ПО каждого SELECT
@@ -1939,6 +1949,33 @@ func (tr *translator) advance() tok {
 	t := tr.tokens[tr.pos]
 	tr.pos++
 	return t
+}
+
+// inAggregateArgument checks the enclosing calls of the identifier just read.
+// Closed expressions are skipped; an aggregate outside this SELECT does not
+// aggregate its subquery's ORDER BY. Scalar calls and grouping parentheses
+// inside an aggregate keep that aggregate's context.
+func (tr *translator) inAggregateArgument() bool {
+	depth := 0
+	for i := tr.pos - 2; i >= 0; i-- {
+		switch tr.tokens[i].kind {
+		case tRParen:
+			depth++
+		case tLParen:
+			if depth > 0 {
+				depth--
+			} else if i > 0 && tr.tokens[i-1].kind == tIdent {
+				if _, ok := sqlAgg(tr.tokens[i-1].val); ok {
+					return true
+				}
+			}
+		case tIdent:
+			if kw, ok := sqlKW(tr.tokens[i].val); depth == 0 && ok && kw == "SELECT" {
+				return false
+			}
+		}
+	}
+	return false
 }
 
 func (tr *translator) emit(s string) {
@@ -4633,41 +4670,125 @@ func (tr *translator) needsNumberCastForType(fieldType metadata.FieldType) bool 
 }
 
 // sqliteDateParamComparedToField распознаёт time.Time-параметр в прямом
-// сравнении с полем date. Такие параметры сериализуются тем же UTC RFC3339,
-// что и значения полей сущностей: иначе SQLite сравнивает разные TEXT-форматы
-// лексикографически по разделителю ('T' против пробела) и ошибается (#462).
+// сравнении с полем date объекта. Такие параметры сериализуются тем же UTC
+// RFC3339, что и значения полей сущностей: иначе SQLite сравнивает разные
+// TEXT-форматы лексикографически по разделителю ('T' против пробела) и
+// ошибается (#462). Для регистра нормализуются оба операнда, поскольку
+// публичная запись допускает несколько физических форматов даты.
 func (tr *translator) sqliteDateParamComparedToField(idx int) bool {
-	if dialectOrDefault(tr.opts.Dialect).Name() != "sqlite" || !tr.timeParamAt(idx) {
-		return false
-	}
-	if tr.dateFieldAt(idx-2) && tr.comparisonOpAt(idx-1) {
-		return true
-	}
-	if tr.comparisonOpAt(idx+1) && tr.dateFieldAt(idx+2) {
-		return true
-	}
-	// Первый или второй параметр правой части BETWEEN.
-	if tr.dateFieldAt(idx-2) && tr.keywordAt(idx-1, "МЕЖДУ", "BETWEEN") {
-		return true
-	}
-	return tr.dateFieldAt(idx-4) &&
-		tr.keywordAt(idx-3, "МЕЖДУ", "BETWEEN") &&
-		tr.timeParamAt(idx-2) &&
-		tr.keywordAt(idx-1, "И", "AND")
+	return tr.sqliteDateParamField(idx) >= 0
 }
 
-func (tr *translator) addSQLiteDateParam(name string) string {
+// sqliteDateParamField возвращает последний токен поля в прямом сравнении.
+// Выражения над датами сохраняют прежнюю трансляцию. Строковая граница
+// регистра нормализуется только в паре с time.Time в прямом BETWEEN.
+func (tr *translator) sqliteDateParamField(idx int) int {
+	if dialectOrDefault(tr.opts.Dialect).Name() != "sqlite" {
+		return -1
+	}
+	if field := tr.sqliteRegisterDateBetweenField(idx); field >= 0 {
+		return field
+	}
+	if !tr.timeParamAt(idx) {
+		return -1
+	}
+	if tr.dateFieldAt(idx-2) && tr.comparisonOpAt(idx-1) {
+		return idx - 2
+	}
+	if tr.comparisonOpAt(idx + 1) {
+		field := idx + 2
+		for field+2 < len(tr.tokens) && tr.tokens[field].kind == tIdent &&
+			tr.tokens[field+1].kind == tDot && tr.tokens[field+2].kind == tIdent {
+			field += 2
+		}
+		if tr.dateFieldAt(field) {
+			return field
+		}
+	}
+	// Первый или второй параметр правой части BETWEEN.
+	if tr.dateFieldAt(idx-2) && tr.keywordAt(idx-1, "МЕЖДУ", "BETWEEN") &&
+		(!tr.registerFieldAt(idx-2) || tr.keywordAt(idx+1, "И", "AND") && tr.timeParamAt(idx+2)) {
+		return idx - 2
+	}
+	if tr.dateFieldAt(idx-4) &&
+		tr.keywordAt(idx-3, "МЕЖДУ", "BETWEEN") &&
+		tr.timeParamAt(idx-2) &&
+		tr.keywordAt(idx-1, "И", "AND") {
+		return idx - 4
+	}
+	return -1
+}
+
+// Обе границы должны быть отдельными параметрами, хотя бы один — time.Time.
+// Только валидная RFC3339-строка второй границы может разделить UTC-ключ с ним.
+// Решение общее для колонки и обеих границ, чтобы не смешать три формата.
+func (tr *translator) sqliteRegisterDateBetweenField(idx int) int {
+	for _, first := range []int{idx, idx - 2} {
+		field, last := first-2, first+2
+		if !tr.dateFieldAt(field) || !tr.registerFieldAt(field) ||
+			!tr.keywordAt(first-1, "МЕЖДУ", "BETWEEN") || !tr.keywordAt(first+1, "И", "AND") ||
+			!tr.dateBoundaryParamAt(first) || !tr.dateBoundaryParamAt(last) ||
+			(!tr.timeParamAt(first) && !tr.timeParamAt(last)) {
+			continue
+		}
+		// Арифметика, вызов функции и иные выражения после верхней границы
+		// не являются прямым BETWEEN двух параметров.
+		if last+1 >= len(tr.tokens) {
+			continue
+		}
+		next := tr.tokens[last+1]
+		switch next.kind {
+		case tEOF, tRParen, tComma:
+			return field
+		case tIdent:
+			if kw, ok := sqlKW(next.val); ok {
+				switch kw {
+				case "AND", "OR", "GROUP", "HAVING", "ORDER", "UNION", "LIMIT", "THEN", "ELSE", "END", "AS", "FROM":
+					return field
+				}
+			}
+		}
+	}
+	return -1
+}
+
+func (tr *translator) dateBoundaryParamAt(idx int) bool {
+	if tr.timeParamAt(idx) {
+		return true
+	}
+	if idx < 0 || idx >= len(tr.tokens) || tr.tokens[idx].kind != tParam {
+		return false
+	}
+	value, ok := tr.paramValues[tr.tokens[idx].val].(string)
+	if !ok {
+		return false
+	}
+	_, err := time.Parse(time.RFC3339Nano, value)
+	return err == nil
+}
+
+func (tr *translator) addSQLiteDateParam(name string, register bool) string {
+	layout := time.RFC3339
+	if register {
+		layout = time.RFC3339Nano
+	}
 	var value any
 	switch v := tr.paramValues[name].(type) {
+	case string:
+		value = v // RFC3339 проверен общим решением для BETWEEN.
 	case time.Time:
-		value = v.UTC().Format(time.RFC3339)
+		value = v.UTC().Format(layout)
 	case *time.Time:
 		if v != nil {
-			value = v.UTC().Format(time.RFC3339)
+			value = v.UTC().Format(layout)
 		}
 	}
 	tr.args = append(tr.args, value)
-	return dialectOrDefault(tr.opts.Dialect).Placeholder(len(tr.args))
+	placeholder := dialectOrDefault(tr.opts.Dialect).Placeholder(len(tr.args))
+	if register {
+		return "ob_utc_datetime(" + placeholder + ")"
+	}
+	return placeholder
 }
 
 // uuidParamComparedToStringField: на PostgreSQL параметр — строка, похожая на
@@ -4835,7 +4956,51 @@ func (tr *translator) dateFieldAt(idx int) bool {
 	if idx < 0 || idx >= len(tr.tokens) || tr.tokens[idx].kind != tIdent {
 		return false
 	}
+	if tr.registerFieldAt(idx) {
+		typ, _, known := tr.columnTypeAt(idx, lowerFast(tr.tokens[idx].val), tr.columnQualifierAt(idx))
+		return known && typ == metadata.FieldTypeDate
+	}
 	return tr.colTypes[lowerFast(tr.tokens[idx].val)] == metadata.FieldTypeDate
+}
+
+// Оборачиваем только поле того же прямого сравнения, чей параметр получил
+// ob_utc_datetime. SELECT/ORDER BY и сравнения строк не меняют представление.
+func (tr *translator) sqliteRegisterDateComparisonAt(idx int) bool {
+	if !tr.dateFieldAt(idx) || !tr.registerFieldAt(idx) {
+		return false
+	}
+	start := idx
+	for start >= 2 && tr.tokens[start-1].kind == tDot && tr.tokens[start-2].kind == tIdent {
+		start -= 2
+	}
+	for _, param := range []int{idx + 2, idx + 4, start - 2} {
+		if tr.sqliteDateParamField(param) == idx {
+			return true
+		}
+	}
+	return false
+}
+
+// registerFieldAt — поле в позиции idx принадлежит источнику-регистру: по
+// квалификатору «Р.Поле» или, без квалификатора, по главному источнику SELECT.
+// Путь через ссылку («Р.Мастер.Поле») ведёт к объекту и регистром не считается.
+func (tr *translator) registerFieldAt(idx int) bool {
+	if idx >= 2 && tr.tokens[idx-1].kind == tDot && tr.tokens[idx-2].kind == tIdent {
+		if idx >= 3 && tr.tokens[idx-3].kind == tDot {
+			// В Р.Мастер.Поле имя Мастер — ссылочный реквизит, даже если
+			// другой источник SELECT использует его как свой алиас.
+			return false
+		}
+		qualifier := lowerFast(tr.tokens[idx-2].val)
+		scope, ok := tr.sourceCtx.qualifierScopeAt(idx, qualifier)
+		if !ok {
+			return false
+		}
+		class, known := scope.qualifiers[qualifier]
+		return known && class == sourceClassRegister
+	}
+	scope, ok := tr.sourceCtx.scopeAt(idx)
+	return ok && scope.main == sourceClassRegister
 }
 
 func (tr *translator) timeParamAt(idx int) bool {
@@ -4935,6 +5100,10 @@ func isReferenceName(lower string) bool {
 // emitOwnColumn эмитит неквалифицированную собственную колонку с учётом п.48/п.49.
 func (tr *translator) emitOwnColumn(col, lower string) {
 	col = tr.qualifyOwn(col, lower)
+	if tr.sqliteRegisterDateComparisonAt(tr.pos - 1) {
+		tr.emit("ob_utc_datetime(" + col + ")")
+		return
+	}
 	if tr.needsNumberCast(lower) {
 		tr.emit("CAST(" + col + " AS NUMERIC)")
 		return
@@ -5050,6 +5219,10 @@ func (tr *translator) equalityOpAt(idx int) bool {
 // обязателен.
 func (tr *translator) emitQualifiedColumn(col, lower string) {
 	if len(tr.parts) >= 2 && tr.parts[len(tr.parts)-1] == "." {
+		if tr.sqliteRegisterDateComparisonAt(tr.pos - 1) {
+			tr.emit("ob_utc_datetime(" + tr.takeQualifier() + col + ")")
+			return
+		}
 		if tr.needsNumberCast(lower) {
 			tr.emit("CAST(" + tr.takeQualifier() + col + " AS NUMERIC)")
 			return
@@ -5102,6 +5275,10 @@ func (tr *translator) emitDerivedReferenceAlias(col, lower string) {
 }
 
 func (tr *translator) emitRefAttrColumn(col string, fieldType metadata.FieldType) {
+	if len(tr.parts) >= 2 && tr.parts[len(tr.parts)-1] == "." && tr.sqliteRegisterDateComparisonAt(tr.pos-1) {
+		tr.emit("ob_utc_datetime(" + tr.takeQualifier() + col + ")")
+		return
+	}
 	if len(tr.parts) >= 2 && tr.parts[len(tr.parts)-1] == "." && tr.needsNumberCastForType(fieldType) {
 		tr.emit("CAST(" + tr.takeQualifier() + col + " AS NUMERIC)")
 		return
@@ -5997,11 +6174,48 @@ func projectionFieldNames(tokens []tok) []string {
 			add(t.val)
 			continue
 		}
-		if t.kind == tStar && projectionActive() {
+		if t.kind == tStar && projectionActive() && projectionWildcard(tokens, i) {
 			add("*")
 		}
 	}
 	return out
+}
+
+// projectionWildcard — «*» как выборка всех полей («ВЫБРАТЬ *», «Т.*»,
+// «…, *», «ПЕРВЫЕ 10 *»). Умножение («Остаток * Цена») и «КОЛИЧЕСТВО(*)»
+// полей не раскрывают: раньше они давали в ProjectionFields «*», и отчёт с
+// подзапросом отклонялся по любому защищённому полю любого источника, даже не
+// упомянутому в запросе.
+//
+// Решение — от противного и в пользу отказа: «*» считается умножением, только
+// если перед ним операнд (поле или алиас, «)», строка, параметр, число) или
+// «(» агрегата. Всё прочее — выборка всех полей, как раньше.
+func projectionWildcard(tokens []tok, i int) bool {
+	if i == 0 {
+		return true
+	}
+	prev := tokens[i-1]
+	switch prev.kind {
+	case tLParen, tRParen, tStr, tParam:
+		return false
+	case tNum:
+		// «ПЕРВЫЕ 10 *» — выборка всех полей, «2 * Цена» — умножение.
+		if i >= 2 && tokens[i-2].kind == tIdent {
+			kw := upperFast(tokens[i-2].val)
+			return kw == "ПЕРВЫЕ" || kw == "TOP"
+		}
+		return false
+	case tIdent:
+		if _, isKW := sqlKW(prev.val); isKW {
+			return true
+		}
+		switch upperFast(prev.val) {
+		case "РАЗЛИЧНЫЕ", "DISTINCT", "РАЗРЕШЕННЫЕ", "ALLOWED":
+			return true
+		}
+		return false // поле или алиас: умножение
+	}
+	return true
 }
 
 func expandReferenceProjection(fields []string, dims []refDimInfo) []string {
@@ -6303,6 +6517,7 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				tr.emit("ORDER BY")
 			} else {
 				tr.section = sectionGroupBy
+				tr.grouped = true
 				tr.emit("GROUP BY")
 			}
 			if tr.peek(0).kind == tIdent && upperFast(tr.peek(0).val) == "ПО" {
@@ -6315,9 +6530,10 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		if t.kind == tParam {
 			tr.prevWasDot = false
 			normalizeDate := tr.sqliteDateParamComparedToField(tr.pos)
+			registerDate := normalizeDate && tr.registerFieldAt(tr.sqliteDateParamField(tr.pos))
 			tr.advance()
 			if normalizeDate {
-				tr.emit(tr.addSQLiteDateParam(t.val))
+				tr.emit(tr.addSQLiteDateParam(t.val, registerDate))
 			} else if tr.emptyRefParamAt(tr.pos - 1) {
 				tr.emit("NULL")
 			} else if tr.uuidParamComparedToStringField(tr.pos - 1) {
@@ -6563,10 +6779,12 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				switch kw {
 				case "SELECT":
 					tr.section = sectionSelect
+					tr.grouped = false
 				case "FROM":
 					tr.section = sectionFrom
 				case "GROUP":
 					tr.section = sectionGroupBy
+					tr.grouped = true
 				case "HAVING":
 					tr.section = sectionHaving
 				case "ORDER":
@@ -6611,8 +6829,19 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 								tr.emit(rd.fieldName)
 								tr.aliases[lowerFast(rd.fieldName)] = struct{}{}
 							}
-						case sectionGroupBy, sectionOrderBy:
+						case sectionGroupBy:
 							tr.emit(rd.displayCol())
+						case sectionOrderBy:
+							if tr.grouped && !tr.inAggregateArgument() {
+								// В сгруппированной выборке представление ссылки — не
+								// колонка группировки: сортируем по нему агрегатом. Внутри
+								// группы ссылка одна, значит и представление одно — порядок
+								// тот же, что без группировки, и запрос допустим на обоих
+								// диалектах.
+								tr.emit("MIN(" + rd.displayCol() + ")")
+							} else {
+								tr.emit(rd.displayCol())
+							}
 						default:
 							// Колонка-идентификатор ссылки квалифицируется так же,
 							// как любая своя колонка (п.48). Без этого условие
@@ -6968,7 +7197,7 @@ func simpleProjectionDateOutputs(tokens []tok, p ProjectionPlan, ctx sourceConte
 	}
 	out := map[string]bool{}
 	for name, typ := range scalarProjectionTypes(tokens, ctx, scopeID, scoped[scopeID], qualified[scopeID], keys) {
-		if typ == metadata.FieldTypeDate {
+		if typ == metadata.FieldTypeDate || typ == scalarLocalHourType {
 			out[name] = true
 		}
 	}
@@ -7085,12 +7314,14 @@ func scalarFuncRewrites(dialect string) map[string]funcRewrite {
 	}
 	switch dialect {
 	case "sqlite":
+		m["нрег"] = rw("ob_lower(", ")")
 		// Цел — усечение к нулю (как decimal.Truncate(0) в DSL). В SQLite
 		// CAST(x AS INTEGER) усекает к нулю.
 		m["цел"] = rw("CAST(", " AS INTEGER)")
 		m["int"] = rw("CAST(", " AS INTEGER)")
 		m["началодня"] = rw("date(", ")")
 		m["startofday"] = rw("date(", ")")
+		m["началочаса"] = rw("strftime('%Y-%m-%d %H:00:00', ", ")")
 		m["конецдня"] = rw("datetime(date(", "), '+1 day', '-1 second')")
 		m["endofday"] = rw("datetime(date(", "), '+1 day', '-1 second')")
 		m["началомесяца"] = rw("date(", ", 'start of month')")
@@ -7104,12 +7335,14 @@ func scalarFuncRewrites(dialect string) map[string]funcRewrite {
 		m["день"] = rw("CAST(strftime('%d',", ") AS INTEGER)")
 		m["day"] = rw("CAST(strftime('%d',", ") AS INTEGER)")
 	default: // pg
+		m["нрег"] = rw("LOWER(", ")")
 		// Цел — усечение к нулю. В PG CAST(x AS INTEGER) округлял бы (half-even),
 		// поэтому берём TRUNC, которое усекает к нулю.
 		m["цел"] = rw("TRUNC(", ")")
 		m["int"] = rw("TRUNC(", ")")
 		m["началодня"] = rw("date_trunc('day',", ")")
 		m["startofday"] = rw("date_trunc('day',", ")")
+		m["началочаса"] = rw("date_trunc('hour', CAST(", " AS TIMESTAMPTZ))")
 		m["конецдня"] = rw("(date_trunc('day',", ") + INTERVAL '1 day' - INTERVAL '1 microsecond')")
 		m["endofday"] = rw("(date_trunc('day',", ") + INTERVAL '1 day' - INTERVAL '1 microsecond')")
 		m["началомесяца"] = rw("date_trunc('month',", ")")
@@ -7139,6 +7372,13 @@ func rewriteScalarFuncs(tokens []tok, dialect string, scopedColTypes map[int]map
 	var out []tok
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
+		if t.kind == tIdent && i+1 < len(tokens) && tokens[i+1].kind == tLParen && isDateDiffFunc(lowerFast(t.val)) {
+			if expanded, end, ok := rewriteDateDiff(tokens, i, dialect, scopedColTypes, qualifiedColTypes, sourceCtx, tokenOffset, params); ok {
+				out = append(out, expanded...)
+				i = end
+				continue
+			}
+		}
 		if t.kind == tIdent && i+1 < len(tokens) && tokens[i+1].kind == tLParen {
 			key := lowerFast(t.val)
 			rw, ok := rewrites[key]
@@ -7202,7 +7442,10 @@ func rewriteScalarFuncs(tokens []tok, dialect string, scopedColTypes map[int]map
 					wrapped = append(wrapped, inner[modifier:]...)
 					inner = append(wrapped, tokenizeFragment(" AS NUMERIC)")...)
 				}
-				if dialect == "sqlite" && isCalendarDateFunc(key) && dateArgumentIsMoment(rawInner, scopeColTypes, scopeQualified, params) {
+				// Only the new hour function additionally accepts a proven MIN/MAX
+				// date expression here; existing calendar rewrites keep their policy.
+				hourMoment := key == "началочаса" && scalarProjectionExpressionType(rawInner, scopeColTypes, scopeQualified) == metadata.FieldTypeDate
+				if dialect == "sqlite" && isCalendarDateFunc(key) && (dateArgumentIsMoment(rawInner, scopeColTypes, scopeQualified, params) || hourMoment) {
 					wrapped := tokenizeFragment("ob_local_datetime(")
 					wrapped = append(wrapped, inner...)
 					wrapped = append(wrapped, tokenizeFragment(")")...)
@@ -7220,9 +7463,167 @@ func rewriteScalarFuncs(tokens []tok, dialect string, scopedColTypes map[int]map
 	return out
 }
 
+// РАЗНОСТЬДАТ(Дата1, Дата2, Единица) — как в 1С: Дата2 − Дата1 в целых
+// единицах, причём обе даты сначала усекаются до начала единицы (23:59:59 и
+// 00:00:01 следующего дня — один ДЕНЬ). Календарь — местное время приложения,
+// как у Год()/НачалоДня(): на SQLite доказанный момент переводится через
+// ob_local_datetime, на PostgreSQL зона сессии уже равна зоне приложения.
+var dateDiffUnits = map[string]string{
+	"СЕКУНДА": "second", "SECOND": "second",
+	"МИНУТА": "minute", "MINUTE": "minute",
+	"ЧАС": "hour", "HOUR": "hour",
+	"ДЕНЬ": "day", "DAY": "day",
+	"МЕСЯЦ": "month", "MONTH": "month",
+	"КВАРТАЛ": "quarter", "QUARTER": "quarter",
+	"ГОД": "year", "YEAR": "year",
+}
+
+func isDateDiffFunc(name string) bool { return name == "разностьдат" || name == "datediff" }
+
+// splitTopLevelArgs делит токены аргументов вызова по запятым верхнего уровня.
+func splitTopLevelArgs(tokens []tok) [][]tok {
+	var args [][]tok
+	depth, start := 0, 0
+	for j, t := range tokens {
+		switch t.kind {
+		case tLParen:
+			depth++
+		case tRParen:
+			depth--
+		case tComma:
+			if depth == 0 {
+				args = append(args, tokens[start:j])
+				start = j + 1
+			}
+		}
+	}
+	return append(args, tokens[start:])
+}
+
+// rewriteDateDiff разворачивает РАЗНОСТЬДАТ, начинающийся с tokens[at]. ok=false —
+// вызов не распознан (нет пары скобок, не три аргумента, неизвестная единица):
+// токены остаются как есть и SQL падает явно, а не считает что-то другое.
+func rewriteDateDiff(tokens []tok, at int, dialect string, scopedColTypes map[int]map[string]metadata.FieldType, qualifiedColTypes map[int]map[string]map[string]metadata.FieldType, sourceCtx sourceContext, tokenOffset int, params map[string]any) ([]tok, int, bool) {
+	depth, end := 0, -1
+	for j := at + 1; j < len(tokens) && end < 0; j++ {
+		switch tokens[j].kind {
+		case tLParen:
+			depth++
+		case tRParen:
+			depth--
+			if depth == 0 {
+				end = j
+			}
+		}
+	}
+	if end < 0 {
+		return nil, 0, false
+	}
+	args := splitTopLevelArgs(tokens[at+2 : end])
+	if len(args) != 3 || len(args[2]) != 1 || args[2][0].kind != tIdent {
+		return nil, 0, false
+	}
+	unit, ok := dateDiffUnits[upperFast(args[2][0].val)]
+	if !ok {
+		return nil, 0, false
+	}
+	var scopeColTypes map[string]metadata.FieldType
+	var scopeQualified map[string]map[string]metadata.FieldType
+	if scopeID, ok := sourceCtx.scopeIDAt(tokenOffset + at); ok {
+		scopeColTypes = scopedColTypes[scopeID]
+		scopeQualified = qualifiedColTypes[scopeID]
+	}
+	offset := tokenOffset + at + 2
+	operand := func(raw []tok) []tok {
+		inner := rewriteScalarFuncs(raw, dialect, scopedColTypes, qualifiedColTypes, sourceCtx, offset, params)
+		offset += len(raw) + 1
+		wrapped := tokenizeFragment("(")
+		if dialect == "sqlite" && dateArgumentIsMoment(raw, scopeColTypes, scopeQualified, params) {
+			wrapped = append(wrapped, tokenizeFragment("ob_local_datetime(")...)
+			wrapped = append(wrapped, inner...)
+			wrapped = append(wrapped, tokenizeFragment(")")...)
+		} else {
+			wrapped = append(wrapped, inner...)
+		}
+		return append(wrapped, tokenizeFragment(")")...)
+	}
+	a, b := operand(args[0]), operand(args[1])
+	frag := func(parts ...any) []tok {
+		var out []tok
+		for _, p := range parts {
+			switch v := p.(type) {
+			case string:
+				out = append(out, tokenizeFragment(v)...)
+			case []tok:
+				out = append(out, v...)
+			}
+		}
+		return out
+	}
+	var out []tok
+	if dialect == "sqlite" {
+		// Секунды от начала эпохи у стенных часов, усечённых до единицы.
+		epoch := func(x []tok, format string) []tok {
+			return frag("CAST(strftime('%s', strftime('"+format+"', ", x, ")) AS INTEGER)")
+		}
+		ym := func(x []tok) []tok {
+			return frag("(CAST(strftime('%Y', ", x, ") AS INTEGER) * 12 + CAST(strftime('%m', ", x, ") AS INTEGER) - 1)")
+		}
+		switch unit {
+		case "second":
+			out = frag("(", epoch(b, "%Y-%m-%d %H:%M:%S"), " - ", epoch(a, "%Y-%m-%d %H:%M:%S"), ")")
+		case "minute":
+			out = frag("((", epoch(b, "%Y-%m-%d %H:%M:00"), " - ", epoch(a, "%Y-%m-%d %H:%M:00"), ") / 60)")
+		case "hour":
+			out = frag("((", epoch(b, "%Y-%m-%d %H:00:00"), " - ", epoch(a, "%Y-%m-%d %H:00:00"), ") / 3600)")
+		case "day":
+			out = frag("CAST(julianday(date(", b, ")) - julianday(date(", a, ")) AS INTEGER)")
+		case "month":
+			out = frag("(", ym(b), " - ", ym(a), ")")
+		case "quarter":
+			out = frag("((", ym(b), " / 3) - (", ym(a), " / 3))")
+		case "year":
+			out = frag("(CAST(strftime('%Y', ", b, ") AS INTEGER) - CAST(strftime('%Y', ", a, ") AS INTEGER))")
+		}
+	} else {
+		trunc := func(level string, x []tok) []tok { return frag("date_trunc('"+level+"', ", x, ")") }
+		seconds := func(level string) []tok {
+			return frag("CAST(EXTRACT(EPOCH FROM (", trunc(level, b), " - ", trunc(level, a), ")) AS BIGINT)")
+		}
+		ym := func(x []tok) []tok {
+			return frag("(CAST(EXTRACT(YEAR FROM ", x, ") AS INTEGER) * 12 + CAST(EXTRACT(MONTH FROM ", x, ") AS INTEGER) - 1)")
+		}
+		switch unit {
+		case "second":
+			out = seconds("second")
+		case "minute":
+			out = frag("(", seconds("minute"), " / 60)")
+		case "hour":
+			out = frag("(", seconds("hour"), " / 3600)")
+		case "day":
+			out = frag("(CAST(", trunc("day", b), " AS DATE) - CAST(", trunc("day", a), " AS DATE))")
+		case "month":
+			out = frag("(", ym(b), " - ", ym(a), ")")
+		case "quarter":
+			out = frag("((", ym(b), " / 3) - (", ym(a), " / 3))")
+		case "year":
+			out = frag("(CAST(EXTRACT(YEAR FROM ", b, ") AS INTEGER) - CAST(EXTRACT(YEAR FROM ", a, ") AS INTEGER))")
+		}
+	}
+	// Результат — Число, как в 1С: дальнейшее деление дробное
+	// (РАЗНОСТЬДАТ(…, СЕКУНДА) / 60 — минуты с долями, а не целое деление
+	// SQL). REAL и DOUBLE PRECISION оба приходят float64: целые значения
+	// точны и выводятся без дробной части.
+	numeric := " AS DOUBLE PRECISION)"
+	if dialect == "sqlite" {
+		numeric = " AS REAL)"
+	}
+	return frag("CAST(", out, numeric), end, true
+}
+
 func isCalendarDateFunc(name string) bool {
 	switch name {
-	case "началодня", "startofday", "конецдня", "endofday",
+	case "началочаса", "началодня", "startofday", "конецдня", "endofday",
 		"началомесяца", "startofmonth", "началогода", "startofyear",
 		"год", "year", "месяц", "month", "день", "day":
 		return true

@@ -26,6 +26,54 @@ func CheckFormBackground(proj *project.Project) []Issue {
 			return
 		}
 		walkFormElements(form.Elements, func(el *metadata.FormElement) {
+			for _, hk := range []struct{ key, value string }{
+				{"header_background", el.HeaderBackground},
+				{"header_border_color", el.HeaderBorderColor},
+			} {
+				if strings.TrimSpace(hk.value) == "" {
+					continue
+				}
+				if el.Kind != metadata.FormElementTablePart {
+					warns = append(warns, Issue{
+						File:         label,
+						Object:       object,
+						Kind:         "Управляемая форма",
+						Code:         "form.background-kind",
+						Message:      fmt.Sprintf("элемент %q (%s): ключ %s игнорируется — цвет шапки есть только у ТабличнаяЧасть", formElementName(el), el.Kind, hk.key),
+						SuggestedFix: "Удалите ключ или перенесите его на ТабличнаяЧасть.",
+					})
+				} else if csssafe.Color(hk.value) == "" {
+					warns = append(warns, Issue{
+						File:         label,
+						Object:       object,
+						Kind:         "Управляемая форма",
+						Code:         "form.background-color",
+						Message:      fmt.Sprintf("%s %q: %s %q — не распознанный цвет, шапка останется обычной", el.Kind, formElementName(el), hk.key, hk.value),
+						SuggestedFix: "Допустимы hex (#rrggbb, #rgb), rgb(...) и именованные CSS-цвета.",
+					})
+				}
+			}
+			if strings.TrimSpace(el.BorderColor) != "" {
+				if !metadata.FormElementSupportsBorderColor(el.Kind) {
+					warns = append(warns, Issue{
+						File:         label,
+						Object:       object,
+						Kind:         "Управляемая форма",
+						Code:         "form.background-kind",
+						Message:      fmt.Sprintf("элемент %q (%s): ключ border_color игнорируется — цвет рамки поддерживает только ПолеВвода", formElementName(el), el.Kind),
+						SuggestedFix: "Удалите ключ или перенесите его на ПолеВвода.",
+					})
+				} else if csssafe.Color(el.BorderColor) == "" {
+					warns = append(warns, Issue{
+						File:         label,
+						Object:       object,
+						Kind:         "Управляемая форма",
+						Code:         "form.background-color",
+						Message:      fmt.Sprintf("%s %q: border_color %q — не распознанный цвет, рамка останется обычной", el.Kind, formElementName(el), el.BorderColor),
+						SuggestedFix: "Допустимы hex (#rrggbb, #rgb), rgb(...) и именованные CSS-цвета.",
+					})
+				}
+			}
 			if strings.TrimSpace(el.Background) == "" {
 				return
 			}
@@ -35,7 +83,7 @@ func CheckFormBackground(proj *project.Project) []Issue {
 					Object:       object,
 					Kind:         "Управляемая форма",
 					Code:         "form.background-kind",
-					Message:      fmt.Sprintf("элемент %q (%s): ключ background игнорируется — фон поддерживают только ГруппаФормы и Кнопка", formElementName(el), el.Kind),
+					Message:      fmt.Sprintf("элемент %q (%s): ключ background игнорируется — фон поддерживают только ГруппаФормы, СтраницыФормы, Кнопка и ПолеВвода", formElementName(el), el.Kind),
 					SuggestedFix: "Перенесите background на объемлющую ГруппаФормы или удалите ключ.",
 				})
 				return
@@ -53,12 +101,19 @@ func CheckFormBackground(proj *project.Project) []Issue {
 		})
 	}
 
+	forEachLabeledForm(proj, report)
+	return warns
+}
+
+// forEachLabeledForm обходит формы сущностей и обработок проекта с меткой
+// файла для сообщения check.
+func forEachLabeledForm(proj *project.Project, fn func(label, object string, form *metadata.FormModule)) {
 	for _, ent := range proj.Entities {
 		if ent == nil {
 			continue
 		}
 		for _, form := range ent.Forms {
-			report(formFileLabel(ent, form), ent.Name, form)
+			fn(formFileLabel(ent, form), ent.Name, form)
 		}
 	}
 	for _, proc := range proj.Processors {
@@ -73,8 +128,7 @@ func CheckFormBackground(proj *project.Project) []Issue {
 			if name == "" {
 				name = "объекта"
 			}
-			report("forms/"+strings.ToLower(proc.Name)+"/"+name+".form.yaml", proc.Name, form)
+			fn("forms/"+strings.ToLower(proc.Name)+"/"+name+".form.yaml", proc.Name, form)
 		}
 	}
-	return warns
 }

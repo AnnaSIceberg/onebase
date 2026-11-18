@@ -55,7 +55,14 @@ type saveField struct {
 	// конфигурацию и не виден в `onebase check` — поле просто молча
 	// открывается всем ролям, которые про него не высказались. Полноту
 	// вложенных ключей сторожит TestSaveField_CoversAllRawKeys.
-	PII bool `yaml:"pii,omitempty"`
+	PII       bool `yaml:"pii,omitempty"`
+	ReportPII bool `yaml:"report_pii,omitempty"`
+	// ChoiceShowDeleted — choice_show_deleted ссылочного реквизита. Редактор
+	// его не показывает, ключ переносится из прежнего состояния файла.
+	ChoiceShowDeleted *bool `yaml:"choice_show_deleted,omitempty"`
+	// PIIOpenWhen — условие раскрытия ПДн в форме записи (Field.PIIOpenWhen).
+	// Редактор его тоже не показывает: переносится из прежнего файла, как pii.
+	PIIOpenWhen string `yaml:"pii_open_when,omitempty"`
 }
 
 type saveTP struct {
@@ -95,12 +102,13 @@ type saveNumeratorEdit struct {
 // saveStandardField mirrors the user properties of metadata.rawNumeratorField.
 // The standard name, string type and stable ID are derived from entity kind.
 type saveStandardField struct {
-	Title    string            `yaml:"title,omitempty"`
-	Label    string            `yaml:"label,omitempty"`
-	Titles   map[string]string `yaml:"titles,omitempty"`
-	Required bool              `yaml:"required,omitempty"`
-	Default  string            `yaml:"default,omitempty"`
-	PII      bool              `yaml:"pii,omitempty"`
+	Title     string            `yaml:"title,omitempty"`
+	Label     string            `yaml:"label,omitempty"`
+	Titles    map[string]string `yaml:"titles,omitempty"`
+	Required  bool              `yaml:"required,omitempty"`
+	Default   string            `yaml:"default,omitempty"`
+	PII       bool              `yaml:"pii,omitempty"`
+	ReportPII bool              `yaml:"report_pii,omitempty"`
 }
 
 // savePredefined — предопределённые элементы справочника. inline map нужен,
@@ -176,8 +184,14 @@ type saveEntity struct {
 	ListRefreshOn []string  `yaml:"list_refresh_on,omitempty"`
 	ListFilters   []string  `yaml:"list_filters,omitempty"`
 	NotifyChanges bool      `yaml:"notify_changes,omitempty"`
+	// AudioPlayer — аудиоплеер вместо панели вложений (редактируется в YAML):
+	// без поля сохранение объекта из конфигуратора теряло ключ.
+	AudioPlayer bool `yaml:"audio_player,omitempty"`
 	// InteractiveCreate — указатель: явное `false` обязано пережить round-trip.
 	InteractiveCreate *bool `yaml:"interactive_create,omitempty"`
+	// ChoiceShowDeleted — choice_show_deleted справочника; редактор его не
+	// показывает, ключ переносится как есть.
+	ChoiceShowDeleted *bool `yaml:"choice_show_deleted,omitempty"`
 	// ChoiceRowStyle — choice_row_style справочника; редактор его не
 	// показывает, блок переносится как есть.
 	ChoiceRowStyle yaml.Node `yaml:"choice_row_style,omitempty"`
@@ -200,6 +214,7 @@ type saveEntity struct {
 	OrderBy           yaml.Node `yaml:"order_by,omitempty"`
 	ChoicePreview     string    `yaml:"choice_preview,omitempty"`
 	ChoicePreviewProc string    `yaml:"choice_preview_proc,omitempty"`
+	ChoiceSearchProc  string    `yaml:"choice_search_proc,omitempty"`
 }
 
 type saveRegister struct {
@@ -478,10 +493,11 @@ type cfgRegister struct {
 }
 
 type cfgParam struct {
-	Name   string
-	Type   string
-	Label  string
-	Labels map[string]string
+	Name         string
+	Type         string
+	Label        string
+	Labels       map[string]string
+	ContextBound bool // report-only; editable names/types must not erase server bindings
 }
 
 type cfgReport struct {

@@ -172,6 +172,7 @@ type formYAMLDoc struct {
 		Name                   string            `yaml:"name"`
 		Kind                   string            `yaml:"kind"`
 		Entity                 string            `yaml:"entity"`
+		TitleProc              string            `yaml:"title_proc"`
 		Title                  map[string]string `yaml:"title"`
 		OriginalID             string            `yaml:"original_id"`
 		AutoSaveDataInSettings bool              `yaml:"auto_save_settings"`
@@ -182,6 +183,8 @@ type formYAMLDoc struct {
 		// Постоянный отбор формы списка (metadata.FormListCondition).
 		ListFilter     []metadata.FormListCondition `yaml:"filter"`
 		ListProcessors []metadata.FormListProcessor `yaml:"list_processors"`
+		// Оформление строк формы списка (metadata.FormListRowStyle).
+		RowStyle *metadata.FormListRowStyle `yaml:"row_style"`
 		// «🔍 только администратору» (#1876).
 		RefCardButtonAdminOnly bool     `yaml:"ref_card_button_admin_only"`
 		Roles                  []string `yaml:"roles"`
@@ -189,6 +192,14 @@ type formYAMLDoc struct {
 		IncludeAdmin           bool     `yaml:"include_admin"`
 		// EnterSubmitsForm — форма возвращает себе прежний Enter-submit (#1486).
 		EnterSubmitsForm bool `yaml:"enter_submits_form"`
+		// Density — плотность раскладки формы ("" | "compact" | "dense").
+		Density         string `yaml:"density"`
+		TabSkipReadonly bool   `yaml:"tab_skip_readonly"`
+		Autofocus       string `yaml:"autofocus"`
+		// GroupTitles — оформление заголовков групп и таблиц ("" | "bold").
+		GroupTitles string `yaml:"group_titles"`
+		// HeaderInline — заголовок и строка команд одной строкой.
+		HeaderInline bool `yaml:"header_inline"`
 	} `yaml:"form"`
 	Attributes            []*metadata.FormAttribute       `yaml:"attributes"`
 	Commands              []*metadata.FormCommand         `yaml:"commands"`
@@ -234,6 +245,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		Name:                   doc.Form.Name,
 		Kind:                   doc.Form.Kind,
 		LayoutKind:             metadata.FormLayoutManaged,
+		TitleProc:              doc.Form.TitleProc,
 		Title:                  doc.Form.Title,
 		OriginalID:             doc.Form.OriginalID,
 		AutoSaveDataInSettings: doc.Form.AutoSaveDataInSettings,
@@ -241,11 +253,17 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		RefCardButton:          doc.Form.RefCardButton,
 		ListFilter:             doc.Form.ListFilter,
 		ListProcessors:         doc.Form.ListProcessors,
+		ListRowStyle:           doc.Form.RowStyle,
 		RefCardButtonAdminOnly: doc.Form.RefCardButtonAdminOnly,
 		Roles:                  doc.Form.Roles,
 		ExceptRoles:            doc.Form.ExceptRoles,
 		IncludeAdmin:           doc.Form.IncludeAdmin,
 		EnterSubmitsForm:       doc.Form.EnterSubmitsForm,
+		Density:                doc.Form.Density,
+		TabSkipReadonly:        doc.Form.TabSkipReadonly,
+		Autofocus:              doc.Form.Autofocus,
+		GroupTitles:            doc.Form.GroupTitles,
+		HeaderInline:           doc.Form.HeaderInline,
 		Attributes:             doc.Attributes,
 		Commands:               doc.Commands,
 		AutoCommandBar:         doc.CommandBar,

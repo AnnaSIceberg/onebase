@@ -30,7 +30,7 @@ func InjectMaket(vars map[string]any, lt *printform.LayoutTemplate) {
 
 // Get allows property access: Макет.Заголовок → same as Макет.Область("Заголовок").
 func (m *Макет) Get(field string) any {
-	return m.getArea(field)
+	return areaValue(m.getArea(field), field)
 }
 
 // Set is not supported on макет.
@@ -41,7 +41,7 @@ func (m *Макет) CallMethod(name string, args []any) any {
 	switch strings.ToLower(name) {
 	case "область", "area", "получитьобласть", "getarea":
 		if len(args) > 0 {
-			return m.getArea(strArg(args, 0))
+			return areaValue(m.getArea(strArg(args, 0)), strArg(args, 0))
 		}
 	case "имя", "name":
 		return m.template.Name
@@ -63,10 +63,30 @@ func (m *Макет) getArea(name string) *SpreadsheetDocumentArea {
 	}
 	areaDef := m.template.Area(name) // case-insensitive (см. LayoutTemplate.Area)
 	if areaDef == nil {
+		// «Строки|Колонки» — пересечение строковой и колоночной областей, как
+		// в 1С; ширины — по исходным колонкам макета. Только если области с
+		// таким буквальным именем нет: макеты с областями «Шапка|Секция_1»
+		// (разрезанными вручную) продолжают работать как раньше.
+		if strings.Contains(name, "|") {
+			if area, widths, ok := m.template.IntersectionArea(name); ok {
+				return &SpreadsheetDocumentArea{Area: area, colWidths: widths}
+			}
+		}
 		return nil
 	}
 	return &SpreadsheetDocumentArea{
 		Area:      printform.BuildAreaCells(areaDef),
 		colWidths: m.template.ColumnWidthsPx(),
 	}
+}
+
+// areaValue — область как значение DSL. Ненайденная область — исключение
+// модуля, как в 1С («Область не найдена»), его ловит Попытка…Исключение.
+// Раньше возвращался типизированный nil-указатель: модуль видел его как
+// значение, и обращение Область.Параметры… роняло сервер паникой nil pointer.
+func areaValue(a *SpreadsheetDocumentArea, name string) any {
+	if a == nil {
+		RaiseUserError("Область макета не найдена: " + name)
+	}
+	return a
 }

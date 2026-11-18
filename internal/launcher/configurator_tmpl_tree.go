@@ -598,8 +598,9 @@ const cfgTabTree = `{{define "tab-tree"}}
             <tr><th>{{t $.Lang "Имя"}} (&amp;{{t $.Lang "Параметр"}})</th><th>{{t $.Lang "Тип"}}</th><th>{{t $.Lang "Заголовок"}}</th><th></th></tr>
             {{range $i, $p := .Params}}
             <tr>
-              <td><input type="text" name="param.{{$i}}.name" value="{{$p.Name}}" style="width:100%;padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px"></td>
+              <td><input type="text" name="param.{{$i}}.name" value="{{$p.Name}}" {{if $p.ContextBound}}readonly{{end}} style="width:100%;padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px"></td>
               <td>
+                {{if $p.ContextBound}}<input type="text" name="param.{{$i}}.type" value="{{$p.Type}}" readonly style="width:100%;font-size:12px">{{else}}
                 <select name="param.{{$i}}.type" style="padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px">
                   <option value="string" {{if eq $p.Type "string"}}selected{{end}}>{{t $.Lang "строка"}}</option>
                   <option value="date"   {{if eq $p.Type "date"}}selected{{end}}>{{t $.Lang "дата"}}</option>
@@ -610,9 +611,10 @@ const cfgTabTree = `{{define "tab-tree"}}
                   {{range $.AllEntityNames}}<option value="reference:{{.}}" {{if eq $p.Type (print "reference:" .)}}selected{{end}}>ссылка: {{.}}</option>
                   {{end}}
                 </select>
+                {{end}}
               </td>
               <td><input type="text" name="param.{{$i}}.label" value="{{$p.Label}}" placeholder="{{$p.Name}}" style="width:100%;padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px"></td>
-              <td><button type="button" style="background:none;border:none;color:#c00;cursor:pointer;font-size:14px" onclick="repRemoveParam(this,'params-{{$rn}}')">✕</button></td>
+              <td>{{if not $p.ContextBound}}<button type="button" style="background:none;border:none;color:#c00;cursor:pointer;font-size:14px" onclick="repRemoveParam(this,'params-{{$rn}}')">✕</button>{{end}}</td>
             </tr>
             {{if $.AvailableLangs}}<tr><td colspan="4" style="padding:0 0 4px">{{template "titles-block" (dict "Lang" $.Lang "Langs" $.AvailableLangs "Prefix" (printf "param.%d.labels" $i) "Values" $p.Labels)}}</td></tr>{{end}}
             {{end}}
@@ -666,13 +668,14 @@ const cfgTabTree = `{{define "tab-tree"}}
           <div class="section-hd" style="margin-top:12px">{{t $.Lang "Показатели"}}
             <button type="button" class="cfg-add-btn" style="font-size:14px;margin-left:8px" onclick="compAddMeasure('cm-{{$rn}}')">+</button></div>
           <table class="fields-tbl" id="cm-{{$rn}}">
-            <tr><th>{{t $.Lang "Поле"}}</th><th>{{t $.Lang "Агрегат"}}</th><th>{{t $.Lang "Подпись"}}</th><th>{{t $.Lang "Выравн."}}</th><th>{{t $.Lang "Формат"}}</th><th>{{t $.Lang "Выражение"}}</th><th></th></tr>
+            <tr><th>{{t $.Lang "Поле"}}</th><th>{{t $.Lang "Агрегат"}}</th><th>{{t $.Lang "Подпись"}}</th><th>{{t $.Lang "Выравн."}}</th><th>{{t $.Lang "Формат"}}</th><th>{{t $.Lang "Выражение"}}</th><th>{{t $.Lang "Уровни ресурса"}}</th><th></th></tr>
             {{with .Composition}}{{range $i, $m := .Measures}}
             <tr>
               <td><input type="text" name="comp.measure.{{$i}}.field" value="{{$m.Field}}" style="width:100%;padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px"></td>
               <td><select name="comp.measure.{{$i}}.agg" style="padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px">
                 <option value="sum" {{if eq $m.Agg "sum"}}selected{{end}}>sum</option>
                 <option value="count" {{if eq $m.Agg "count"}}selected{{end}}>count</option>
+                <option value="count_distinct" {{if eq $m.Agg "count_distinct"}}selected{{end}}>count_distinct</option>
                 <option value="avg" {{if eq $m.Agg "avg"}}selected{{end}}>avg</option>
                 <option value="min" {{if eq $m.Agg "min"}}selected{{end}}>min</option>
                 <option value="max" {{if eq $m.Agg "max"}}selected{{end}}>max</option></select></td>
@@ -684,6 +687,7 @@ const cfgTabTree = `{{define "tab-tree"}}
                 <option value="center" {{if eq $m.Align "center"}}selected{{end}}>по центру</option></select></td>
               <td><input type="text" name="comp.measure.{{$i}}.format" value="{{$m.Format}}" placeholder="#,##0.00" style="width:80px;padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px"></td>
               <td><input type="text" name="comp.measure.{{$i}}.expr" value="{{$m.Expr}}" placeholder="ВаловаяПрибыль / Выручка * 100" title="выражение по другим показателям, напр. ВаловаяПрибыль / Выручка * 100" style="width:160px;padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px"></td>
+              <td><input type="text" name="comp.measure.{{$i}}.scope" value="{{range $j, $level := $m.Scope}}{{if $j}}, {{end}}{{$level}}{{end}}" placeholder="{{t $.Lang "все уровни"}}" title="{{t $.Lang "$grand — общий итог; $detail — детали; имена группировок через запятую"}}" style="width:140px;padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px"><input type="hidden" name="comp.measure.{{$i}}.calculations" value="{{jsonText $m.Calculations}}"></td>
               <td><button type="button" style="background:none;border:none;color:#c00;cursor:pointer;font-size:14px" onclick="this.closest('tr').remove();compReindexMeasure('cm-{{$rn}}')">✕</button></td>
             </tr>
             {{end}}{{end}}
@@ -697,6 +701,7 @@ const cfgTabTree = `{{define "tab-tree"}}
             <div class="fg" style="flex:1"><label>{{t $.Lang "Поле-ссылка"}}</label>
               <input type="text" name="comp.detail_link" value="{{if .Composition}}{{.Composition.DetailLink}}{{end}}" placeholder="{{t $.Lang "колонка запроса с UUID документа"}}" title="{{t $.Lang "колонка запроса с UUID документа"}}" style="width:100%;padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px"></div>
             <div class="fg" style="flex:1"><label>{{t $.Lang "Сущность (расшифровка)"}}</label>
+              {{if .Composition}}{{range $i, $d := .Composition.DetailFields}}<input type="hidden" name="comp.detail_field.{{$i}}.field" value="{{$d.Field}}"><input type="hidden" name="comp.detail_field.{{$i}}.title" value="{{$d.Title}}">{{end}}{{range $f, $v := .Composition.Formats}}<input type="hidden" name="comp.format.{{$f}}" value="{{$v}}">{{end}}{{if .Composition.ColumnGroupTotals}}<input type="hidden" name="comp.column_group_totals" value="1">{{end}}{{if not .Composition.ShowRowTotals}}<input type="hidden" name="comp.row_totals" value="0">{{end}}{{end}}
               <input type="text" name="comp.detail_entity" value="{{if .Composition}}{{.Composition.DetailEntity}}{{end}}" placeholder="{{t $.Lang "имя документа для перехода"}}" title="{{t $.Lang "имя документа для перехода"}}" style="width:100%;padding:3px 5px;border:1px solid #ccd0d8;border-radius:3px;font-size:12px"></div>
           </div>
           <div class="section-hd" style="margin-top:12px">{{t $.Lang "Сортировка"}}

@@ -207,7 +207,15 @@ func TestReservedDateCalendarControlsMatrix(t *testing.T) {
 					text := fmt.Sprintf("ВЫБРАТЬ День(%s) КАК Д ИЗ %s", control.field, control.source)
 					res, err := query.Compile(text, query.CompileOpts{Entities: []*metadata.Entity{ent}, Dialect: db.Dialect()})
 					require.NoError(t, err)
-					require.NotContains(t, res.SQL, "ob_local_datetime(")
+					// Колонка UNION, где во всех ветвях дата, доказана по позиции:
+					// SQLite локализует её так же, как PostgreSQL (день 1, не 31).
+					if control.name == "derived UNION" {
+						if db.Dialect().Name() == "sqlite" {
+							require.Contains(t, res.SQL, "ob_local_datetime(")
+						}
+					} else {
+						require.NotContains(t, res.SQL, "ob_local_datetime(")
+					}
 					rows, _, err := query.Run(ctx, db, &res)
 					if db.Dialect().Name() == "postgres" && control.name != "derived UNION" {
 						require.Error(t, err, "string must not borrow the neighboring moment type")
@@ -216,7 +224,7 @@ func TestReservedDateCalendarControlsMatrix(t *testing.T) {
 					require.NoError(t, err, res.SQL)
 					count, want := 1, 31
 					if control.name == "derived UNION" {
-						count = 2
+						count, want = 2, 1
 					}
 					if db.Dialect().Name() == "postgres" {
 						want = 1

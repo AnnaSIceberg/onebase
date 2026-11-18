@@ -14,6 +14,7 @@ import (
 	"github.com/ivantit66/onebase/internal/csssafe"
 	"github.com/ivantit66/onebase/internal/i18n"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/msgstatus"
 	processorpkg "github.com/ivantit66/onebase/internal/processor"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/richtext"
@@ -24,11 +25,13 @@ import (
 var tmpl = template.Must(newTemplate(nil))
 
 type managedTPColumnJSON struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Ref         string `json:"ref,omitempty"`
-	RefFilter   string `json:"refFilter,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Ref       string `json:"ref,omitempty"`
+	RefFilter string `json:"refFilter,omitempty"`
+	// RefMarked — ключ choice_show_deleted реквизита: "1"/"0", пусто — правило по месту.
+	RefMarked   string `json:"refMarked,omitempty"`
 	AllowCreate bool   `json:"allowCreate,omitempty"`
 	Enum        bool   `json:"enum,omitempty"`
 	// Virtual — колонка показывается, но не хранится (#845). Флаг нужен клиенту:
@@ -39,6 +42,12 @@ type managedTPColumnJSON struct {
 	// по-прежнему сериализуется в tp_json (план 154). Ровно наоборот к Virtual:
 	// та видима и не отправляется, эта отправляется и не видима.
 	Hidden bool `json:"hidden,omitempty"`
+	// ElPath / CondHidden — колонка с hidden_when (managedTPColumnsHiddenWhen):
+	// путь размещения, по которому клиент находит её в elementStates.hidden
+	// ответа события, и состояние условия при отрисовке. Такая колонка, в
+	// отличие от Hidden, показывается и прячется без перезагрузки.
+	ElPath     string `json:"elPath,omitempty"`
+	CondHidden bool   `json:"condHidden,omitempty"`
 	// TitleFrom — заголовок взят из реквизита формы (title_from) и потому
 	// приходит как текст: клиент экранирует его перед выводом в шапку
 	// SlickGrid, которая рисует подпись как HTML.
@@ -47,6 +56,26 @@ type managedTPColumnJSON struct {
 	// в _tp_col_index: сервер сверяет индекс с порядком метаданных, а порядок
 	// показа с ним больше не совпадает. Для виртуальной колонки — -1.
 	Index int `json:"index"`
+	// ReadOnly — колонка не редактируется: readonly элемента колонки или его
+	// readonly_when (своё либо предка), вычисленное при отрисовке. Path — путь
+	// элемента колонки в дереве формы: по нему ответ события формы присылает
+	// новое состояние readonly_when, и сетка снимает/возвращает редактор.
+	ReadOnly bool   `json:"readOnly,omitempty"`
+	Path     string `json:"path,omitempty"`
+}
+
+// tpColumnReadOnly — запрет колонки табличной части: свой readonly элемента
+// колонки либо вычисленное при отрисовке readonly_when (своё или предка) —
+// та же карта ElReadOnly, что у полей шапки.
+func tpColumnReadOnly(ctx map[string]any, el *metadata.FormElement) bool {
+	if el == nil {
+		return false
+	}
+	if el.ReadOnly {
+		return true
+	}
+	set, _ := ctx["ElReadOnly"].(map[string]bool)
+	return set[elementStatePath(ctx, el)]
 }
 
 func refWriteAllowed(access any, entity string) bool {
@@ -236,6 +265,11 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		return key
 	}
 	return template.FuncMap{
+		"hasAudioPlayer":        hasAudioPlayer,
+		"audioField":            metadata.FormTitleSourceName,
+		"audioValue":            audioValue,
+		"audioSource":           audioSource,
+		"audioOnlyMode":         audioOnlyMode,
 		"refWriteAllowed":       refWriteAllowed,
 		"listFilterPanelFields": listFilterPanelFields,
 		"listFilterChoices":     listFilterChoices,
@@ -243,12 +277,89 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"infoRegKeyValue":       infoRegKeyValue,
 		"gridLayoutAttr":        gridLayoutAttr,
 		"gridOrderAttr":         gridOrderAttr,
+		"gridWidthsAttr":        gridWidthsAttr,
 		// enterSubmitsForm — форма явно вернула себе прежний Enter-submit.
 		// Данные шаблона — карта, и ключа Form у автогенерённой формы может не
 		// быть вовсе: nil читается как «умолчание платформы», то есть навигация.
+		// formKeyboardAttrs — data-атрибуты <form> для tab_skip_readonly и
+		// autofocus формы (obFormKeyboard в managed.js).
+		"formKeyboardAttrs": func(v any) template.HTMLAttr {
+			form, _ := v.(*metadata.FormModule)
+			if form == nil {
+				return ""
+			}
+			out := ""
+			if form.TabSkipReadonly {
+				out += ` data-ob-tab-skip-readonly="1"`
+			}
+			if f := strings.TrimSpace(form.Autofocus); f != "" {
+				out += ` data-ob-autofocus="` + template.HTMLEscapeString(f) + `"`
+			}
+			return template.HTMLAttr(out) //nolint:gosec // G203: значения экранированы HTMLEscapeString, имена атрибутов фиксированы
+		},
 		"enterSubmitsForm": func(v any) bool {
 			form, _ := v.(*metadata.FormModule)
 			return form != nil && form.EnterSubmitsForm
+		},
+		// formDensityClass — класс плотности раскладки на <html> страницы формы
+		// (form.density) либо ролевой default плотности объектной/processor-формы.
+		// Явная плотность формы всегда приоритетнее default.
+		"formDensityClass": func(page any) string {
+			data, _ := page.(map[string]any)
+			form, _ := data["Form"].(*metadata.FormModule)
+			density, _ := data["DefaultFormDensity"].(string)
+			if form != nil && form.Density != "" {
+				density = form.Density
+			}
+			var classes []string
+			switch density {
+			case metadata.FormDensityCompact:
+				classes = append(classes, "ob-density-compact")
+			case metadata.FormDensityDense:
+				// dense уточняет compact: правила compact (табличные части,
+				// вкладки) действуют, dense переопределяет поля и отступы.
+				classes = append(classes, "ob-density-compact", "ob-density-dense")
+			}
+			if active, _ := data["AutoFormDensity"].(bool); active && len(classes) > 0 {
+				classes = append(classes, "ob-auto-form-density")
+			}
+			// header_inline — заголовок и строка команд одной строкой.
+			if form != nil && form.HeaderInline {
+				classes = append(classes, "ob-header-inline")
+			}
+			return strings.Join(classes, " ")
+		},
+		// formHeaderElements — элементы формы с placement: header (перед
+		// «? Справка») или header_end (после неё) по всему дереву элементов, в
+		// порядке объявления: их рисует строка команд документа. Кнопка из
+		// табличной части сохраняет таблицу-владельца.
+		"formHeaderElements": func(form *metadata.FormModule, placement string) []managedHeaderButton {
+			return collectFormHeaderElements(form, func(el *metadata.FormElement) bool {
+				return el.Placement == placement
+			})
+		},
+		// formHeaderButtons — только кнопки строки команд (header и header_end):
+		// всплывающая форма без строки команд показывает их отдельной панелью,
+		// а поля оставляет в теле.
+		"formHeaderButtons": func(form *metadata.FormModule) []managedHeaderButton {
+			return collectFormHeaderElements(form, func(el *metadata.FormElement) bool {
+				return el.Kind == metadata.FormElementButton
+			})
+		},
+		"formHeaderPlaced": metadata.FormHeaderPlaced,
+		// processorBinaryParam — параметр обработки type: binary с этим именем
+		// (nil — не обработка или параметр другого типа). Управляемая форма
+		// рисует для него настоящее поле файла: байты уходят multipart-ом.
+		"processorBinaryParam": func(proc *processorpkg.Processor, name string) *processorpkg.Param {
+			if proc == nil {
+				return nil
+			}
+			for i := range proc.Params {
+				if strings.EqualFold(proc.Params[i].Name, name) && proc.Params[i].Type == processorBinaryParamType {
+					return &proc.Params[i]
+				}
+			}
+			return nil
 		},
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
 			if proc == nil {
@@ -269,6 +380,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return processorServiceFieldNames(proc.Params)
 		},
+		"entityFormServiceFieldNames":    entityFormServiceFieldNames,
 		"processorExecuteFallbackButton": isProcessorExecuteFallbackButton,
 		"effectiveFormElementReadOnly":   effectiveFormElementReadOnly,
 		"effectiveFormElementRequired":   effectiveFormElementRequired,
@@ -312,10 +424,15 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return fmt.Sprintf("%v", v)
 		},
-		"isRef":       func(t any) bool { return strings.HasPrefix(fmt.Sprintf("%v", t), "reference:") },
-		"isEnum":      func(t any) bool { return strings.HasPrefix(fmt.Sprintf("%v", t), "enum:") },
-		"tileView":    resolveTileView,
-		"listColumns": resolveListColumns,
+		"isRef":              func(t any) bool { return strings.HasPrefix(fmt.Sprintf("%v", t), "reference:") },
+		"isEnum":             func(t any) bool { return strings.HasPrefix(fmt.Sprintf("%v", t), "enum:") },
+		"tileView":           resolveTileView,
+		"listColumns":        resolveListColumns,
+		"listColumnFields":   listColumnFields,
+		"defaultListColumns": func(e *metadata.Entity) []listColumnUI { return listSettingsColumns(e, nil) },
+		"listColumnsFixed":   listColumnsFixed,
+		"listColumnWidth":    listColumnWidth,
+		"listTableWidth":     listTableWidth,
 		// liveListRefreshOn (план 87, ступень A): имена событий живого списка через
 		// пробел для атрибута data-ob-refresh-on. Пусто — список статичный.
 		"liveListRefreshOn": func(e *metadata.Entity) string {
@@ -509,7 +626,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return s
 		},
 		// managedRefOptions keeps choice_filter options scoped to the stable
-		// element id. The same entity field may be rendered twice with different
+		// element placement. The same entity field may be rendered twice with different
 		// filters; falling back by field name is only for elements without the
 		// opt-in contract.
 		"managedRefOptions": func(ctx map[string]any, element *metadata.FormElement, field string) []map[string]any {
@@ -521,6 +638,17 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				return selectedRefOptionsOnly(rows, formContextValue(ctx, field))
 			}
 			return rows
+		},
+		// An empty option page still has a reference source. Keep its picker.
+		"managedHasRefOptions": func(ctx map[string]any, element *metadata.FormElement, field string) bool {
+			if scoped, ok := ctx["ManagedChoiceOptions"].(map[*metadata.FormElement][]map[string]any); ok {
+				if _, exists := scoped[element]; exists {
+					return true
+				}
+			}
+			refs, _ := ctx["RefOptions"].(map[string][]map[string]any)
+			_, exists := refs[field]
+			return exists
 		},
 		// hideRefCard — убрать ли у поля кнопку «Открыть карточку» (🔍): явный
 		// ref_card_button поля решает сам, иначе — решение формы (HideRefCard из
@@ -565,8 +693,22 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// запросе, и первое же сохранение обнулило бы всё скрытое. Отсюда же
 		// граница смысла: item_form — это ВИДИМОСТЬ, а не защита; ограничение
 		// доступа к реквизиту делается политикой поля.
+		// refPickAttrs — признаки поля выбора ссылки для подбора и быстрого
+		// ввода (/ui/_ref-options): data-ref-search — поиск по истории (отбор
+		// списка, параметр отчёта), где помеченные на удаление видны; data-ref-marked
+		// — ключ choice_show_deleted поля. Без признаков — ввод данных.
+		"refPickAttrs":  refPickAttrs,
+		"refSearchAttr": func() template.HTMLAttr { return refPickAttrs(true, nil) },
+		"firstBool":     firstBool,
 		// refOptionStyle — style строки выбора ссылки (choice_row_style).
-		"refOptionStyle": refOptionStyle,
+		"refOptionStyle":    refOptionStyle,
+		"refOptionDisabled": refOptionDisabled,
+		// elHintAttrs — title (и data-ob-hint-*) элемента формы: hint_from из
+		// реквизита формы, иначе hint; у кнопки к подсказке добавляется
+		// горячая клавиша.
+		"elHintAttrs":    elHintAttrs,
+		"elHintAttrsOr":  elHintAttrsOr,
+		"choiceValueCSS": choiceValueCSS,
 		"itemFormVisible": func(entity *metadata.Entity) []itemFormField {
 			vis, _ := splitItemFormFields(entity)
 			return vis
@@ -687,8 +829,67 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"elAlign": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementAlignCSS(el)) //nolint:gosec // G203: стиль собран только из нормализованных значений словаря выравнивания
 		},
+		// msgText / msgError — сообщение модуля без метки статуса и признак
+		// «показать как ошибку» (Сообщить со СтатусСообщения.Важное или
+		// .ОченьВажное, internal/msgstatus).
+		"msgText": msgstatus.Strip,
+		"msgError": func(s string) bool {
+			_, status := msgstatus.Split(s)
+			return msgstatus.IsError(status)
+		},
+		// tabTitleStyle — стиль кнопки закладки страницы: title_color/title_bold
+		// страницы и tab_titles_bold набора. Цвет идёт через --ob-tab-color: им
+		// же красится черта активной закладки (правило .managed-tab-btn.active).
+		"tabTitleStyle": func(pages, page *metadata.FormElement) template.CSS {
+			var css string
+			if page != nil {
+				if color := csssafe.Color(page.TitleColor); color != "" {
+					css += "--ob-tab-color:" + color + ";color:" + color + ";"
+				}
+			}
+			if pages != nil && pages.TabTitlesBold {
+				css += "font-weight:700;font-size:15px;"
+			} else if page != nil && page.TitleBold {
+				css += "font-weight:700;"
+			}
+			return template.CSS(css) //nolint:gosec // G203: цвет прошёл csssafe.Color, остальное — константы
+		},
 		"elBackground": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementBackgroundCSS(el)) //nolint:gosec // G203: значение прошло csssafe.Color, иначе пустая строка
+		},
+		// elFieldColorClass / elFieldColorVars — фон и рамка ввода ПолеВвода
+		// (background, border_color): классы и CSS-переменные обёртки поля.
+		"elFieldColorClass": func(el *metadata.FormElement) string {
+			classes, _ := metadata.FormElementFieldColors(el)
+			return classes
+		},
+		"elFieldColorVars": func(el *metadata.FormElement) template.CSS {
+			_, vars := metadata.FormElementFieldColors(el)
+			return template.CSS(vars) //nolint:gosec // G203: цвета прошли csssafe.Color, иначе пустая строка
+		},
+		// tableHeaderClass / tableHeaderVars — фон и граница шапки таблицы
+		// (header_background, header_border_color): классы и CSS-переменные.
+		"tableHeaderClass": func(el *metadata.FormElement) string {
+			classes, _ := metadata.FormTableHeaderColors(el)
+			return classes
+		},
+		"tableHeaderVars": func(el *metadata.FormElement) template.CSS {
+			_, vars := metadata.FormTableHeaderColors(el)
+			return template.CSS(vars) //nolint:gosec // G203: цвета прошли csssafe.Color, иначе пустая строка
+		},
+		// elTextColor — цвет текста поля ввода или надписи (text_color или
+		// importance: error); значение прошло csssafe.Color либо взято из
+		// константы платформы.
+		"elTextColor": func(el *metadata.FormElement) template.CSS {
+			return template.CSS(metadata.FormElementTextColorCSS(el)) //nolint:gosec // G203: цвет прошёл csssafe.Color или это константа платформы
+		},
+		// cssJoin склеивает уже безопасные фрагменты стиля в один атрибут.
+		"cssJoin": func(parts ...template.CSS) template.CSS {
+			var b strings.Builder
+			for _, p := range parts {
+				b.WriteString(string(p))
+			}
+			return template.CSS(b.String()) //nolint:gosec // G203: склеиваются только значения template.CSS из функций выше
 		},
 		"elFill": func(el *metadata.FormElement) bool {
 			return metadata.FormElementFillsHeight(el)
@@ -697,6 +898,62 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// применяет к ним тот же диапазон 1…4000, что общий layout-контракт.
 		"elPictureSize": func(size int) int {
 			return metadata.NormalizeFormLayoutSize(size)
+		},
+		// pictureAttachmentID — значение реквизита ПолеКартинки с data_path:
+		// идентификатор вложения (UUID) или "". Любое другое значение (адрес,
+		// путь, javascript:) в src/href не попадает — картинка берётся только
+		// из вложений, с их проверкой права чтения владельца.
+		"pictureAttachmentID": func(v any) string {
+			if v == nil {
+				return ""
+			}
+			id, err := uuid.Parse(strings.TrimSpace(fmt.Sprint(v)))
+			if err != nil || id == uuid.Nil {
+				return ""
+			}
+			return id.String()
+		},
+		// pictureRawValue — значение реквизита ПолеКартинки как есть (для
+		// скрытого поля состояния): форма отправляет его неизменным, даже если
+		// это не идентификатор вложения, — иначе сохранение без правки
+		// стирало бы legacy-значение (#2177).
+		"pictureRawValue": func(v any) string {
+			if v == nil {
+				return ""
+			}
+			return fmt.Sprint(v)
+		},
+		// formFieldHasEditor — на форме есть элемент, отправляющий реквизит
+		// field (поле ввода, флажок, список…). Тогда скрытое поле ПолеКартинки
+		// своё значение не отправляет: два контрола одного name дали бы
+		// сохранению старое значение из скрытого поля первым (#2177).
+		"formFieldHasEditor": func(form *metadata.FormModule, field string) bool {
+			if form == nil {
+				return false
+			}
+			editor := map[metadata.FormElementType]bool{
+				metadata.FormElementField: true, metadata.FormElementCheckbox: true,
+				metadata.FormElementSwitch: true, metadata.FormElementInputList: true,
+				metadata.FormElementDatePicker: true, metadata.FormElementFormField: true,
+				metadata.FormElementCodeField: true,
+			}
+			var walk func([]*metadata.FormElement) bool
+			walk = func(elements []*metadata.FormElement) bool {
+				for _, el := range elements {
+					if el == nil {
+						continue
+					}
+					if editor[el.Kind] && (strings.EqualFold(dpFieldName(el.DataPath), field) ||
+						(el.DataPath == "" && strings.EqualFold(el.FieldName, field))) {
+						return true
+					}
+					if walk(el.Children) {
+						return true
+					}
+				}
+				return false
+			}
+			return walk(form.Elements)
 		},
 		// tpGridCSS — стиль контейнера SlickGrid: высота по числу строк либо по
 		// ключу height, ширина и выравнивание — по общему контракту раскладки.
@@ -725,6 +982,12 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				return false
 			}
 			set, _ := ctx["ElHidden"].(map[string]bool)
+			// Табличная часть в группе, скрытой условием при отрисовке, не
+			// рисуется: группа есть в разметке (её можно показать событием),
+			// но строки таблицы уехали бы в браузер вместе с ней.
+			if el.Kind == metadata.FormElementTablePart && hiddenAncestor(set, elementStatePath(ctx, el)) {
+				return true
+			}
 			if !set[elementStatePath(ctx, el)] {
 				return false
 			}
@@ -744,6 +1007,12 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				metadata.FormElementSwitch,
 				metadata.FormElementDatePicker:
 				return false // рисуем с display:none
+			case metadata.FormElementGroupBox:
+				// Группа скрыта disabled-fieldset: её поля не отправляются, а
+				// событие может её показать (form_hidden_until.go). Группа,
+				// скрытая константой («Истина»), не показывается никогда — её,
+				// как и прежде, не рисуем.
+				return hiddenWhenConstant(el.HiddenWhen)
 			}
 			return true // остальные типы — пропускаем как раньше
 		},
@@ -814,8 +1083,43 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return !*a.Visible
 		},
+		// groupTitleStyle — CSS заголовка группы/таблицы managed-формы:
+		// form.group_titles: bold — жирный тёмный (#1f2937), иначе прежний
+		// полужирный серый.
+		"groupTitleStyle": func(form *metadata.FormModule) template.CSS {
+			if form != nil && form.GroupTitles == metadata.FormGroupTitlesBold {
+				return template.CSS("font-weight:700;color:#1f2937;")
+			}
+			return template.CSS("font-weight:600;color:#475569;")
+		},
+		// tableTitleStyle — то же для заголовка таблицы (h3): по умолчанию
+		// пусто, h3 остаётся как был.
+		"tableTitleStyle": func(form *metadata.FormModule) template.CSS {
+			if form != nil && form.GroupTitles == metadata.FormGroupTitlesBold {
+				return template.CSS("font-weight:700;color:#1f2937;")
+			}
+			return ""
+		},
 		// formActionVisible — видимость стандартного действия managed-формы.
 		// Отсутствующий ключ и visible:nil сохраняют платформенное умолчание.
+		// choiceOptionsWithCurrent — варианты поля со списком плюс его текущее
+		// значение, если среди них его нет: 1С показывает значение поля и тогда,
+		// когда список строится только в НачалоВыбора.
+		"choiceOptionsWithCurrent": func(opts []EnumOption, current any) []EnumOption {
+			cur := ""
+			if current != nil {
+				cur = fmt.Sprint(current)
+			}
+			if cur == "" {
+				return opts
+			}
+			for _, o := range opts {
+				if o.Value == cur {
+					return opts
+				}
+			}
+			return append(append([]EnumOption(nil), opts...), EnumOption{Value: cur, Label: cur})
+		},
 		"formActionVisible": func(form *metadata.FormModule, name string) bool {
 			if form == nil || form.Actions == nil {
 				return true
@@ -872,11 +1176,23 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			var out []*metadata.FormElement
 			for _, ch := range el.Children {
-				if ch != nil && ch.Kind == metadata.FormElementButton {
+				if ch != nil && ch.Kind == metadata.FormElementButton && !metadata.FormHeaderPlaced(ch) {
 					out = append(out, ch)
 				}
 			}
 			return out
+		},
+		// Header commands still consume row selection even though their buttons
+		// are rendered outside the local table toolbar.
+		"hasTPCommands": func(el *metadata.FormElement) bool {
+			if el != nil {
+				for _, child := range el.Children {
+					if child != nil && child.Kind == metadata.FormElementButton {
+						return true
+					}
+				}
+			}
+			return false
 		},
 		// hasGridTP checks if any TablePart element in the form has use_grid flag (plan 48).
 		// Used to conditionally include SlickGrid CSS/JS.
@@ -1002,6 +1318,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return "asc"
 		},
+		"listCellAttrs": listCellFilterAttrs,
 		"hasFilter": func(params storage.ListParams) bool {
 			return len(params.Filters) > 0
 		},
@@ -1035,7 +1352,9 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				if v.To != "" {
 					parts = append(parts, "f."+url.QueryEscape(k)+".to="+url.QueryEscape(v.To))
 				}
-				if v.Value != "" {
+				if v.Exact {
+					parts = append(parts, "f."+url.QueryEscape(k)+".eq="+url.QueryEscape(v.Value))
+				} else if v.Value != "" {
 					parts = append(parts, "f."+url.QueryEscape(k)+"="+url.QueryEscape(v.Value))
 				}
 			}
@@ -1099,6 +1418,9 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				// «пользователь его не задавал», и выгрузка подставила бы туда
 				// значение по умолчанию — там, где на экране пусто.
 				for _, p := range declared {
+					if p.Context != nil {
+						continue
+					}
 					val := ""
 					if v := values[p.Name]; v != nil {
 						val = fmt.Sprintf("%v", v)
@@ -1241,7 +1563,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return template.JS(b) //nolint:gosec // G203: JSON сформирован encoding/json
 		},
-		"managedTPColumnsJSON": func(plan []managedTPColumn, virtual []metadata.FormVirtualColumn, lang string, refWriteAccess any, tpName string, refFilters any) template.JS {
+		"managedTPColumnsJSON": func(ctx map[string]any, plan []managedTPColumn, virtual []metadata.FormVirtualColumn, lang string, refWriteAccess any, tpName string, refFilters any) template.JS {
 			filters, _ := refFilters.(map[string]string)
 			fields := make([]metadata.Field, 0, len(plan))
 			for _, column := range plan {
@@ -1257,12 +1579,17 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 					Type:        string(field.Type),
 					Ref:         field.RefEntity,
 					RefFilter:   filters[tpName+"."+field.Name],
+					RefMarked:   markedFlag(field.ChoiceShowDeleted),
 					AllowCreate: field.RefEntity != "" && field.InlineCreateEnabled(true) && refWriteAllowed(refWriteAccess, field.RefEntity),
 					Enum:        strings.HasPrefix(string(field.Type), "enum:"),
 					Hidden:      column.Hidden,
+					ElPath:      column.ElPath,
+					CondHidden:  column.CondHidden,
 					Index:       column.Index,
 					TitleFrom:   column.Element != nil && strings.TrimSpace(column.Element.TitleFrom) != "",
 					Width:       column.Width(),
+					ReadOnly:    tpColumnReadOnly(ctx, column.Element),
+					Path:        elementStatePath(ctx, column.Element),
 				})
 			}
 			// Виртуальные колонки идут ПОСЛЕ реквизитов: порядок хранимых колонок
@@ -1288,6 +1615,38 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return template.JS(b) //nolint:gosec // G203: JSON сформирован encoding/json
 		},
 		"managedTPColumnPlan": managedTPColumnPlan,
+		"managedVTColumnPlan": managedVTColumnPlan,
+		"managedVTEditable":   managedVTEditable,
+		"tpNewRefOptions": func(ctx map[string]any) any {
+			if choices, ok := ctx["TPRefChoices"]; ok {
+				return choices
+			}
+			return ctx["TPRefOptions"]
+		},
+		"tpSelectedOptions": tpSelectedOptions,
+		"tpGridLabels": func(ctx map[string]any, tpName string, choices map[string][]map[string]any) map[string][]map[string]any {
+			labels, _ := ctx["TPRefOptions"].(map[string]map[string][]map[string]any)
+			tables, _ := ctx["TablePartRows"].(map[string][]map[string]any)
+			result := make(map[string][]map[string]any, len(choices))
+			for field, page := range choices {
+				for _, row := range tables[tpName] {
+					page = tpSelectedOptions(page, labels[tpName][field], refValueString(row[field]))
+				}
+				result[field] = page
+			}
+			return result
+		},
+		"managedTPEditable": managedTPEditable,
+		// managedVTColumnsHiddenWhen / managedVTCondAttr — hidden_when колонок
+		// ValueTable при отрисовке и их пути для пересчёта после события.
+		"managedVTColumnsHiddenWhen": managedVTColumnsHiddenWhen,
+		"managedVTCondAttr":          managedVTCondAttr,
+		// managedTPColumnsHiddenWhen — состояние hidden_when колонок при
+		// отрисовке; после событий его присылает elementStates.hidden.
+		"managedTPColumnsHiddenWhen": managedTPColumnsHiddenWhen,
+
+		// statusBarMeta — признак строки состояния внизу страницы (status_bar).
+		"statusBarMeta": statusBarMetaHTML,
 		// messagesMeta — режим показа сообщений интерфейса (home_page: messages).
 		"messagesMeta": messagesMetaHTML,
 		// managedTPColumnsTitled — заголовки колонок из title_from по значениям
@@ -1309,7 +1668,37 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return nil
 		},
-		"tpChoiceOptions": func(ctx map[string]any, table *metadata.FormElement, field string, row int, fallback map[string][]map[string]any) []map[string]any {
+		"tpChoiceRefOptions": func(ctx map[string]any, table *metadata.FormElement, fallback map[string][]map[string]any) map[string][]map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] == nil || len(all[table].BaseOptions) == 0 {
+				return fallback
+			}
+			options := make(map[string][]map[string]any, len(fallback))
+			for field, rows := range fallback {
+				options[field] = rows
+			}
+			for field, rows := range all[table].BaseOptions {
+				options[field] = rows
+			}
+			return options
+		},
+		"tpChoiceRefOverrides": func(ctx map[string]any, table *metadata.FormElement) map[string][]map[string]any {
+			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
+			if all[table] != nil {
+				return all[table].BaseOptions
+			}
+			return nil
+		},
+		"managedTPMarked": func(plan []managedTPColumn) map[string]string {
+			marked := make(map[string]string)
+			for _, column := range plan {
+				if column.Field.RefEntity != "" {
+					marked[column.Field.Name] = markedFlag(column.Field.ChoiceShowDeleted)
+				}
+			}
+			return marked
+		},
+		"tpChoiceOptions": func(ctx map[string]any, table *metadata.FormElement, field string, row int, fallback map[string][]map[string]any, tpName, selected string) []map[string]any {
 			all, _ := ctx["TPChoices"].(map[*metadata.FormElement]*tpChoiceRender)
 			if all[table] != nil && all[table].Contexts[field] != "" {
 				rows := all[table].Options[field]
@@ -1318,8 +1707,14 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				}
 				return nil
 			}
-			return fallback[field]
+			labels, _ := ctx["TPRefOptions"].(map[string]map[string][]map[string]any)
+			return tpSelectedOptions(fallback[field], labels[tpName][field], selected)
 		},
+
+		// Таблица значений как выдача: rows, empty_text.
+		"managedVTVisibleRows":  managedVTVisibleRows,
+		"managedVTRowsHeight":   managedVTRowsHeight,
+		"managedVTVisibleCount": managedVTVisibleCount,
 		// managedTPFieldsAttr — значение data-tp-fields в порядке отрисовки
 		// ячеек: applyTableParts перестраивает строку по этому списку, и любое
 		// расхождение порядка развалило бы соответствие ячеек колонкам.
@@ -1382,8 +1777,13 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// заведомо цифры, и заставлять автора объявлять это второй раз незачем.
 		"inputMaskDigitsOnly": metadata.InputMaskDigitsOnly,
 		"inputAutocomplete":   inputAutocomplete,
+		"uiBootID":            func() string { return uiBootID },
 		"inputMaskHint":       metadata.InputMaskHint,
+		"wCellAttrs":          widgetCellAttrs,
 		"wcell":               widgetCell,
+		"wRowStyle":           widgetRowStyle,
+		"wBackground":         widgetBackgroundStyle,
+		"listRowStyle":        listRowStyle,
 		"echartsJSON":         echartsJSON,
 		"stageChartJSON":      stageChartJSON,
 		"stageSourceLabel":    stageSourceLabel,
@@ -1430,7 +1830,7 @@ func cloneQuery(current any) url.Values {
 
 func isListStateQueryKey(key string) bool {
 	switch key {
-	case "q", "sort", "dir", "activity", "view", "lm", "parent", "subsystem", "limit", "page":
+	case "q", "sort", "dir", "sort_default", "sort_snapshot", "activity", "view", "lm", "parent", "subsystem", "limit", "page":
 		return true
 	// Снятый отбор по умолчанию формы списка переносится, как поиск и отбор:
 	// иначе «Применить» отбора, поиск, сортировка и страницы молча включали
@@ -1451,8 +1851,24 @@ func isListStateQueryKey(key string) bool {
 // предзагруженную страницу справочника.
 func managedRefOptionRows(ctx map[string]any, element *metadata.FormElement, field string) []map[string]any {
 	if element != nil {
-		if scoped, ok := ctx["ManagedChoiceOptions"].(map[string][]map[string]any); ok {
-			if rows, exists := scoped[element.ID]; exists {
+		if scoped, ok := ctx["ManagedChoiceOptions"].(map[*metadata.FormElement][]map[string]any); ok {
+			if rows, exists := scoped[element]; exists {
+				// A scoped choice page may exclude the current persisted value.
+				// Keep only that bound display option from the object's ref data;
+				// never fall back to the unfiltered candidate list.
+				selected := formContextValue(ctx, field)
+				if len(selectedRefOptionsOnly(rows, selected)) == 0 {
+					if refs, ok := ctx["RefOptions"].(map[string][]map[string]any); ok {
+						for _, row := range selectedRefOptionsOnly(refs[field], selected) {
+							copyRow := make(map[string]any, len(row)+1)
+							for key, value := range row {
+								copyRow[key] = value
+							}
+							copyRow["_choice_outside_filter"] = true
+							rows = append(append([]map[string]any(nil), rows...), copyRow)
+						}
+					}
+				}
 				return rows
 			}
 		}
@@ -1525,8 +1941,9 @@ func templateSource() string {
 
 const tplHead = `
 {{define "head"}}<!DOCTYPE html>
-<html lang="ru"><head><meta charset="UTF-8">
+<html lang="ru"{{with formDensityClass .}} class="{{.}}"{{end}}><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="ob-boot" content="{{uiBootID}}">
 <meta name="theme-color" content="#1e293b">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
@@ -1550,8 +1967,51 @@ const tplHead = `
   "imageError" (t (or $.Lang "ru") "Не удалось загрузить изображение")
   "imageArea" (t (or $.Lang "ru") "Область просмотра изображения")
 )}}</script>
-{{messagesMeta .}}<script src="/static/ui.js"></script>
-<style>
+{{statusBarMeta .}}{{messagesMeta .}}<script src="/static/ui.js"></script>{{if .UseShortDateInput}}<script type="application/json" id="ob-date-input-i18n">{{jsJSON (dict "invalid" (t $.Lang "Введите корректную дату") "incompleteDate" (t $.Lang "Введите дату полностью: ДД.ММ.ГГГГ") "incompleteDatetime" (t $.Lang "Введите дату и время полностью: ДД.ММ.ГГГГ ЧЧ:ММ:СС") "calendar" (t $.Lang "Открыть календарь"))}}</script><script src="/static/date-input.js"></script>{{end}}{{if .Cfg.UIEnhancements}}<script src="/static/list-controls.js"></script>{{end}}{{if .CompactReport}}<script src="/static/report-controls.js"></script>{{end}}{{if .CompactReport}}<style id="ob-report-density-css">
+.ob-report-compact{padding:8px 12px}
+.ob-report-compact.ob-report-dense{padding:6px 10px}
+.ob-report-titlebar{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;margin-bottom:4px}
+.ob-report-titlebar>h2{flex:1;margin:0;font-size:18px;line-height:24px}
+.ob-report-commandbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ob-report-commandbar>div{margin:0!important;gap:6px!important}
+.ob-report-compact .btn{padding:3px 8px;font-size:12px;line-height:18px}
+.ob-report-compact>.report-block{margin-bottom:4px!important;padding:0;border-radius:2px;box-shadow:none}
+.ob-report-compact .report-block>summary{padding:3px 8px;font-size:12px;line-height:18px}
+.ob-report-compact .report-block>form{padding:4px 8px}
+.ob-report-compact form[data-ob-report-params]{display:flex;flex-wrap:wrap;align-items:end;gap:4px 8px}
+.ob-report-compact .ob-report-param-grid{display:contents!important}
+.ob-report-compact .form-group{margin-bottom:4px!important}
+.ob-report-compact form[data-ob-report-params] .form-group{flex:0 1 180px;min-width:120px;max-width:240px!important}
+.ob-report-compact label{font-size:12px;line-height:16px;margin-bottom:2px}
+.ob-report-compact input:not([type=checkbox]):not([type=radio]),.ob-report-compact select{min-height:0;height:26px;padding:2px 6px;font-size:12px}
+.ob-report-compact .card{padding:4px 8px}
+.ob-report-compact table th{padding:3px 6px}
+.ob-report-compact table td{padding:2px 6px}
+.ob-report-compact .report-block>form>div[style*="margin-bottom"]{margin-bottom:4px!important;gap:4px 8px!important}
+@media(max-width:640px){.ob-report-titlebar{align-items:flex-start}.ob-report-commandbar{width:100%}}
+</style>{{end}}
+{{if .AutoFormDensity}}<style id="ob-auto-form-density-css">
+/* Only role-selected automatic forms receive these rules; no new JS/SQL. */
+.ob-auto-form-density{--ob-auto-gap:8px;--ob-auto-pad:12px;--ob-auto-height:28px;--ob-auto-font:13px}
+.ob-auto-form-density.ob-density-dense{--ob-auto-gap:4px;--ob-auto-pad:6px;--ob-auto-height:25px;--ob-auto-font:12.5px}
+.ob-auto-form-density main{padding:var(--ob-auto-pad)}
+.ob-auto-form-density main>h2,.ob-auto-form-density main>div:first-child h2{font-size:18px;margin-bottom:var(--ob-auto-gap)}
+.ob-auto-form-density main>div[style*="margin-bottom"]{margin-bottom:var(--ob-auto-gap)!important;gap:6px!important}
+.ob-auto-form-density .card{padding:var(--ob-auto-pad)}
+.ob-auto-form-density .form-group{margin-bottom:var(--ob-auto-gap)}
+.ob-auto-form-density label{font-size:12px;line-height:14px;margin-bottom:2px}
+.ob-auto-form-density input[type=text],.ob-auto-form-density input[type=date],.ob-auto-form-density input[type=datetime-local],.ob-auto-form-density input[type=number],.ob-auto-form-density select{height:var(--ob-auto-height);padding:2px 7px;font-size:var(--ob-auto-font)}
+.ob-auto-form-density textarea{padding:3px 7px;font-size:var(--ob-auto-font)}
+.ob-auto-form-density .btn{padding:4px 9px;font-size:var(--ob-auto-font)}
+.ob-auto-form-density [data-ob-ref-picker],.ob-auto-form-density [data-ob-ref-current]{height:var(--ob-auto-height);padding:2px 6px!important;font-size:var(--ob-auto-font)!important}
+.ob-auto-form-density form>div[style*="display:grid"]{gap:var(--ob-auto-gap)!important;margin-bottom:var(--ob-auto-gap)!important}
+.ob-auto-form-density h3{margin:var(--ob-auto-gap) 0 4px!important;font-size:14px!important}
+.ob-auto-form-density details{margin-bottom:var(--ob-auto-gap)}
+.ob-auto-form-density details summary{padding:4px 8px;font-size:12px}
+.ob-auto-form-density .tp-table th{padding:4px 6px;font-size:12px}
+.ob-auto-form-density .tp-table td{padding:2px 4px}
+</style>
+{{end}}<style>
 .ob-embedded .topbar,.ob-embedded .subsys-bar,.ob-embedded #ob-nav{display:none!important}
 *{box-sizing:border-box;margin:0;padding:0}
 /* height:100vh + overflow:hidden — окно приложения ровно по экрану. С одним лишь
@@ -1592,18 +2052,26 @@ body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;height:
 .tbl th{text-align:left;padding:8px 10px;border-bottom:2px solid #cbd5e1;color:#334155;font-weight:600;font-size:12px;position:sticky;top:0;background:#eef2f7}
 .tbl td{padding:6px 10px;border-bottom:1px solid #f1f5f9;color:#334155;font-size:13px}
 .tbl tr:hover td{background:#f8fafc}
+td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .report-composed{width:100%;border-collapse:collapse;font-size:13px}
 .report-composed thead th{position:sticky;top:38px;background:#eef2f7;z-index:5;text-align:left;padding:8px 10px;border-bottom:2px solid #cbd5e1;color:#334155;font-weight:600;font-size:12px}
 .report-composed td{padding:6px 10px;border-bottom:1px solid #f1f5f9;color:#334155}
 .report-composed td.num{font-variant-numeric:tabular-nums}
-.report-composed tr.grp:hover td{background:#f8fafc}
+.report-composed tr.grp{background:var(--rc-group-fill,transparent);font-weight:600;color:#334155}
+.report-composed tr.grp td{color:inherit}
+.rc-fold{border:1px solid currentColor;border-radius:2px;background:transparent;color:inherit;cursor:pointer;width:1.25em;height:1.25em;line-height:1;padding:0;vertical-align:middle}
+.rc-toolbar[hidden]{display:none!important}
+.rc-level{min-width:2em}
+.rc-level[aria-pressed=true]{font-weight:700;outline:2px solid currentColor;outline-offset:-2px}
+@media(prefers-color-scheme:dark){.report-composed tr.grp{background:var(--rc-group-dark,#1e293b);color:#e2e8f0}}
+@media print{.rc-toolbar,.rc-fold{display:none!important}.report-composed tr{display:table-row!important}}
 .report-composed tr.grand td{font-weight:700;border-top:2px solid #e2e8f0}
 .report-composed.rep-lines-v td,.report-composed.rep-lines-v th{border-bottom:none;border-right:1px solid #eef2f7}
 .report-composed.rep-lines-v td:last-child,.report-composed.rep-lines-v th:last-child{border-right:none}
 .report-composed.rep-lines-both td,.report-composed.rep-lines-both th{border-right:1px solid #eef2f7}
 .report-composed.rep-lines-both td:last-child,.report-composed.rep-lines-both th:last-child{border-right:none}
 .report-composed.rep-lines-none td,.report-composed.rep-lines-none th{border-bottom:none}
-.report-composed.rep-zebra tbody tr:nth-child(even){background:#fafbfc}
+.report-composed.rep-zebra tbody tr.det:nth-child(even){background:#fafbfc}
 /* min-height:0 у строки и её колонок: у flex-элемента min-height по умолчанию
    auto, поэтому он не может стать ниже своего содержимого — и длинное меню
    растягивало всю страницу, несмотря на overflow:hidden выше. */
@@ -1632,6 +2100,15 @@ h3{font-size:16px;font-weight:600;margin:24px 0 10px;color:#1e293b}
 .main-list .card,.main-list .row-top,.main-list details,.main-list .breadcrumb{max-width:1600px}
 .main-list .ob-list-content{width:100%}
 .main-list .ob-list-content>.card{max-width:none}
+/* Only entity lists: keep the header, search, filters and table close together. */
+.ob-entity-list{padding:16px}
+.ob-entity-list>.row-top{margin-bottom:8px}
+.ob-entity-list>.row-top h2{margin:0}
+.ob-entity-list>form{margin-bottom:8px!important}
+.ob-entity-list>details{margin-bottom:8px!important}
+.ob-entity-list>.ob-list-settings{padding:0}
+.ob-entity-list>details>summary{padding:8px 12px}
+.ob-entity-list .ob-list-content>.card{padding:12px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{text-align:left;padding:10px 12px;border-bottom:2px solid #cbd5e1;color:#334155;font-weight:600;background:#eef2f7}
 th a{color:inherit;text-decoration:none}
@@ -1639,6 +2116,21 @@ th a:hover{color:#1e293b}
 td{padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155;font-size:14px}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#f8fafc}
+tr.ob-row-styled td{color:inherit;font-weight:inherit}
+tr.ob-row-styled[aria-selected="true"] td{color:#334155}
+tr.ob-row-styled:hover td{background:inherit;filter:brightness(.95)}
+
+/* app.yaml ui.list_density: compact — плотные списки, журналы, регистры и
+   виджеты-списки, как в 1С: 12px, строка ≈ 22px, видимые границы строк и
+   столбцов. Табличные части, «ключ — значение» и всё внутри формы объекта
+   (#main-form) не трогаются. */
+.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *){font-size:12px}
+.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) th,
+.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) td{padding:2px 6px;font-size:12px;line-height:17px;border:1px solid #cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
+.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) th{background:#e8edf3;border-bottom:1px solid #94a3b8;font-weight:600}
+.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) tr:last-child td{border-bottom:1px solid #cbd5e1}
+
+td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .btn{display:inline-block;padding:8px 18px;border-radius:7px;font-size:14px;font-weight:500;text-decoration:none;cursor:pointer;border:none;line-height:1}
 .btn-primary{background:#3b82f6;color:#fff}.btn-primary:hover{background:#2563eb}
 .btn-post{background:#e8b400;color:#1a1a1a;font-weight:700}.btn-post:hover{background:#d4a200}
@@ -1657,6 +2149,8 @@ input:focus,select:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,2
    для ввода. Без этого readonly-поле неотличимо от обычного, и пользователь
    решает, что форма сломалась, когда в него не печатается. */
 input[readonly],textarea[readonly],select:disabled,input:disabled{background:#f1f5f9;color:#475569;cursor:default}
+select[data-ref-choice-dropdown="false"]{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:none;cursor:pointer}
+select[data-ref-choice-dropdown="false"]:disabled{cursor:default}
 .error{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:12px 16px;border-radius:7px;margin-bottom:16px;font-size:14px}
 .empty{color:#94a3b8;text-align:center;padding:48px;font-size:15px}
 .row-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;max-width:1400px}
@@ -1669,8 +2163,50 @@ details[open] summary::before{content:"▼ "}
 .filter-body label{font-size:12px;color:#64748b;margin-bottom:3px}
 .filter-body input,.filter-body select{padding:7px 10px;font-size:13px}
 .filter-actions{padding:0 20px 16px;display:flex;gap:10px}
+{{if .Cfg.UIEnhancements}}
+/* List controls retain their separate rows; only their vertical density changes. */
+/* Keep the existing vertical order; only controls and gaps become thinner. */
+.ob-list-panels>form,.ob-list-panels>.row-top form{gap:4px 8px!important;margin-bottom:4px!important}
+.ob-list-panels>form input,.ob-list-panels>form select,.ob-list-panels>form button,.ob-list-panels>.row-top input,.ob-list-panels>.row-top select{height:26px!important;box-sizing:border-box;padding:2px 6px!important;font-size:12px!important;min-width:0}
+.ob-list-panels>form>div{min-width:0;max-width:240px}
+.ob-list-panels>details>form{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:flex-end;padding:0 8px 4px}
+.ob-list-panels>.card,.ob-list-panels .ob-list-wrap>.card{padding:4px 8px}
+.ob-list-panels>.row-top .btn{height:26px;box-sizing:border-box;padding:2px 8px;font-size:12px;line-height:20px}
+.ob-list-panels>.row-top{margin-bottom:4px}
+.ob-list-panels>.row-top h2{margin:0}
+.ob-list-panels>.ob-list-search{margin-bottom:4px!important}
+.ob-list-panels>.ob-list-search input{height:26px;box-sizing:border-box;padding:2px 8px!important;font-size:12px!important}
+.ob-list-panels>details{margin-bottom:4px!important;border-radius:0;box-shadow:none;background:transparent;padding:0}
+.ob-list-panels>details>summary{padding:3px 8px;font-size:12px;line-height:18px}
+.ob-list-panels .ob-list-filters>form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:4px 8px;padding:0 8px 4px}
+.ob-list-panels .filter-body{display:contents}
+.ob-list-panels .filter-body>div{flex:0 1 170px;min-width:0}
+.ob-list-panels .filter-body label{margin:0;line-height:16px}
+.ob-list-panels .filter-body input,.ob-list-panels .filter-body select{box-sizing:border-box;width:100%;height:26px;padding:2px 6px;font-size:12px}
+.ob-list-panels .filter-actions{padding:0;gap:6px;align-items:center}
+.ob-list-panels .filter-actions .btn,.ob-list-panels .filter-body button{height:26px;box-sizing:border-box;padding:2px 8px!important;font-size:12px!important;line-height:20px}
+.ob-list-panels .ob-filter-more{margin:2px 0 0!important;box-shadow:none;background:transparent}
+.ob-list-panels .ob-filter-more>summary{padding:2px 8px;font-size:12px;line-height:18px}
+.ob-list-panels .ob-filter-more>form,.ob-list-panels .ob-list-settings>form{padding:0 8px 4px!important}
+.ob-list-panels .ob-list-settings table{margin:0 0 4px!important}
+.ob-list-panels .ob-list-settings th{height:24px;padding:1px 6px!important;font-size:12px;line-height:18px}
+.ob-list-panels .ob-list-settings td{height:28px;box-sizing:border-box;padding:1px 6px!important;font-size:12px;line-height:18px}
+.ob-list-panels .ls-width{height:24px;box-sizing:border-box;padding:1px 4px;font-size:12px;line-height:20px}
+.ob-list-panels .ls-visible{width:14px;height:14px;margin:0;vertical-align:middle}
+.ob-list-panels .ob-list-settings .btn{height:24px;box-sizing:border-box;padding:1px 8px;font-size:12px;line-height:20px}
+.ob-list-panels .ob-list-settings [data-ob-ls-move]{height:22px;padding:0 6px;line-height:20px}
+.ob-list-panels .ob-list-content>.card{padding:4px 8px}
+.ob-list-panels .ob-list-cell-filters{gap:6px!important;margin-bottom:4px!important;flex-wrap:wrap}
+/* A distinct border remains visible over a form's blue conditional background. */
+#main-form .tp-table tr[aria-selected="true"]>td{background:#93c5fd!important;box-shadow:inset 0 2px #1d4ed8,inset 0 -2px #1d4ed8}
+#main-form .tp-table tr[aria-selected="true"]>td:first-child{border-left:3px solid #1d4ed8}
+
+.ob-list-panels .ob-list-cell-filters .btn{min-height:0;height:24px;box-sizing:border-box;padding:1px 8px;font-size:12px;line-height:20px}
+{{end}}
 .tp-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
 .tp-table th{background:#eef2f7;padding:8px 10px;text-align:left;font-size:12px;color:#334155;font-weight:600;border-bottom:2px solid #cbd5e1;white-space:nowrap}
+.ob-list-wrap table th,.ob-list-wrap table td,.list-tbl th,.list-tbl td,.tp-table th{border-right:1px solid #cbd5e1}
+.ob-list-wrap table th:last-child,.ob-list-wrap table td:last-child,.list-tbl th:last-child,.list-tbl td:last-child,.tp-table th:last-child{border-right:none}
 .tp-table td{padding:5px 6px;border-bottom:1px solid #e2e8f0;border-right:1px solid #eef2f7;vertical-align:middle}
 .tp-table tbody tr:nth-child(even) td{background:#f1f5f9}
 .tp-table tbody tr:hover td{background:#eef4ff}
@@ -1685,8 +2221,10 @@ details[open] summary::before{content:"▼ "}
 .tp-table .del-btn{background:none;border:none;color:#94a3b8;cursor:pointer;font-size:15px;padding:0 4px;transition:color .15s}
 .tp-table .del-btn:hover{color:#ef4444}
 .tp-table .tp-footer td{font-weight:600;border-top:2px solid #e2e8f0;background:#f8fafc;font-variant-numeric:tabular-nums}
-.subsys-bar{background:#0f172a;display:flex;padding:0 12px;gap:2px;flex-shrink:0}
-.subsys-bar a{display:inline-block;padding:7px 18px;color:#94a3b8;text-decoration:none;font-size:13px;font-weight:500;border-bottom:3px solid transparent;transition:color .15s}
+.subsys-bar{display:flex;align-self:stretch;flex:1 1 auto;min-width:0;padding:0 0 0 16px;gap:2px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;white-space:nowrap}
+.subsys-bar::-webkit-scrollbar{display:none}
+.topbar:has(.subsys-bar) .topbar-title{flex:0 0 auto}
+.subsys-bar a{display:inline-flex;align-items:center;flex-shrink:0;padding:0 16px;color:#94a3b8;text-decoration:none;font-size:13px;font-weight:500;border-bottom:3px solid transparent;border-top:3px solid transparent;transition:color .15s}
 .subsys-bar a:hover{color:#e2e8f0;background:rgba(255,255,255,.04)}
 .subsys-bar a.active{color:#7dd3fc;border-bottom-color:#3b82f6}
 .subsys-bar a .ob-icon{width:15px;height:15px;vertical-align:-3px;margin-right:6px;opacity:.85}
@@ -1694,8 +2232,10 @@ details[open] summary::before{content:"▼ "}
 .breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;color:#64748b;margin-bottom:12px;max-width:1400px;flex-wrap:wrap}
 .breadcrumb a{color:#3b82f6;text-decoration:none}.breadcrumb a:hover{text-decoration:underline}
 .breadcrumb span{color:#94a3b8;padding:0 2px}
-/* Чтобы контент не накрывало панелью сообщений */
-body{padding-bottom:32px}
+/* Чтобы контент не накрывало панелью сообщений — только пока она видна: скрытая
+   панель (class hidden) места не занимает, и резерв впустую отнимал 32px у каждой
+   формы (а в оболочке вкладок — ещё 32px снаружи). */
+body:has(>#ob-msg-bar:not(.hidden)){padding-bottom:32px}
 /* Стили плавающих виджетов (ИИ-помощник, панель сообщений) инжектирует сам
    /static/ui.js вместе с их разметкой — они работают и на страницах с
    собственным <head> (админские). Здесь их не дублировать. */
@@ -1743,6 +2283,17 @@ body:has(.ob-shell-main) .subsys-bar,body:has(.ob-page-application) .subsys-bar{
   body:has(.ob-shell-main) .topbar-title,body:has(.ob-page-application) .topbar-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
 /* ===== Плиточный режим списка (Фаза 1a) ===== */
+/* «Настройка списка»: заданные пользователем ширины — фиксированная
+   раскладка, длинное значение обрезается многоточием; край заголовка тянется. */
+table.ob-list-fixed{table-layout:fixed}
+table.ob-list-fixed td,table.ob-list-fixed th{overflow:hidden;text-overflow:ellipsis}
+th.ob-ls-th{position:relative}
+th.ob-ls-th.ob-ls-drop{box-shadow:inset 3px 0 0 #3b82f6}
+.ob-ls-resize{position:absolute;top:0;right:-3px;bottom:0;width:7px;cursor:col-resize;z-index:1}
+.ob-ls-resize:hover,.ob-ls-resize.dragging{background:rgba(59,130,246,.35)}
+.ob-list-settings tr.ls-col-row{cursor:grab}
+.ob-list-settings tr.ls-col-row.ob-ls-drop td{box-shadow:inset 0 2px 0 #3b82f6}
+.ls-grip{color:#94a3b8;cursor:grab;user-select:none}
 .view-switch{display:inline-flex;border:1px solid #e2e8f0;border-radius:7px;overflow:hidden;flex-shrink:0}
 .view-switch .view-btn{padding:6px 11px;color:#64748b;text-decoration:none;font:inherit;font-size:15px;line-height:1;background:#fff;border:0;border-right:1px solid #e2e8f0;cursor:pointer}
 .view-switch .view-btn:last-child{border-right:none}
@@ -1800,7 +2351,7 @@ body:has(.ob-shell-main) .subsys-bar,body:has(.ob-page-application) .subsys-bar{
 .img-actions{display:flex;gap:8px;align-items:center}
 .img-field label.btn{cursor:pointer;margin:0}
 </style>
-</head><body data-ob-dev="{{if .Cfg.Dev}}1{{else}}0{{end}}">
+</head><body data-ob-dev="{{if .Cfg.Dev}}1{{else}}0{{end}}"{{if .Cfg.CompactLists}} class="ob-compact-lists"{{end}}>
 {{end}}
 `
 
@@ -1809,6 +2360,20 @@ const tplNav = `
 <header class="topbar">
   <button class="nav-toggle" type="button" aria-label="{{t $.Lang "Меню"}}" title="{{t $.Lang "Меню"}}" aria-controls="ob-nav" aria-expanded="false" data-ob-nav-toggle>&#9776;</button>
   <a href="/ui/" class="topbar-title" style="text-decoration:none;color:inherit" title="{{t $.Lang "Главная"}}">{{if .Cfg.Logo}}<img src="/ui/logo" alt="" style="height:22px;max-width:90px;vertical-align:middle;margin-right:6px;border-radius:2px">{{end}}⚡ {{if .Cfg.AppName}}{{.Cfg.AppName}}{{else}}onebase{{end}}</a>
+  {{/* Разделы (подсистемы) — вкладками в самой тёмной полосе справа от
+       названия, а не отдельной строкой под ней: строка съедала ~34px высоты
+       рабочей области. Не помещаются — прокручиваются внутри полосы. */}}
+  {{if .Subsystems}}
+  <nav class="subsys-bar">
+    {{$home := t $.Lang "Главная"}}
+    {{/* #304: home_page.hidden прячет ведущую «Главную» — навигация только по разделам. */}}
+    {{if not .HideHome}}<a href="/ui/" class="{{if not .CurrentSubsystem}}active{{end}}">{{$home}}</a>{{end}}
+    {{/* #215.2: не дублируем ведущую «Главная», если в базе есть одноимённая
+         подсистема (её представление совпадает с меткой домашней ссылки). Когда
+         ведущей ссылки нет (HideHome), одноимённый раздел, наоборот, показываем. */}}
+    {{range .Subsystems}}{{if or $.HideHome (ne (.DisplayName $.Lang) $home)}}<a href="/ui/?subsystem={{.Name}}" class="{{if eq .Name $.CurrentSubsystem}}active{{end}}">{{lucideIcon .Icon}}{{.DisplayName $.Lang}}</a>{{end}}{{end}}
+  </nav>
+  {{end}}
   <form class="topbar-search" method="get" action="/ui/search" role="search">
     <input type="search" name="q" value="{{.SearchQuery}}" placeholder="{{t $.Lang "Поиск по базе"}}" aria-label="{{t $.Lang "Поиск по базе"}}">
   </form>
@@ -1916,22 +2481,13 @@ const tplNav = `
   ⚠️ {{t $.Lang "ДЕМО-РЕЖИМ"}}{{if .Cfg.DemoMessage}} — {{.Cfg.DemoMessage}}{{end}}
 </div>
 {{end}}
-{{if .Subsystems}}
-<nav class="subsys-bar">
-  {{$home := t $.Lang "Главная"}}
-  {{/* #304: home_page.hidden прячет ведущую «Главную» — навигация только по разделам. */}}
-  {{if not .HideHome}}<a href="/ui/" class="{{if not .CurrentSubsystem}}active{{end}}">{{$home}}</a>{{end}}
-  {{/* #215.2: не дублируем ведущую «Главная», если в базе есть одноимённая
-       подсистема (её представление совпадает с меткой домашней ссылки). Когда
-       ведущей ссылки нет (HideHome), одноимённый раздел, наоборот, показываем. */}}
-  {{range .Subsystems}}{{if or $.HideHome (ne (.DisplayName $.Lang) $home)}}<a href="/ui/?subsystem={{.Name}}" class="{{if eq .Name $.CurrentSubsystem}}active{{end}}">{{lucideIcon .Icon}}{{.DisplayName $.Lang}}</a>{{end}}{{end}}
-</nav>
-{{end}}
 <div class="app-body">
+<script src="/static/navigation-tree.js" defer></script>
 <aside id="ob-nav">
   {{if not .Subsystems}}<a href="/ui/" style="display:block;padding:12px 14px 8px;color:#7dd3fc;font-weight:700;font-size:15px;text-decoration:none">{{t $.Lang "Главная"}}</a>{{end}}
   {{if .CollapsibleNav}}
   {{range .Nav}}
+  {{if .Recursive}}{{template "nav-recursive-section" .}}{{else}}
   <details class="navsec" id="{{.DOMID}}" data-nav-id="{{.ID}}" data-navsec="{{.DOMID}}"{{if .LegacyTitle}} data-navsec-legacy="{{.LegacyTitle}}"{{end}}{{if .Open}} open{{end}}>
     <summary>{{lucideIcon .Icon}}{{.Kind}}</summary>
     {{template "nav-items" .Items}}
@@ -1942,18 +2498,32 @@ const tplNav = `
     </details>
     {{end}}
   </details>
-  {{end}}
+  {{end}}{{end}}
   {{else}}
   {{range .Nav}}
+  {{if .Recursive}}{{template "nav-recursive-section" .}}{{else}}
   <div class="sec" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{.Kind}}</div>
   {{template "nav-items" .Items}}
   {{range .Groups}}
   <div class="sec navfolder-title" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{.Kind}}</div>
   <div class="navfolder-items">{{template "nav-items" .Items}}</div>
-  {{end}}{{end}}
+  {{end}}{{end}}{{end}}
   {{end}}
 </aside>
 {{end}}
+{{define "nav-recursive-section"}}
+<details class="navtree navtree-section" id="{{.DOMID}}" data-nav-id="{{.ID}}" data-nav-key="{{.CollapseKey}}" open>
+<summary aria-expanded="true">{{lucideIcon .Icon}}{{.Kind}}</summary>
+{{template "nav-recursive-nodes" .Nodes}}
+</details>
+{{end}}
+{{define "nav-recursive-nodes"}}{{range .}}
+{{if .URL}}<a href="{{.URL}}" title="{{.Label}}" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{navLabel .Label}}</a>
+{{else}}<details class="navtree navtree-folder" id="{{.DOMID}}" data-nav-id="{{.ID}}" data-nav-key="{{.CollapseKey}}" open>
+<summary aria-expanded="true">{{lucideIcon .Icon}}{{.Label}}</summary>
+{{template "nav-recursive-nodes" .Nodes}}
+</details>{{end}}
+{{end}}{{end}}
 {{define "nav-items"}}{{range .}}<a href="{{.URL}}" title="{{.Label}}" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{navLabel .Label}}</a>
 {{end}}{{end}}
 `
@@ -1988,9 +2558,18 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 .w-list td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#334155}
 .w-list td.right{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .w-list tr:last-child td{border-bottom:none}
+.w-list th,.w-list td{border-right:1px solid #cbd5e1}
+.w-list th:last-child,.w-list td:last-child{border-right:none}
+.w-list th[data-ob-widget-column]{position:relative}
+.ob-widget-column-grip{position:absolute;top:0;right:-3px;bottom:0;width:7px;cursor:col-resize;z-index:2;touch-action:none}
+.ob-widget-column-grip:hover,.ob-widget-column-grip:focus{background:#60a5fa}
+.w-list table.ob-widget-fixed{table-layout:fixed;min-width:0}
+.w-list table.ob-widget-fixed th,.w-list table.ob-widget-fixed td{overflow:hidden;text-overflow:ellipsis}
 .w-list .ob-row-link{cursor:pointer}
 .w-list .ob-row-link:hover td,.w-list .ob-row-link:focus-visible td{background:#eff6ff}
 .w-list .ob-row-link:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}
+.w-list tr.ob-row-styled td{color:inherit;font-weight:inherit}
+.w-list tr.ob-row-styled.ob-row-link:hover td,.w-list tr.ob-row-styled.ob-row-link:focus-visible td{background:inherit;filter:brightness(.94)}
 .w-chart{min-height:240px}
 .w-chart-canvas{width:100%;height:240px}
 .w-actions-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
@@ -2004,12 +2583,37 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 .w-recent-row .ts{color:#94a3b8;font-size:11px;flex-shrink:0;font-variant-numeric:tabular-nums}
 .w-error{background:#fef2f2;color:#dc2626;font-size:12px;padding:6px 10px;border-radius:6px;margin-top:6px;font-family:Consolas,monospace}
 .w-empty{color:#94a3b8;font-size:13px;padding:6px 0;font-style:italic}
+/* List-widget filters share a row by default and wrap only when it is full. */
+.w-card-list .w-filters{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:flex-end;margin-bottom:8px}
+.w-card-list .w-filter{display:flex;flex-direction:column;flex:1 1 110px;gap:2px;min-width:0;max-width:220px;margin:0;font-size:12px;line-height:16px}
+.w-card-list .w-filter>span{min-width:0;overflow-wrap:anywhere}
+.w-card-list .w-filter input,.w-card-list .w-filter select{box-sizing:border-box;min-width:0;width:100%;max-width:100%;height:30px;padding:4px 6px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px}
+.w-card-list .w-filter-reset{flex:0 0 auto;max-width:100%;min-height:30px;padding:4px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#f1f5f9;color:#334155;cursor:pointer}
+@media(max-width:640px){.w-card-list .w-filters{flex-direction:column;align-items:stretch}.w-card-list .w-filter{flex:0 0 auto;max-width:none}.w-card-list .w-filter-reset{align-self:flex-start}}{{if .Cfg.UIEnhancements}}
+
+
+/* BEGIN widget-list-controls */
+.ob-dashboard-title{margin:0 0 6px}
+.dash{gap:8px}
+.dash-row{gap:8px}
+.dash .w-card-list{padding:6px 10px;min-height:0}
+.dash .w-card-list .w-head{margin-bottom:4px}
+.w-card-list .w-cell-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.w-cell-filters .btn{box-sizing:border-box;min-height:0;height:24px;padding:1px 8px;font-size:12px;line-height:20px}
+.w-list td.ob-widget-cell-selected{outline:2px solid #2563eb;outline-offset:-2px}
+.w-card-list.ob-widget-fill{box-sizing:border-box;min-height:180px}
+.ob-widget-fill>[data-ob-widget-body]{flex:1;min-height:0;display:flex;flex-direction:column}
+.ob-widget-fill .w-list{flex:1;min-height:0;overflow:auto}
+.ob-widget-fill .w-list th{position:sticky;top:0;z-index:1}
+.ob-widget-fill .w-refresh-status:empty{display:none}
+/* END widget-list-controls */
+{{end}}
 .w-default-hint{color:#64748b;font-size:13px;margin:6px 0 14px}
 </style>
 {{end}}
 
 {{define "dashboard-body"}}
-  <h2 style="margin-bottom:14px">{{.HomeTitle}}</h2>
+  {{if .Cfg.UIEnhancements}}<h2 class="ob-dashboard-title">{{.HomeTitle}}</h2>{{else}}<h2 style="margin-bottom:14px">{{.HomeTitle}}</h2>{{end}}
   {{if .DefaultedHome}}<div class="w-default-hint">Стартовая страница не настроена — показаны последние документы из аудита. Создайте <code>config/home_page.yaml</code> и виджеты в <code>widgets/</code>, чтобы оформить дашборд.</div>{{end}}
   <div class="dash">
     {{range .WidgetRows}}
@@ -2036,7 +2640,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 {{end}}
 
 {{define "widget-card"}}
-<div class="w-card w-card-{{.Type}}"{{if .PartialURL}} data-ob-widget-card data-widget-name="{{.Name}}" data-widget-url="{{.PartialURL}}" data-refresh-error="{{.RefreshError}}"{{if .RefreshOn}} data-ob-refresh-on="{{.RefreshOn}}" data-ob-live="widget/{{.Name}}"{{end}}{{end}}>
+<div class="w-card w-card-{{.Type}}"{{with .Background}} style="{{wBackground .}}"{{end}}{{if .PartialURL}} data-ob-widget-card data-widget-name="{{.Name}}" data-widget-url="{{.PartialURL}}" data-refresh-error="{{.RefreshError}}"{{if .RefreshOn}} data-ob-refresh-on="{{.RefreshOn}}" data-ob-live="widget/{{.Name}}"{{end}}{{end}}>
   {{if or .Title .PartialURL}}
   <div class="w-head">
     {{if .Title}}<div class="w-title">{{.Title}}</div>{{end}}
@@ -2053,6 +2657,13 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
     </label>
     {{end}}
     <button type="button" class="w-filter-reset" data-ob-filter-reset>{{.ResetLabel}}</button>
+  </div>
+  {{end}}
+  {{if .CellFilterKey}}
+  <div class="w-cell-filters">
+    <input type="hidden" data-ob-filter="{{.CellFilterKey}}" data-ob-widget-cell-input value="{{.CellFilterJSON}}">
+    <button type="button" class="btn btn-sm btn-secondary" data-ob-widget-cell-apply disabled>{{.CellFilterLabel}}</button>
+    <button type="button" class="btn btn-sm btn-secondary" data-ob-widget-cell-clear{{if not .CellFilterJSON}} disabled{{end}}>{{.CellFilterClearLabel}}</button>
   </div>
   {{end}}
   <div data-ob-widget-body>
@@ -2085,14 +2696,16 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 {{define "widget-list-body"}}
 <div class="w-list">
   {{if .Rows}}
-  <table>
-    <thead><tr>{{range .Columns}}<th{{if eq .Align "right"}} style="text-align:right"{{end}}>{{.Label}}</th>{{end}}</tr></thead>
+  <table{{if .WidthsURL}} data-ob-widget-widths="{{.WidthsURL}}"{{end}}{{if .TableWidth}} class="ob-widget-fixed" style="width:{{.TableWidth}}px"{{end}}>
+    {{if .TableWidth}}<colgroup>{{range .Columns}}<col style="width:{{index $.ColumnWidths .Field}}px">{{end}}</colgroup>{{end}}
+    <thead><tr>{{range .Columns}}<th data-ob-widget-column="{{.Field}}"{{if eq .Align "right"}} style="text-align:right"{{end}}>{{.Label}}{{if $.WidthsURL}}<span class="ob-widget-column-grip" data-ob-widget-column-grip role="separator" aria-orientation="vertical" tabindex="0" aria-label="{{.Label}}"></span>{{end}}</th>{{end}}</tr></thead>
     <tbody>
     {{range .Rows}}
       {{$row := .}}
-      {{with index $row "_row_url"}}<tr class="ob-row-link" tabindex="0" data-ob-row-url="{{.}}">{{else}}<tr>{{end}}
+      {{$style := wRowStyle $row}}
+      {{with index $row "_row_url"}}<tr class="ob-row-link{{if $style}} ob-row-styled{{end}}" tabindex="0" data-ob-row-url="{{.}}"{{if $style}} style="{{$style}}"{{end}}>{{else}}<tr{{if $style}} class="ob-row-styled" style="{{$style}}"{{end}}>{{end}}
         {{range $.Columns}}
-        <td{{if eq .Align "right"}} class="right"{{end}}>{{wcell $row .Field .Format}}</td>
+        <td{{if $.CellFilterKey}}{{with wCellAttrs $row .Field}} {{.}}{{end}}{{end}}{{if eq .Align "right"}} class="right"{{end}}>{{wcell $row .Field .Format}}</td>
         {{end}}
       </tr>
     {{end}}
@@ -2131,6 +2744,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 
 const tplList = `
 {{define "detail-panel"}}
+{{if not .Cfg.HideListDetailPanel}}
 <aside class="ob-detail" id="ob-detail" hidden data-ob-default-width="{{detailPanelDefaultWidth .Entity}}" aria-label="{{t $.Lang "Детали записи"}}">
   <div class="ob-detail-grip" data-ob-detail-grip title="{{t $.Lang "Потяните, чтобы изменить ширину"}}"></div>
   <div class="ob-detail-body">
@@ -2144,11 +2758,14 @@ const tplList = `
   </div>
 </aside>
 {{end}}
+{{end}}
 
 {{define "detail-panel-toggle"}}
+{{if not .Cfg.HideListDetailPanel}}
 <div class="view-switch">
   <button class="view-btn" type="button" data-ob-detail-toggle aria-controls="ob-detail" aria-expanded="false" title="{{t $.Lang "Детали записи"}}">▤</button>
 </div>
+{{end}}
 {{end}}
 
 {{define "list-refresh"}}
@@ -2157,7 +2774,9 @@ const tplList = `
 
 {{define "page-list"}}
 {{template "head" .}}{{template "nav" .}}
-<main class="main-list">
+{{/* Колонки списка с «Настройкой списка» пользователя; без неё — как в конфигурации. */}}
+{{$listCols := .ListColumns}}{{if not $listCols}}{{$listCols = defaultListColumns .Entity}}{{end}}
+<main class="main-list ob-entity-list{{if .Cfg.UIEnhancements}} ob-list-panels{{end}}"{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Entity.DisplayName $.Lang}}</h2>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -2207,7 +2826,7 @@ const tplList = `
     <a class="btn btn-sm" href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/excel{{listExcelSuffix .Params .ListFormOff}}" style="background:#16a34a;color:#fff" title="{{t $.Lang "Скачать Excel"}}">{{t $.Lang "Excel ↓"}}</a>
   </div>
 </div>
-<form method="GET" style="display:flex;gap:8px;margin-bottom:12px;max-width:460px">
+<form{{if .Cfg.UIEnhancements}} class="ob-list-search"{{end}} method="GET" style="display:flex;gap:8px;margin-bottom:12px;max-width:460px">
   <input type="text" id="ob-list-search" name="q" value="{{.Params.Search}}" placeholder="{{t $.Lang "Поиск..."}}" style="flex:1;padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px" data-ob-list-search data-ob-auto-submit="320" title="Ctrl+F" aria-keyshortcuts="Control+F">
   {{if .Params.Search}}<a class="btn btn-sm" href="{{listURL $.Query "q" ""}}" style="background:#e2e8f0;color:#475569;align-self:center">✕</a>{{end}}
   {{/* Форма владеет только q — остальное состояние списка (вид, папка,
@@ -2224,7 +2843,7 @@ const tplList = `
 {{if .SearchAll}}<p class="list-search-scope" style="margin:6px 0 10px;color:#64748b;font-size:13px">{{t $.Lang "Результаты поиска по всему справочнику"}}</p>{{end}}
 
 {{$entity := .Entity}}{{$params := .Params}}{{$refOpts := .RefFilterOptions}}
-<details{{if hasFilter $params}} open{{end}}>
+{{if .Cfg.UIEnhancements}}<details class="ob-list-filters" data-ob-list-panel="filters">{{else}}<details{{if hasFilter $params}} open{{end}}>{{end}}
   <summary>{{t $.Lang "Отбор"}}</summary>
   <form method="GET" action="">
   <div class="filter-body">
@@ -2244,7 +2863,7 @@ const tplList = `
       <div>
         <label>{{.DisplayName $.Lang}}</label>
         <div style="display:flex;gap:4px;align-items:center">
-          <select id="flt-{{.Name}}" name="f.{{.Name}}" data-ref-entity="{{.RefEntity}}" style="flex:1;min-width:0">
+          <select id="flt-{{.Name}}" name="f.{{.Name}}{{if (filterVal $params .Name).Exact}}.eq{{end}}" data-ref-entity="{{.RefEntity}}"{{refPickAttrs true $f.ChoiceShowDeleted}} style="flex:1;min-width:0">
             <option value="">{{t $.Lang "— все —"}}</option>
             {{range index $refOpts .Name}}
             <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index . "id") (filterVal $params $f.Name).Value}}selected{{end}}>{{index . "_label"}}</option>
@@ -2260,7 +2879,7 @@ const tplList = `
              («нет», «1», «истина»…), и отправляется нормализованным. Нераспознанное
              остаётся выбранным как есть: повторное «Применить» не превращает
              пустой список во весь (#2184). */}}
-        <select name="f.{{.Name}}">
+        <select name="f.{{.Name}}{{if (filterVal $params .Name).Exact}}.eq{{end}}">
           <option value="">{{t $.Lang "— все —"}}</option>
           <option value="true" {{if eq $bv "true"}}selected{{end}}>{{t $.Lang "Да"}}</option>
           <option value="false" {{if eq $bv "false"}}selected{{end}}>{{t $.Lang "Нет"}}</option>
@@ -2270,7 +2889,7 @@ const tplList = `
     {{else}}
       <div>
         <label>{{.DisplayName $.Lang}}</label>
-        <input type="text" name="f.{{.Name}}" value="{{(filterVal $params .Name).Value}}">
+        <input type="text" name="f.{{.Name}}{{if (filterVal $params .Name).Exact}}.eq{{end}}" value="{{(filterVal $params .Name).Value}}">
       </div>
     {{end}}
     {{end}}
@@ -2300,14 +2919,49 @@ const tplList = `
   {{end}}
 </details>
 
+{{if not .TilesView}}
+<details class="card report-block ob-list-settings" data-block="list-settings" style="margin-bottom:12px">
+  <summary>{{t $.Lang "Настройка списка"}}{{if .ListSettingsActive}} <span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:600">{{t $.Lang "изменено"}}</span>{{end}}</summary>
+  <form method="POST" action="{{.ListSettingsURL}}/save" data-ob-ls-before-submit style="padding:0 16px 12px">
+    <input type="hidden" name="__return" value="{{.RequestURI}}">
+    <input type="hidden" name="__list_settings" data-ob-ls-json value="{{.ListSettingsJSON}}">
+    <table class="tbl-plain" style="width:auto;margin:8px 0 12px">
+      <thead><tr>
+        <th style="text-align:left">{{t $.Lang "Поле"}}</th>
+        <th style="padding:0 10px">{{t $.Lang "Показывать"}}</th>
+        <th style="padding:0 10px">{{t $.Lang "Ширина, px"}}</th>
+        <th style="width:90px"></th>
+      </tr></thead>
+      <tbody data-ob-ls-columns>
+      {{range .ListSettingsColumns}}
+        <tr class="ls-col-row" data-field="{{.Field.Name}}" draggable="true">
+          <td><span class="ls-grip" title="{{t $.Lang "Перетащите, чтобы изменить порядок"}}">⠿</span> {{.Field.DisplayName $.Lang}}</td>
+          <td style="text-align:center"><input type="checkbox" class="ls-visible" aria-label="{{t $.Lang "Показывать"}}"{{if .Visible}} checked{{end}}></td>
+          <td style="text-align:center"><input type="number" class="ls-width" min="40" max="1200" step="1" style="width:80px" placeholder="{{t $.Lang "авто"}}" aria-label="{{t $.Lang "Ширина, px"}}" value="{{if .Width}}{{.Width}}{{end}}"></td>
+          <td style="white-space:nowrap;text-align:right">
+            <button type="button" class="btn btn-sm" data-ob-ls-move="-1" title="{{t $.Lang "Вверх"}}">↑</button>
+            <button type="button" class="btn btn-sm" data-ob-ls-move="1" title="{{t $.Lang "Вниз"}}">↓</button>
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary" type="submit">{{t $.Lang "Сохранить"}}</button>
+      <button class="btn" type="submit" formaction="{{.ListSettingsURL}}/reset">{{t $.Lang "Стандартные настройки"}}</button>
+    </div>
+  </form>
+</details>
+{{end}}
+
 {{$obRefresh := liveListRefreshOn .Entity}}
 <div class="ob-list-wrap">
-<div class="ob-list-content" data-ob-live="{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}"{{if $obRefresh}} data-ob-refresh-on="{{$obRefresh}}"{{end}}>
+<div class="ob-list-content" data-ob-live="{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}" data-ob-refresh-src="{{.RequestURI}}"{{if $obRefresh}} data-ob-refresh-on="{{$obRefresh}}"{{end}}>
 <div class="card">
 {{if .TreeView}}
 {{/* ===== TREE VIEW ===== */}}
 {{if .TreeRows}}
-{{$treeCols := listColumns .Entity}}
+{{$treeCols := listColumnFields $listCols}}
 <div style="overflow-x:auto">
 <table
   data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
@@ -2318,10 +2972,10 @@ const tplList = `
   data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
 ><thead><tr>
   {{range $treeCols}}<th>{{.DisplayName $.Lang}}</th>{{end}}
-  <th style="width:90px"></th>
+  {{if not $.Cfg.HideListRowActions}}<th style="width:90px"></th>{{end}}
 </tr></thead><tbody>
 {{range .TreeRows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}{{$depth := index $row "_depth"}}
-<tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer"{{else}}style="cursor:pointer"{{end}}
+{{$rowStyle := listRowStyle $row}}<tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer{{with $rowStyle}};{{.}}{{end}}"{{else}}style="cursor:pointer{{with $rowStyle}};{{.}}{{end}}"{{end}}{{if $rowStyle}} class="ob-row-styled"{{end}}
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if $.CanWrite}} F9{{end}}{{if and $.CanDelete (not (index $row "_is_predefined"))}} Delete{{end}}"
   data-ob-entity-id="{{index $row "id"}}"
   data-tree-id="{{index $row "id"}}"
@@ -2350,6 +3004,7 @@ const tplList = `
     {{else if isEnum (str $col.Type)}}<td>{{enumLabel $.EnumLabels $col.Name (str (index $row $col.Name))}}</td>
     {{else}}<td>{{fmtCell (index $row $col.Name)}}</td>{{end}}
   {{end}}
+  {{if not $.Cfg.HideListRowActions}}
   <td>
     {{if $isFolder}}
       <a class="btn btn-sm btn-secondary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "view" "" "parent" (str (index $row "id"))}}">{{t $.Lang "▶ Войти"}}</a>
@@ -2357,6 +3012,7 @@ const tplList = `
       <a class="btn btn-sm btn-primary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}">{{t $.Lang "Открыть"}}</a>
     {{end}}
   </td>
+  {{end}}
 </tr>{{end}}
 </tbody></table>
 </div>
@@ -2411,19 +3067,26 @@ const tplList = `
 {{end}}
 {{else}}
 {{/* ===== LIST VIEW (default) ===== */}}
+<div {{if .Cfg.UIEnhancements}}class="ob-list-cell-filters"{{end}} style="display:flex;gap:8px;margin-bottom:8px">
+<button type="button" class="btn btn-sm btn-secondary" data-ob-cell-filter disabled>{{t $.Lang "Отбор по значению текущей ячейки"}}</button>
+<button type="button" class="btn btn-sm btn-secondary" data-ob-cell-filter-clear>{{t $.Lang "Снять отбор"}}</button>
+</div>
 {{if .Rows}}
+{{$fixed := listColumnsFixed $listCols}}
 <div style="overflow-x:auto">
-<table><thead><tr>
+<table data-ob-list-table data-ob-ls-save="{{.ListSettingsURL}}/save" data-ob-ls-state="{{.ListSettingsJSON}}"{{if $fixed}} class="ob-list-fixed" style="width:{{listTableWidth $listCols (eq (str .Entity.Kind) "document") $.SearchAll}}px"{{end}}>
+{{if $fixed}}<colgroup>{{if eq (str .Entity.Kind) "document"}}<col style="width:36px">{{end}}{{range $listCols}}<col data-ob-ls-col="{{.Field.Name}}" style="width:{{listColumnWidth .}}px">{{end}}{{if $.SearchAll}}<col style="width:160px">{{end}}<col style="width:90px"></colgroup>{{end}}
+<thead><tr>
   {{if eq (str .Entity.Kind) "document"}}<th style="width:36px">✓</th>{{end}}
-  {{range listColumns .Entity}}
-  <th>
-    <a href="{{listURL $.Query "sort" .Name "dir" (nextDir $params .Name)}}">
-      {{.DisplayName $.Lang}} {{sortIcon $params .Name}}
-    </a>
+  {{range $listCols}}
+  <th class="ob-ls-th" data-ob-ls-field="{{.Field.Name}}" draggable="true">
+    <a href="{{listURL $.Query "sort" .Field.Name "dir" (nextDir $params .Field.Name) "sort_snapshot" "" "sort_default" ""}}" draggable="false">
+      {{.Field.DisplayName $.Lang}} {{sortIcon $params .Field.Name}}
+    </a><span class="ob-ls-resize" data-ob-ls-resize title="{{t $.Lang "Ширина колонки"}}"></span>
   </th>
   {{end}}
   {{if $.SearchAll}}<th>{{t $.Lang "Группа"}}</th>{{end}}
-  <th style="width:90px"></th>
+  {{if not $.Cfg.HideListRowActions}}<th style="width:90px"></th>{{end}}
 </tr></thead><tbody id="list-body"
   data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
   data-ob-row-subsystem="{{$.CurrentSubsystem}}"
@@ -2433,7 +3096,7 @@ const tplList = `
   data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
 >
 {{range .Rows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}
-<tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer"{{else}}style="cursor:pointer"{{end}}
+{{$rowStyle := listRowStyle $row}}<tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer{{with $rowStyle}};{{.}}{{end}}"{{else}}style="cursor:pointer{{with $rowStyle}};{{.}}{{end}}"{{end}}{{if $rowStyle}} class="ob-row-styled"{{end}}
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if $.CanWrite}} F9{{end}}{{if and $.CanDelete (not (index $row "_is_predefined"))}} Delete{{end}}"
   data-ob-entity-id="{{index $row "id"}}"
   data-predefined="{{if index $row "_is_predefined"}}1{{end}}"
@@ -2447,15 +3110,16 @@ const tplList = `
       {{if index $row "posted"}}<span style="color:#16a34a;font-weight:700" title="{{t $.Lang "Проведён"}}">✓</span>{{else}}<span style="color:#94a3b8" title="{{t $.Lang "Не проведён"}}">—</span>{{end}}
     </td>
   {{end}}
-  {{range listColumns $.Entity}}
-    {{if eq (str .Type) "date"}}<td style="white-space:nowrap">{{fmtDate (index $row .Name)}}</td>
-    {{else if eq (str .Type) "bool"}}<td style="white-space:nowrap">{{fmtBool (index $row .Name)}}</td>
-    {{else if isImage (str .Type)}}<td>{{$iv := index $row .Name}}{{if $iv}}<img src="/ui/_image/{{$iv}}" style="height:34px;width:34px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}<span style="color:#cbd5e1">—</span>{{end}}</td>
-    {{else if isRichText (str .Type)}}<td style="white-space:nowrap;color:#64748b">{{richPlain (index $row .Name)}}</td>
-    {{else if isEnum (str .Type)}}<td style="white-space:nowrap">{{enumLabel $.EnumLabels .Name (str (index $row .Name))}}</td>
-    {{else}}<td style="white-space:nowrap">{{if and (eq .Name "Наименование") $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{fmtCell (index $row .Name)}}{{if and (eq .Name "Наименование") (index $row "_is_predefined")}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}</td>{{end}}
+  {{range listColumnFields $listCols}}
+    {{if eq (str .Type) "date"}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{fmtDate (index $row .Name)}}</td>
+    {{else if eq (str .Type) "bool"}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{fmtBool (index $row .Name)}}</td>
+    {{else if isImage (str .Type)}}<td {{listCellAttrs $row .}}>{{$iv := index $row .Name}}{{if $iv}}<img src="/ui/_image/{{$iv}}" style="height:34px;width:34px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}<span style="color:#cbd5e1">—</span>{{end}}</td>
+    {{else if isRichText (str .Type)}}<td {{listCellAttrs $row .}} style="white-space:nowrap;color:#64748b">{{richPlain (index $row .Name)}}</td>
+    {{else if isEnum (str .Type)}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{enumLabel $.EnumLabels .Name (str (index $row .Name))}}</td>
+    {{else}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{if and (eq .Name "Наименование") $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{fmtCell (index $row .Name)}}{{if and (eq .Name "Наименование") (index $row "_is_predefined")}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}</td>{{end}}
   {{end}}
   {{if $.SearchAll}}<td style="white-space:nowrap" data-ob-list-group>{{with index $row "_group_id"}}<a href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}?parent={{.}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}">📁 {{index $row "_group_label"}}</a>{{else}}<span style="color:#94a3b8">{{t $.Lang "Корень"}}</span>{{end}}</td>{{end}}
+  {{if not $.Cfg.HideListRowActions}}
   <td>
     {{if and $isFolder $.Entity.Hierarchical}}
       <a class="btn btn-sm btn-secondary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}">{{t $.Lang "▶ Войти"}}</a>
@@ -2463,6 +3127,7 @@ const tplList = `
       <a class="btn btn-sm btn-primary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}">{{t $.Lang "Открыть"}}</a>
     {{end}}
   </td>
+  {{end}}
 </tr>{{end}}
 </tbody></table>
 </div>
@@ -2493,6 +3158,7 @@ const tplList = `
 </div>
 </main>
 <script type="application/json" id="ob-list-config">{{jsJSON (dict
+  "hideRowActions" .Cfg.HideListRowActions
   "isAdmin" .IsAdmin
   "canWrite" .CanWrite
   "canDelete" .CanDelete
@@ -2685,10 +3351,10 @@ const tplForm = `
   {{if isRef (str .Type)}}
     <div style="display:flex;gap:6px;align-items:center">
       {{if $ro}}<input type="hidden" name="{{$fn}}" value="{{index $.Values $fn}}">{{end}}
-      <select id="ref-{{$fn}}"{{if not $ro}} name="{{$fn}}"{{end}} style="flex:1" data-ref-entity="{{.RefEntity}}"{{if $.RefFilter}}{{with index $.RefFilter $fn}} data-ref-filter="{{.}}"{{end}}{{end}}{{if and (not $ro) (.InlineCreateEnabled false) (refWriteAllowed $.RefWriteAccess .RefEntity)}} data-ref-allow-create="1"{{end}}{{if $ro}} disabled{{end}}>
+      <select id="ref-{{$fn}}"{{if not $ro}} name="{{$fn}}"{{end}} style="flex:1" data-ref-entity="{{.RefEntity}}"{{refPickAttrs false .ChoiceShowDeleted}}{{if $.RefFilter}}{{with index $.RefFilter $fn}} data-ref-filter="{{.}}"{{end}}{{end}}{{if and (not $ro) (.InlineCreateEnabled false) (refWriteAllowed $.RefWriteAccess .RefEntity)}} data-ref-allow-create="1"{{end}}{{if $ro}} disabled{{end}}>
         <option value="">{{t $.Lang "— выбрать —"}}</option>
         {{range index $.RefOptions $fn}}
-        <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index . "id") (index $.Values $fn)}}selected{{end}}>{{index . "_label"}}</option>
+        <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index . "id") (index $.Values $fn)}}selected{{else}}{{refOptionDisabled .}}{{end}}>{{index . "_label"}}</option>
         {{end}}
       </select>
       {{if not $ro}}<button type="button" data-ob-ref-picker="ref-{{$fn}}" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;white-space:nowrap;flex-shrink:0" title="{{t $.Lang "Выбрать из списка"}}">...</button>{{end}}
@@ -2743,7 +3409,7 @@ const tplForm = `
 </div>
 {{end}}
 
-{{range .Entity.TableParts}}{{$tp := .}}{{$tpName := .Name}}{{$tpRef := index $.TPRefOptions $tpName}}{{$tpReadOnly := not $.CanWrite}}
+{{range .Entity.TableParts}}{{$tp := .}}{{$tpName := .Name}}{{$tpRef := index (tpNewRefOptions $) $tpName}}{{$tpReadOnly := not $.CanWrite}}
 <h3>{{$tp.DisplayName $.Lang}}</h3>
 <table class="tp-table" data-ob-dom-table="{{$tpName}}" data-ob-readonly="{{if $tpReadOnly}}1{{else}}0{{end}}"
   {{if not $tpReadOnly}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}>
@@ -2759,10 +3425,10 @@ const tplForm = `
         <td>
         {{if isRef (str .Type)}}
           <div style="display:flex;gap:4px;align-items:center">
-            <select name="tp.{{$tpName}}.{{$i}}.{{$fn}}" style="flex:1" data-ref-entity="{{.RefEntity}}"{{if $.RefFilter}}{{with index $.RefFilter (printf "%s.%s" $tpName $fn)}} data-ref-filter="{{.}}"{{end}}{{end}}{{if and (.InlineCreateEnabled true) (refWriteAllowed $.RefWriteAccess .RefEntity)}} data-ref-allow-create="1"{{end}}{{if $tpReadOnly}} disabled{{end}}>
+            <select name="tp.{{$tpName}}.{{$i}}.{{$fn}}" style="flex:1" data-ref-entity="{{.RefEntity}}"{{refPickAttrs false .ChoiceShowDeleted}}{{if $.RefFilter}}{{with index $.RefFilter (printf "%s.%s" $tpName $fn)}} data-ref-filter="{{.}}"{{end}}{{end}}{{if and (.InlineCreateEnabled true) (refWriteAllowed $.RefWriteAccess .RefEntity)}} data-ref-allow-create="1"{{end}}{{if $tpReadOnly}} disabled{{end}}>
               <option value="">{{t $.Lang "— выбрать —"}}</option>
-              {{range index $tpRef $fn}}
-              <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (str (index . "id")) (refID (index $row $fn))}}selected{{end}}>{{index . "_label"}}</option>
+              {{range tpSelectedOptions (index $tpRef $fn) (index (index $.TPRefOptions $tpName) $fn) (refID (index $row $fn))}}
+              <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (str (index . "id")) (refID (index $row $fn))}}selected{{else}}{{refOptionDisabled .}}{{end}}>{{index . "_label"}}</option>
               {{end}}
             </select>
             <button type="button" data-ob-ref-picker-self style="padding:4px 8px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;cursor:pointer;font-size:12px;flex-shrink:0" title="{{t $.Lang "Выбрать из списка"}}"{{if $tpReadOnly}} disabled{{end}}>...</button>
@@ -2840,7 +3506,8 @@ const tplForm = `
      роуты POST /ui/<kind>/<entity>/<id>/attachments). Показывается для
      сохранённой записи объекта (не новая, не попап, не обработка). */}}
 {{define "ob-attachments"}}
-{{if and (not .IsNew) (not .IsPopup) (not .IsProcessor)}}
+{{if audioOnlyMode .}}{{template "ob-audio-only" .}}{{else}}
+{{if and (not .Cfg.HideAttachments) (not .IsNew) (not .IsPopup) (not .IsProcessor)}}
 <div class="card" style="margin-top:16px" data-ob-attachments data-attachments-url="/ui/{{lower (str .Entity.Kind)}}/{{.Entity.Name}}/{{.ID}}/attachments">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <h3 style="margin:0;font-size:14px;font-weight:600;color:#374151">{{t $.Lang "Вложения"}}</h3>
@@ -2858,6 +3525,32 @@ const tplForm = `
 {{end}}
 {{end}}
 
+{{end}}
+
+{{define "ob-audio-controls"}}
+<style>[data-ob-audio]{display:inline-flex}</style>
+<div data-ob-audio data-audio-name="{{.Name}}" data-audio-source-field="{{.SourceField}}" data-audio-title-field="{{.TitleField}}" data-audio-source="{{.Source}}" data-audio-play-event="{{if .PlayEvent}}1{{end}}" data-audio-metadata-url="{{.MetadataURL}}" data-ob-el="{{.Name}}"{{with .Path}} data-ob-el-path="{{.}}"{{end}} style="display:inline-flex;align-items:center;vertical-align:middle;gap:4px;width:100%;max-width:600px;min-width:0;height:30px;padding:0;overflow:hidden;white-space:nowrap;{{if .Hidden}}display:none;{{end}}" data-audio-error="{{t .Lang "Не удалось воспроизвести запись"}}" data-audio-empty="{{t .Lang "Записи нет"}}" data-audio-loading="{{t .Lang "Подготовка записи…"}}" data-audio-play-label="{{t .Lang "Воспроизвести"}}" data-audio-pause-label="{{t .Lang "Пауза"}}">
+  <span data-ob-audio-caption title="{{.Title}}" style="font-size:12px;font-weight:600;flex:1 1 240px;max-width:280px;min-width:0;overflow:hidden;text-overflow:ellipsis">{{.Title}}</span>
+  <button type="button" class="btn btn-secondary" data-ob-audio-play aria-label="{{t .Lang "Воспроизвести"}}" title="{{t .Lang "Воспроизвести"}}" style="flex:0 0 24px;width:24px;height:24px;min-height:24px;padding:0;line-height:1;font-size:13px"{{if .ReadOnly}} disabled{{end}}>▶</button>
+  <button type="button" class="btn btn-secondary" data-ob-audio-stop aria-label="{{t .Lang "Остановить"}}" title="{{t .Lang "Остановить"}}" style="flex:0 0 24px;width:24px;height:24px;min-height:24px;padding:0;line-height:1;font-size:13px">■</button>
+  <span data-ob-audio-time style="font-size:11px;font-variant-numeric:tabular-nums;flex:0 0 auto">0:00 / 0:00</span>
+  <div data-ob-audio-seek role="slider" tabindex="0" aria-label="{{t .Lang "Позиция воспроизведения"}}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-disabled="true" style="display:flex;align-items:center;flex:1 1 100px;max-width:120px;min-width:40px;height:18px;cursor:pointer;touch-action:none">
+    <span style="height:3px;background:#cbd5e1;width:100%;border-radius:2px"><span style="display:block;height:100%;width:var(--ob-audio-progress,0%);background:#2563eb;border-radius:2px"></span></span>
+  </div>
+  <div data-ob-audio-volume role="slider" tabindex="0" aria-label="{{t .Lang "Громкость"}}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" style="display:flex;align-items:center;flex:0 1 36px;min-width:24px;height:18px;cursor:pointer;touch-action:none">
+    <span style="height:3px;background:#cbd5e1;width:100%;border-radius:2px"><span style="display:block;height:100%;width:var(--ob-audio-progress,100%);background:#64748b;border-radius:2px"></span></span>
+  </div>
+  <audio data-ob-audio-media preload="none" hidden></audio>
+  <span data-ob-audio-status role="status" aria-live="polite" style="flex:0 1 auto;max-width:200px;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:11px"></span>
+</div>
+{{end}}
+{{define "ob-audio-only"}}
+{{if and (not .IsNew) (not .IsPopup) (not .IsProcessor)}}
+{{template "ob-audio-controls" (dict "Name" "attachment-audio" "Title" .Entity.Title "Lang" .Lang "MetadataURL" (printf "/ui/%s/%s/%s/attachments" (lower (str .Entity.Kind)) .Entity.Name .ID))}}
+<script src="/static/audio.js"></script>
+{{end}}
+{{end}}
+
 {{/* form-shared-js — общий <script> блок, используется page-form и
      page-managed-form. Внутри: глобалы window._tpRefOpts/_tpRefMeta,
      функции addTpRow / recalcTpRow / openRefPicker / openRefCreate. */}}
@@ -2872,7 +3565,7 @@ const tplForm = `
 {{/* Управляемая форма выводит те же варианты своим блоком
      (ob-managed-tp-ref-opts) — второй экземпляр удваивал страницу: у заявки
      колл-центра это 1,3 МБ дважды. */}}
-{{if not .Form}}<script type="application/json" id="ob-tp-ref-opts">{{jsJSON .TPRefOptions}}</script>{{end}}
+{{if not .Form}}<script type="application/json" id="ob-tp-ref-opts">{{jsJSON .TPRefOptions}}</script><script type="application/json" id="ob-tp-ref-choices">{{jsJSON .TPRefChoices}}</script>{{end}}
 <script type="application/json" id="ob-tp-ref-meta">{{jsJSON .TPRefMeta}}</script>
 {{/* Перечисления колонок ТЧ — для строк, которые добавляет JS (#1010): сервер
      их не рендерит, а без вариантов и порядка addTpRow снова поставил бы
@@ -2966,15 +3659,24 @@ const tplReport = `
 {{end}}
 {{define "page-report"}}
 {{template "head" .}}{{template "nav" .}}
-<main>
+<main{{if .CompactReport}} class="ob-report-compact{{if eq .ReportDensity "dense"}} ob-report-dense{{end}}"{{end}}>
+{{if .CompactReport}}<div class="ob-report-titlebar">
+<h2>{{.Report.DisplayName $.Lang}}</h2>
+<div class="ob-report-commandbar">
+  {{if not (or .ReportParams .Report.Variants .ReportPresets)}}<form id="ob-report-params" method="POST" hidden>{{if .UserSettings}}<input type="hidden" name="__settings" value="{{if .ReportSettingsJSON}}{{.ReportSettingsJSON}}{{else}}{{.UserSettings.JSON}}{{end}}">{{end}}</form>{{end}}
+  <button class="btn btn-primary" type="submit" form="ob-report-params">{{t $.Lang "Сформировать"}}</button>
+  {{if or .Cols .ComposedHTML}}{{template "report-export-buttons" .}}{{end}}
+  <a class="btn btn-sm" href="/ui/export-jobs">{{t $.Lang "Мои выгрузки"}}</a>
+</div>
+</div>{{else}}
 <h2>{{.Report.DisplayName $.Lang}}</h2>
 <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
   <a class="btn btn-sm" href="/ui/export-jobs">{{t $.Lang "Мои выгрузки"}}</a>
-</div>
+</div>{{end}}
 {{if or .ReportParams .Report.Variants .ReportPresets}}
 <details class="card report-block" data-block="params" open style="margin-bottom:16px">
 <summary>{{t $.Lang "Параметры"}}</summary>
-<form method="POST">
+<form method="POST"{{if .CompactReport}} id="ob-report-params" data-ob-report-params{{end}}>
   {{if .UserSettings}}<input type="hidden" name="__settings" value="{{if .ReportSettingsJSON}}{{.ReportSettingsJSON}}{{else}}{{.UserSettings.JSON}}{{end}}">{{end}}
   {{if .ReportPresets}}
   <div class="form-group" style="margin-bottom:16px;max-width:360px">
@@ -2995,21 +3697,21 @@ const tplReport = `
   </div>
   {{end}}
   {{if .ReportParams}}
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:16px">
+  <div{{if .CompactReport}} class="ob-report-param-grid"{{end}} style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:16px">
   {{range .ReportParams}}{{$p := .}}{{$pname := .Name}}{{$pval := str (index $.ParamValues .Name)}}
     {{if $p.IsBool}}
-    <div class="form-group" style="margin-bottom:0">
+    <div class="form-group" style="margin-bottom:0"{{with $p.VisibilityJSON}} data-report-param-visible="{{.}}"{{end}}{{if $p.Hidden}} hidden{{end}}>
       {{/* Снятый checkbox браузер не отправляет вовсе — маркер __has. говорит
            серверу, что флажок на форме был, и снятую галку не заменят
            значением по умолчанию. */}}
       <input type="hidden" name="__has.{{$pname}}" value="1">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" name="{{$pname}}" value="true" {{if index $.ParamValues $pname}}checked{{end}}>
+        <input type="checkbox" name="{{$pname}}" value="true" {{if $p.Checked $.ParamValues}}checked{{end}}>
         <span>{{$p.Label}}</span>
       </label>
     </div>
     {{else}}
-    <div class="form-group" style="margin-bottom:0">
+    <div class="form-group" style="margin-bottom:0"{{with $p.VisibilityJSON}} data-report-param-visible="{{.}}"{{end}}{{if $p.Hidden}} hidden{{end}}>
       <label>{{$p.Label}}</label>
       {{if $p.IsDate}}
         <input type="date" name="{{$pname}}" value="{{$pval}}">
@@ -3023,9 +3725,14 @@ const tplReport = `
         <select name="{{$pname}}">
           {{range $p.Options}}<option value="{{.}}" {{if eq . $pval}}selected{{end}}>{{if .}}{{.}}{{else}}{{t $.Lang "— все —"}}{{end}}</option>{{end}}
         </select>
+      {{else if $p.IsEnum}}
+        <select name="{{$pname}}">
+          <option value="" {{if eq $pval ""}}selected{{end}}>{{t $.Lang "— все —"}}</option>
+          {{range $p.EnumOptions}}<option value="{{.Value}}" {{if eq .Value $pval}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
       {{else if $p.IsRef}}
         <div style="display:flex;gap:4px;align-items:center">
-          <select name="{{$pname}}" id="rp-{{$pname}}" style="flex:1;min-width:0" data-ref-entity="{{$p.RefEntity}}">
+          <select name="{{$pname}}" id="rp-{{$pname}}" style="flex:1;min-width:0" data-ref-entity="{{$p.RefEntity}}" data-ref-empty-label="{{t $.Lang "— все —"}}"{{refPickAttrs true $p.ChoiceShowDeleted}}{{with $p.ChoiceContext $.Report.Name $.Report.Params}} data-ref-choice-context="{{.}}"{{end}}>
             <option value="">{{t $.Lang "— все —"}}</option>
             {{range $p.Opts}}
               <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq $pval (str (index . "id"))}}selected{{end}}>{{index . "_label"}}</option>
@@ -3042,8 +3749,9 @@ const tplReport = `
   {{end}}
   </div>
   {{end}}
-  <button class="btn btn-primary" type="submit">{{t $.Lang "Сформировать"}}</button>
+  {{if not .CompactReport}}<button class="btn btn-primary" type="submit">{{t $.Lang "Сформировать"}}</button>{{end}}
 </form>
+{{if .ReportParams}}<script src="/static/report_params.js" defer></script>{{end}}
 </details>
 {{end}}
 {{if and .ReportCols .ReportSettingsJSON}}
@@ -3067,6 +3775,7 @@ const tplReport = `
     <label style="display:flex;gap:6px;align-items:center;padding-bottom:8px"><input type="checkbox" name="__preset_default" value="1" {{if .ActivePreset}}{{if .ActivePreset.IsDefault}}checked{{end}}{{end}}> {{t $.Lang "по умолчанию"}}</label>
   </div>
   <input type="hidden" name="__settings" id="rs-json"{{if .ReportSettingsJSON}} value="{{.ReportSettingsJSON}}" data-base="{{.ReportSettingsJSON}}"{{else if .UserSettings}} value="{{.UserSettings.JSON}}" data-base="{{.UserSettings.JSON}}"{{end}}>
+{{if or .ReportHasComposition .Report.Composition}}
   <table style="width:auto;margin-bottom:12px">
     <thead><tr>
       <th style="text-align:left">{{t $.Lang "Поле"}}</th>
@@ -3081,12 +3790,15 @@ const tplReport = `
     </tr>{{end}}
     </tbody>
   </table>
+{{end}}
+  <script type="application/json" id="report-result-filter-fields">{{jsJSON .ReportFilterFields}}</script>
+  <script src="/static/report-result-filter.js" defer></script>
   <div class="rs-filters" style="margin:12px 0">
     <div style="font-weight:600;margin-bottom:6px">{{t $.Lang "Отбор"}}</div>
     <div id="rs-filter-rows">
       {{if .UserSettings}}{{range .UserSettings.Filters}}{{$f := .}}
       <div class="rs-filter-row" style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
-        <select class="rs-f-field">{{range $.ReportCols}}<option value="{{.}}" {{if eq . $f.Field}}selected{{end}}>{{.}}</option>{{end}}</select>
+        <select class="rs-f-field">{{range $.ReportFilterFields}}<option value="{{.Name}}" {{if eq (lower .Name) (lower $f.Field)}}selected{{end}}>{{.Name}}</option>{{end}}</select>
         <select class="rs-f-op">
           <option value="eq" {{if eq $f.Op "eq"}}selected{{end}}>=</option>
           <option value="ne" {{if eq $f.Op "ne"}}selected{{end}}>≠</option>
@@ -3095,17 +3807,19 @@ const tplReport = `
           <option value="lt" {{if eq $f.Op "lt"}}selected{{end}}>&lt;</option>
           <option value="le" {{if eq $f.Op "le"}}selected{{end}}>≤</option>
           <option value="contains" {{if eq $f.Op "contains"}}selected{{end}}>{{t $.Lang "содержит"}}</option>
+          <option value="is_null" {{if eq $f.Op "is_null"}}selected{{end}}>NULL</option>
+          <option value="not_null" {{if eq $f.Op "not_null"}}selected{{end}}>≠ NULL</option>
         </select>
         <input class="rs-f-value" type="text" value="{{$f.Value}}">
         <button type="button" class="btn btn-sm" data-ob-remove-row=".rs-filter-row">×</button>
       </div>
       {{end}}{{end}}
     </div>
-    <button type="button" class="btn btn-sm" data-ob-rs-add-filter>+ {{t $.Lang "Отбор"}}</button>
+    <button type="button" class="btn btn-sm" data-ob-rs-add-filter{{if not .ReportFilterFields}} disabled{{end}}>+ {{t $.Lang "Отбор"}}</button>
   </div>
   <template id="rs-filter-tpl">
     <div class="rs-filter-row" style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
-      <select class="rs-f-field">{{range .ReportCols}}<option value="{{.}}">{{.}}</option>{{end}}</select>
+      <select class="rs-f-field">{{range .ReportFilterFields}}<option value="{{.Name}}">{{.Name}}</option>{{end}}</select>
       <select class="rs-f-op">
         <option value="eq">=</option>
         <option value="ne">≠</option>
@@ -3114,11 +3828,13 @@ const tplReport = `
         <option value="lt">&lt;</option>
         <option value="le">≤</option>
         <option value="contains">{{t $.Lang "содержит"}}</option>
+        <option value="is_null">NULL</option><option value="not_null">≠ NULL</option>
       </select>
       <input class="rs-f-value" type="text" value="">
       <button type="button" class="btn btn-sm" data-ob-remove-row=".rs-filter-row">×</button>
     </div>
   </template>
+{{if or .ReportHasComposition .Report.Composition}}
   <div class="rs-appearance" style="margin:12px 0;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
     <label>{{t $.Lang "Линии сетки"}}
       <select id="rs-lines" style="margin-left:6px">
@@ -3133,6 +3849,7 @@ const tplReport = `
       <input type="number" id="rs-collapse-to" min="0" step="1" placeholder="—" title="{{t $.Lang "Пусто — отчёт открывается развёрнутым; 0 — видны только группы верхнего уровня"}}" style="margin-left:6px;width:64px">
     </label>
   </div>
+{{end}}
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn btn-primary" type="submit">{{t $.Lang "Применить"}}</button>
     <button class="btn" type="submit" name="__preset_action" value="save" formaction="/ui/report/{{lower .Report.Name}}/settings/save">{{t $.Lang "Сохранить вариант"}}</button>
@@ -3156,21 +3873,22 @@ const tplReport = `
 {{if .ComposedHTML}}
 {{if .Capped}}<div class="card" style="background:#fffbeb;border-color:#fde68a;margin-bottom:8px;padding:8px 12px">{{t $.Lang "Показаны первые строки — данных больше потолка."}}</div>{{end}}
 {{if .ComposeWarnings}}<div class="card" style="background:#fef2f2;border-color:#fecaca;margin-bottom:8px;padding:8px 12px"><strong>{{t $.Lang "Предупреждения компоновки:"}}</strong><ul style="margin:4px 0 0;padding-left:20px">{{range .ComposeWarnings}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-{{template "report-export-buttons" .}}
+{{if not .CompactReport}}{{template "report-export-buttons" .}}{{end}}
 <details class="card report-block" data-block="data" open>
 <summary>{{t $.Lang "Данные"}}</summary>
-<div class="rc-toolbar" style="margin-bottom:8px;display:flex;gap:8px"><button type="button" id="rc-expand" class="btn btn-sm">{{t $.Lang "Развернуть всё"}}</button><button type="button" id="rc-collapse" class="btn btn-sm">{{t $.Lang "Свернуть всё"}}</button></div>
+<div class="rc-toolbar" role="group" aria-label="{{t $.Lang "Уровни группировки"}}" style="margin-bottom:8px;display:flex;gap:4px"></div>
 {{.ComposedHTML}}
 </details>
 {{end}}
 {{if .Cols}}
-{{template "report-export-buttons" .}}
+{{if not .CompactReport}}{{template "report-export-buttons" .}}{{end}}
 <div class="card">
 {{if .Rows}}
-<table><thead><tr>{{range .Cols}}<th>{{.}}</th>{{end}}</tr></thead>
+<table><thead><tr>{{range .Cols}}<th>{{.}}</th>{{end}}{{if .Drilldowns}}{{if .Drilldowns.HasRows}}<th>{{.Drilldowns.RowTitle}}</th>{{end}}{{end}}</tr></thead>
 <tbody>
 {{range .Rows}}{{$row := .}}<tr>
-  {{range $.Cols}}<td>{{fmtCell (index $row .)}}</td>{{end}}
+  {{range $.Cols}}<td>{{if $.Drilldowns}}{{$.Drilldowns.Cell . $row (fmtCell (index $row .))}}{{else}}{{fmtCell (index $row .)}}{{end}}</td>{{end}}
+  {{if $.Drilldowns}}{{if $.Drilldowns.HasRows}}<td>{{$.Drilldowns.Row $row}}</td>{{end}}{{end}}
 </tr>{{end}}
 </tbody></table>
 {{else}}<p class="empty">{{t $.Lang "Нет данных"}}</p>{{end}}
@@ -3191,7 +3909,7 @@ const tplRegister = `
     <label style="font-size:11px;color:#64748b">{{.DisplayName $.Lang}}</label>
     {{if .RefEntity}}
     <div style="display:flex;gap:4px;align-items:center">
-      <select id="regflt-{{.Name}}" name="flt_{{.Name}}" data-ref-entity="{{.RefEntity}}" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;min-width:0">
+      <select id="regflt-{{.Name}}" name="flt_{{.Name}}" data-ref-entity="{{.RefEntity}}"{{refPickAttrs true .ChoiceShowDeleted}} style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;min-width:0">
         <option value="">— {{t $.Lang "все"}} —</option>
         {{$cur := index $flt .Name}}{{range index $refOpts .Name}}<option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (str (index . "id")) $cur}}selected{{end}}>{{index . "_label"}}</option>{{end}}
       </select>
@@ -3224,7 +3942,7 @@ const tplRegister = `
 
 {{define "page-register-movements"}}
 {{template "head" .}}{{template "nav" .}}
-<main>
+<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Register.DisplayName $.Lang}} — {{t $.Lang "движения"}}</h2>
   {{if .CanViewBalances}}<a class="btn btn-sm" href="/ui/register/{{lower .Register.Name}}/balances" style="background:#e2e8f0;color:#475569">{{t $.Lang "Остатки →"}}</a>{{end}}
@@ -3255,7 +3973,7 @@ const tplRegister = `
 
 {{define "page-register-balances"}}
 {{template "head" .}}{{template "nav" .}}
-<main>
+<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Register.DisplayName $.Lang}} — {{t $.Lang "остатки"}}</h2>
   <a class="btn btn-sm" href="/ui/register/{{lower .Register.Name}}" style="background:#e2e8f0;color:#475569">{{t $.Lang "← Движения"}}</a>
@@ -3349,8 +4067,9 @@ const tplProcessor = `
       <label>{{.DisplayLabel $.Lang}}{{if .Required}} <span style="color:#dc2626">*</span>{{end}}</label>
       {{/* Двоичный файл уходит как есть: обработка получит путь к временной
            копии. Поле такое же, как у text-файла, — разница только в том, что
-           попадает в значение параметра. */}}
-      <input type="file" name="{{$pname}}" {{if .Required}}required{{end}}>
+           попадает в значение параметра. multiple: true — пачка файлов,
+           обработка получит Массив Структур. */}}
+      <input type="file" name="{{$pname}}"{{if .Multiple}} multiple{{end}} {{if .Required}}required{{end}}>
     </div>
     {{else if eq .Type "text"}}
     <div class="form-group" style="margin-bottom:0;grid-column:1/-1">
@@ -3370,7 +4089,7 @@ const tplProcessor = `
         </select>
       {{else if isRef (str .Type)}}
         <div style="display:flex;gap:6px;align-items:center">
-          <select id="pp-{{$pname}}" name="{{$pname}}" style="flex:1" data-ref-entity="{{index $.ProcessorRefEntity $pname}}" {{if .Required}}required{{end}}>
+          <select id="pp-{{$pname}}" name="{{$pname}}" style="flex:1" data-ref-entity="{{index $.ProcessorRefEntity $pname}}"{{refPickAttrs false .ChoiceShowDeleted}} {{if .Required}}required{{end}}>
             <option value="">{{t $.Lang "— выбрать —"}}</option>
             {{with index $.RefOptions $pname}}{{range .}}<option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index . "id") (index $.ParamValues $pname)}}selected{{end}}>{{index . "_label"}}</option>{{end}}{{end}}
           </select>
@@ -3405,7 +4124,7 @@ const tplProcessor = `
   <div class="error">{{.RunError}}</div>
 {{else if .Messages}}
   <table class="tbl-plain"><tbody>
-  {{range .Messages}}<tr><td style="font-family:monospace;font-size:13px;padding:6px 12px;border-bottom:1px solid #f1f5f9">{{.}}</td></tr>{{end}}
+  {{range .Messages}}<tr><td style="font-family:monospace;font-size:13px;padding:6px 12px;border-bottom:1px solid #f1f5f9{{if msgError .}};color:#b91c1c;background:#fef2f2{{end}}">{{msgText .}}</td></tr>{{end}}
   </tbody></table>
 {{else}}
   <p class="empty">{{t $.Lang "Выполнено без сообщений"}}</p>
@@ -3706,7 +4425,7 @@ const tplAbout = `
 const tplInfoReg = `
 {{define "page-inforeg-list"}}
 {{template "head" .}}{{template "nav" .}}
-<main>
+<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.InfoReg.DisplayName $.Lang}}{{if .InfoReg.Periodic}} <span style="font-size:13px;color:#64748b;font-weight:400">({{t $.Lang "периодический"}})</span>{{end}}</h2>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -3715,7 +4434,7 @@ const tplInfoReg = `
   </div>
 </div>
 {{template "reg-filter-form" (dict "Fields" .FilterFields "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" .InfoReg.Periodic "ShowToOnly" false "HasFilters" .HasFilters "ResetURL" .ResetURL "Context" .FilterContext "Lang" $.Lang)}}
-<div style="margin-bottom:8px">{{template "detail-panel-toggle" .}}</div>
+{{if not .Cfg.HideListDetailPanel}}<div style="margin-bottom:8px">{{template "detail-panel-toggle" .}}</div>{{end}}
 <div class="ob-list-wrap">
 <div class="card">
 {{if .Rows}}
@@ -3783,7 +4502,7 @@ const tplInfoReg = `
     <div style="display:flex;gap:4px;align-items:center">
       <select name="{{$dn}}" id="ird-{{$dn}}" style="flex:1;min-width:0" data-ref-entity="{{.RefEntity}}">
         <option value="">{{t $.Lang "— выбрать —"}}</option>
-        {{range index $.RefOpts $dn}}<option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index $.Values $dn) (index . "id")}}selected{{end}}>{{index . "_label"}}</option>{{end}}
+        {{range index $.RefOpts $dn}}<option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index $.Values $dn) (index . "id")}}selected{{else}}{{refOptionDisabled .}}{{end}}>{{index . "_label"}}</option>{{end}}
       </select>
       <button type="button" data-ob-ref-picker="ird-{{$dn}}" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;flex-shrink:0" title="{{t $.Lang "Выбрать из списка"}}">...</button>
       <button type="button" data-ob-ref-current="ird-{{$dn}}" style="padding:6px 9px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;flex-shrink:0" title="{{t $.Lang "Открыть карточку"}}">🔍</button>
@@ -3836,7 +4555,7 @@ const tplConstants = `
       <select id="const-{{.Name}}" name="{{.Name}}" data-ref-entity="{{.RefEntity}}" style="flex:1;min-width:0"{{if .Required}} required{{end}}>
         <option value="">{{t $.Lang "— не выбрано —"}}</option>
         {{range index $.RefOpts .Name}}
-        <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index . "id") (index $.Values $c.Name)}}selected{{end}}>{{index . "_label"}}</option>
+        <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index . "id") (index $.Values $c.Name)}}selected{{else}}{{refOptionDisabled .}}{{end}}>{{index . "_label"}}</option>
         {{end}}
       </select>
       <button type="button" data-ob-ref-picker="const-{{$c.Name}}" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer;font-size:13px;flex-shrink:0" title="{{t $.Lang "Выбрать из списка"}}">...</button>
@@ -3876,7 +4595,7 @@ const tplConstants = `
 const tplJournal = `
 {{define "page-journal"}}
 {{template "head" .}}{{template "nav" .}}
-<main>
+<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Journal.DisplayName $.Lang}}</h2>
   <div style="display:flex;align-items:center;gap:12px">
@@ -3888,7 +4607,7 @@ const tplJournal = `
   </div>
 </div>
 {{$j := .Journal}}{{$params := .Params}}{{$fmts := .ColFormats}}
-<details{{if hasFilter $params}} open{{end}}>
+<details{{if .Cfg.UIEnhancements}} class="ob-list-filters" data-ob-list-panel="filters"{{end}}{{if hasFilter $params}} open{{end}}>
   <summary>{{t $.Lang "Отбор"}}</summary>
   <form method="GET" action="">
   <div class="filter-body">
@@ -3908,7 +4627,7 @@ const tplJournal = `
       {{if index $.FilterOptions .Field}}
       {{$f := .Field}}
       <div style="display:flex;gap:4px;align-items:center">
-        <select id="jflt-{{$f}}" name="f.{{$f}}" data-ref-entity="{{index $.FilterRefEntities $f}}" style="flex:1;min-width:0">
+        <select id="jflt-{{$f}}" name="f.{{$f}}" data-ref-entity="{{index $.FilterRefEntities $f}}"{{refSearchAttr}} style="flex:1;min-width:0">
           <option value="">{{t $.Lang "— все —"}}</option>
           {{range index $.FilterOptions $f}}
           <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index . "id") (filterVal $params $f).Value}}selected{{end}}>{{index . "_label"}}</option>
@@ -3931,7 +4650,7 @@ const tplJournal = `
   </form>
 </details>
 
-<details class="card report-block" data-block="journal-settings" style="margin-bottom:16px">
+<details class="card report-block{{if .Cfg.UIEnhancements}} ob-list-settings{{end}}" data-block="journal-settings" style="margin-bottom:16px">
   <summary>{{t $.Lang "Настройка списка"}}{{if .JournalSettingsActive}} <span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:600">{{t $.Lang "изменено"}}</span>{{end}}</summary>
   <form method="POST" action="/ui/journal/{{lower .Journal.Name}}/settings/save" data-ob-jl-before-submit>
     <input type="hidden" name="__return" value="{{.RequestURI}}">
@@ -3963,7 +4682,7 @@ const tplJournal = `
 </details>
 
 {{if .JournalWarnings}}<div class="card" style="background:#fef2f2;border-color:#fecaca;margin-bottom:8px;padding:8px 12px"><strong>{{t $.Lang "Предупреждения журнала:"}}</strong><ul style="margin:4px 0 0;padding-left:20px">{{range .JournalWarnings}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-<div style="margin-bottom:8px">{{template "detail-panel-toggle" .}}</div>
+{{if not .Cfg.HideListDetailPanel}}<div style="margin-bottom:8px">{{template "detail-panel-toggle" .}}</div>{{end}}
 <div class="ob-list-wrap">
 <div class="card">
 {{if .Rows}}
@@ -3971,7 +4690,7 @@ const tplJournal = `
 <table><thead><tr>
   <th>{{t $.Lang "Документ"}}</th>
   {{range .JournalColumns}}<th>{{.DisplayLabel $.Lang}}</th>{{end}}
-  <th style="width:90px"></th>
+  {{if not .Cfg.HideListRowActions}}<th style="width:90px"></th>{{end}}
 </tr></thead>
 <tbody>
 {{range .Rows}}{{$row := .}}
@@ -3984,7 +4703,7 @@ const tplJournal = `
     {{if eq (index $fmts .Field) "date"}}<td style="{{journalCellStyle $row .Field}}">{{fmtDate $v}}</td>
     {{else}}<td style="{{journalCellStyle $row .Field}}">{{$v}}</td>{{end}}
   {{end}}
-  <td><a class="btn btn-sm btn-primary" href="/ui/document/{{lower (str (index . "_doc_kind"))}}/{{str (index . "id")}}">{{t $.Lang "Открыть"}}</a></td>
+  {{if not $.Cfg.HideListRowActions}}<td><a class="btn btn-sm btn-primary" href="/ui/document/{{lower (str (index . "_doc_kind"))}}/{{str (index . "id")}}">{{t $.Lang "Открыть"}}</a></td>{{end}}
 </tr>
 {{end}}
 </tbody></table>
@@ -4382,7 +5101,7 @@ const tplScheduled = `
 const tplAccountReg = `
 {{define "page-accounts"}}
 {{template "head" .}}{{template "nav" .}}
-<main>
+<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Chart.DisplayName $.Lang}}</h2>
   <span style="color:#94a3b8;font-size:13px">{{len .Rows}} {{t $.Lang "счетов"}}</span>
@@ -4418,7 +5137,7 @@ const tplAccountReg = `
 
 {{define "page-accountreg-movements"}}
 {{template "head" .}}{{template "nav" .}}
-<main>
+<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Register.DisplayName $.Lang}} — {{t $.Lang "Проводки"}}</h2>
   <a class="btn btn-secondary" href="/ui/accountreg/{{lower .Register.Name}}/balances">{{t $.Lang "Остатки"}}</a>
@@ -4455,7 +5174,7 @@ const tplAccountReg = `
 
 {{define "page-accountreg-balances"}}
 {{template "head" .}}{{template "nav" .}}
-<main>
+<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Register.DisplayName $.Lang}} — {{t $.Lang "Остатки по счетам"}}</h2>
   <div style="display:flex;gap:8px;align-items:center">
@@ -4590,7 +5309,9 @@ func funcsListQuerySuffix(params storage.ListParams) template.URL {
 		if v.To != "" {
 			parts = append(parts, "f."+url.QueryEscape(k)+".to="+url.QueryEscape(v.To))
 		}
-		if v.Value != "" {
+		if v.Exact {
+			parts = append(parts, "f."+url.QueryEscape(k)+".eq="+url.QueryEscape(v.Value))
+		} else if v.Value != "" {
 			parts = append(parts, "f."+url.QueryEscape(k)+"="+url.QueryEscape(v.Value))
 		}
 	}
@@ -4598,4 +5319,23 @@ func funcsListQuerySuffix(params storage.ListParams) template.URL {
 		return ""
 	}
 	return template.URL("?" + strings.Join(parts, "&")) //nolint:gosec // G203: части строки запроса пропущены через url.QueryEscape
+}
+
+// Append only this control's selected label, without changing the shared page.
+func tpSelectedOptions(choices, labels []map[string]any, selected string) []map[string]any {
+	if selected == "" {
+		return choices
+	}
+	for _, row := range choices {
+		if refValueString(row["id"]) == selected {
+			return choices
+		}
+	}
+	for _, row := range labels {
+		if refValueString(row["id"]) == selected {
+			result := append([]map[string]any(nil), choices...)
+			return append(result, row)
+		}
+	}
+	return choices
 }

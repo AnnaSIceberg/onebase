@@ -151,15 +151,19 @@ func (s *Server) refreshFieldsWrittenByHandler(
 	// попадает в Fields под именем метаданных, а присваивание в обработчике —
 	// через Object.Set, то есть в нижнем регистре. После «Объект.Канал = …» в
 	// карте лежат ОБА ключа, и сравнение по одному из них давало случайный ответ.
+	//
+	// Индекс по нижнему регистру строится один раз: перебор всех ключей на
+	// каждое поле (поля × ключи вызовов strings.ToLower по кириллице) у
+	// заявки колл-центра стоил 130–175 мс на событие. Новые ключи цикл ниже
+	// добавляет только для полей, которых в карте не было, — индекс для
+	// остальных полей от этого не устаревает.
+	keyIndex := make(map[string][]string, len(obj.Fields))
+	for k := range obj.Fields {
+		low := strings.ToLower(k)
+		keyIndex[low] = append(keyIndex[low], k)
+	}
 	fieldKeys := func(name string) []string {
-		var keys []string
-		low := strings.ToLower(name)
-		for k := range obj.Fields {
-			if strings.ToLower(k) == low {
-				keys = append(keys, k)
-			}
-		}
-		return keys
+		return keyIndex[strings.ToLower(name)]
 	}
 	readOnly := readOnlyFormFields(form)
 	// Редактируемый Флажок — единственный элемент, для которого отсутствие ключа
@@ -197,6 +201,7 @@ func (s *Server) refreshFieldsWrittenByHandler(
 		return true
 	}
 
+	endScan := serverTimingSpan(ctx, "refreshScan")
 	need := false
 	for _, f := range entity.Fields {
 		if stale(f) {
@@ -204,15 +209,17 @@ func (s *Server) refreshFieldsWrittenByHandler(
 			break
 		}
 	}
+	endScan()
 	if !need {
 		return
 	}
 	// Ошибку чтения глотаем: событие не должно падать из-за того, что запись
 	// удалили параллельно — форма просто останется с прежними значениями.
-	row, err := s.store.GetByID(ctx, entity.Name, obj.ID, entity)
+	row, err := s.recordForRequest(ctx, entity, obj.ID)
 	if err != nil || row == nil {
 		return
 	}
+	defer serverTimingSpan(ctx, "refreshApply")()
 	for _, f := range entity.Fields {
 		if !stale(f) {
 			continue
@@ -393,16 +400,16 @@ func tpCellValue(row map[string]any, name string) any {
 // TEXT/numeric), ссылки (*Ref из обогащения ↔ сырой UUID из базы) иначе давали
 // бы ложное «пользователь правил грид», и строки ТЧ не перечитывались бы.
 func tpCellNorm(f metadata.Field, v any) string {
+	if f.RefEntity != "" || metadata.IsReference(f.Type) {
+		if id, known := dirtyReferenceIdentity(v); known {
+			return id
+		}
+	}
 	if ref, ok := v.(*interpreter.Ref); ok {
-		if ref == nil {
+		if ref == nil || ref.UUID == uuid.Nil.String() {
 			return ""
 		}
 		return ref.UUID
-	}
-	if f.RefEntity != "" {
-		if idStr, _, ok := uuidFromValue(v); ok {
-			return idStr
-		}
 	}
 	switch f.Type {
 	case metadata.FieldTypeDate:
@@ -427,6 +434,10 @@ func tpCellNorm(f metadata.Field, v any) string {
 		}
 	case metadata.FieldTypeBool:
 		switch t := v.(type) {
+		case nil:
+			// A nullable legacy boolean is displayed and submitted as false.
+			// Comparing it must not mark an untouched form as edited.
+			return boolCanon(false)
 		case bool:
 			return boolCanon(t)
 		case decimal.Decimal:
@@ -452,6 +463,47 @@ func tpCellNorm(f metadata.Field, v any) string {
 		return ""
 	}
 	return fmt.Sprintf("%v", v)
+}
+
+// References are compared by identity, never by their label/Go wrapper. Use
+// the same UUID-provider value/pointer contract as storage, without looking up
+// the target or altering the actual object. Malformed nonempty IDs stay
+// nonempty so they cannot silently become a clean empty reference.
+func dirtyReferenceIdentity(value any) (string, bool) {
+	if value == nil {
+		return "", true
+	}
+	rv := reflect.ValueOf(value)
+	switch rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if rv.IsNil() {
+			return "", true
+		}
+	}
+	raw, known := snapshotReferenceUUID(value)
+	if !known {
+		switch v := value.(type) {
+		case string:
+			raw = v
+		case uuid.UUID:
+			raw = v.String()
+		case [16]byte:
+			raw = uuid.UUID(v).String()
+		default:
+			return "", false
+		}
+	}
+	if raw == "" {
+		return "", true
+	}
+	id, err := uuid.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return raw, true
+	}
+	if id == uuid.Nil {
+		return "", true
+	}
+	return id.String(), true
 }
 
 // dateCellInstant — момент времени значения даты: time.Time из формы и

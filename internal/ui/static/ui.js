@@ -15,6 +15,28 @@ try {
 // оболочки /ui/app, прячем хром (топбар/подсистемы) — навигация идёт из оболочки.
 window.__obEmbedded = window.self !== window.top;
 
+// Адрес оболочки — случайный id верхнего окна. С ним окно подписывается на
+// /ui/events, а формы его фреймов шлют его в запросах событий (заголовок
+// X-OneBase-Shell): команды формы самому себе (ui.открытьФорму /
+// ui.закрытьФорму) сервер отдаёт только этой оболочке, а не всем вкладкам
+// браузера пользователя.
+if (!window.__obEmbedded && !window.__obShellId) {
+  window.__obShellId = (function () {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    } catch (_) {}
+    return 'w' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+  })();
+}
+
+function obShellId() {
+  try {
+    if (window.top && window.top !== window && window.top.__obShellId) return String(window.top.__obShellId);
+  } catch (_) {}
+  return window.__obShellId ? String(window.__obShellId) : '';
+}
+window.obShellId = obShellId;
+
 window.obUIMessage = function (name, fallback) {
   try {
     var node = document.getElementById('ob-ui-messages');
@@ -702,6 +724,45 @@ window.obUIMessage = function (name, fallback) {
   window.obAnswersFrameClose = true;
 })();
 
+// BEGIN onebase-page-freshness
+// Страница из кэша «Назад/Вперёд» (bfcache) — это старый DOM: скрытые поля,
+// версия объекта и кнопки на момент ухода. Сервер отдаёт страницы с no-store,
+// но часть браузеров всё равно поднимает их из bfcache, — перечитываем.
+window.addEventListener('pageshow', function (e) {
+  if (e && e.persisted) window.location.reload();
+});
+// obServerRestarted — ответ пришёл от другого запуска сервера, чем страница
+// (выпуск, обновление): серверное состояние открытой формы пропало.
+window.obServerRestarted = function (res) {
+  var meta = document.querySelector('meta[name="ob-boot"]');
+  var mine = meta && meta.getAttribute('content');
+  var theirs = res && res.headers && res.headers.get ? res.headers.get('X-OB-Boot') : null;
+  return !!(mine && theirs && mine !== theirs);
+};
+// obReloadAfterRestart — сказать об этом и перезагрузиться. Несохранённый ввод
+// не выбрасываем молча: тогда решает человек кнопкой.
+window.obReloadAfterRestart = function () {
+  if (window._obRestartNotice) return;
+  var box = document.createElement('div');
+  box.setAttribute('role', 'alert');
+  box.setAttribute('data-ob-restart-notice', '1');
+  box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;padding:10px 16px;background:#fef3c7;color:#78350f;border-bottom:1px solid #f59e0b;font:14px sans-serif;text-align:center';
+  window._obRestartNotice = box;
+  if (window._obFormDirty) {
+    box.textContent = 'Сервер обновлён — перезагрузите страницу. Несохранённые изменения формы будут потеряны. ';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Перезагрузить';
+    btn.addEventListener('click', function () { window.location.reload(); });
+    box.appendChild(btn);
+  } else {
+    box.textContent = 'Сервер обновлён — страница будет перезагружена.';
+    setTimeout(function () { window.location.reload(); }, 1500);
+  }
+  document.body.appendChild(box);
+};
+// END onebase-page-freshness
+
 if (window.__obEmbedded) {
   document.documentElement.className += ' ob-embedded';
   // #481: заголовок вкладки = представление записи. Сервер рендерит на карточке
@@ -714,7 +775,7 @@ if (window.__obEmbedded) {
         var mt = document.querySelector('meta[name="ob-tab-title"]');
         var tt = mt && mt.getAttribute('content');
         if (tt && window.parent && window.parent !== window) {
-          window.parent.postMessage({ source: 'obSetTitle', title: tt }, window.location.origin);
+          window.parent.postMessage({ source: 'obSetTitle', title: tt, url: window.location.href, documentToken: window.obFrameCloseDocumentToken }, window.location.origin);
         }
       } catch (_) {}
     }
@@ -756,7 +817,7 @@ if (window.__obEmbedded) {
       beganManagedHandoff = true;
     }
     try {
-      shell.postMessage({ source: 'obCloseTab', reason: reason || 'cross' }, window.location.origin);
+      shell.postMessage({ source: 'obCloseTab', sourceURL:window.location.href, documentToken:window.obFrameCloseDocumentToken, reason: reason || 'cross' }, window.location.origin);
     } catch (_) {
       if (beganManagedHandoff && typeof window.obCancelManagedCloseHandoff === 'function') {
         window.obCancelManagedCloseHandoff();
@@ -1195,7 +1256,7 @@ window.obRefreshWidgetCard = function (card) {
     }
     if (search !== null && window.history && window.history.pushState &&
         (window.location.search || '') !== '?' + search) {
-      window.history.pushState({}, '', search ? '?' + search : window.location.pathname);
+      window.history.pushState({obWidgetFilters:true}, '', search ? '?' + search : window.location.pathname);
     }
   }
 
@@ -1390,12 +1451,65 @@ function obInitAttachments() {
           row.appendChild(dl);
           row.appendChild(delForm);
           list.appendChild(row);
+          // Аудио (запись разговора) — встроенный проигрыватель под строкой.
+          // Источник — тот же адрес скачивания, с той же проверкой прав;
+          // preload="none" — запись не качается, пока её не запустили, и сама
+          // не играет.
+          if (a.audio) {
+            var player = document.createElement('audio');
+            player.controls = true;
+            player.preload = 'none';
+            player.src = dl.href;
+            player.setAttribute('data-ob-attachment-audio', String(a.id));
+            player.style.cssText = 'display:block;width:100%;margin:4px 0 8px';
+            list.appendChild(player);
+          }
         });
       }).catch(function () {});
   }
   loadAtts();
 }
 obReady(obInitAttachments);
+
+// Сопутствующие программы рабочего места (лаунчер, companions.go): окно
+// Предприятия GUI-сборки лаунчера отдаёт странице window.obLauncherCompanions.
+// После входа верхнее окно спрашивает сервер, какие программы нужны
+// пользователю, — сервер называет только ключи («callista»), путь к программе
+// знает лишь запись базы на этом компьютере. Ошибку запуска показываем, база
+// работает в любом случае.
+function obShowLauncherMessage(text) {
+  if (typeof window.obFlash === 'function') { window.obFlash(text, 'err'); return; }
+  if (!document.body) return;
+  var box = document.createElement('div');
+  box.setAttribute('role', 'alert');
+  box.setAttribute('data-ob-launcher-message', '1');
+  box.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483000;max-width:420px;background:#7f1d1d;color:#fff;padding:10px 32px 10px 12px;border-radius:8px;font-size:13px;box-shadow:0 6px 16px rgba(0,0,0,.3)';
+  box.textContent = text;
+  var x = document.createElement('button');
+  x.type = 'button';
+  x.textContent = '×';
+  x.setAttribute('aria-label', 'Закрыть');
+  x.style.cssText = 'position:absolute;top:4px;right:8px;background:none;border:none;color:#fff;font-size:18px;cursor:pointer';
+  x.addEventListener('click', function () { box.remove(); });
+  box.appendChild(x);
+  document.body.appendChild(box);
+}
+
+function obInitLauncherCompanions() {
+  if (window.__obEmbedded || typeof window.obLauncherCompanions !== 'function' || !window.fetch) return;
+  if (/^\/login/.test(location.pathname)) return;
+  fetch('/ui/launcher/companions', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      var keys = data && Array.isArray(data.keys) ? data.keys : [];
+      return keys.length ? window.obLauncherCompanions(keys) : null;
+    })
+    .then(function (msgs) {
+      (Array.isArray(msgs) ? msgs : []).forEach(function (m) { obShowLauncherMessage(String(m)); });
+    })
+    .catch(function () {});
+}
+obReady(obInitLauncherCompanions);
 
 function rsNorm(v) { return String(v || '').toLowerCase(); }
 
@@ -1411,8 +1525,7 @@ window.rsBeforeSubmit = function (ev) {
     form.dataset.skipCollect = '';
     return true;
   }
-  window.rsCollect();
-  return true;
+  return window.rsCollect() !== false;
 };
 
 window.rsChoosePreset = function (sel) {
@@ -1501,12 +1614,18 @@ window.rsCollect = function () {
     measures.push(m);
   });
   var filters = [];
+  var validFilters = true;
   document.querySelectorAll('.rs-filter-row').forEach(function (row) {
     var f = row.querySelector('.rs-f-field');
     var op = row.querySelector('.rs-f-op');
     var v = row.querySelector('.rs-f-value');
+    if (v && typeof window.obCommitDateInput === 'function' && !window.obCommitDateInput(v)) {
+      validFilters = false;
+      return;
+    }
     if (f && op && f.value) filters.push({ field: f.value, op: op.value, value: v ? v.value : '' });
   });
+  if (!validFilters) return false;
   var variantEl = document.querySelector('input[name="__variant"]');
   var lines = (document.getElementById('rs-lines') || {}).value || '';
   var zebra = !!(document.getElementById('rs-zebra') || {}).checked;
@@ -1596,10 +1715,11 @@ function rcBuildView(table) {
     var g = {
       tr: tr,
       cell: cell,
+      button: cell && cell.querySelector('.rc-fold'),
+      level: Number(tr.getAttribute('data-level')) || 0,
       path: tr.getAttribute('data-group') || '',
-      // Начальное состояние рисует сервер (appearance.collapse_to): «▶» —
-      // группа свёрнута. Без ключа все группы приходят развёрнутыми.
-      open: !cell || cell.textContent.trim().charAt(0) !== '▶'
+      // Initial expansion belongs to this result's server-side appearance.
+      open: !cell || (cell.querySelector('.rc-fold') ? cell.querySelector('.rc-fold').getAttribute('aria-expanded') !== 'false' : cell.textContent.trim().charAt(0) !== '▶')
     };
     groups.push(g);
     byPath[g.path] = g;
@@ -1622,11 +1742,16 @@ function rcBuildView(table) {
     groups.forEach(function (g) {
       g.tr.style.display = ancestorsOpen(g.path) ? '' : 'none';
       if (!g.cell) return;
-      var mark = g.open ? '▼' : '▶';
-      var text = g.cell.textContent;
-      if (text.charAt(0) !== mark) g.cell.textContent = mark + text.slice(1);
+      if (g.button) {
+        g.button.textContent = g.open ? '−' : '+';
+        g.button.setAttribute('aria-expanded', String(g.open));
+        return;
+      }
+      // Current renderers use a button for every collapsible group. A row
+      // without one is a leaf: its entire text is the label, including any
+      // leading triangle that belongs to the value itself.
     });
-    tbody.querySelectorAll('tr.det,tr.subtotal').forEach(function (tr) {
+    tbody.querySelectorAll('tr.det').forEach(function (tr) {
       var g = byPath[tr.getAttribute('data-parent') || ''];
       var show = !g || (g.open && ancestorsOpen(g.path));
       tr.style.display = show ? '' : 'none';
@@ -1634,34 +1759,46 @@ function rcBuildView(table) {
   }
 
   groups.forEach(function (g) {
+    if (!g.button) return;
     g.tr.style.cursor = 'pointer';
-    g.tr.addEventListener('click', function () {
+    g.button.addEventListener('click', function () {
       g.open = !g.open;
+      var block = table.closest('.report-block');
+      if (block) block.querySelectorAll('.rc-level').forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
       apply();
     });
   });
 
   return {
-    setAll: function (open) {
-      groups.forEach(function (g) { g.open = open; });
+    levels: groups.length ? groups.reduce(function (max, g) { return Math.max(max, g.level + 1); }, 0) + (tbody.querySelector('tr.det') ? 1 : 0) : 0,
+    setLevel: function (level) {
+      groups.forEach(function (g) { g.open = g.level < level - 1; });
       apply();
     }
   };
 }
 
 function obInitReportCompositionControls() {
-  var views = [];
   document.querySelectorAll('table.report-composed').forEach(function (table) {
-    views.push(rcBuildView(table));
+    if (table.getAttribute('data-ob-levels-ready')) return;
+    table.setAttribute('data-ob-levels-ready', '1');
+    var view = rcBuildView(table), block = table.closest('.report-block');
+    var panel = block && block.querySelector('.rc-toolbar');
+    if (!panel || !view.levels) { if (panel) panel.hidden = true; return; }
+    for (var n = 1; n <= view.levels; n++) {
+      (function (level) {
+        var button = document.createElement('button');
+        button.type = 'button'; button.className = 'btn btn-sm rc-level';
+        button.textContent = String(level); button.setAttribute('data-rc-level', String(level));
+        button.setAttribute('aria-pressed', 'false');
+        button.addEventListener('click', function () {
+          view.setLevel(level);
+          panel.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b === button)); });
+        });
+        panel.appendChild(button);
+      })(n);
+    }
   });
-  if (!views.length) return;
-  function setAll(open) {
-    return function () { views.forEach(function (v) { v.setAll(open); }); };
-  }
-  var expandBtn = document.getElementById('rc-expand');
-  if (expandBtn) expandBtn.addEventListener('click', setAll(true));
-  var collapseBtn = document.getElementById('rc-collapse');
-  if (collapseBtn) collapseBtn.addEventListener('click', setAll(false));
 }
 
 function obInitReportBlocks() {
@@ -1722,9 +1859,187 @@ function obInitJournalDelegates() {
   }, true);
 }
 
+// «Настройка списка» документов и справочников (за пользователем, _settings):
+// окно с галочками, ширинами и порядком (↑/↓ или перетаскивание строки), а
+// прямо в шапке списка — перетаскивание колонки и края заголовка. Изменение
+// в шапке сохраняется сразу (fetch → 204).
+function lsRows() {
+  return Array.prototype.slice.call(document.querySelectorAll('[data-ob-ls-columns] .ls-col-row'));
+}
+
+function lsCollect() {
+  var cols = lsRows().map(function (row) {
+    var cb = row.querySelector('.ls-visible');
+    var wi = row.querySelector('.ls-width');
+    var w = wi ? parseInt(wi.value || '0', 10) : 0;
+    var c = { field: row.getAttribute('data-field') || '', visible: !!(cb && cb.checked) };
+    if (w > 0) c.width = w;
+    return c;
+  });
+  var hidden = document.querySelector('[data-ob-ls-json]');
+  if (hidden) hidden.value = JSON.stringify({ columns: cols });
+}
+
+function lsState(table) {
+  try { return JSON.parse(table.getAttribute('data-ob-ls-state') || '{}') || {}; } catch (e) { return {}; }
+}
+
+function lsSave(table, state) {
+  var body = new URLSearchParams();
+  body.set('__list_settings', JSON.stringify(state));
+  return fetch(table.getAttribute('data-ob-ls-save'), {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'obListSettings' },
+    body: body.toString()
+  }).then(function (resp) {
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    table.setAttribute('data-ob-ls-state', JSON.stringify(state));
+  });
+}
+
+function lsFieldEq(a, b) { return String(a || '').toLowerCase() === String(b || '').toLowerCase(); }
+
+function obInitListSettings() {
+  if (window.__obListSettings) return;
+  window.__obListSettings = true;
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest) return;
+    if (e.target.closest('[data-ob-ls-resize]')) { e.preventDefault(); e.stopPropagation(); return; } // край не сортирует
+    var move = e.target.closest('[data-ob-ls-move]');
+    if (!move) return;
+    e.preventDefault();
+    var tr = move.closest('tr');
+    var dir = parseInt(move.getAttribute('data-ob-ls-move') || '0', 10);
+    if (!tr || !tr.parentNode) return;
+    if (dir < 0 && tr.previousElementSibling) tr.parentNode.insertBefore(tr, tr.previousElementSibling);
+    if (dir > 0 && tr.nextElementSibling) tr.parentNode.insertBefore(tr.nextElementSibling, tr);
+  }, true);
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (form && form.matches && form.matches('[data-ob-ls-before-submit]')) lsCollect();
+  }, true);
+
+  // Перетаскивание: строки окна настройки и колонки шапки.
+  var dragKind = '', dragField = '';
+  var clearDrop = function () {
+    document.querySelectorAll('.ob-ls-drop').forEach(function (n) { n.classList.remove('ob-ls-drop'); });
+  };
+  document.addEventListener('dragstart', function (e) {
+    if (!e.target.closest) return;
+    var th = e.target.closest('th[data-ob-ls-field]');
+    var row = th ? null : e.target.closest('.ls-col-row');
+    if (!th && !row) return;
+    dragKind = th ? 'th' : 'row';
+    dragField = th ? th.getAttribute('data-ob-ls-field') : row.getAttribute('data-field');
+    try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragField); } catch (err) {}
+  });
+  document.addEventListener('dragover', function (e) {
+    if (!dragKind || !e.target.closest) return;
+    var target = dragKind === 'th' ? e.target.closest('th[data-ob-ls-field]') : e.target.closest('.ls-col-row');
+    if (!target) return;
+    e.preventDefault();
+    clearDrop();
+    target.classList.add('ob-ls-drop');
+  });
+  document.addEventListener('dragend', function () { dragKind = ''; clearDrop(); });
+  document.addEventListener('drop', function (e) {
+    if (!dragKind || !e.target.closest) return;
+    var kind = dragKind; dragKind = '';
+    clearDrop();
+    if (kind === 'row') {
+      var row = e.target.closest('.ls-col-row');
+      if (!row) return;
+      e.preventDefault();
+      var src = lsRows().filter(function (r) { return lsFieldEq(r.getAttribute('data-field'), dragField); })[0];
+      if (src && src !== row) row.parentNode.insertBefore(src, row);
+      return;
+    }
+    var th = e.target.closest('th[data-ob-ls-field]');
+    var table = th && th.closest('table[data-ob-list-table]');
+    if (!th || !table) return;
+    e.preventDefault();
+    var to = th.getAttribute('data-ob-ls-field');
+    if (lsFieldEq(to, dragField)) return;
+    var state = lsState(table);
+    var cols = (state.columns || []).slice();
+    var from = -1;
+    cols.forEach(function (c, i) { if (lsFieldEq(c.field, dragField)) from = i; });
+    if (from < 0) return;
+    var moved = cols.splice(from, 1)[0];
+    var at = -1;
+    cols.forEach(function (c, i) { if (lsFieldEq(c.field, to)) at = i; });
+    if (at < 0) return;
+    cols.splice(at, 0, moved);
+    state.columns = cols;
+    lsSave(table, state).then(function () { location.reload(); }).catch(function () {});
+  });
+
+  // Ширина колонки — перетаскиванием правого края заголовка.
+  document.addEventListener('mousedown', function (e) {
+    if (e.button !== 0 || !e.target.closest) return;
+    var grip = e.target.closest('[data-ob-ls-resize]');
+    if (!grip) return;
+    var th = grip.closest('th[data-ob-ls-field]');
+    var table = th && th.closest('table[data-ob-list-table]');
+    if (!th || !table) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // Перед первой правкой фиксируем текущие ширины всех колонок: дальше
+    // раскладка фиксированная, и соседние колонки не «прыгают».
+    var ths = Array.prototype.slice.call(table.querySelectorAll('thead th'));
+    var widths = ths.map(function (h) { return Math.round(h.getBoundingClientRect().width); });
+    var total = widths.reduce(function (a, b) { return a + b; }, 0);
+    var cg = table.querySelector('colgroup');
+    if (!cg) {
+      cg = document.createElement('colgroup');
+      widths.forEach(function (w, i) {
+        var c = document.createElement('col');
+        c.style.width = w + 'px';
+        var f = ths[i].getAttribute('data-ob-ls-field');
+        if (f) c.setAttribute('data-ob-ls-col', f);
+        cg.appendChild(c);
+      });
+      table.insertBefore(cg, table.firstChild);
+    }
+    var idx = ths.indexOf(th);
+    var col = cg.children[idx];
+    if (!col) return;
+    table.classList.add('ob-list-fixed');
+    table.style.width = total + 'px';
+    var startX = e.clientX, startW = widths[idx], baseTotal = total - startW;
+    var width = startW;
+    grip.classList.add('dragging');
+    var onMove = function (ev) {
+      width = Math.max(40, Math.min(1200, Math.round(startW + ev.clientX - startX)));
+      col.style.width = width + 'px';
+      table.style.width = (baseTotal + width) + 'px';
+    };
+    var onUp = function () {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      grip.classList.remove('dragging');
+      var state = lsState(table);
+      var byField = {};
+      ths.forEach(function (h, i) {
+        var f = h.getAttribute('data-ob-ls-field');
+        if (f) byField[f.toLowerCase()] = i === idx ? width : widths[i];
+      });
+      (state.columns || []).forEach(function (c) {
+        var w = byField[String(c.field || '').toLowerCase()];
+        if (w) c.width = w;
+      });
+      lsSave(table, state).catch(function () {});
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, true);
+}
+
+
 obReady(function () {
   obInitReportDelegates();
   obInitJournalDelegates();
+  obInitListSettings();
   obPresetReportSettings();
   obInitReportCompositionControls();
   obInitReportBlocks();
@@ -2070,12 +2385,20 @@ function obResolveActionableFormHotkey(key) {
   var wanted = obNormalizeFormHotkey(key);
   if (!wanted) return null;
   var form = document.getElementById('main-form');
-  if (!form || !document.contains(form)) return null;
-  var candidates = form.querySelectorAll('[data-ob-hotkey]');
+  if (!form || !document.contains(form) || !obElementVisible(form)) return null;
+  var candidates = Array.prototype.slice.call(form.querySelectorAll('[data-ob-hotkey]'));
+  // Native form ownership includes header buttons outside the form subtree.
+  // Never widen the search to unrelated commands elsewhere in the document.
+  if (form.elements) {
+    for (var j = 0; j < form.elements.length; j++) {
+      var control = form.elements[j];
+      if (control.form === form && !form.contains(control) && control.hasAttribute('data-ob-hotkey')) candidates.push(control);
+    }
+  }
   for (var i = 0; i < candidates.length; i++) {
     var candidate = candidates[i];
     if (obNormalizeFormHotkey(candidate.getAttribute('data-ob-hotkey')) !== wanted) continue;
-    if (!document.contains(candidate) || !form.contains(candidate)) continue;
+    if (!document.contains(candidate) || (candidate.form ? candidate.form !== form : !form.contains(candidate))) continue;
     // Managed buttons without an official click action are visual decoration:
     // clicking them is a no-op and must not suppress F9's table-row copy.
     if (!candidate.getAttribute || !String(candidate.getAttribute('data-ob-fire-click') || '').trim()) continue;
@@ -2573,6 +2896,17 @@ function insertTreeRows(parentTr, rows) {
 function makeTreeRow(row) {
   var tr = document.createElement('tr');
   tr.style.cursor = 'pointer';
+  var styled = false;
+  if (/^#[0-9a-f]{6}$/i.test(row.row_background || '') && /^#[0-9a-f]{6}$/i.test(row.row_text_color || '')) {
+    tr.style.backgroundColor = row.row_background;
+    tr.style.color = row.row_text_color;
+    styled = true;
+  }
+  if (row.row_bold === true) {
+    tr.style.fontWeight = '600';
+    styled = true;
+  }
+  if (styled) tr.classList.add('ob-row-styled');
   if (row.marked) {
     tr.style.opacity = '0.45';
     tr.style.textDecoration = 'line-through';
@@ -2608,6 +2942,12 @@ function makeTreeRow(row) {
   var treeCell = row.tree_cell || 0;
   for (var i = 0; i < cells.length; i++) {
     var td = document.createElement('td');
+    var cellFilter = (row.cell_filters || [])[i];
+    if (cellFilter && cellFilter.field) {
+      td.setAttribute('data-ob-cell', cellFilter.field);
+      td.setAttribute('data-ob-cell-value', cellFilter.value);
+      td.setAttribute('data-ob-cell-type', cellFilter.type);
+    }
     if (i === treeCell) {
       var indent = document.createElement('span');
       indent.style.display = 'inline-block';
@@ -2668,12 +3008,46 @@ function listBasedOnItems(tr, cfg) {
   }, []);
 }
 
+var obListActiveCell = null;
+function obCellFilterApply() {
+  if (!obListActiveCell || !obListActiveCell.isConnected) return;
+  var field=obListActiveCell.getAttribute('data-ob-cell'), value=obListActiveCell.getAttribute('data-ob-cell-value');
+  var type=obListActiveCell.getAttribute('data-ob-cell-type');
+  var target=new URL(window.location.href);
+  ['','.eq','.from','.to'].forEach(function(suffix) { target.searchParams.delete('f.'+field+suffix); });
+  if (type==='date') { target.searchParams.set('f.'+field+'.from',value);target.searchParams.set('f.'+field+'.to',value); }
+  else { target.searchParams.set('f.'+field+'.eq',value); }
+  ['page','cursor','sort_snapshot'].forEach(function(k) { target.searchParams.delete(k); });
+  window.location.href=target.toString();
+}
+function obCellFiltersClear() {
+  var target=new URL(window.location.href),keys=[];
+  target.searchParams.forEach(function(_,k) { if(k.indexOf('f.')===0)keys.push(k); });
+  keys.forEach(function(k) { target.searchParams.delete(k); });
+  ['page','cursor','sort_snapshot'].forEach(function(k) { target.searchParams.delete(k); });
+  window.location.href=target.toString();
+}
+function obCellFilterSelect(target) {
+  var cell=target.closest&&target.closest('td[data-ob-cell]');
+  if(!cell)return;
+  if(obListActiveCell)obListActiveCell.classList.remove('ob-cell-current');
+  obListActiveCell=cell;cell.classList.add('ob-cell-current');
+  var button=document.querySelector('[data-ob-cell-filter]');if(button)button.disabled=false;
+}
+
 function listMenuItems(tr) {
   var cfg = obListConfig();
   var labels = cfg.labels || {};
   var isPredefined = tr.dataset.predefined === '1';
   var isFolder = tr.dataset.isFolder === '1';
   var items = [];
+  if(obListActiveCell && obListActiveCell.closest('tr')===tr) {
+    var cellButton=document.querySelector('[data-ob-cell-filter]');
+    items.push({label:cellButton?cellButton.textContent:'Filter by selected value',fn:obCellFilterApply});
+  }
+  var clearButton=typeof document!=='undefined' && document.querySelector ? document.querySelector('[data-ob-cell-filter-clear]') : null;
+  if(clearButton)items.push({label:clearButton.textContent,fn:obCellFiltersClear});
+
   if (isFolder) {
     items.push({ label: labels.enterGroup || '▶ Войти в группу', fn: function () { window.location.href = obRowUrl(tr, 'folder'); } });
     items.push({ label: labels.edit || 'Редактировать', fn: function () { listOpen(obRowUrl(tr, 'open')); } });
@@ -2910,6 +3284,13 @@ function obRestoreListSearchFocus() {
 // END onebase-list-search-restore
 
 function obInitListDelegates() {
+document.addEventListener('mousedown',function(e) { obCellFilterSelect(e.target); },true);
+document.addEventListener('contextmenu',function(e) { obCellFilterSelect(e.target); },true);
+document.addEventListener('click',function(e) {
+  if(!e.target.closest)return;
+  if(e.target.closest('[data-ob-cell-filter]')) { e.preventDefault();obCellFilterApply(); }
+  else if(e.target.closest('[data-ob-cell-filter-clear]')) { e.preventDefault();obCellFiltersClear(); }
+},true);
   if (window.__obListDelegates) return;
   window.__obListDelegates = true;
   document.addEventListener('click', function (e) {
@@ -2976,6 +3357,11 @@ function obInitFeed(root) {
   root = root || document;
   var more = root.querySelector('#feed-more');
   if (!more || more.__obFeedDispose) return;
+  var nextLink = more.querySelector('a[href]');
+  if (!nextLink) return;
+  // The rendered link carries the effective sort, including a restored one.
+  // Keep it bound to this list instance rather than the active browser tab.
+  var feedURL = new URL(nextLink.href, window.location.href);
   var loading = false;
   var done = false;
   var observer;
@@ -3002,10 +3388,9 @@ function obInitFeed(root) {
       return;
     }
     loading = true;
-    var sp = new URLSearchParams(window.location.search);
-    sp.set('page', n);
-    sp.set('lm', 'feed');
-    fetch(window.location.pathname + '?' + sp.toString(), { credentials: 'same-origin' })
+    feedURL.searchParams.set('page', n);
+    feedURL.searchParams.set('lm', 'feed');
+    fetch(feedURL.pathname + feedURL.search, { credentials: 'same-origin' })
       .then(function (r) { return r.text(); })
       .then(function (html) {
         // A live refresh may have replaced this feed while the GET was in flight.
@@ -3113,7 +3498,7 @@ obReady(function () {
     '#ob-ai-log .m.act .btns button:disabled{opacity:.6;cursor:default}' +
     '#ob-ai-log .m.act .res{font-size:13px}' +
     '#ob-ai-log .m.act .res a{color:#2563eb;text-decoration:underline;cursor:pointer}' +
-    '#ob-msg-bar{position:fixed;left:0;right:0;bottom:0;z-index:300;background:#fff;border-top:1px solid #cbd5e1;box-shadow:0 -2px 8px rgba(0,0,0,.08);font-family:system-ui,sans-serif;font-size:13px;color:#1e293b;transform:translateY(calc(100% - 30px));transition:transform .18s ease}' +
+    '#ob-msg-bar{position:fixed;left:0;right:0;bottom:var(--ob-status-bar-h, 0px);z-index:300;background:#fff;border-top:1px solid #cbd5e1;box-shadow:0 -2px 8px rgba(0,0,0,.08);font-family:system-ui,sans-serif;font-size:13px;color:#1e293b;transform:translateY(calc(100% - 30px));transition:transform .18s ease}' +
     '#ob-msg-bar.open{transform:translateY(0)}' +
     '#ob-msg-bar.hidden{display:none}' +
     '#ob-msg-head{height:30px;display:flex;align-items:center;padding:0 10px;cursor:pointer;background:#f1f5f9;user-select:none;gap:10px}' +
@@ -3128,6 +3513,8 @@ obReady(function () {
     '#ob-msg-list .it{padding:5px 14px;border-bottom:1px solid #f1f5f9;display:flex;gap:10px;align-items:flex-start;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word}' +
     '#ob-msg-list .it:last-child{border-bottom:none}' +
     '#ob-msg-list .it .t{color:#94a3b8;flex-shrink:0;font-size:11px;padding-top:1px}' +
+    /* Сообщить(..., СтатусСообщения.Важное | ОченьВажное) — ошибка: красный текст и полоса слева. */
+    '#ob-msg-list .it.ob-msg-error{color:#b91c1c;background:#fef2f2;border-left:3px solid #dc2626;padding-left:11px}' +
     '#ob-msg-list .empty{padding:10px 14px;color:#94a3b8;font-style:italic}';
   (document.head || document.documentElement).appendChild(st);
 })();
@@ -3588,7 +3975,8 @@ window.obToast = obToast;
       var html = '';
       for (var i = 0; i < msgs.length; i++) {
         var m = msgs[i];
-        html += '<div class="it"><span class="t">' + fmtTime(m.time) + '</span><span>' + escapeHtml(m.text) + '</span></div>';
+        var err = m.status === 'important' || m.status === 'very_important';
+        html += '<div class="it' + (err ? ' ob-msg-error' : '') + '"><span class="t">' + fmtTime(m.time) + '</span><span>' + escapeHtml(m.text) + '</span></div>';
       }
       if (html !== lastHtml) {
         // Не перерисовывать пока пользователь выделяет текст внутри панели —
@@ -3729,6 +4117,13 @@ function obSetImageField(wrap, ref) {
         trigger.disabled = !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(ref);
       }
     }
+    var download = candidate.querySelector('[data-ob-image-download]');
+    if (download) {
+      var validRef = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(ref);
+      download.style.display = validRef ? '' : 'none';
+      if (validRef) download.href = '/ui/_image/' + encodeURIComponent(ref) + '?download=1';
+      else download.removeAttribute('href');
+    }
     var clear = candidate.querySelector('.img-clear-btn');
     if (clear) clear.style.display = ref ? '' : 'none';
   });
@@ -3862,6 +4257,8 @@ function obInitFormDelegates() {
         var body = row.parentElement;
         var index = row.sectionRowIndex;
         row.remove();
+        if (typeof window.obManagedReindexVtRows === 'function') window.obManagedReindexVtRows(body);
+        if (window.obVtRowsChanged) window.obVtRowsChanged(body);
         if (domTable && body) {
           var next = body.rows && body.rows.length ? body.rows[Math.min(Math.max(index, 0), body.rows.length - 1)] : null;
           obDOMFinishMutation(domTable, next, false);
@@ -3919,8 +4316,16 @@ function obInitFormDelegates() {
 obReady(obInitFormDelegates);
 
 function obTPRefOpts() {
-  if (!window._tpRefOpts) window._tpRefOpts = obReadJSONScript('ob-tp-ref-opts', {});
+  if (!window._tpRefOpts) {
+    window._tpRefOpts = obReadJSONScript('ob-tp-ref-opts', {});
+    window._tpRefChoices = obReadJSONScript('ob-tp-ref-choices', null);
+  }
   return window._tpRefOpts || {};
+}
+
+function obTPRefChoices() {
+  obTPRefOpts();
+  return window._tpRefChoices || window._tpRefOpts || {};
 }
 
 function obTPRefMeta() {
@@ -3949,8 +4354,13 @@ function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, 
   var table = tbody && tbody.closest ? tbody.closest('table[data-ob-dom-table]') : null;
   var domWritable = !!(table && !obDOMTableReadOnly(table));
   var tr = document.createElement('tr');
-  var refOpts = (obTPRefOpts()[tpName]) || {};
+  var refOpts = (obTPRefChoices()[tpName]) || {};
   var refMeta = (obTPRefMeta()[tpName]) || {};
+  var refMarked = {};
+  try {
+    refOpts = Object.assign({}, refOpts, JSON.parse(tbody.getAttribute('data-tp-ref-options') || 'null') || {});
+    refMarked = JSON.parse(tbody.getAttribute('data-tp-ref-marked') || '{}') || {};
+  } catch (e) {}
   var enumLabels = (obTPEnumLabels()[tpName]) || {};
   var enumOrder = (obTPEnumOrder()[tpName]) || {};
   var bools = Array.isArray(boolFields) ? boolFields : [];
@@ -3979,6 +4389,8 @@ function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, 
         sel.setAttribute('data-ref-entity', meta.entity);
         if (meta.allowCreate) sel.setAttribute('data-ref-allow-create', '1');
         if (meta.filter) sel.setAttribute('data-ref-filter', meta.filter);
+        var marked = Object.prototype.hasOwnProperty.call(refMarked, fn) ? refMarked[fn] : meta.marked;
+        if (marked === '1' || marked === '0') sel.setAttribute('data-ref-marked', marked);
       }
       var defOpt = document.createElement('option');
       defOpt.value = '';
@@ -3989,6 +4401,7 @@ function addTpRow(tpName, fields, numFields, idx, tbodyOverride, virtualFields, 
         o.value = opt.id;
         o.textContent = opt._label || opt.id;
         if (opt['\u0000ref_style']) o.setAttribute('style', opt['\u0000ref_style']);
+        if (opt['\u0000ref_disabled']) { o.disabled = true; o.setAttribute('data-ob-ref-disabled', '1'); }
         sel.appendChild(o);
       });
       var pickBtn = document.createElement('button');
@@ -5011,6 +5424,21 @@ function obRefFilterParam(sel) {
 }
 window.obRefFilterParam = obRefFilterParam;
 
+// obRefMarkedParam — помеченные на удаление в выдаче /ui/_ref-options: поле
+// поиска по истории (data-ref-search — отбор списка, параметр отчёта) их
+// показывает, ключ choice_show_deleted поля (data-ref-marked="1"/"0")
+// перекрывает. Без признаков сервер считает поле вводом данных и помеченные
+// скрывает.
+function obRefMarkedParam(el) {
+  if (!el || !el.getAttribute) return '';
+  var out = '';
+  if (el.getAttribute('data-ref-search') === '1') out += '&search=1';
+  var marked = el.getAttribute('data-ref-marked');
+  if (marked === '1' || marked === '0') out += '&marked=' + marked;
+  return out;
+}
+window.obRefMarkedParam = obRefMarkedParam;
+
 // obRefreshDependentSelects — сменили контрагента: списки, отобранные по нему,
 // перестраиваем сразу, не дожидаясь перерисовки формы. Значение, выпавшее из
 // нового отбора, очищаем: договор чужого контрагента в поле — это молча
@@ -5034,7 +5462,7 @@ function obRefreshDependentSelects(sourceEl) {
       var filter = obRefFilterParam(sel);
       var seq = (sel._obOwnerRefreshSeq || 0) + 1;
       sel._obOwnerRefreshSeq = seq;
-      var url = '/ui/_ref-options/' + encodeURIComponent(entity) + '?limit=50' + filter;
+      var url = '/ui/_ref-options/' + encodeURIComponent(entity) + '?limit=50' + filter + obRefMarkedParam(sel);
       fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
         .then(function (resp) { return resp.ok ? resp.json() : null; })
         .then(function (data) {
@@ -5053,7 +5481,7 @@ function obRefreshDependentSelects(sourceEl) {
           while (sel.options.length) sel.remove(0);
           var empty = document.createElement('option');
           empty.value = '';
-          empty.textContent = '— выбрать —';
+          empty.textContent = obEmptyOptionLabel(sel);
           sel.appendChild(empty);
           for (var j = 0; j < rows.length; j++) {
             var id = String(rows[j].id);
@@ -5065,9 +5493,12 @@ function obRefreshDependentSelects(sourceEl) {
             opt.value = rows[j].id;
             opt.textContent = rows[j]._label != null ? rows[j]._label : rows[j].id;
             if (rows[j]['\u0000ref_style']) opt.setAttribute('style', rows[j]['\u0000ref_style']);
+            // Выбранное значение не блокируем: disabled-вариант браузер не отправляет.
+            if (rows[j]['\u0000ref_disabled']) { opt.setAttribute('data-ob-ref-disabled', '1'); if (id !== String(current)) opt.disabled = true; }
             sel.appendChild(opt);
           }
           sel.value = keep ? current : '';
+          if (typeof window !== 'undefined' && window.obPaintChoiceValue) window.obPaintChoiceValue(sel);
         })
         .catch(function () {});
     })(targets[i]);
@@ -5112,6 +5543,13 @@ function obOpenQuestion(payload, elementName, handlers) {
   if (old) old.remove();
   var modal = document.createElement('div');
   modal.id = '_question-modal';
+  var finished = false;
+  modal._obClose = function () {
+    if (finished) return;
+    finished = true;
+    modal.remove();
+    if (handlers && typeof handlers.onDismiss === 'function') handlers.onDismiss();
+  };
   modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
   var box = document.createElement('div');
   // Многострочному полю (текст ошибки, примечание) узко в 460px: окно шире, а
@@ -5188,6 +5626,8 @@ function obOpenQuestion(payload, elementName, handlers) {
       if (payload.period && variant === payload.variants[0]) {
         if (!inputs.Начало.reportValidity() || !inputs.Конец.reportValidity()) return;
       }
+      if (finished) return;
+      finished = true;
       modal.remove();
       var extra = { _question_answer: variant };
       var names = Object.keys(inputs);
@@ -5207,8 +5647,7 @@ function obOpenQuestion(payload, elementName, handlers) {
   if (handlers && typeof handlers.onDismiss === 'function') {
     modal.addEventListener('click', function (ev) {
       if (ev.target !== modal) return;
-      modal.remove();
-      handlers.onDismiss();
+      modal._obClose();
     });
   }
   if (payload.period) {
@@ -5375,6 +5814,32 @@ function obChoiceDispatchChange(sel) {
   }
 }
 
+// Подпись пустого пункта списка — по ТЕКУЩЕЙ доступности поля, как у
+// серверной отрисовки: доступно — «— выбрать —», только чтение — «—». Шаблон
+// подписывает пункт по состоянию на момент отрисовки, поэтому у поля, которое
+// открылось позже (readonly_when, доступность из события формы), оставалось
+// «—», а у соседних сразу доступных — «— выбрать —».
+function obEmptyOptionLabel(sel) {
+  // Поле без списка (choice_dropdown: false) пустое значение показывает
+  // пустым, как в 1С: выбирают кнопкой «…», подсказке в нём не место.
+  if (sel && sel.getAttribute && sel.getAttribute('data-ref-choice-dropdown') === 'false') return '';
+  // Report parameters use an empty reference for “all”, including after a
+  // dependent choice refresh. Keep the server-translated label.
+  var emptyLabel = sel && sel.getAttribute && sel.getAttribute('data-ref-empty-label');
+  if (emptyLabel != null) return emptyLabel;
+  return sel && sel.disabled ? '—' : '— выбрать —';
+}
+window.obEmptyOptionLabel = obEmptyOptionLabel;
+
+function obSyncEmptyOption(sel) {
+  if (!sel || sel.tagName !== 'SELECT' || !sel.options || !sel.options.length) return;
+  var first = sel.options[0];
+  if (first.value !== '') return;
+  var label = obEmptyOptionLabel(sel);
+  if (first.textContent !== label) first.textContent = label;
+}
+window.obSyncEmptyOption = obSyncEmptyOption;
+
 function obChoiceApplyResponse(sel, data, selectedAtRequest) {
   var rows = data && Array.isArray(data.items) ? data.items : [];
   var selectedAllowed = null;
@@ -5384,12 +5849,25 @@ function obChoiceApplyResponse(sel, data, selectedAtRequest) {
     }
     selectedAllowed = data.selected_allowed;
   }
+  // Заблокированное поле (disabled/readonly, в том числе внутри disabled
+  // fieldset) пользователь не меняет, а отбор лишь ограничивает выбор: его
+  // значение не очищается, и change не шлётся. Иначе запертая форма после
+  // ответа ПриОткрытии сама отправляла ПриИзменении по каждому полю с
+  // choice_filter — по событию на поле, цепочкой.
+  var locked = !!(sel.disabled || (sel.hasAttribute && sel.hasAttribute('readonly')) ||
+    (sel.closest && sel.closest('fieldset[disabled]')));
+  var keptOutside = false;
+  if (selectedAtRequest && selectedAllowed === false && locked) {
+    selectedAllowed = true;
+    keptOutside = true;
+  }
 
-  var blankLabel = '— выбрать —';
+  // Подпись пустого пункта — по доступности поля сейчас, а не прежняя: та
+  // могла остаться «—» от отрисовки запертого поля.
+  var blankLabel = obEmptyOptionLabel(sel);
   var selectedLabel = selectedAtRequest;
   for (var i = 0; i < sel.options.length; i++) {
     var current = sel.options[i];
-    if (!current.value && current.textContent) blankLabel = current.textContent;
     if (String(current.value) === selectedAtRequest) selectedLabel = current.textContent || selectedAtRequest;
   }
   while (sel.options.length) sel.remove(0);
@@ -5408,6 +5886,7 @@ function obChoiceApplyResponse(sel, data, selectedAtRequest) {
     opt.value = id;
     opt.textContent = String((row && row._label) || id);
     if (row && row['\u0000ref_style']) opt.setAttribute('style', row['\u0000ref_style']);
+    if (row && row['\u0000ref_disabled']) { opt.setAttribute('data-ob-ref-disabled', '1'); if (id !== selectedAtRequest) opt.disabled = true; }
     if (id === selectedAtRequest) selectedPresent = true;
     sel.appendChild(opt);
   });
@@ -5417,11 +5896,15 @@ function obChoiceApplyResponse(sel, data, selectedAtRequest) {
     var selected = document.createElement('option');
     selected.value = selectedAtRequest;
     selected.textContent = selectedLabel || selectedAtRequest;
+    // Сохранённое вне отбора значение запертого поля видно, но кандидатом
+    // подбора не становится — как у прежних значений вне choice_filter.
+    if (keptOutside && selected.setAttribute) selected.setAttribute('data-ob-choice-outside-filter', '1');
     sel.appendChild(selected);
   }
 
   var cleared = !!selectedAtRequest && selectedAllowed === false;
   sel.value = cleared ? '' : selectedAtRequest;
+  if (typeof window !== 'undefined' && window.obPaintChoiceValue) window.obPaintChoiceValue(sel);
   sel.removeAttribute('data-ob-choice-error');
   sel.removeAttribute('data-ob-choice-loading');
   sel.removeAttribute('aria-busy');
@@ -5474,7 +5957,7 @@ function obRefreshChoiceSelect(sel, force) {
   sel.removeAttribute('data-ob-choice-error');
 
   var refEntity = sel.getAttribute('data-ref-entity') || '';
-  var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + snapshot.query;
+  var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + snapshot.query + obRefMarkedParam(sel);
   var options = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
   if (controller) options.signal = controller.signal;
   state.promise = window.fetch(url, options)
@@ -5580,6 +6063,65 @@ function obOpenRefPickerOnce(e, selOrId) {
 }
 window.obOpenRefPickerOnce = obOpenRefPickerOnce;
 // END onebase-ref-picker-claim
+// choice_dropdown: false — ссылочное поле без выпадающего списка. Значение
+// по-прежнему несёт <select> (обязательность, Tab, readonly_when, зеркало
+// значения и события поля работают как у любого ссылочного поля), но список
+// не раскрывается: в нём только текущее значение, и открывать его — значит
+// показать пустышку «— выбрать —». Щелчок, Enter, F4 и Alt+↓ открывают форму
+// подбора, Shift+F4 / Delete / Backspace очищают поле. Стрелки и набор букв
+// гасятся: у закрытого <select> они молча меняли бы значение на соседний
+// пункт, то есть на пустое.
+function obRefNoListSelect(el) {
+  if (!el || el.tagName !== 'SELECT' || el.disabled) return null;
+  return el.getAttribute('data-ref-choice-dropdown') === 'false' ? el : null;
+}
+
+function obRefNoListClear(sel) {
+  if (!sel || sel.disabled || !sel.value) return;
+  sel.value = '';
+  try { sel.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+}
+window.obRefNoListClear = obRefNoListClear;
+
+function obRefNoListKey(e) {
+  var sel = obRefNoListSelect(e.target);
+  if (!sel) return;
+  var key = e.key || '';
+  var stop = function () {
+    e.preventDefault();
+    if (e.stopPropagation) e.stopPropagation();
+  };
+  if ((key === 'F4' && e.shiftKey) || key === 'Delete' || key === 'Backspace') {
+    stop();
+    obRefNoListClear(sel);
+    return;
+  }
+  if (key === 'Enter' || key === 'F4' || key === ' ' || key === 'Spacebar' ||
+      (e.altKey && (key === 'ArrowDown' || key === 'ArrowUp'))) {
+    stop();
+    openRefPicker(sel);
+    return;
+  }
+  if (key === 'ArrowDown' || key === 'ArrowUp' || key === 'PageDown' || key === 'PageUp' ||
+      key === 'Home' || key === 'End' || (key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)) {
+    e.preventDefault();
+  }
+}
+
+function obRefNoListPointer(e) {
+  if (e.button !== undefined && e.button !== 0) return;
+  var target = e.target && e.target.closest ? e.target.closest('select') : null;
+  var sel = obRefNoListSelect(target);
+  if (!sel) return;
+  e.preventDefault();
+  try { sel.focus(); } catch (_) {}
+  openRefPicker(sel);
+}
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('keydown', obRefNoListKey, true);
+  document.addEventListener('mousedown', obRefNoListPointer, true);
+}
 
 function openRefPicker(selOrId) {
   var sel = (typeof selOrId === 'string') ? document.getElementById(selOrId) : selOrId;
@@ -5598,7 +6140,7 @@ function openRefPicker(selOrId) {
     // but must not become a candidate merely because it is an <option>.
     if (o.value && o.getAttribute('data-ob-choice-outside-filter') !== '1') {
       // choice_row_style: оформление строки переносится из <option> в подбор.
-      localOpts.push({ id: o.value, label: o.text, style: o.getAttribute('style') || '', bg: o.getAttribute('data-ob-bg') || (o.style ? o.style.background || '' : '') });
+      localOpts.push({ id: o.value, label: o.text, style: o.getAttribute('style') || '', bg: o.getAttribute('data-ob-bg') || (o.style ? o.style.background || '' : ''), disabled: o.getAttribute('data-ob-ref-disabled') === '1' });
     }
   }
   var old = document.getElementById('_ref-picker-modal');
@@ -5722,6 +6264,8 @@ function openRefPicker(selOrId) {
       if (opts[i].preview) item.setAttribute('data-preview', opts[i].preview);
       item.style.cssText = 'padding:9px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b' + (opts[i].style ? ';' + opts[i].style : '');
       if (opts[i].bg) item.setAttribute('data-ob-bg', opts[i].bg);
+      // choice_row_style disabled: строка видна (архивная реклама), но не выбирается.
+      if (opts[i].disabled) { item.setAttribute('data-ob-ref-disabled', '1'); item.style.cursor = 'not-allowed'; item.style.opacity = '0.7'; }
       item.textContent = opts[i].label;
       (function (idx) {
         item.addEventListener('mouseenter', function () { rpActive = idx; rpPaint(); });
@@ -5749,7 +6293,8 @@ function openRefPicker(selOrId) {
     rpReveal();
   }
   function selectItem(item) {
-    if (!window._rpTarget) return;
+    if (!window._rpTarget) return false;
+    if (item.getAttribute('data-ob-ref-disabled') === '1') return false;
     var id = item.getAttribute('data-id') || '';
     var label = item.getAttribute('data-label') || item.textContent || id;
     var opt = null;
@@ -5777,6 +6322,7 @@ function openRefPicker(selOrId) {
     try {
       window._rpTarget.dispatchEvent(new Event('change', { bubbles: true }));
     } catch (e) {}
+    return true;
   }
   var requestSeq = 0;
   var requestController = null;
@@ -5801,13 +6347,15 @@ function openRefPicker(selOrId) {
     // тихий откат к списку без просмотра запрещён.
     var refContextRaw = sel.getAttribute('data-ref-context') || '';
     var usePreviewPage = !!refContextRaw;
-    var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + encodeURIComponent(q || '') + choiceQuery;
+    var url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '?limit=50&q=' + encodeURIComponent(q || '') + choiceQuery + obRefMarkedParam(sel);
     // Отбор подбора: владелец подчинённого справочника.
     if (!choiceSnapshot) url += obRefFilterParam(sel);
     var fetchOptions = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
     if (requestController) fetchOptions.signal = requestController.signal;
     if (usePreviewPage) {
       url = '/ui/_ref-options/' + encodeURIComponent(refEntity) + '/page';
+      var markedQuery = obRefMarkedParam(sel);
+      if (markedQuery) url += '?' + markedQuery.slice(1);
       fetchOptions.method = 'POST';
       fetchOptions.headers['Content-Type'] = 'application/json';
       var sourceElement = sel.getAttribute('data-ref-element') || '';
@@ -5827,24 +6375,42 @@ function openRefPicker(selOrId) {
         filters: obRefFilterValues(sel) || {}
       });
     }
+    // Ответ применяется, только пока он актуален: это последний запрос, диалог
+    // и поле живы, а снимок контекста выбора и выбранное значение не менялись.
+    // Проверка общая для успешного ответа и для 422 — иначе поздний отказ
+    // старого запроса (тело дочитывается уже после нового ответа) стирал бы
+    // свежий результат поиска.
+    var responseIsCurrent = function () {
+      if (seq !== requestSeq || !obChoiceSelectIsLive(sel) || !obChoiceSelectIsLive(modal)) return false;
+      if (!choiceSnapshot) return true;
+      var currentSnapshot = obRefChoiceSnapshot(sel);
+      return !!currentSnapshot && currentSnapshot.fingerprint === choiceFingerprint &&
+        (sel.value == null ? '' : String(sel.value)) === choiceSelected;
+    };
     fetch(url, fetchOptions)
       .then(function (resp) {
         if (resp.status === 422) {
-          // Пояснение недоступно: блокируем выбор (fail-closed, инвариант 10).
-          rpPreviewField = '';
-          rpReveal();
-          renderItems([], '');
-          if (status) status.textContent = 'Пояснение недоступно: повторите запрос';
-          throw new Error('preview-unavailable');
+          return resp.json().catch(function () { return {}; }).then(function (d) {
+            if (!responseIsCurrent()) throw new Error('choice-response-stale');
+            rpPreviewField = '';
+            rpReveal();
+            renderItems([], '');
+            // Сломана функция поиска (choice_search_proc): показываем её отказ,
+            // а не результат подстроки — тихий откат скрыл бы ошибку.
+            if (d && d.preview !== false && d.error) {
+              if (status) status.textContent = String(d.error);
+              throw new Error('choice-search-unavailable');
+            }
+            // Пояснение недоступно: блокируем выбор (fail-closed, инвариант 10).
+            if (status) status.textContent = 'Пояснение недоступно: повторите запрос';
+            throw new Error('preview-unavailable');
+          });
         }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         return resp.json();
       })
       .then(function (data) {
-        var currentSnapshot = obRefChoiceSnapshot(sel);
-        if (seq !== requestSeq || !obChoiceSelectIsLive(sel) || !obChoiceSelectIsLive(modal)) return;
-        if (choiceSnapshot && (!currentSnapshot || currentSnapshot.fingerprint !== choiceFingerprint ||
-            (sel.value == null ? '' : String(sel.value)) !== choiceSelected)) return;
+        if (!responseIsCurrent()) return;
         var keep = rpActiveId();
         var rows = (data && data.items) || [];
         rpPreviewField = (data && data.preview) || '';
@@ -5853,7 +6419,7 @@ function openRefPicker(selOrId) {
           var id = row && row.id != null ? String(row.id) : '';
           var preview = '';
           if (rpPreviewField && row && row[rpPreviewField] != null) preview = String(row[rpPreviewField]);
-          return { id: id, label: String((row && row._label) || id), preview: preview, style: (row && row['\u0000ref_style']) || '', bg: (row && row['\u0000ref_style_bg']) || '' };
+          return { id: id, label: String((row && row._label) || id), preview: preview, style: (row && row['\u0000ref_style']) || '', bg: (row && row['\u0000ref_style_bg']) || '', disabled: !!(row && row['\u0000ref_disabled']) };
         }).filter(function (opt) { return opt.id !== ''; });
         renderItems(opts, keep);
         rpReveal();
@@ -5865,6 +6431,7 @@ function openRefPicker(selOrId) {
       .catch(function (err) {
         if (seq !== requestSeq) return;
         if (err && err.name === 'AbortError') return;
+        if (err && (err.message === 'choice-search-unavailable' || err.message === 'choice-response-stale')) return;
         // A form-scoped picker is server-authoritative. Falling back to an
         // untrusted or stale full list would bypass choice_filter; retain the
         // already rendered filtered options and surface the failure instead.
@@ -5905,7 +6472,7 @@ function openRefPicker(selOrId) {
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (rpActive >= 0 && items[rpActive]) { selectItem(items[rpActive]); closePicker(); }
+      if (rpActive >= 0 && items[rpActive] && selectItem(items[rpActive])) closePicker();
       return;
     }
     // Esc закрываем здесь же: глобальный обработчик живёт в managed.js, а форма
@@ -5917,8 +6484,7 @@ function openRefPicker(selOrId) {
   document.getElementById('_rp-list').addEventListener('click', function (e) {
     var item = e.target.closest('._rp-item');
     if (!item) return;
-    selectItem(item);
-    closePicker();
+    if (selectItem(item)) closePicker();
   });
   var createBtn = document.getElementById('_rp-create');
   if (createBtn) {
@@ -6246,11 +6812,11 @@ window.onebaseDevice = {
       window.dispatchEvent(ev);
     } catch (_) {}
   }
-  // В режиме вкладок SSE принадлежит оболочке. Ретранслируем уже разобранное
-  // JSON-событие во все её same-origin iframe, чтобы сохранить публичный
-  // контракт window-событий onebase:<имя> для страниц и live-панелей.
+  // SSE принадлежит верхнему окну. Каждый документ передаёт разобранное
+  // событие своим вкладкам и формам создания ссылки; вложенная форма
+  // продолжает доставку своим дочерним формам, без нового SSE-соединения.
   function forwardOnebaseEvent(msg) {
-    var frames = document.querySelectorAll('.ob-tabbody iframe');
+    var frames = document.querySelectorAll('.ob-tabbody iframe, #_ref-create-modal iframe');
     for (var i = 0; i < frames.length; i++) {
       try {
         if (frames[i].contentWindow) {
@@ -6265,11 +6831,12 @@ window.onebaseDevice = {
   }
   if (window.__obEmbedded) {
     window.addEventListener('message', function (ev) {
-      // Принимаем realtime-события только от своей same-origin оболочки.
+      // Принимаем realtime-события только от своего same-origin родителя.
       if (ev.source !== window.parent || ev.origin !== window.location.origin) return;
       var msg = ev.data;
       if (!msg || msg.source !== 'obRealtime' || typeof msg.name !== 'string' || !msg.name) return;
-      emitOnebaseEvent('onebase:' + msg.name, msg.data);
+      emitOnebaseEvent('onebase:' + msg.name, msg.data, msg.closeSource);
+      forwardOnebaseEvent(msg);
     });
   }
   function toast(text) {
@@ -6473,24 +7040,89 @@ window.onebaseDevice = {
     return false;
   }
   // END onebase-dev-system-handler
+  // BEGIN onebase-ui-response-commands
+  var uiCommandIDs = new Set();
+  function deliverServerMessage(msg) {
+    if (!msg || !msg.name) return;
+    if (typeof msg.commandId === 'string' && /^[a-f0-9-]{36}$/.test(msg.commandId)) {
+      if (uiCommandIDs.has(msg.commandId)) return;
+      uiCommandIDs.add(msg.commandId);
+      if (uiCommandIDs.size > 128) uiCommandIDs.delete(uiCommandIDs.values().next().value);
+    }
+    emitOnebaseEvent('onebase:' + msg.name, msg.data, msg.closeSource);
+    forwardOnebaseEvent(msg);
+    if (msg.name === 'уведомление' || msg.name === 'notify') {
+      toast(typeof msg.data === 'string' ? msg.data : JSON.stringify(msg.data));
+    }
+  }
+  function applyUIResponse(commands, refreshLive) {
+    (Array.isArray(commands) ? commands : []).slice(0,64).forEach(function (msg) {
+      if (msg && (msg.name === 'ui.открытьФорму' || msg.name === 'ui.закрытьФорму')) deliverServerMessage(msg);
+    });
+    if (refreshLive && (!window.__obEvents || window.__obEvents.readyState !== 1)) {
+      emitOnebaseEvent('onebase:__oblive_refresh_all__', null);
+      forwardOnebaseEvent({name:'__oblive_refresh_all__',data:null});
+    }
+  }
+  window.obApplyUIResponse = function (commands, refreshLive) {
+    if (window.__obEmbedded) {
+      window.parent.postMessage({source:'obUIResponse',commands:commands,refreshLive:!!refreshLive},window.location.origin);
+    } else applyUIResponse(commands,refreshLive);
+  };
+  {
+    window.addEventListener('message', function (ev) {
+      if (ev.origin !== window.location.origin || !ev.data || ev.data.source !== 'obUIResponse') return;
+      var frames = document.querySelectorAll('iframe');
+      for (var i=0; i<frames.length; i++) {
+        if (frames[i].contentWindow === ev.source) { window.obApplyUIResponse(ev.data.commands,ev.data.refreshLive); return; }
+      }
+    });
+  }
+  // END onebase-ui-response-commands
+  // BEGIN onebase-sse-reconnect (public lifecycle tested with EventSource)
   var sseOpened = false;
+  var sseRetry = null;
+  var sseBackoff = 1000;
+  var ssePaused = false;
+  var sseLastID = '';
+  var sseGeneration = '';
+  var sseResuming = false;
+  function retryEvents() {
+    if (ssePaused || sseRetry !== null) return;
+    var delay = Math.min(5000, sseBackoff + Math.floor(Math.random() * 250));
+    sseBackoff = Math.min(sseBackoff * 2, 5000);
+    sseRetry = setTimeout(function () { sseRetry = null; connect(); }, delay);
+  }
   var devState = { generation: null };
   function connect() {
     if (typeof EventSource === 'undefined') return;
-    if (window.__obEvents) return;
-    var es = new EventSource('/ui/events');
+    if (ssePaused || window.__obEvents) return;
+    var shell = obShellId();
+    var eventsURL = '/ui/events' + (shell ? '?shell=' + encodeURIComponent(shell) : '');
+    eventsURL += (shell ? '&' : '?') + 'resume_protocol=1';
+    if (sseResuming) eventsURL += '&resume=1';
+    if (sseGeneration) eventsURL += '&generation=' + encodeURIComponent(sseGeneration);
+    if (sseLastID) eventsURL += '&last_event_id=' + encodeURIComponent(sseLastID);
+    var es;
+    try { es = new EventSource(eventsURL); } catch (_) { sseResuming = true; retryEvents(); return; }
     window.__obEvents = es;
     es.onopen = function () {
+      if (ssePaused || window.__obEvents !== es) return;
+      var resumed = sseResuming;
+      sseBackoff = 1000;
+      sseResuming = false;
       // План 87: служебные события данные.* не переигрываются из replay-окна.
       // После РЕконнекта (не первого open) просим живые списки перечитаться —
       // один актуальный GET безопаснее, чем догадка по устаревшему снимку прав.
-      if (sseOpened) {
+      if (sseOpened || resumed) {
         emitOnebaseEvent('onebase:__oblive_refresh_all__', null);
         forwardOnebaseEvent({ name: '__oblive_refresh_all__', data: null });
       }
       sseOpened = true;
     };
     es.onmessage = function (ev) {
+      if (ssePaused || window.__obEvents !== es) return;
+      if (/^[1-9][0-9]{0,18}$/.test(String(ev.lastEventId || ''))) sseLastID = String(ev.lastEventId);
       var msg;
       try {
         msg = JSON.parse(ev.data);
@@ -6498,19 +7130,27 @@ window.onebaseDevice = {
         return;
       }
       if (!msg) return;
+      if (msg.system === 'stream-generation' && typeof msg.data === 'string') {
+        if (sseGeneration && sseGeneration !== msg.data) sseLastID = '';
+        sseGeneration = msg.data;
+        return;
+      }
       // Only the server can create a system envelope, and the rendered page
       // must independently opt in to dev behavior. A DSL notification with a
       // look-alike name remains an ordinary onebase:<name> event.
       var devEnabled = !!(document.body && document.body.getAttribute('data-ob-dev') === '1');
       if (obHandleDevSystem(msg, devEnabled, devState, function () { location.reload(); })) return;
-      if (!msg.name) return;
-      emitOnebaseEvent('onebase:' + msg.name, msg.data, msg.closeSource);
-      forwardOnebaseEvent(msg);
-      if (msg.name === 'уведомление' || msg.name === 'notify') {
-        toast(typeof msg.data === 'string' ? msg.data : JSON.stringify(msg.data));
-      }
+      deliverServerMessage(msg);
     };
-    es.onerror = function () {};
+    es.onerror = function () {
+      if (window.__obEvents !== es) return;
+      // A non-200 response can permanently close native EventSource. Own the
+      // retry for both CLOSED and CONNECTING, with exactly one active stream.
+      window.__obEvents = null;
+      es.close();
+      sseResuming = true;
+      retryEvents();
+    };
   }
   // Вкладочная оболочка (issue #322/#323): единственный SSE-поток /ui/events
   // держит верхнее окно оболочки. Во фрейме не подключаемся — иначе N вкладок =
@@ -6523,15 +7163,18 @@ window.onebaseDevice = {
     // otherwise block the next page on HTTP/1.1. A restored document reconnects
     // and uses the existing reconnect refresh path to catch up on live data.
     window.addEventListener('pagehide', function () {
+      ssePaused = true;
+      if (sseRetry !== null) { clearTimeout(sseRetry); sseRetry = null; }
       if (window.__obEvents) window.__obEvents.close();
       window.__obEvents = null;
     });
     window.addEventListener('pageshow', function (ev) {
-      if (ev.persisted) connect();
+      if (ev.persisted) { ssePaused = false; sseResuming = true; connect(); }
     });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', connect);
     else connect();
   }
+  // END onebase-sse-reconnect
 })();
 
 // BEGIN onebase-live-list
@@ -6950,6 +7593,37 @@ function initDetailPanel() {
   (document.head || document.documentElement).appendChild(st);
 })();
 
+// choice_style_value: поле ссылки показывает выбранное значение тем же
+// оформлением, что строка в списке выбора (style выбранного <option>).
+// Собственный style поля (ширина и т. п.) хранится отдельно и не теряется.
+window.obPaintChoiceValue = function (sel) {
+  if (!sel || sel.tagName !== 'SELECT' || sel.getAttribute('data-ob-choice-style-value') !== '1') return;
+  var base = sel.getAttribute('data-ob-base-style');
+  if (base === null) {
+    // Сервер даёт основу в data-ob-base-style; без неё основа — нынешний style.
+    base = String(sel.getAttribute('style') || '');
+    sel.setAttribute('data-ob-base-style', base);
+  }
+  var opt = sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+  var css = opt && opt.value ? String(opt.getAttribute('style') || '') : '';
+  sel.setAttribute('style', base + (css ? ';' + css : ''));
+};
+window.obPaintChoiceValues = function (root) {
+  var scope = root || document;
+  if (!scope || typeof scope.querySelectorAll !== 'function') return;
+  var list = scope.querySelectorAll('select[data-ob-choice-style-value="1"]');
+  for (var i = 0; i < list.length; i++) window.obPaintChoiceValue(list[i]);
+};
+if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('change', function (e) {
+  var t = e && e.target;
+  if (t && t.tagName === 'SELECT') window.obPaintChoiceValue(t);
+}, true);
+(function () {
+  function init() { window.obPaintChoiceValues(document); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
 /* Индикатор выполнения у форм с data-ob-busy (обработки, отчёты).
    Обычная отправка формы не меняет страницу, пока сервер не ответит: браузер
    рисует крошечный волчок во вкладке, и всё. Обработка, которая качает каталог
@@ -7113,3 +7787,210 @@ function obEnterNavigateFrom(target) {
     if (obEnterNavigateFrom(e.target)) e.preventDefault();
   });
 })();
+
+// BEGIN onebase-status-bar
+// Строка состояния внизу страницы (status_bar в config/home_page.yaml).
+// Сервер ставит в head признак <meta name="ob-status-bar" content="<секунды>">
+// только пользователю, которому строка положена; содержимое и кнопки берутся
+// из /ui/_status-bar. Слева — текст «Слева», справа — «Справа» и рядом с ним
+// кнопки. Во вкладке оболочки (страница во фрейме) строка не рисуется: она
+// уже есть у самой оболочки, и второй её экземпляр съел бы место формы.
+(function () {
+  function obStatusBarInit() {
+    // Без полноценного DOM (срезы ui.js в node-тестах) строки нет.
+    if (typeof document.querySelector !== 'function' || !document.body || typeof fetch !== 'function') return;
+    var meta = document.querySelector('meta[name="ob-status-bar"]');
+    if (!meta || window.top !== window || document.getElementById('ob-status-bar')) return;
+    var interval = parseInt(meta.getAttribute('content'), 10);
+    if (!(interval >= 1 && interval <= 60)) interval = 3;
+
+    var style = document.createElement('style');
+    style.textContent =
+      '#ob-status-bar{position:fixed;left:0;right:0;bottom:0;z-index:900;height:var(--ob-status-bar-h);' +
+      'display:flex;align-items:center;gap:12px;padding:0 12px;box-sizing:border-box;' +
+      'background:#f1f5f9;border-top:1px solid #cbd5e1;font-size:13px;color:#1f2937}' +
+      '#ob-status-bar[hidden]{display:none}' +
+      '#ob-status-bar .ob-sb-left{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+      '#ob-status-bar .ob-sb-right{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}' +
+      '#ob-status-bar .ob-sb-buttons{display:flex;gap:6px;flex:0 0 auto}' +
+      '#ob-status-bar button{font:inherit;padding:2px 10px;border:1px solid #94a3b8;border-radius:4px;background:#fff;cursor:pointer}' +
+      '#ob-status-bar button:disabled{opacity:.6;cursor:default}' +
+      '#ob-status-bar .ob-sb-note{color:#b45309;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}' +
+      '#ob-status-bar.ob-sb-error .ob-sb-left{color:#b91c1c}';
+    document.head.appendChild(style);
+
+    var bar = document.createElement('div');
+    bar.id = 'ob-status-bar';
+    bar.setAttribute('role', 'status');
+    bar.hidden = true;
+    var left = document.createElement('span'); left.className = 'ob-sb-left';
+    var note = document.createElement('span'); note.className = 'ob-sb-note';
+    var right = document.createElement('span'); right.className = 'ob-sb-right';
+    var buttons = document.createElement('span'); buttons.className = 'ob-sb-buttons';
+    bar.appendChild(left); bar.appendChild(note); bar.appendChild(right); bar.appendChild(buttons);
+    document.body.appendChild(bar);
+
+    // Высота строки — общая переменная --ob-status-bar-h. Окно приложения —
+    // body ровно на высоту экрана с внутренней прокруткой (height:100vh,
+    // overflow:hidden): ему уменьшаем высоту, отступ снизу там ушёл бы под
+    // обрез и строка перекрыла бы низ формы. Обычной прокручиваемой странице
+    // хватает отступа снизу. Раскладки «на высоту окна» вычитают переменную.
+    function setHeight(on) {
+      var root = document.documentElement, body = document.body;
+      root.style.setProperty('--ob-status-bar-h', on ? '30px' : '0px');
+      var clipped = false;
+      try { clipped = window.getComputedStyle(body).overflowY === 'hidden'; } catch (e) {}
+      if (clipped) {
+        body.style.height = on ? 'calc(100vh - var(--ob-status-bar-h))' : '';
+        body.style.minHeight = on ? 'calc(100vh - var(--ob-status-bar-h))' : '';
+        body.style.paddingBottom = '';
+      } else {
+        body.style.paddingBottom = on ? 'var(--ob-status-bar-h)' : '';
+      }
+      try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+    }
+    setHeight(false);
+
+    var noteTimer = null;
+    function showNote(text) {
+      note.textContent = text || '';
+      if (noteTimer) clearTimeout(noteTimer);
+      if (text) noteTimer = setTimeout(function () { note.textContent = ''; }, 8000);
+    }
+
+    var busy = false, shownBefore = false;
+    function render(state) {
+      if (!state || !state.visible) {
+        if (shownBefore) { bar.hidden = true; setHeight(false); shownBefore = false; }
+        return;
+      }
+      bar.classList.toggle('ob-sb-error', !!state.error);
+      left.textContent = state.error ? state.error : (state.left || '');
+      right.textContent = state.right || '';
+      var names = (state.buttons || []).map(function (b) { return b.name + '\u0001' + b.title; }).join('\u0002');
+      if (buttons.getAttribute('data-ob-sb') !== names) {
+        buttons.setAttribute('data-ob-sb', names);
+        buttons.textContent = '';
+        (state.buttons || []).forEach(function (b) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = b.title || b.name;
+          btn.setAttribute('data-ob-sb-button', b.name);
+          buttons.appendChild(btn);
+        });
+      }
+      if (!shownBefore) { bar.hidden = false; setHeight(true); shownBefore = true; }
+    }
+
+    function request(method, body) {
+      var opts = {method: method, credentials: 'same-origin', headers: {'Accept': 'application/json'}};
+      if (body) {
+        opts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        opts.body = body;
+      }
+      return fetch('/ui/_status-bar', opts).then(function (resp) {
+        if (resp.status === 409) return resp.text().then(function (t) { showNote(t.trim()); return null; });
+        if (!resp.ok) return null;
+        return resp.json();
+      });
+    }
+
+    var timer = null;
+    function schedule() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(poll, interval * 1000);
+    }
+    function poll() {
+      // Скрытую вкладку браузера не опрашиваем: строку там никто не видит.
+      if (document.hidden || busy) { schedule(); return; }
+      request('GET').then(function (state) { if (state) render(state); }, function () {})
+        .then(schedule, schedule);
+    }
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+
+    buttons.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('[data-ob-sb-button]') : null;
+      if (!btn || busy) return;
+      busy = true;
+      Array.prototype.forEach.call(buttons.querySelectorAll('button'), function (b) { b.disabled = true; });
+      request('POST', 'button=' + encodeURIComponent(btn.getAttribute('data-ob-sb-button')))
+        .then(function (state) {
+          if (!state) return;
+          render(state);
+          showNote(state.error || state.message || '');
+        }, function () { showNote('Нет связи с сервером'); })
+        .then(function () {
+          busy = false;
+          Array.prototype.forEach.call(buttons.querySelectorAll('button'), function (b) { b.disabled = false; });
+        });
+    });
+
+    poll();
+  }
+  if (document.readyState === 'loading' && typeof document.addEventListener === 'function') document.addEventListener('DOMContentLoaded', obStatusBarInit);
+  else obStatusBarInit();
+})();
+// END onebase-status-bar
+
+// Display-only managed form title; never writes a form field.
+window.obApplyFormTitle = function(title) {
+  if (typeof title !== 'string') return;
+  var label = document.querySelector('[data-ob-form-title]');
+  if (label) label.textContent = title;
+  var meta = document.querySelector('meta[name="ob-tab-title"]');
+  if (meta) meta.setAttribute('content', title);
+  document.title = title;
+  if (window.parent && window.parent !== window) window.parent.postMessage({source:'obSetTitle',title:title,url:window.location.href,documentToken:window.obFrameCloseDocumentToken},window.location.origin);
+};
+
+// BEGIN widget-column-widths
+// Delegated handles survive widget refresh and the shell side-panel redraw.
+(function () {
+  function grid(grip) {
+    var th = grip.closest('th[data-ob-widget-column]');
+    var table = th && th.closest('table[data-ob-widget-widths]');
+    if (!table) return null;
+    var heads = Array.prototype.slice.call(table.querySelectorAll('thead th'));
+    var widths = heads.map(function(h) { return Math.round(h.getBoundingClientRect().width); });
+    var cg = table.querySelector('colgroup');
+    if (!cg) {
+      cg = document.createElement('colgroup');
+      widths.forEach(function(px) { var col = document.createElement('col'); col.style.width = px + 'px'; cg.appendChild(col); });
+      table.insertBefore(cg, table.firstChild);
+    }
+    table.classList.add('ob-widget-fixed');
+    return {table:table,heads:heads,widths:widths,cols:cg.children,index:heads.indexOf(th)};
+  }
+  function apply(g, px) {
+    px = Math.max(40, Math.min(1200, Math.round(px)));
+    g.widths[g.index] = px;
+    g.cols[g.index].style.width = px + 'px';
+    g.table.style.width = g.widths.reduce(function(a,b) { return a+b; },0) + 'px';
+  }
+  function save(g) {
+    if (!g.table.isConnected) return;
+    var widths = Object.create(null);
+    g.heads.forEach(function(h,i) { widths[h.getAttribute('data-ob-widget-column')] = Math.max(40, Math.min(1200, g.widths[i])); });
+    var data = new URLSearchParams(); data.set('widths', JSON.stringify(widths));
+    fetch(g.table.getAttribute('data-ob-widget-widths'), {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:data.toString()})
+      .then(function(response) { if (!response.ok) throw new Error('width save'); })
+      .catch(function() { var card=g.table.closest('[data-ob-widget-card]'); var status=card&&card.querySelector('[data-ob-widget-status]'); if(status)status.textContent=card.getAttribute('data-refresh-error')||'Не удалось обновить виджет'; });
+  }
+  document.addEventListener('click', function(e) { if (e.target.closest && e.target.closest('[data-ob-widget-column-grip]')) { e.preventDefault(); e.stopPropagation(); } },true);
+  document.addEventListener('mousedown', function(e) {
+    if(e.button!==0||!e.target.closest)return;
+    var grip=e.target.closest('[data-ob-widget-column-grip]');if(!grip)return;
+    var g=grid(grip);if(!g)return;
+    e.preventDefault();e.stopPropagation();
+    var startX=e.clientX,startWidth=g.widths[g.index];
+    var move=function(ev) { apply(g,startWidth+ev.clientX-startX); };
+    var up=function() { document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);save(g); };
+    document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+  },true);
+  document.addEventListener('keydown',function(e) {
+    if(!e.target.matches||!e.target.matches('[data-ob-widget-column-grip]')||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'))return;
+    var g=grid(e.target);if(!g)return;
+    e.preventDefault();e.stopPropagation();apply(g,g.widths[g.index]+(e.key==='ArrowRight'?10:-10));save(g);
+  },true);
+})();
+// END widget-column-widths

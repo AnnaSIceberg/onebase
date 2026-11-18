@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"crypto/cipher"
 	"html/template"
 	"net/http"
 	"sync"
@@ -30,30 +31,46 @@ import (
 
 // Config holds static info shown in «О программе».
 type Config struct {
-	AppName          string
-	AppVersion       string
-	AppAuthor        string // автор конфигурации (app.yaml: author)
-	AppCopyright     string // правообладатель конфигурации (app.yaml: copyright)
-	AppLicense       string // лицензия конфигурации (app.yaml: license)
-	AppSupport       string // куда сообщать об ошибках этой конфигурации (app.yaml: support, план 116)
-	PlatAuthor       string // правообладатель платформы (version.Author)
-	PlatLicense      string // лицензия платформы (version.License)
-	DSN              string // legacy PostgreSQL location; use DatabaseLocation in UI
-	DatabaseType     string // "postgres" or "sqlite"
-	DatabaseLocation string // PostgreSQL DSN or absolute SQLite file path
-	ConfigSource     string // "file" or "database"
-	ConfigLocation   string // absolute project path or database location
-	PlatVersion      string
-	PlatCommit       string // короткий git SHA сборки (version.Commit())
-	PlatDate         string // дата коммита сборки, дд.мм.гг (version.CommitDate())
-	Logo             string // path to logo file (png/svg/jpg)
-	Mailer           *mailer.Mailer
-	MaxFileSizeMB    int      // 0 = use default 50
-	AllowedTypes     []string // attachments.allowed_types (расширения); пусто = без ограничений
-	DemoMode         bool
-	DemoMessage      string
-	Lang             string       // base language from config
-	Bundle           *i18n.Bundle // translations
+	UIReportRoles        []string
+	UIReportExceptRoles  []string
+	DefaultReportDensity string
+	ShortDateInput       bool
+	UIFormRoles          []string
+	UIFormExceptRoles    []string
+	AppName              string
+	AppVersion           string
+	AppAuthor            string // автор конфигурации (app.yaml: author)
+	AppCopyright         string // правообладатель конфигурации (app.yaml: copyright)
+	AppLicense           string // лицензия конфигурации (app.yaml: license)
+	AppSupport           string // куда сообщать об ошибках этой конфигурации (app.yaml: support, план 116)
+	PlatAuthor           string // правообладатель платформы (version.Author)
+	PlatLicense          string // лицензия платформы (version.License)
+	DSN                  string // legacy PostgreSQL location; use DatabaseLocation in UI
+	DatabaseType         string // "postgres" or "sqlite"
+	DatabaseLocation     string // PostgreSQL DSN or absolute SQLite file path
+	ConfigSource         string // "file" or "database"
+	ConfigLocation       string // absolute project path or database location
+	PlatVersion          string
+	PlatCommit           string // короткий git SHA сборки (version.Commit())
+	PlatDate             string // дата коммита сборки, дд.мм.гг (version.CommitDate())
+	Logo                 string // path to logo file (png/svg/jpg)
+	// CompactLists — app.yaml ui.list_density: compact: плотные списки и
+	// виджеты-списки (класс ob-compact-lists на <body>).
+	CompactLists        bool
+	HideListDetailPanel bool
+	HideListRowActions  bool
+	HideAttachments     bool
+	UIEnhancements      bool
+	UIRoles             []string
+	UIExceptRoles       []string
+	DefaultFormDensity  string
+	Mailer              *mailer.Mailer
+	MaxFileSizeMB       int      // 0 = use default 50
+	AllowedTypes        []string // attachments.allowed_types (расширения); пусто = без ограничений
+	DemoMode            bool
+	DemoMessage         string
+	Lang                string       // base language from config
+	Bundle              *i18n.Bundle // translations
 	// DebugToken — общий секрет для debug API. Пустой → debug-маршруты не
 	// монтируются (см. api.New). Непустой → каждый запрос к /debug/global/*
 	// должен нести его в заголовке X-OneBase-Debug-Token.
@@ -85,6 +102,11 @@ type Config struct {
 }
 
 type Server struct {
+	// carryOnce/carryAEAD — ключ процесса для запечатанного состояния формы
+	// обработки между событиями (processor_form_carry.go).
+	carryOnce sync.Once
+	carryAEAD cipher.AEAD
+
 	tabularResults         tabularResultStore
 	reg                    *runtime.Registry
 	store                  *storage.DB
@@ -109,6 +131,8 @@ type Server struct {
 	concealClock         func() time.Time
 	closeIntentMu        sync.Mutex
 	closeIntents         *formCloseReplayLedger
+	resultFormMu         sync.Mutex
+	resultForms          map[string]resultFormContext
 	lockMgr              *runtime.LockManager   // #2 managed locks
 	entitySvc            *entityservice.Service // упсёрт + ТЧ + движения + проведение + удаление, разделяется с api
 	entitySvcOnce        sync.Once              // ленивая сборка для серверов, собранных напрямую (тесты, offline)
@@ -120,7 +144,10 @@ type Server struct {
 	extprocessors        *extform.ProcessorRepo // внешний контур: обработки из БД
 	tmpl                 *template.Template
 	hub                  *realtime.Hub // real-time-шина уведомлений сервер→браузер (план 74)
-	devGeneration        string        // метка запуска процесса для dev-режима (см. eventsStream)
+	formNotifyOnce       sync.Once
+	formNotifyStore      *formNotifyStore // оповещения открытых форм (Оповестить), см. form_notify.go
+	formIdleState                         // подпись обработчиков ожидания форм (form_idle.go)
+	devGeneration        string           // метка запуска процесса для dev-режима (см. eventsStream)
 	ops                  *operationLimiter
 	exportJobsMu         sync.Mutex
 	exportJobs           *exportJobStore
@@ -369,6 +396,11 @@ func (s *Server) Mount(r chi.Router) {
 	r.Post("/ui/_list-filters", s.listFilterFieldsSave)
 	// Порядок колонок таблицы управляемой формы за пользователем (как в 1С).
 	r.Post("/ui/_grid-order", s.gridOrderSave)
+	r.Post("/ui/_grid-widths", s.gridWidthsSave)
+
+	// Строка состояния внизу страницы (status_bar): содержимое и кнопки.
+	r.Get("/ui/_status-bar", s.statusBarGet)
+	r.Post("/ui/_status-bar", s.statusBarPress)
 
 	// Gengen — ДО catch-all роутов! (иначе /ui/dev/gengen матчится как {kind}/{entity})
 	r.Get("/ui/dev/gengen", s.gengenPage)
@@ -388,12 +420,20 @@ func (s *Server) Mount(r chi.Router) {
 	// SSE-поток уведомлений сервер→браузер (план 74). Регистрируем ДО catch-all
 	// {kind}/{entity}, чтобы «events» не матчился как вид объекта.
 	r.Get("/ui/events", s.eventsStream)
+	// Ключи сопутствующих программ пользователя для окна Предприятия лаунчера
+	// (launcher_companions.go). До catch-all {kind}/{entity}.
+	r.Get("/ui/launcher/companions", s.launcherCompanions)
 	// Частичная перерисовка одной карточки дашборда (план 182A). Статический
 	// сегмент обязан идти до catch-all маршрута сущности.
 	r.Get("/ui/_widget/{name}", s.widgetPartial)
+	r.Post("/ui/_widget/{name}/widths", s.widgetColumnWidthsSave)
 
 	r.Get("/ui/{kind}/{entity}", s.list)
-	r.Get("/ui/{kind}/{entity}/new", s.form)
+	// «Настройка списка» за пользователем: статический сегмент list-settings
+	// побеждает {id} в chi.
+	r.Post("/ui/{kind}/{entity}/list-settings/save", s.listSettingsSave)
+	r.Post("/ui/{kind}/{entity}/list-settings/reset", s.listSettingsReset)
+	r.Get("/ui/{kind}/{entity}/new", withServerTiming(s.form))
 	r.Post("/ui/{kind}/{entity}/new", s.submit)
 	// Inline-создание элемента справочника из ссылочного поля документа
 	// (как в 1С: «+» рядом с полем выбора). JS-клиент не знает kind целевой
@@ -410,16 +450,16 @@ func (s *Server) Mount(r chi.Router) {
 	r.Post("/ui/_ref-options/{entity}/page", s.choicePreviewPageHandler)
 	// Lazy-load детей узла иерархического справочника для tree-view.
 	r.Get("/ui/_tree-children/{entity}", s.treeChildrenJSON)
-	r.Get("/ui/{kind}/{entity}/{id}", s.formEdit)
+	r.Get("/ui/{kind}/{entity}/{id}", withServerTiming(s.formEdit))
 	r.Post("/ui/{kind}/{entity}/{id}", s.submitEdit)
 	// Рантайм событий управляемых форм (план 37, этап 8): обработчики
 	// кнопок (Нажатие) и полей (ПриИзменении). Возвращает JSON с
 	// обновлёнными values и сообщениями от Сообщить().
-	r.Post("/ui/{kind}/{entity}/form-event", s.handleManagedFormEvent)
+	r.Post("/ui/{kind}/{entity}/form-event", withServerTiming(s.handleManagedFormEvent))
 	// Lifecycle close-intent is deliberately separate from /form-event:
 	// the browser cannot choose an arbitrary lifecycle event name, and the
 	// response carries a one-shot decision tied to an intent UUID.
-	r.Post("/ui/{kind}/{entity}/form-close-intent", s.handleManagedFormCloseIntent)
+	r.Post("/ui/{kind}/{entity}/form-close-intent", withServerTiming(s.handleManagedFormCloseIntent))
 	r.Get("/ui/register/{name}", s.registerMovements)
 	r.Get("/ui/register/{name}/balances", s.registerBalances)
 	r.Get("/ui/inforeg/{name}", s.infoRegList)
@@ -432,6 +472,8 @@ func (s *Server) Mount(r chi.Router) {
 	r.Get("/ui/report/{name}", s.reportForm)
 	r.Get("/ui/tabular/{token}", s.tabularView)
 	r.Get("/ui/tabular/{token}/{format}", s.tabularView)
+
+	r.Get("/ui/report/{name}/drilldown", s.reportDrilldown)
 	r.Post("/ui/report/{name}", s.reportRun)
 	r.Post("/ui/report/{name}/settings/save", s.reportSettingsSave)
 	r.Post("/ui/report/{name}/settings/delete", s.reportPresetDelete)
@@ -440,6 +482,7 @@ func (s *Server) Mount(r chi.Router) {
 	r.Post("/ui/journal/{name}/settings/reset", s.journalSettingsReset)
 	r.Get("/ui/processor/{name}", s.processorForm)
 	r.Post("/ui/processor/{name}", s.processorRun)
+	r.Post("/ui/_form-result/{token}/release", s.releaseResultForm)
 	r.Post("/ui/processor/{name}/form-event", s.handleProcessorFormEvent)
 	r.Post("/ui/processor/{name}/form-close-intent", s.handleProcessorFormCloseIntent)
 

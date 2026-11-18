@@ -3,6 +3,7 @@ package interpreter
 import (
 	"errors"
 	"fmt"
+	"github.com/ivantit66/onebase/internal/format1c"
 	"math"
 	"strconv"
 	"strings"
@@ -316,7 +317,9 @@ func strArg(args []any, i int) string {
 	if i < len(args) && args[i] != nil {
 		v := args[i]
 		if t, ok := v.(time.Time); ok {
-			return t.Format("02.01.2006")
+			// Местный день: драйвер SQLite отдаёт момент в UTC, и 10.09 00:00
+			// МСК печаталось бы в ячейке макета как 09.09.
+			return t.In(time.Local).Format("02.01.2006")
 		}
 		// Resolved reference (MapThis) — return display name
 		if m, ok := v.(*MapThis); ok {
@@ -374,10 +377,11 @@ func builtinToString(args []any, file string, line int) (any, error) {
 		// зону (в Москве это дало бы 02:30:17). IsZero узнаёт её и после
 		// смены локации драйвером, поэтому сначала возвращаем каноничный вид.
 		if t.IsZero() {
-			return "01.01.0001 00:00:00", nil
+			return "01.01.0001 0:00:00", nil
 		}
-		// Как Час/День и Формат: показываем местные часы, сохраняя момент.
-		return t.In(time.Local).Format("02.01.2006 15:04:05"), nil
+		// Как Час/День и Формат: показываем местные часы, сохраняя момент;
+		// час без ведущего нуля, как Строка(Дата) в 1С: «18.11.2026 3:07:09».
+		return format1c.DateTime(t.In(time.Local)), nil
 	}
 	// Resolved reference (MapThis) — return its "наименование" field
 	if m, ok := args[0].(*MapThis); ok {
@@ -610,6 +614,8 @@ func KnownBuiltinNames() map[string]struct{} {
 		"записатьсобытиеаудита", "writeauditdecision",
 		"справочники", "catalogs",
 		"символы", "chars",
+		"уровеньжурналарегистрации", "eventloglevel",
+		"статуссообщения", "messagestatus",
 		"документы", "documents",
 		"регистрынакопления", "accumulationregisters",
 		"регистрысведений", "inforegisters",
@@ -651,6 +657,9 @@ func KnownBuiltinNames() map[string]struct{} {
 		"снятьпубликациюкартинки", "unpublishimage",
 		"ссылканафайл", "publicfileurl",
 		"снятьпубликациюфайла", "unpublishfile",
+		// обработчик ожидания управляемой формы (internal/ui/form_idle.go)
+		"подключитьобработчикожидания", "attachidlehandler",
+		"отключитьобработчикожидания", "detachidlehandler",
 	} {
 		names[k] = struct{}{}
 	}

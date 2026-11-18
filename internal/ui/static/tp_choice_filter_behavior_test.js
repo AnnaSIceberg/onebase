@@ -176,6 +176,29 @@ test('TP snapshots read the submitted source copy for global and row-local field
  assert.deepEqual(sources(local,{направление:'grid-row'}),{'Строки.Направление':'grid-row'});
 });
 
+for (const marked of ['1','0','']) {
+ for (const action of ['button','alt-down']) {
+  test(`grid picker preserves deletion policy ${marked || 'inherited'} via ${action}`,async()=>{
+   const calls=[],picked=[];
+   const env=runtime([{Выбор:''}],url=>{calls.push(url);return Promise.resolve({ok:true,json:async()=>({items:[]})});});
+   env.window.openRefPicker=select=>picked.push(select);
+   const start=managed.indexOf('  function refId('),end=managed.indexOf('  function ObNumberEditor(',start);
+   vm.runInContext(managed.slice(start,end),env.sandbox);
+   const container=env.sandbox.document.createElement('div');
+   const args={row:0,item:env.rows[0],column:{field:'Выбор',refEntity:'Цель',refMarked:marked,choiceContext:env.context},container,commitChanges(){},cancelChanges(){},grid:{getOptions(){return {};}}};
+   const editor=new env.sandbox.ObRefEditor('Выбор',[],args);
+   editor.loadValue(args.item);await new Promise(setImmediate);
+   assert.equal(new URLSearchParams(calls[0].split('?')[1]).get('marked'),marked || null);
+   const wrapper=container.children[0];
+   if(action==='button')wrapper.children[1].listeners.click({preventDefault(){},stopPropagation(){}});
+   else wrapper.children[0].listeners.keydown({key:'ArrowDown',altKey:true,preventDefault(){},stopPropagation(){}});
+   assert.equal(picked.length,1);
+   assert.equal(picked[0].getAttribute('data-ref-marked'),marked || null);
+   editor.destroy();
+  });
+ }
+}
+
 // choice_row_style (#2366): оформление варианта доходит до списка ячейки-ссылки
 // и до окна подбора — и у предзагруженных вариантов, и у строк серверного поиска.
 test('the grid reference editor keeps choice_row_style for preloaded, searched and picker options',async()=>{
@@ -209,6 +232,39 @@ test('the grid reference editor keeps choice_row_style for preloaded, searched a
  assert.equal(picked.length,1);
  const opt=picked[0].options.find(o=>o.value==='pre');
  assert.ok(opt,'вариант передан в окно подбора');assert.match(opt.getAttribute('style')||'',/font-weight:600/);
+ editor.destroy();
+});
+
+// choice_row_style disabled (архивная реклама): строка видна в списке ячейки и
+// в окне подбора, но не выбирается ни мышью, ни вводом подписи.
+test('the grid reference editor shows disabled choice rows but never picks them',async()=>{
+ const env=runtime([{Выбор:''}],()=>Promise.resolve({ok:true,json:async()=>({items:[]})}));
+ const picked=[];env.window.openRefPicker=select=>picked.push(select);
+ const editorStart=managed.indexOf('  function refId('),editorEnd=managed.indexOf('  function ObNumberEditor(',editorStart);
+ vm.runInContext(managed.slice(editorStart,editorEnd),env.sandbox);
+ const container=env.sandbox.document.createElement('div');let commits=0;
+ const args={row:0,item:env.rows[0],column:{field:'Выбор',refEntity:'Реклама'},container,commitChanges(){commits++;},cancelChanges(){},grid:{getOptions(){return {};}}};
+ const editor=new env.sandbox.ObRefEditor('Выбор',[
+  {id:'arch',_label:'Листовки','\u0000ref_style':'color:#FF4500','\u0000ref_disabled':true},
+  {id:'site',_label:'Сайт'},
+ ],args);
+ editor.loadValue(args.item);await new Promise(setImmediate);
+ const wrapper=container.children[0],input=wrapper.children[0];
+ input.listeners.keydown({key:'ArrowDown',preventDefault(){},stopPropagation(){}});
+ const list=env.sandbox.document.body.children[0];
+ const arch=list.children.find(el=>/Листовки/.test(el.textContent));
+ assert.ok(arch,'архивная строка видна');
+ assert.equal(arch.getAttribute('data-ob-ref-disabled'),'1');
+ assert.match(arch.style.cssText,/color:#FF4500/);
+ arch.listeners.mousedown({preventDefault(){}});
+ assert.equal(commits,0,'клик по недоступной строке не фиксирует значение');
+ assert.equal(editor.serializeValue(),'','недоступная строка не выбрана мышью');
+ input.value='Листовки';
+ assert.notEqual(editor.serializeValue(),'arch','подпись недоступной строки не превращается в ссылку');
+ input.value='';input.listeners.input({});
+ wrapper.children[1].listeners.click({preventDefault(){},stopPropagation(){}});
+ const opt=picked[0].options.find(o=>o.value==='arch');
+ assert.ok(opt&&opt.disabled,'в окно подбора строка уходит недоступной');
  editor.destroy();
 });
 

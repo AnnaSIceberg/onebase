@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/csssafe"
 	oblog "github.com/ivantit66/onebase/internal/logging"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/runtime"
@@ -202,14 +203,18 @@ func (s *Server) homeDashboardData(r *http.Request) map[string]any {
 		// Фильтры полной страницы (план 182D): URL-значения применяются к данным
 		// толерантно — мусор трактуется как пустой отбор, страница не ломается.
 		// Иначе после F5 контролы заполнены, а строки неотфильтрованы.
-		res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: lenientWidgetFilterParams(r, wMeta)})
+		res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: lenientWidgetFilterParams(r, wMeta), CellFilter: s.lenientWidgetCellFilter(r, wMeta), CaptureCellValues: s.uiEnhancementsAllowed(r)})
 		res.Title = wMeta.DisplayTitle(lang)
 		s.decorateRefreshResult(r, wMeta, &res, runner)
 		return res
 	}
+	hiddenByPanel := s.hiddenOnHomeBySidePanel(r)
 	for _, group := range groups {
 		rowRes := make([]widget.Result, 0, len(group))
 		for _, wMeta := range group {
+			if hiddenByPanel != nil && hiddenByPanel(wMeta.Name) {
+				continue // правая панель этого пользователя заменяет виджет (hide_on_home)
+			}
 			res := run(wMeta)
 			// Нет прав на источник — карточку не показываем: ошибка «нет
 			// доступа» на чужом рабочем столе только пугает пользователя.
@@ -261,6 +266,18 @@ func refreshableWidgetType(t metadata.WidgetType) bool {
 }
 
 func (s *Server) decorateRefreshResult(r *http.Request, wMeta *metadata.Widget, res *widget.Result, runner *widget.Runner) {
+	// A hidden card must not load reference filters or personal widths.
+	if res == nil || res.AccessDenied {
+		return
+	}
+	s.prepareWidgetColumnWidths(r, res)
+
+	if res != nil && wMeta != nil {
+		res.Background = csssafe.Color(widget.OverrideBackground(wMeta.Background, wMeta.RoleOverrides, auth.UserFromContext(r.Context())))
+	}
+	if res != nil {
+		s.prepareWidgetCellFilter(r, wMeta, res)
+	}
 	if res == nil || !refreshableWidgetType(metadata.WidgetType(res.Type)) {
 		return
 	}
@@ -268,6 +285,9 @@ func (s *Server) decorateRefreshResult(r *http.Request, wMeta *metadata.Widget, 
 	rawValues := map[string]string{}
 	if wMeta != nil {
 		rawValues = widgetFilterRawValues(r, wMeta)
+		if filter := s.lenientWidgetCellFilter(r, wMeta); filter != nil {
+			rawValues[widgetCellFilterKey(wMeta)] = res.CellFilterJSON
+		}
 	}
 	if wMeta == nil {
 		res.PartialURL = widgetPartialURL(res.Name, nil, subsystem, nil)
@@ -295,12 +315,20 @@ func (s *Server) dashboardWidget(r *http.Request, name string) *metadata.Widget 
 	if subsystem != "" && s.reg.GetSubsystem(subsystem) == nil {
 		return nil
 	}
+	// Виджет правой панели оболочки обновляется тем же маршрутом, даже если
+	// на главной этого пользователя его нет (hide_on_home).
+	if _, panel := s.sidePanelFor(r); panel != nil && strings.EqualFold(panel.Name, name) {
+		return panel
+	}
 	hp := s.effectiveHomePage(subsystem)
 	honorRows := hp != nil && hp.Layout == "rows"
 	groups, _ := homePageWidgetGroups(hp, s.reg, honorRows)
 	for _, group := range groups {
 		for _, candidate := range group {
 			if strings.EqualFold(candidate.Name, name) {
+				if !widget.VisibleFor(candidate, auth.UserFromContext(r.Context())) {
+					return nil
+				}
 				return candidate
 			}
 		}
@@ -328,11 +356,19 @@ func (s *Server) widgetPartial(w http.ResponseWriter, r *http.Request) {
 	for key := range widgetFilterKeys(wMeta) {
 		allowed[key] = true
 	}
+	if wMeta.Type == metadata.WidgetTypeList && s.uiEnhancementsAllowed(r) {
+		allowed[widgetCellFilterKey(wMeta)] = true
+	}
 	for key := range r.URL.Query() {
 		if !allowed[key] {
 			http.Error(w, "unsupported widget parameter", http.StatusBadRequest)
 			return
 		}
+	}
+	cellFilter, cellErr := s.parseWidgetCellFilter(r, wMeta)
+	if cellErr != nil {
+		http.Error(w, "unsupported widget parameter", http.StatusBadRequest)
+		return
 	}
 	filterParams, err := parseWidgetFilterParams(r, wMeta)
 	if err != nil {
@@ -363,8 +399,12 @@ func (s *Server) widgetPartial(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: filterParams, Fresh: true})
+	res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: filterParams, Fresh: true, CellFilter: cellFilter, CaptureCellValues: s.uiEnhancementsAllowed(r)})
 	res.Title = wMeta.DisplayTitle(s.resolveLang(r))
+	if res.InvalidCellFilter {
+		http.Error(w, "unsupported widget parameter", http.StatusBadRequest)
+		return
+	}
 	if res.AccessDenied {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
@@ -378,6 +418,7 @@ func (s *Server) widgetPartial(w http.ResponseWriter, r *http.Request) {
 	if t == nil {
 		t = tmpl
 	}
+	s.prepareWidgetColumnWidths(r, &res)
 	var body bytes.Buffer
 	if err := t.ExecuteTemplate(&body, "widget-body", res); err != nil {
 		s.serverError(w, r, err)

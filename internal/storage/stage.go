@@ -124,8 +124,8 @@ func stageModeFromCtx(ctx context.Context) stageWriteMode {
 
 // canonicalFieldValue читает значение реквизита из карты полей записи так же,
 // как это делает сам слой персистентности: сначала точное имя, затем его
-// lowercase-вариант, затем любой EqualFold-вариант. Второй
-// результат — присутствовал ли ключ вообще: отсутствие ключа и явное пустое
+// lowercase-вариант, затем лексикографически первый непустой EqualFold-вариант.
+// Второй результат — присутствовал ли ключ вообще: отсутствие ключа и явное пустое
 // значение — разные вещи, и гейт этапов обязан их различать.
 //
 // Единый accessor используют запись, аудит и проверка этапов, чтобы точное и
@@ -144,15 +144,19 @@ func canonicalFieldValue(fields map[string]any, name string) (any, bool) {
 			return v, true
 		}
 	}
+	// Порядок обхода map случаен. Проверка и SQL должны выбрать один и тот же
+	// alias даже при нескольких вариантах регистра без точного/lowercase ключа.
+	var fallback any
+	var fallbackKey string
 	for key, value := range fields {
 		if strings.EqualFold(key, name) {
 			present = true
-			if value != nil {
-				return value, true
+			if value != nil && (fallback == nil || key < fallbackKey) {
+				fallback, fallbackKey = value, key
 			}
 		}
 	}
-	return nil, present
+	return fallback, present
 }
 
 // stageValueString приводит значение этапа к строке. Перечисление хранится

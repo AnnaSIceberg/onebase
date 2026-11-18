@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/entityservice"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/msgstatus"
 	"github.com/ivantit66/onebase/internal/query"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/report/compose"
@@ -249,20 +250,16 @@ func (h *handler) updateObjectV2(kind metadata.Kind) http.HandlerFunc {
 			return
 		}
 
-		// План 88: масковый пользователь не перезаписывает реальное значение.
-		if err := h.protectMaskedFieldsOnWrite(r.Context(), entity, id, body.Fields); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error(), "", 0)
-			return
-		}
-
 		result, err := h.entitySvc.Save(r.Context(), entityservice.SaveRequest{
-			Entity:          entity,
-			ID:              id,
-			IsNew:           false,
-			Fields:          body.Fields,
-			TablePartRows:   body.TablePartRows,
-			Action:          body.Action,
-			ExpectedVersion: expectedVersion,
+			Entity:               entity,
+			ID:                   id,
+			IsNew:                false,
+			MergeExistingFields:  true,
+			PreparePartialUpdate: h.preparePartialUpdate(entity, body.Action),
+			Fields:               body.Fields,
+			TablePartRows:        body.TablePartRows,
+			Action:               body.Action,
+			ExpectedVersion:      expectedVersion,
 		})
 		writeSaveResultV2(w, result, err, id, false)
 	}
@@ -378,7 +375,7 @@ func (h *handler) unpostDocumentV2() http.HandlerFunc {
 		writeJSONV2(w, http.StatusOK, restV2Envelope{Data: map[string]any{
 			"id":       id.String(),
 			"posted":   false,
-			"messages": result.DSLMessages,
+			"messages": msgstatus.StripAll(result.DSLMessages),
 		}})
 	}
 }
@@ -411,7 +408,35 @@ func (h *handler) runReportV2() http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
 			return
 		}
-		compiled, err := h.compileQueryWithRowAccess(r.Context(), rep.Query, params)
+		params, err = reportpkg.ResolveContextParams(r.Context(), rep, params, h.reg, h.store)
+		if err != nil {
+			writeError(w, http.StatusForbidden, "report context unavailable", "", 0)
+			return
+		}
+		if err := reportpkg.ValidateEnumParams(rep.Params, params, h.reg); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
+			return
+		}
+		if err := h.validateReportChoiceValues(r.Context(), rep, params); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
+			return
+		}
+		sourceSettings, err := h.loadReportResultSettingsV2(r, rep)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
+			return
+		}
+		variant := reportResultVariantV2(r, sourceSettings)
+		text, values, err := rep.QueryForVariant(variant, params)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "query compile error: "+err.Error(), "", 0)
+			return
+		}
+		if sourceSettings != nil && len(sourceSettings.Filters) > 0 && strings.TrimSpace(text) == "" {
+			writeError(w, http.StatusUnprocessableEntity, "report source filters require a query source", "", 0)
+			return
+		}
+		compiled, err := h.compileQueryWithRowAccess(r.Context(), text, values)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "query compile error: "+err.Error(), "", 0)
 			return
@@ -425,6 +450,16 @@ func (h *handler) runReportV2() http.HandlerFunc {
 			writeError(w, http.StatusForbidden, "masked field: "+maskPlan.Denied, "", 0)
 			return
 		}
+		filterPlan, err := h.reportResultFilterPlanV2(r, compiled, sourceSettings)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error(), "", 0)
+			return
+		}
+		if !filterPlan.Empty() {
+			h.runReportResultFilteredV2(w, r, rep, &compiled, maskPlan, variant, filterPlan, page, limit)
+			return
+		}
+
 		if wantsReportComposition(r.URL.Query()) {
 			rows, cols, err := query.Run(r.Context(), h.store, &compiled)
 			if err != nil {
@@ -436,10 +471,6 @@ func (h *handler) runReportV2() http.HandlerFunc {
 			if err := maskPlan.Apply(rows); err != nil {
 				writeError(w, http.StatusForbidden, "masked field: "+err.Error(), "", 0)
 				return
-			}
-			variant := r.URL.Query().Get("variant")
-			if variant == "" {
-				variant = r.URL.Query().Get("__variant")
 			}
 			comp := rep.ActiveComposition(variant)
 			if comp == nil {
@@ -591,7 +622,7 @@ func writeSaveResultV2(w http.ResponseWriter, result entityservice.SaveResult, e
 	}
 	data := map[string]any{
 		"id":       id.String(),
-		"messages": result.DSLMessages,
+		"messages": msgstatus.StripAll(result.DSLMessages),
 	}
 	if posted {
 		data["posted"] = true
@@ -686,6 +717,9 @@ func totalPages(total, limit int) int {
 func reportParamsFromQuery(q url.Values, rep *reportpkg.Report, res scheduler.ConstantResolver) (map[string]any, error) {
 	params := make(map[string]any, len(rep.Params))
 	for _, p := range rep.Params {
+		if p.Context != nil {
+			continue
+		}
 		raw := q.Get(p.Name)
 		if _, ok := q[p.Name]; !ok {
 			// Параметра в запросе нет — подставляем умолчание той же грамматикой
@@ -1289,6 +1323,9 @@ func entitySchemaName(e *metadata.Entity) string {
 func reportOpenAPISchema(rep *reportpkg.Report) map[string]any {
 	props := map[string]any{}
 	for _, p := range rep.Params {
+		if p.Context != nil {
+			continue
+		}
 		props[p.Name] = reportParamOpenAPISchema(p)
 	}
 	return map[string]any{"type": "object", "properties": props}

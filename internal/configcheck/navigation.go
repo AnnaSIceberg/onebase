@@ -29,6 +29,9 @@ func navigationObjects(p *project.Project) []navigation.Object {
 	for _, r := range p.Reports {
 		add("report", r.Name, r.DisplayName(""), r.Titles)
 		objects[len(objects)-1].External = r.External
+		for _, variant := range r.Variants {
+			objects[len(objects)-1].Variants = append(objects[len(objects)-1].Variants, variant.Name)
+		}
 	}
 	for _, r := range p.Processors {
 		add("processor", r.Name, r.DisplayName(""), r.Titles)
@@ -63,7 +66,7 @@ func checkNavigation(p *project.Project, warnings bool) []Issue {
 		for _, d := range diagnostics {
 			if d.Warning == warnings {
 				issues = append(issues, Issue{File: file, Object: name, Kind: "Навигация", Code: d.Code, Message: d.Node + ": " + d.Message,
-					SuggestedFix: "Исправьте menu: стабильные уникальные id, typed target из contents/nav, не более трёх уровней."})
+					SuggestedFix: "Исправьте menu: стабильные уникальные id, typed target из contents/nav, не более восьми папок до команды."})
 			}
 		}
 	}

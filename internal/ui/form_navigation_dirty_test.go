@@ -98,14 +98,17 @@ func TestManagedNavigationRespectsResponseDirtyState(t *testing.T) {
 	const harness = `
 const fs = require('fs');
 const source = fs.readFileSync(process.argv[2], 'utf8');
+const bootstrap = source.slice(0, source.indexOf('function obManagedReady('));
 const start = source.indexOf('  async function dispatchFormEvent(snapshot){');
+const concurrencyStart = source.indexOf('  function concurrentFormState(form){');
+const concurrencyEnd = source.indexOf('  async function snapshotFormEvent(', concurrencyStart);
 const end = source.indexOf('\n  window.obFire = function', start);
 const fireEnd = source.indexOf('\n  // One close controller', end);
 const helpersStart = source.indexOf('  function closeBodyEntries(body, predicate){');
 const helpersEnd = source.indexOf('  function setManagedFormDirty(dirty){', helpersStart);
 const mergeStart = source.indexOf('  function applyCloseResponse(data, before, current){');
 const mergeEnd = source.indexOf('\n  window.obRequestFormClose', mergeStart);
-if ([start, end, fireEnd, helpersStart, helpersEnd, mergeStart, mergeEnd].some(i => i < 0)) {
+if ([start, end, fireEnd, helpersStart, helpersEnd, mergeStart, mergeEnd, concurrencyStart, concurrencyEnd].some(i => i < 0)) {
   throw new Error('managed.js behavior slices not found');
 }
 const dirtyEnd = source.indexOf('  function applySavedIdentity(data){', helpersEnd);
@@ -120,15 +123,19 @@ const moveEnd = source.indexOf('  function rememberActiveGrid', moveStart);
 if ([dirtyEnd, markStart, markEnd, gridHelpersStart, gridHelpersEnd, moveStart, moveEnd, closeIDStart, closeIDEnd].some(i => i < 0)) {
   throw new Error('managed.js dirty/grid behavior slices not found');
 }
-const fnSource = source.slice(closeIDStart, closeIDEnd) + source.slice(helpersEnd, dirtyEnd) + source.slice(markStart, markEnd) +
+// Тост сообщений модуля (obFlashMessage) живёт в том же IIFE, что obFire.
+const msgStart = source.indexOf('  // BEGIN onebase-message-status');
+const msgEnd = source.indexOf('  // END onebase-message-status', msgStart);
+if (msgStart < 0 || msgEnd < 0) throw new Error('managed.js message-status slice not found');
+const fnSource = source.slice(closeIDStart, closeIDEnd) + source.slice(msgStart, msgEnd) + source.slice(helpersEnd, dirtyEnd) + source.slice(markStart, markEnd) +
   source.slice(gridHelpersStart, gridHelpersEnd) + source.slice(moveStart, moveEnd) +
   source.slice(helpersStart, helpersEnd) + source.slice(mergeStart, mergeEnd) +
-  source.slice(start, fireEnd);
+  source.slice(concurrencyStart, concurrencyEnd) + source.slice(start, fireEnd);
 
-async function run(response, formDirty, concurrentEdit) {
+async function run(response, formDirty, concurrentEdit, docID = 'doc') {
   const calls = { assign: [], flash: [], dirty: [], values: [], savedIdentity: 0 };
   const fields = { 'Имя': 'исходное', 'Описание': 'старое' };
-  const formEditState = { revision: 0 };
+  const formEditState = { revision: formDirty === true ? 1 : 0, cleanRevision: 0 };
   let rows = [{ id: 1, _ord: 0, Item: 'first' }, { id: 2, _ord: 1, Item: 'second' }];
   const bodyNow = () => new URLSearchParams({ ...fields,
     'tp_json.Items': JSON.stringify(rows.map(r => ({ Item: r.Item }))),
@@ -145,29 +152,31 @@ async function run(response, formDirty, concurrentEdit) {
   const entered = new Promise(resolve => { fetchEntered = resolve; });
   const waiting = new Promise(resolve => { finishFetch = resolve; });
   const win = {
-    _obFormDirty: formDirty,
+    _obFormDirty: !!formDirty,
     location: { assign(url) { calls.assign.push(url); } },
     obSetEmbeddedDirty(v) { calls.dirty.push(v); },
     _obGrids: { Items: grid },
     obManagedApplyTablePartRefOptions() {},
     obManagedApplyColumnTitles() {},
+    obManagedApplyHints() {},
     applyTableParts(parts) {
       if (parts && parts.Items) rows = parts.Items.map((r, i) => ({ ...r, id: i + 1, _ord: i }));
     },
     obOpenQuestion() {},
   };
   const env = {
-    window: win, document: {}, _obBaseTitle: '',
+    window: win, document: {getElementById(id) { return id === 'ob-managed-config' ? {textContent: JSON.stringify({url:'/ui/form-event',docId:'doc'})} : null; }}, _obBaseTitle: '',
     rememberActiveGrid() {}, updateTotals() {},
     reloadRequired: false, formEventWriteUnknown: false, manualReconcileRequired: false,
     formEditState,
     formEventQueue: Promise.resolve(), formEventPendingCount: 0, formEventPending: false,
     programmaticCloseSource: null,
+    deferredGeneration: 0, deferredPendingCount: 0,
     closePending: null, closeHandoffPending: false, retryableClose: null,
     // Вопрос перед проведением (ПередПроведением) живёт в контроллере закрытия,
     // вне вырезки; навигации он не касается.
     beforePostState: null, beforePostSnapshot: () => false, settleBeforePost() {},
-    DOC_ID: 'doc', URL: '/ui/form-event',
+    DOC_ID: docID, URL: '/ui/form-event',
     fetch: () => { fetchEntered(); return waiting; },
     flash: (m, kind) => calls.flash.push([m, kind]),
     // Тексты сообщений приходят из конфига формы (closeMessages), а здесь
@@ -184,10 +193,11 @@ async function run(response, formDirty, concurrentEdit) {
     snapshotFormEvent: async () => ({
       body: bodyNow(), form: null, elementName: 'Открыть',
       extraParams: null, wasNew: false, editRevision: formEditState.revision,
+      concurrentState: new Map(), deferredGeneration: 0, deferredOverlap: false,
     }),
     refreshQueuedFormEventIdentity() {},
   };
-  const factory = new Function(...Object.keys(env), fnSource + '\nwindow.markNativeEdit = _obMarkDirty; return window.obFire;');
+  const factory = new Function(...Object.keys(env), bootstrap + '\nvar cfg = obManagedConfig();\n' + fnSource + '\nwindow.markNativeEdit = _obMarkDirty; return window.obFire;');
   const fire = factory(...Object.values(env));
   const pending = fire('Открыть', 'Нажатие');
   await entered;
@@ -230,6 +240,17 @@ const blocked = 'Форма содержит несохранённые изме
   // Обработчик сам записал объект (dirty=false + version) — форма чиста.
   c = await run({ ok: true, dirty: false, version: 2, navigation: nav }, true);
   check(c.assign.length === 1, 'записанная обработчиком форма не перешла: ' + JSON.stringify(c));
+
+  c = await run({ ok: true, dirty: false, navigation: nav }, 'server');
+  check(c.assign.length === 1 && !c.isDirty, 'server-only latch blocked clean saved object: ' + JSON.stringify(c));
+  c = await run({ ok: true, dirty: false }, 'server');
+  check(!c.isDirty, 'server-only latch blocked a later notification: ' + JSON.stringify(c));
+  c = await run({ ok: true, dirty: false, navigation: nav }, true);
+  check(c.assign.length === 0 && c.isDirty, 'native edit cleared without write proof: ' + JSON.stringify(c));
+  c = await run({ ok: true, dirty: false, navigation: nav }, 'server', true);
+  check(c.assign.length === 0 && c.isDirty, 'concurrent native edit lost: ' + JSON.stringify(c));
+  c = await run({ ok: true, dirty: false, navigation: nav }, 'server', false, '');
+  check(c.assign.length === 0 && c.isDirty, 'new unsaved form lost its dirty state: ' + JSON.stringify(c));
 
   // Ввод после отправки snapshot старше ответа. Старые values не затирают
   // поле пользователя; независимое изменение обработчика всё ещё видно.

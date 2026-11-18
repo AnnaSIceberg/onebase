@@ -36,6 +36,7 @@ const (
 type Result struct {
 	Columns  []string       `json:"columns"`
 	Groups   []*Group       `json:"groups"`
+	Details  []DetailRow    `json:"details,omitempty"` // flat composition without a synthetic group
 	Grand    map[string]any `json:"grand"`
 	RowCount int            `json:"row_count"`
 	Capped   bool           `json:"capped"`
@@ -68,13 +69,16 @@ func (w *warnCollector) add(msg string) {
 }
 
 type Group struct {
-	Field     string                      `json:"field"`
-	Key       any                         `json:"key"`
-	Subtotals map[string]any              `json:"subtotals"`
-	Count     int                         `json:"count"`
-	Children  []*Group                    `json:"children,omitempty"`
-	Details   []DetailRow                 `json:"details,omitempty"`
-	Styles    map[string]report.CellStyle `json:"styles,omitempty"` // условное оформление по подытогам; ключ "" = вся строка
+	Field     string         `json:"field"`
+	Key       any            `json:"key"`
+	Subtotals map[string]any `json:"subtotals"`
+	Count     int            `json:"count"`
+	Children  []*Group       `json:"children,omitempty"`
+	// sortValues — значения полей сортировки, которые не группировка и не
+	// показатель (sortFieldValues).
+	sortValues map[string]any
+	Details    []DetailRow                 `json:"details,omitempty"`
+	Styles     map[string]report.CellStyle `json:"styles,omitempty"` // условное оформление по подытогам; ключ "" = вся строка
 }
 
 type DetailRow struct {
@@ -87,6 +91,9 @@ func Compose(rows []Row, spec report.Composition, ev Evaluator) (*Result, error)
 }
 
 func ComposeN(rows []Row, spec report.Composition, ev Evaluator, maxRows int) (*Result, error) {
+	if err := validateCalculations(spec); err != nil {
+		return nil, err
+	}
 	rows = alignRowKeys(rows, spec)
 	res := &Result{RowCount: len(rows)}
 	if maxRows > 0 && len(rows) > maxRows {
@@ -95,8 +102,11 @@ func ComposeN(rows []Row, spec report.Composition, ev Evaluator, maxRows int) (*
 		res.RowCount = maxRows
 	}
 	wc := &warnCollector{}
-	res.Groups = buildGroups(rows, spec, 0, ev, wc)
+	if len(spec.Groupings) == 0 && spec.Detail {
+		res.Details = buildDetails(rows, spec, ev, wc)
+	}
 	res.Grand = aggregate(rows, spec.Measures, ev, wc)
+	res.Groups = buildGroups(rows, spec, 0, ev, wc, res.Grand)
 	res.Warnings = wc.msgs
 	return res, nil
 }
@@ -139,6 +149,9 @@ func alignRowKeys(rows []Row, spec report.Composition) []Row {
 	// DetailLink — колонка строки, из которой берётся UUID для ссылки на документ.
 	// DetailEntity — имя сущности (не поле строки), в alignRowKeys не добавляем.
 	add(spec.DetailLink)
+	for _, d := range spec.DetailFields {
+		add(d.Field)
+	}
 	if len(targets) == 0 {
 		return rows
 	}
@@ -160,7 +173,7 @@ func alignRowKeys(rows []Row, spec report.Composition) []Row {
 	return out
 }
 
-func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, wc *warnCollector) []*Group {
+func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, wc *warnCollector, grand Row) []*Group {
 	if level >= len(spec.Groupings) {
 		return nil
 	}
@@ -177,10 +190,11 @@ func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, w
 	groups := make([]*Group, 0, len(order))
 	for _, k := range order {
 		gr := &Group{
-			Field:     field,
-			Key:       k,
-			Count:     len(buckets[k]),
-			Subtotals: aggregate(buckets[k], spec.Measures, ev, wc),
+			Field:      field,
+			Key:        k,
+			Count:      len(buckets[k]),
+			Subtotals:  aggregateContext(buckets[k], spec.Measures, ev, wc, measureContext{grand: grand, level: field}),
+			sortValues: sortFieldValues(buckets[k], spec),
 		}
 		// Условное оформление группы/подытога вычисляется по её подытогам плюс
 		// собственному полю группировки (field→Key) — чтобы правило вида
@@ -193,7 +207,7 @@ func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, w
 		styleRow[field] = gr.Key
 		gr.Styles = evalStyles(styleRow, spec, ev, wc)
 		if level+1 < len(spec.Groupings) {
-			gr.Children = buildGroups(buckets[k], spec, level+1, ev, wc)
+			gr.Children = buildGroups(buckets[k], spec, level+1, ev, wc, grand)
 		} else if spec.Detail {
 			gr.Details = buildDetails(buckets[k], spec, ev, wc)
 		}
@@ -235,7 +249,27 @@ func evalStyles(row Row, spec report.Composition, ev Evaluator, wc *warnCollecto
 func buildDetails(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollector) []DetailRow {
 	out := make([]DetailRow, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, DetailRow{Values: r, Styles: evalStyles(r, spec, ev, wc)})
+		values := r
+		cloned := false
+		for _, m := range spec.Measures {
+			if !m.InScope(report.MeasureScopeDetail) {
+				// Clone once before blanking; input still feeds grand/group totals.
+				if !cloned {
+					values = make(Row, len(r))
+					for key, value := range r {
+						values[key] = value
+					}
+					cloned = true
+				}
+				for key := range values {
+					if strings.EqualFold(key, m.Field) {
+						values[key] = nil
+					}
+				}
+				values[m.Field] = nil
+			}
+		}
+		out = append(out, DetailRow{Values: values, Styles: evalStyles(values, spec, ev, wc)})
 	}
 	sortDetails(out, spec)
 	return out
@@ -263,6 +297,16 @@ func sortGroups(groups []*Group, spec report.Composition) {
 			case sk.Field == groups[i].Field:
 				vi, vj = groups[i].Key, groups[j].Key
 			default:
+				vi, vj, ok := groups[i].sortValues[sk.Field], groups[j].sortValues[sk.Field], groups[i].sortValues != nil
+				if !ok {
+					continue
+				}
+				if c := compareVals(vi, vj); c != 0 {
+					if sk.Dir == "desc" {
+						return c > 0
+					}
+					return c < 0
+				}
 				continue
 			}
 			if c := compareVals(vi, vj); c != 0 {
@@ -274,6 +318,42 @@ func sortGroups(groups []*Group, spec report.Composition) {
 		}
 		return false
 	})
+}
+
+// sortFieldValues — для правил сортировки по полю запроса, которое не
+// группировка и не показатель (в 1С — порядок по пользовательскому полю,
+// например «Сортировка400»), — наименьшее значение поля в строках группы. По
+// нему группы и упорядочиваются; поле само в отчёт не выводится.
+func sortFieldValues(rows []Row, spec report.Composition) map[string]any {
+	if len(spec.Sort) == 0 {
+		return nil
+	}
+	skip := measureSet(spec)
+	for _, g := range spec.Groupings {
+		skip[g] = true
+	}
+	var out map[string]any
+	for _, sk := range spec.Sort {
+		if skip[sk.Field] {
+			continue
+		}
+		var best any
+		found := false
+		for _, r := range rows {
+			v, ok := r[sk.Field]
+			if !ok || v == nil {
+				continue
+			}
+			if !found || compareVals(v, best) < 0 {
+				best, found = v, true
+			}
+		}
+		if out == nil {
+			out = map[string]any{}
+		}
+		out[sk.Field] = best
+	}
+	return out
 }
 
 func sortDetails(rows []DetailRow, spec report.Composition) {
@@ -396,6 +476,9 @@ func normalizeGroupKey(v any) any {
 // Строки выравниваются по spec (alignRowKeys) — поэтому field и поля мер
 // находятся регистронезависимо, как и в основном своде.
 func GroupByField(rows []Row, spec report.Composition, field string, ev Evaluator) (keys []any, subtotals map[any]map[string]any) {
+	if err := validateCalculations(spec); err != nil {
+		return nil, nil
+	}
 	rows = alignRowKeys(rows, spec)
 	buckets := map[any][]Row{}
 	for _, r := range rows {
@@ -406,26 +489,50 @@ func GroupByField(rows []Row, spec report.Composition, field string, ev Evaluato
 		buckets[k] = append(buckets[k], r)
 	}
 	subtotals = make(map[any]map[string]any, len(buckets))
+	grand := aggregate(rows, spec.Measures, ev, nil)
 	for k, rs := range buckets {
 		// Предупреждения уже собраны основным проходом Compose — здесь nil-приёмник.
-		subtotals[k] = aggregate(rs, spec.Measures, ev, nil)
+		subtotals[k] = aggregateContext(rs, spec.Measures, ev, nil, measureContext{grand: grand, level: field})
 	}
 	return keys, subtotals
 }
 
 func aggregate(rows []Row, measures []report.Measure, ev Evaluator, wc *warnCollector) map[string]any {
+	return aggregateContext(rows, measures, ev, wc, measureContext{grandSelf: true})
+}
+
+func aggregateContext(rows []Row, measures []report.Measure, ev Evaluator, wc *warnCollector, ctx measureContext) map[string]any {
+	level := ctx.level
+	if level == "" {
+		level = report.MeasureScopeGrand
+	}
+	// Keep declared names for P6 reference shadowing even when a measure is
+	// excluded here. Scope must not turn a real Grand_X field into context X.
+	declared := measures
 	out := map[string]any{}
+	active := make([]report.Measure, 0, len(measures))
+	var activeSlots []int
+	for slot, m := range measures {
+		if m.InScope(level) {
+			active = append(active, m.AtLevel(level))
+			activeSlots = append(activeSlots, slot)
+		} else {
+			out[m.Field] = nil
+		}
+	}
+	measures = active
 	// Первый проход: обычные показатели (не вычисляемые).
 	for _, m := range measures {
 		if m.Expr != "" {
 			continue // вычисляемые — во второй проход
 		}
-		out[m.Field] = aggMeasure(rows, m)
+		out[m.Field] = aggMeasureAtLevel(rows, m, level, wc)
 	}
 	// Второй проход: вычисляемые показатели. Порядок определяется зависимостями
 	// (Expr, ссылающийся на другой Expr, вычисляется после него) — порядок
 	// объявления в YAML больше не критичен. Циклы разрываются с предупреждением.
-	order, cyclic := orderExprMeasures(measures)
+	order, cyclic := orderExprMeasures(measures, declared)
+	availability := newMeasureAvailability(declared, measures, activeSlots, order, ctx, out)
 	if len(cyclic) > 0 {
 		names := make([]string, len(cyclic))
 		for i, idx := range cyclic {
@@ -435,11 +542,26 @@ func aggregate(rows []Row, measures []report.Measure, ev Evaluator, wc *warnColl
 	}
 	for _, idx := range order {
 		m := measures[idx]
-		if ev == nil {
+		slot := activeSlots[idx]
+		if availability.blocked[slot] {
 			out[m.Field] = nil
+			availability.writers[m.Field] = slot
 			continue
 		}
-		d, ok, err := ev.EvalNum(m.Expr, out)
+		if ev == nil {
+			out[m.Field] = nil
+			availability.writers[m.Field] = slot
+			continue
+		}
+		bindings, available := contextBindings(m.Expr, out, declared, ctx)
+		if !available {
+			availability.mark(slot)
+			availability.propagate(out)
+			out[m.Field] = nil
+			availability.writers[m.Field] = slot
+			continue
+		}
+		d, ok, err := ev.EvalNum(m.Expr, bindings)
 		switch {
 		case err != nil:
 			// Runtime-ошибка (не синтаксис — тот ловит onebase check): показываем
@@ -453,6 +575,7 @@ func aggregate(rows []Row, measures []report.Measure, ev Evaluator, wc *warnColl
 			// ноль) → пустая ячейка, как в 1С (без предупреждения).
 			out[m.Field] = nil
 		}
+		availability.writers[m.Field] = slot
 	}
 	return out
 }
@@ -462,15 +585,22 @@ func aggregate(rows []Row, measures []report.Measure, ev Evaluator, wc *warnColl
 // (топологическая сортировка, стабильная — при отсутствии зависимостей сохраняет
 // порядок объявления). cyclic — индексы показателей, оставшихся в цикле; они
 // добавляются в конец order в порядке объявления (вычислятся «как есть»).
-func orderExprMeasures(measures []report.Measure) (order []int, cyclic []int) {
+func orderExprMeasures(measures []report.Measure, declared ...[]report.Measure) (order []int, cyclic []int) {
 	// Имена приводим к нижнему регистру: интерпретатор разрешает идентификаторы
 	// регистронезависимо, поэтому и зависимости между Expr должны определяться так.
 	exprFields := map[string]bool{}
+	allFields := map[string]bool{}
 	var idxs []int
 	for i, m := range measures {
+		allFields[strings.ToLower(m.Field)] = true
 		if m.Expr != "" {
 			exprFields[strings.ToLower(m.Field)] = true
 			idxs = append(idxs, i)
+		}
+	}
+	for _, fields := range declared {
+		for _, m := range fields {
+			allFields[strings.ToLower(m.Field)] = true
 		}
 	}
 	if len(idxs) <= 1 {
@@ -478,7 +608,7 @@ func orderExprMeasures(measures []report.Measure) (order []int, cyclic []int) {
 	}
 	deps := make(map[int]map[string]bool, len(idxs))
 	for _, i := range idxs {
-		deps[i] = exprIdentDeps(measures[i].Expr, exprFields, strings.ToLower(measures[i].Field))
+		deps[i] = exprIdentDeps(measures[i].Expr, exprFields, strings.ToLower(measures[i].Field), allFields)
 	}
 	resolved := map[string]bool{}
 	remaining := append([]int(nil), idxs...)
@@ -516,8 +646,12 @@ func orderExprMeasures(measures []report.Measure) (order []int, cyclic []int) {
 // Используем лексер DSL, чтобы брать идентификаторы по-токенно (а не подстрокой),
 // сравниваем регистронезависимо (как интерпретатор) и исключаем сам показатель
 // (self уже в нижнем регистре) — самоссылка не создаёт зависимости.
-func exprIdentDeps(expr string, exprFields map[string]bool, self string) map[string]bool {
+func exprIdentDeps(expr string, exprFields map[string]bool, self string, fieldSets ...map[string]bool) map[string]bool {
 	deps := map[string]bool{}
+	allFields := exprFields
+	if len(fieldSets) > 0 {
+		allFields = fieldSets[0]
+	}
 	// Keep dependency discovery bounded before expreval gets its chance to
 	// reject the formula. These values intentionally mirror expreval's source
 	// gate; an over-limit expression will later surface as the formula error.
@@ -534,6 +668,11 @@ func exprIdentDeps(expr string, exprFields map[string]bool, self string) map[str
 			continue
 		}
 		lit := strings.ToLower(t.Literal)
+		if !allFields[lit] {
+			if scope, field, ok := report.MeasureReference(lit); ok && scope != "previous" {
+				lit = field
+			}
+		}
 		if lit != self && exprFields[lit] {
 			deps[lit] = true
 		}
@@ -544,6 +683,32 @@ func exprIdentDeps(expr string, exprFields map[string]bool, self string) map[str
 func aggMeasure(rows []Row, m report.Measure) any {
 	if m.Agg == "count" {
 		return int64(len(rows))
+	}
+	if m.Agg == "count_distinct" {
+		seen := make(map[string]struct{})
+		for _, row := range rows {
+			v := row[m.Field]
+			if v == nil {
+				continue
+			}
+			// Text stays text, including the empty string. Database byte strings
+			// share text identity; numeric driver types share decimal identity.
+			var key string
+			switch x := v.(type) {
+			case string:
+				key = "text:" + x
+			case []byte:
+				key = "text:" + string(x)
+			default:
+				if d, ok := toDecimal(v); ok {
+					key = "number:" + d.String()
+				} else {
+					key = fmt.Sprintf("%T:%v", v, v)
+				}
+			}
+			seen[key] = struct{}{}
+		}
+		return int64(len(seen))
 	}
 	var acc, mn, mx decimal.Decimal
 	cnt := 0

@@ -33,6 +33,12 @@ const fileSubmitStart = managed.indexOf('  obManagedReady(restoreFormAttrs);');
 const fileSubmitEnd = managed.indexOf('  window._obFormDirty = false;', fileSubmitStart);
 assert.ok(fileSubmitStart >= 0 && fileSubmitEnd > fileSubmitStart, 'managed file-submit slice not found');
 const fileSubmitHandler = managed.slice(fileSubmitStart, fileSubmitEnd);
+// Тост сообщений модуля (obFlashMessage) живёт в том же IIFE, что контроллер.
+const messageStatus = managed.slice(managed.indexOf('  // BEGIN onebase-message-status'), managed.indexOf('  // END onebase-message-status'));
+const fileWaitStart = managed.indexOf('  async function awaitCurrentFileReads(');
+const fileWaitEnd = managed.indexOf('  // obFilePick', fileWaitStart);
+assert.ok(fileWaitStart >= 0 && fileWaitEnd > fileWaitStart, 'managed file-read wait not found');
+const fileReadWaiter = managed.slice(fileWaitStart, fileWaitEnd);
 
 class FakeFormData {
   constructor(form) {
@@ -48,7 +54,7 @@ class FakeFormData {
   forEach(fn) { for (const [key, value] of this.values) fn(value, key); }
 }
 
-function runtime(fetchImpl, cfgOverride = {}, productionValues = false) {
+function runtime(fetchImpl, cfgOverride = {}, productionValues = false, productionFileReads = false) {
   const applied = [];
   const assigned = [];
 	const dirtyReports = [];
@@ -197,6 +203,7 @@ function runtime(fetchImpl, cfgOverride = {}, productionValues = false) {
   context.crypto = {randomUUID() { uuid++; return `00000000-0000-4000-8000-${String(uuid).padStart(12, '0')}`; }};
   context.obManagedApplyTablePartRefOptions = (value) => applied.push(['refs', value]);
   context.obManagedApplyColumnTitles = () => {};
+  context.obManagedApplyHints = () => {};
   context.applyTableParts = (value) => applied.push(['parts', value]);
   context.confirm = () => true;
   context.__obEmbedded = true;
@@ -212,7 +219,7 @@ function runtime(fetchImpl, cfgOverride = {}, productionValues = false) {
 		var mapped = SERVICE_FIELDS[name];
 		return typeof mapped === 'string' && mapped ? mapped : name;
 	  }
-      async function awaitCurrentFileReads(){ return true; }
+      ${productionFileReads ? fileReadWaiter : 'async function awaitCurrentFileReads(){ return true; }'}
 	  function obManagedWritableTableBody(){ return null; }
       function applyFormConditionalCSS(value){ globalThis.__applied.push(['css', value]); }
       function applyElementStates(value){ globalThis.__applied.push(['states', value]); }
@@ -223,10 +230,22 @@ function runtime(fetchImpl, cfgOverride = {}, productionValues = false) {
 		}
 	  }
 	  function applyChoiceList(name, value){ globalThis.__applied.push(['choice', name, value]); }
-      function applyFormTables(value){ globalThis.__applied.push(['tables', value]); }
+      function applyFormTables(value){
+        globalThis.__applied.push(['tables', value]);
+        if (!cfg.simulateTables || !value) return;
+        Object.keys(value).forEach(function(name){
+          var prefix = 'vt.' + name + '.';
+          Array.from(globalThis.__form.values.keys()).forEach(function(key){
+            if (key.indexOf(prefix) === 0) globalThis.__form.values.delete(key);
+          });
+          value[name].forEach(function(row, i){
+            Object.keys(row).forEach(function(field){ globalThis.__form.values.set(prefix + i + '.' + field, String(row[field])); });
+          });
+        });
+      }
 	  function openItemPicker(value, name, extra){ globalThis.__applied.push(['picker', value, name, extra]); }
       function flash(value, kind){ globalThis.__applied.push(['flash', value, kind]); }
-  `;
+  ` + messageStatus;
   vm.runInNewContext(prefix + (productionValues ? valueRenderer + dirtyListeners : controlStateRenderer) + eventController + controller + '\n})();', context, {filename: 'managed-close-controller.js'});
   vm.runInNewContext(escapeHandler, context, {filename: 'managed-close-escape.js'});
 	return {
@@ -260,6 +279,162 @@ function dispatchSubmit(app) {
   app.document.dispatch('submit', event);
   return event;
 }
+
+function idleProbe(app) {
+  const begin = managed.indexOf('// BEGIN onebase-form-idle');
+  const end = managed.indexOf('// END onebase-form-idle');
+  vm.runInNewContext(managed.slice(begin, end), app.context);
+  let tick;
+  let now = 0;
+  let calls = 0;
+  const manager = app.context.obManagedIdleManager({
+    now: () => now, hidden: () => false, modal: () => false,
+    busy: () => app.context.obManagedIdleBusy(),
+    fire: () => { calls++; return app.context.obFire('', 'ОбработкаОжидания', {_idle_proc: 'АвтоЗапись', _idle_token: 'signed'}); },
+    setTimeout(fn) { tick = fn; return 1; }, clearTimeout() {},
+  });
+  manager.apply([{proc: 'АвтоЗапись', interval: 1, token: 'signed'}]);
+  return {async advance() { await Promise.resolve(); now += 1000; tick(); await new Promise(setImmediate); }, calls: () => calls};
+}
+
+test('idle does not autosave the old new-form snapshot during an accepted native save', async () => {
+  const app = runtime(async () => response({ok: true}));
+  const idle = idleProbe(app);
+  assert.equal(dispatchSubmit(app).defaultPrevented, false);
+  await idle.advance();
+  assert.equal(idle.calls(), 0, 'idle autosave raced the pending native POST /new');
+});
+
+test('idle remains available after a cancelled submit or native validation failure', async () => {
+  const app = runtime(async () => response({ok: true}));
+  const idle = idleProbe(app);
+  // Failed native constraint validation does not dispatch submit at all.
+  await idle.advance();
+  assert.equal(idle.calls(), 1);
+  app.document.addEventListener('submit', event => event.preventDefault());
+  assert.equal(dispatchSubmit(app).defaultPrevented, true);
+  await idle.advance();
+  assert.equal(idle.calls(), 2, 'cancelled submit permanently stopped idle');
+});
+
+test('idle observes a later submit veto after a microtask checkpoint', async () => {
+  const app = runtime(async () => response({ok: true}));
+  const idle = idleProbe(app);
+  const event = {target: app.form, defaultPrevented: false};
+  // Native dispatch can checkpoint between callbacks, unlike script-driven
+  // requestSubmit. Run the production capture listener before the late veto.
+  app.listeners.get('submit')[0](event);
+  await Promise.resolve();
+  event.defaultPrevented = true;
+  await new Promise(resolve => setTimeout(resolve, 10));
+  await idle.advance();
+  assert.equal(idle.calls(), 1, 'microtask latched a subsequently cancelled submit');
+});
+
+test('idle waits for pending file reads and remains stopped after native resubmission', async () => {
+  const app = runtime(async () => response({ok: true}));
+  const file = withFileSubmit(app);
+  const idle = idleProbe(app);
+  assert.equal(file.submit(file.submitter).defaultPrevented, true);
+  await waitFor(() => file.readPending());
+  await idle.advance();
+  assert.equal(idle.calls(), 0, 'idle raced the snapshot waiting for FileReader');
+  file.finishRead();
+  await waitFor(() => file.posts.length === 1);
+  await idle.advance();
+  assert.equal(idle.calls(), 0, 'file reentry failed to fence the native POST');
+});
+
+test('idle resumes when a file read fails without a native POST', async () => {
+  const app = runtime(async () => response({ok: true}));
+  const file = withFileSubmit(app);
+  const idle = idleProbe(app);
+  file.submit(file.submitter);
+  await waitFor(() => file.readPending());
+  file.finishRead(false);
+  await waitFor(() => !app.context.obManagedIdleBusy());
+  await idle.advance();
+  assert.equal(file.posts.length, 0);
+  assert.equal(idle.calls(), 1);
+});
+
+test('idle stays stopped after the legacy native file-submit fallback', async () => {
+  const app = runtime(async () => response({ok: true}));
+  const file = withFileSubmit(app);
+  delete app.form.requestSubmit;
+  let nativePosts = 0;
+  app.form.submit = () => { nativePosts++; };
+  const idle = idleProbe(app);
+  file.submit(file.submitter);
+  await waitFor(() => file.readPending());
+  file.finishRead();
+  await waitFor(() => nativePosts === 1);
+  await idle.advance();
+  assert.equal(idle.calls(), 0);
+});
+
+// The Go wrapper supplies a real HTTP form-event handler and SQLite store.
+// The ordinary Node suite also runs the same client controls with a fixed reply.
+test('restart preserves committed identity and fences queued and later writes', async () => {
+  const ui = fs.readFileSync('static/ui.js', 'utf8');
+  const first = ui.indexOf('window.obServerRestarted =');
+  const last = ui.indexOf('// END onebase-page-freshness', first);
+  assert.ok(first >= 0 && last > first);
+  for (const restarted of [false, true]) {
+    let requests = 0;
+    const bodies = [];
+    let saved;
+    const boot = process.env.OB_RESTART_TEST_BOOT || 'current-process';
+    const app = runtime(async (_url, options) => {
+      requests++;
+      bodies.push(new URLSearchParams(options.body.toString()));
+      let res;
+      if (process.env.OB_RESTART_TEST_URL) {
+        res = await fetch(process.env.OB_RESTART_TEST_URL, options);
+        const data = await res.clone().json();
+        if (data.savedId) saved = data;
+      } else {
+        saved = {ok: true, savedId: 'saved-once', version: 1, dirty: false};
+        res = response(saved);
+        res.headers = {get: () => boot};
+      }
+      return res;
+    });
+    const query = app.document.querySelector.bind(app.document);
+    app.document.querySelector = (selector) => selector === 'meta[name="ob-boot"]'
+      ? {getAttribute: () => restarted ? 'previous-process' : boot} : query(selector);
+    app.context.obSetManagedFormDirty(true);
+    app.form.values.set('Наименование', restarted ? 'changed-boot' : 'same-boot');
+    vm.runInNewContext(ui.slice(first, last), app.context);
+
+    const leading = app.context.obFire('Записать', 'Нажатие');
+    const queued = app.context.obFire('Записать', 'Нажатие');
+    await Promise.all([leading, queued]);
+    assert.equal(saved.ok, true);
+    assert.ok(saved.savedId);
+    assert.ok(saved.version);
+    assert.equal(app.idInput.value, saved.savedId, 'adopt the actual committed id');
+    assert.equal(app.versionInput.value, String(saved.version));
+    assert.equal(requests, restarted ? 1 : 2, 'queued events must stop after restart');
+    assert.equal(bodies[0].get('_id'), null);
+    if (!restarted) {
+      assert.equal(bodies[1].get('_id'), saved.savedId);
+      assert.equal(bodies[1].get('_version'), String(saved.version));
+      assert.equal(app.context._obRestartNotice, undefined);
+      continue;
+    }
+
+    assert.equal(app.context._obFormDirty, true, 'retain unsaved input for recovery');
+    assert.equal(app.form.values.get('Наименование'), 'changed-boot');
+    assert.ok(app.context._obRestartNotice);
+    await app.context.obFire('Записать', 'Нажатие');
+    assert.equal(dispatchSubmit(app).defaultPrevented, true, 'native save must stop');
+    const close = await app.context.obRequestFormClose({mode: 'save', reason: 'ok'});
+    assert.equal(close.allowed, false, 'save-and-close must stop');
+    assert.equal(close.reload, true);
+    assert.equal(requests, 1, 'no write path may send another request');
+  }
+});
 
 function concealedControl(app, enabled = false) {
   const field = app.form.control('Секрет');
@@ -1180,10 +1355,15 @@ test('failed current re-snapshot adopts saved identity without applying stale mu
   assert.equal(app.context._obFormDirty, true);
 });
 
-test('form events retain trigger context, execute in order and fence close/native submit while queued', async () => {
+test('form events retain trigger context, execute in order, close waits for the queue and native submit is fenced', async () => {
   const eventCalls = [];
+  const closeCalls = [];
   let completeFirst;
   const app = runtime((url, options) => {
+    if (url === '/ui/catalog/Тест/form-close-intent') {
+      closeCalls.push(options);
+      return Promise.resolve(response({ok: true, close: {intentId: options.headers['X-OneBase-Close-Intent'], allowed: true, saved: options.headers['X-OneBase-Close-Mode'] === 'save'}}));
+    }
     assert.equal(url, '/ui/catalog/Тест/form-event');
     const body = new URLSearchParams(options.body.toString());
     eventCalls.push(body);
@@ -1201,14 +1381,22 @@ test('form events retain trigger context, execute in order and fence close/nativ
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(eventCalls.length, 1, 'second form event raced the first HTTP request');
 
-  app.context.obBeginManagedCloseHandoff();
-  const refusedClose = await app.context.obRequestFormClose({reason: 'ok', mode: 'save'});
-  assert.equal(refusedClose.error, 'form-event-pending');
+  // Закрытие, запрошенное во время события, ждёт очередь, а не отказывает
+  // сразу; нативный submit по-прежнему не проходит.
+  let closeSettled = false;
+  const awaitedClose = app.context.obRequestFormClose({reason: 'ok', mode: 'save'});
+  awaitedClose.then(() => { closeSettled = true; });
   assert.equal(dispatchSubmit(app).defaultPrevented, true, 'native submit raced a form event');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(closeSettled, false, 'close decided before the queued events finished');
+  assert.equal(closeCalls.length, 0, 'close request raced queued form events');
 
   completeFirst(response({ok: true, savedId: 'queued-saved', version: 2}));
   await first;
   await second;
+  const decision = await awaitedClose;
+  assert.equal(decision.allowed, true, 'close after the queue drained must go to the controller');
+  assert.equal(closeCalls.length, 1);
   assert.equal(eventCalls.length, 2);
   assert.equal(eventCalls[0].get('Value'), 'first snapshot');
   assert.equal(eventCalls[1].get('Value'), 'second snapshot');
@@ -1216,9 +1404,47 @@ test('form events retain trigger context, execute in order and fence close/nativ
 	assert.equal(eventCalls[1].get('_version'), '2', 'queued event kept the pre-save optimistic version');
   assert.deepEqual(eventCalls.map((body) => body.get('_event')), ['Click', 'Change']);
 
-  app.form.values.set('Value', 'after handoff refusal');
-  await app.context.obFire('Third', 'Click');
-  assert.equal(eventCalls.length, 3, 'refused embedded close left closeHandoffPending stuck');
+});
+
+test('close refuses when a new form event arrives while it waits', async () => {
+  const eventCalls = [];
+  const completions = [];
+  const app = runtime((url) => {
+    assert.equal(url, '/ui/catalog/Тест/form-event', 'refused close must not reach the controller');
+    eventCalls.push(url);
+    return new Promise((resolve) => { completions.push(resolve); });
+  });
+
+  const first = app.context.obFire('First', 'Change');
+  await new Promise((resolve) => setImmediate(resolve));
+  const close = app.context.obRequestFormClose({reason: 'close', mode: 'discard'});
+  // Новое событие пришло, пока закрытие ждёт: один круг очереди, затем отказ.
+  const second = app.context.obFire('Second', 'Change');
+  completions[0](response({ok: true}));
+  await first;
+  const refused = await close;
+  assert.equal(refused.error, 'form-event-pending');
+  completions[1](response({ok: true}));
+  await second;
+  assert.equal(eventCalls.length, 2);
+});
+
+test('close waiting for a stuck form event gives up after the close timeout and clears the embedded handoff', async () => {
+  const completions = [];
+  const app = runtime(() => new Promise((resolve) => { completions.push(resolve); }), {closeTimeoutMs: 30});
+  const first = app.context.obFire('First', 'Change');
+  await new Promise((resolve) => setImmediate(resolve));
+  app.context.obBeginManagedCloseHandoff();
+  const refused = await app.context.obRequestFormClose({reason: 'close', mode: 'discard'});
+  assert.equal(refused.error, 'form-event-pending');
+  completions[0](response({ok: true}));
+  await first;
+
+  const third = app.context.obFire('Third', 'Click');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(completions.length, 2, 'refused embedded close left closeHandoffPending stuck');
+  completions[1](response({ok: true}));
+  await third;
 });
 
 test('queued event snapshots form after the previous handler response is applied', async () => {
@@ -1636,6 +1862,66 @@ for (const dismiss of [false, true]) {
   });
 }
 
+test('idle transport uses the GET mapping without overwriting form attributes', async () => {
+  let sent;
+  const app = runtime((_, options) => {
+    sent = options.body;
+    return Promise.resolve(response({ok: true}));
+  }, {kind: 'catalog', docId: 'object-1', serviceFields: {
+    _idle_proc: '_ob_service_idle_proc__', _idle_token: '_ob_service_idle_token__',
+  }}, true);
+  for (const name of ['_idle_proc', '_idle_token', '_ob_service_idle_proc', '_ob_service_idle_proc_']) {
+    app.form.values.set(name, 'user ' + name);
+  }
+  await app.context.obFire('', 'ОбработкаОжидания', {_idle_proc: 'Опрос', _idle_token: 'signed'});
+  assert.equal(sent.get('_ob_service_idle_proc__'), 'Опрос');
+  assert.equal(sent.get('_ob_service_idle_token__'), 'signed');
+  for (const name of ['_idle_proc', '_idle_token', '_ob_service_idle_proc', '_ob_service_idle_proc_']) {
+    assert.deepEqual(sent.getAll(name), ['user ' + name]);
+  }
+});
+
+for (const mode of ['editor', 'insert', 'delete', 'untouched', 'noop']) {
+  test('idle response preserves concurrent table input: ' + mode, async () => {
+    let complete;
+    let activeEdit = false;
+    const app = runtime(() => new Promise(resolve => { complete = resolve; }),
+      {kind: 'document', docId: 'doc-1'}, true);
+    app.form.values.set('Статус', 'до');
+    app.form.values.set('tp_json.Строки', '[{"Количество":2},{"Количество":3}]');
+    app.context.obGridSync = () => {
+      if (activeEdit) {
+        activeEdit = false;
+        app.form.values.set('tp_json.Строки', '[{"Количество":7},{"Количество":3}]');
+        app.context.obSetManagedFormDirty(true);
+      }
+      return true;
+    };
+    app.context.applyTableParts = parts => {
+      for (const [name, rows] of Object.entries(parts || {})) app.form.values.set('tp_json.' + name, JSON.stringify(rows));
+    };
+    const pending = app.context.obFire('', 'ОбработкаОжидания', {_idle_proc: 'Опрос', _idle_token: 'signed'});
+    await waitFor(() => complete);
+    let expected = '[{"Количество":2},{"Количество":3}]';
+    if (mode === 'editor' || mode === 'noop') {
+      activeEdit = true;
+      expected = '[{"Количество":7},{"Количество":3}]';
+    } else if (mode === 'insert' || mode === 'delete') {
+      expected = mode === 'insert' ? '[{"Количество":2},{"Количество":3},{"Количество":8}]' : '[{"Количество":2}]';
+      app.form.values.set('tp_json.Строки', expected);
+      app.context.obSetManagedFormDirty(true);
+    } else {
+      expected = '[{"Количество":99},{"Количество":3}]';
+    }
+    complete(response({ok: true, dirty: mode !== 'noop', values: {Статус: 'обработчик'},
+      tableparts: {Строки: [{Количество: mode === 'noop' ? 2 : 99}, {Количество: 3}]}}));
+    await pending;
+    assert.equal(app.form.values.get('tp_json.Строки'), expected);
+    assert.equal(app.form.values.get('Статус'), 'обработчик');
+    assert.equal(app.context._obFormDirty, true);
+  });
+}
+
 test('before-post: a question response preserves newer input and merges untouched fields', async () => {
   let complete;
   let question;
@@ -1873,6 +2159,89 @@ for (const failure of ['network', 'timeout']) {
   }
 }
 
+test('deferred completion preserves native submit fence for an unfinished normal event', async () => {
+  let finishDeferred;
+  let finishNormal;
+  const calls = [];
+  const app = runtime((url, options) => {
+    calls.push(new URLSearchParams(options.body.toString()));
+    if (options.body.get('_deferred') === '1') {
+      return new Promise(resolve => { finishDeferred = resolve; });
+    }
+    return new Promise(resolve => { finishNormal = resolve; });
+  }, {docId: 'existing-record'});
+  const deferred = app.context.obFire('ГруппаИстория', 'ПослеОткрытия', {_deferred: '1'});
+  await new Promise(resolve => setImmediate(resolve));
+  const normal = app.context.obFire('SaveCommand', 'Нажатие');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 2);
+  const before = dispatchSubmit(app).defaultPrevented;
+  finishDeferred(response({ok: true, deferred: true}));
+  await deferred;
+  const after = dispatchSubmit(app).defaultPrevented;
+  finishNormal(response({ok: true}));
+  await normal;
+  assert.equal(dispatchSubmit(app).defaultPrevented, false, 'ordinary event completion releases submit fence');
+  assert.equal(before, true);
+  assert.equal(after, true, 'deferred finally removed another event native submit fence');
+});
+
+
+function overlappingLoadRuntime(fetchImpl) {
+  const app = runtime(fetchImpl, {docId: 'existing', simulateTables: true}, true);
+  const controls = new Map();
+  function control(name) {
+    if (!controls.has(name)) controls.set(name, {
+      name, tagName: 'INPUT', type: 'text', readOnly: false, disabled: false,
+      classList: {contains() { return false; }},
+      get value() { return app.form.values.get(name); },
+      set value(value) { app.form.values.set(name, value); },
+      getAttribute(key) { return key === 'name' ? name : null; },
+      closest(selector) { return selector === '#main-form' ? app.form : null; },
+    });
+    return controls.get(name);
+  }
+  app.form.querySelectorAll = function(selector) {
+    const all = Array.from(this.values.keys()).map(control);
+    if (selector === '[name]') return all;
+    const match = selector.match(/^\[name="([^"]+)"\]$/);
+    return match ? all.filter(input => input.name === match[1]) : [];
+  };
+  app.form.values.set('История', '');
+  app.form.values.set('vt.Список.0.Текст', 'old table');
+  return app;
+}
+
+for (const deferredFirst of [true, false]) {
+  for (const normalFirst of [true, false]) {
+    test(`overlapping responses preserve loaded data: deferredFirst=${deferredFirst}, normalFirst=${normalFirst}`, async () => {
+      let finishDeferred, finishNormal;
+      const app = overlappingLoadRuntime((_url, options) => new Promise(resolve => {
+        if (options.body.get('_event') === 'ПослеОткрытия') finishDeferred = resolve;
+        else finishNormal = resolve;
+      }));
+      let normal, deferred;
+      const startNormal = () => { normal = app.context.obFire('UnrelatedCommand', 'Нажатие'); };
+      const startDeferred = () => { deferred = app.context.obFire('ГруппаИстория', 'ПослеОткрытия', {_deferred: '1'}); };
+      (normalFirst ? startNormal : startDeferred)();
+      await new Promise(resolve => setImmediate(resolve));
+      (normalFirst ? startDeferred : startNormal)();
+      await new Promise(resolve => setImmediate(resolve));
+      const loaded = {ok: true, deferred: true, values: {История: '3 заявки'}, formTables: {Список: [{Текст: 'loaded table'}]}};
+      const echoed = {ok: true, values: {История: ''}, formTables: {Список: [{Текст: 'old table'}]}};
+      if (deferredFirst) {
+        finishDeferred(response(loaded)); await deferred;
+        finishNormal(response(echoed)); await normal;
+      } else {
+        finishNormal(response(echoed)); await normal;
+        finishDeferred(response(loaded)); await deferred;
+      }
+      assert.equal(app.form.values.get('История'), '3 заявки');
+      assert.equal(app.form.values.get('vt.Список.0.Текст'), 'loaded table');
+    });
+  }
+}
+
 test('before-post: edits committed while serializing post-close invalidate approval', async () => {
   const {app, calls} = beforePostRuntime([{ok: true}]);
   let syncs = 0;
@@ -1936,7 +2305,7 @@ function withFileSubmit(app) {
   app.context.obManagedSubmitAllowed = () => true;
   app.context.obManagedGridSubmitAllowed = () => true;
   app.context.__fileReads = () => readDone ? Promise.resolve(true) : new Promise((resolve) => {
-    finishRead = () => { readDone = true; resolve(true); };
+    finishRead = (ok = true) => { readDone = true; resolve(ok); };
   });
   const helper = {getAttribute() { return null; }};
   app.form.querySelectorAll = (selector) => selector === '[data-ob-file-content-for]' ? [helper] : [];
@@ -1961,7 +2330,7 @@ function withFileSubmit(app) {
   return {
     posts, submitter, submit,
     readPending() { return !!finishRead && !readDone; },
-    finishRead() { finishRead(); },
+    finishRead(ok = true) { finishRead(ok); },
   };
 }
 
@@ -2186,3 +2555,323 @@ if (process.env.ONEBASE_QUESTION_HTTP_URL) {
     }
   });
 }
+
+test('overlapping responses preserve newer checkbox and table edits', async () => {
+  let finishDeferred, finishNormal;
+  const app = overlappingLoadRuntime((_url, options) => new Promise(resolve => {
+    if (options.body.get('_event') === 'ПослеОткрытия') finishDeferred = resolve;
+    else finishNormal = resolve;
+  }));
+  app.form.values.set('Флаг', 'false');
+  const checkbox = app.form.querySelectorAll('[name="Флаг"]')[0];
+  checkbox.type = 'checkbox'; checkbox.checked = false;
+  const deferred = app.context.obFire('ГруппаИстория', 'ПослеОткрытия', {_deferred: '1'});
+  await new Promise(resolve => setImmediate(resolve));
+  const normal = app.context.obFire('UnrelatedCommand', 'Нажатие');
+  await new Promise(resolve => setImmediate(resolve));
+  checkbox.checked = true;
+  app.form.values.set('vt.Список.0.Текст', 'user edit');
+  finishDeferred(response({ok: true, deferred: true, values: {Флаг: false}, formTables: {Список: [{Текст: 'loaded table'}]}}));
+  await deferred;
+  finishNormal(response({ok: true, values: {Флаг: false}, formTables: {Список: [{Текст: 'old table'}]}}));
+  await normal;
+  assert.equal(checkbox.checked, true);
+  assert.equal(app.form.values.get('vt.Список.0.Текст'), 'user edit');
+});
+
+test('a failed read-only loader cannot fence saving a new form', async () => {
+  let failLoader;
+  const calls = [];
+  const app = runtime((_url, options) => {
+    calls.push(options.body.get('_event'));
+    if (options.body.get('_event') === 'ПослеОткрытия') return new Promise((_resolve, reject) => { failLoader = reject; });
+    return Promise.resolve(response({ok: true, savedId: 'single-row', version: 1}));
+  });
+  const deferred = app.context.obFire('ГруппаИстория', 'ПослеОткрытия', {_deferred: '1'});
+  await new Promise(resolve => setImmediate(resolve));
+  failLoader(new Error('external service unavailable'));
+  await deferred;
+  await app.context.obFire('SaveCommand', 'Нажатие');
+  assert.deepEqual(calls, ['ПослеОткрытия', 'Нажатие']);
+  assert.equal(app.idInput.value, 'single-row');
+});
+
+
+test('deferred service flags preserve colliding processor parameters', async () => {
+  let posted;
+  const app = runtime(async (_url, options) => {
+    posted = options.body;
+    return response({ok: true, deferred: true});
+  }, {serviceFields: {_event: '_ob_service_event', _deferred: '_ob_service_deferred_'}});
+  app.form.values.set('_event', 'user event');
+  app.form.values.set('_deferred', 'user deferred');
+  await app.context.obFire('Loader', 'ПослеОткрытия', {_deferred: '1'});
+  assert.equal(posted.get('_event'), 'user event');
+  assert.equal(posted.get('_deferred'), 'user deferred');
+  assert.equal(posted.get('_ob_service_event'), 'ПослеОткрытия');
+  assert.equal(posted.get('_ob_service_deferred_'), '1');
+});
+
+test('BeforeClose question: answer repeats close with the answer, dismiss keeps the form open', async () => {
+  const bodies = [];
+  const app = runtime(async (url, options) => {
+    const body = capturedCloseBody(options);
+    bodies.push(body);
+    const intentId = closeIntent(options);
+    const answer = body.get('_question_answer');
+    if (!answer) {
+      return response({
+        ok: true, close: {intentId, allowed: false, saved: false},
+        question: {text: 'Заявок не найдено. Вернуться к звонку?', variants: ['Вернуться к звонку', 'Закрыть']},
+      });
+    }
+    return response({ok: true, close: {intentId, allowed: answer === 'Закрыть', saved: false}});
+  });
+  let asked = null;
+  app.context.obOpenQuestion = (payload, elementName, handlers) => { asked = {payload, handlers}; };
+  const settle = async () => { for (let i = 0; i < 20 && !asked; i++) await new Promise((r) => setTimeout(r, 0)); };
+
+  const pending = app.context.obRequestFormClose({reason: 'close', mode: 'discard'});
+  await settle();
+  assert.ok(asked, 'question from BeforeClose was not shown');
+  assert.equal(asked.payload.text, 'Заявок не найдено. Вернуться к звонку?');
+  asked.handlers.onAnswer('Закрыть', {_question_answer: 'Закрыть'});
+  const decision = await pending;
+  assert.equal(decision.allowed, true);
+  assert.equal(bodies.length, 2, 'answer must repeat the close request');
+  assert.equal(bodies[0].get('_question_answer'), null);
+  assert.equal(bodies[1].get('_question_answer'), 'Закрыть');
+  assert.equal(bodies[1].closeMode, 'discard');
+  assert.equal(bodies[1].closeReason, 'close');
+  assert.notEqual(bodies[1].closeIntent, bodies[0].closeIntent, 'the repeat is a new close intent');
+
+  asked = null;
+  const dismissed = app.context.obRequestFormClose({reason: 'close', mode: 'discard'});
+  await settle();
+  assert.ok(asked);
+  asked.handlers.onDismiss();
+  const kept = await dismissed;
+  assert.equal(kept.allowed, false);
+  assert.equal(bodies.length, 3, 'dismissing the question must not repeat the close');
+});
+
+function mountQuestionModal(app) {
+  const ui = fs.readFileSync('static/ui.js', 'utf8');
+  const begin = ui.indexOf('// BEGIN onebase-question-modal');
+  const end = ui.indexOf('// END onebase-question-modal', begin);
+  assert.ok(begin >= 0 && end > begin);
+  vm.runInNewContext(ui.slice(begin, end), app.context, {filename: 'question-modal.js'});
+}
+
+function questionNodes(root) {
+  return [root, ...(root.children || []).flatMap(questionNodes)];
+}
+
+async function closeQuestion(app) {
+  for (let i = 0; i < 500 && !app.document.getElementById('_question-modal'); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(app.document.getElementById('_question-modal'), JSON.stringify(app.applied));
+  return app.document.getElementById('_question-modal');
+}
+
+for (const action of ['close', 'submit', 'event', 'escape']) {
+  test('BeforeClose question owns pending operation: ' + action, async () => {
+    const calls = [];
+    const app = runtime(async (url, options) => {
+      calls.push(url);
+      return response({ok: true, close: {intentId: closeIntent(options), allowed: false, saved: false},
+        question: {text: 'Закрыть?', variants: ['Да']}});
+    });
+    mountQuestionModal(app);
+    const pending = app.context.obRequestFormClose({reason: 'cross', mode: 'discard'});
+    const modal = await closeQuestion(app);
+    let concurrent;
+    if (action === 'close') concurrent = app.context.obRequestFormClose({reason: 'cross', mode: 'discard'});
+    if (action === 'submit') assert.equal(dispatchSubmit(app).defaultPrevented, true);
+    if (action === 'event') await app.context.obFire('Кнопка', 'Нажатие');
+    if (action === 'escape') app.document.dispatch('keydown', {key: 'Escape',
+      preventDefault() {}, stopImmediatePropagation() { this.immediatePropagationStopped = true; }});
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls.length, 1, 'another request raced the question');
+    if (concurrent) assert.equal(concurrent, pending, 'callers must share the pending decision');
+    if (action === 'escape') assert.equal(app.document.getElementById('_question-modal'), null);
+    else modal.dispatch('click', {target: modal});
+    assert.equal((await pending).allowed, false);
+    // Dismissal must release ownership so a later explicit action can run.
+    await app.context.obFire('Кнопка', 'Нажатие');
+    assert.equal(calls.length, 2);
+  });
+}
+
+for (const mode of ['save', 'post', 'save_and_select']) {
+  test('BeforeClose question preserves one save: ' + mode, async () => {
+    const bodies = [];
+    const app = runtime(async (url, options) => {
+      const body = capturedCloseBody(options);
+      bodies.push(body);
+      const saved = closeMode(options) !== 'discard';
+      return response({ok: true, dirty: false, savedId: saved ? 'saved-once' : '', savedLabel: saved ? 'Запись' : '',
+        version: saved ? bodies.length : 0,
+        close: {intentId: closeIntent(options), allowed: !!body.get('_question_answer'), saved,
+          formUrl: saved ? '/ui/catalog/Тест/saved-once' : ''},
+        question: body.get('_question_answer') ? null : {text: 'Закрыть?', variants: ['Да']}});
+    });
+    mountQuestionModal(app);
+    const pending = app.context.obRequestFormClose({reason: 'ok', mode});
+    const modal = await closeQuestion(app);
+    const button = questionNodes(modal).find((node) => node.tagName === 'BUTTON');
+    button.dispatch('click', {target: button});
+    const decision = await pending;
+    assert.deepEqual(bodies.map((body) => body.closeMode), [mode, 'discard']);
+    assert.equal(decision.allowed, true);
+    assert.equal(decision.saved, true);
+    assert.equal(decision.mode, mode);
+    assert.equal(decision.savedId, 'saved-once');
+    assert.equal(decision.savedLabel, 'Запись');
+    assert.equal(decision.formUrl, '/ui/catalog/Тест/saved-once');
+  });
+}
+
+test('BeforeClose question saves fresh input and unsaved hook state', async () => {
+  for (const changed of ['input', 'hook', 'grid']) {
+    const bodies = [];
+    const app = runtime(async (url, options) => {
+      const body = capturedCloseBody(options);
+      bodies.push(body);
+      return response({ok: true, dirty: changed === 'hook', savedId: 'saved-once', version: bodies.length,
+        close: {intentId: closeIntent(options), allowed: !!body.get('_question_answer'), saved: true},
+        question: body.get('_question_answer') ? null : {text: 'Закрыть?', variants: ['Да']}});
+    });
+    mountQuestionModal(app);
+    const pending = app.context.obRequestFormClose({reason: 'ok', mode: 'save'});
+    const modal = await closeQuestion(app);
+    if (changed === 'input') app.form.values.set('Наименование', 'новый ввод');
+    if (changed === 'grid') app.context.obGridSync = () => { app.form.values.set('tp.Товары.0.Количество', '2'); return true; };
+    const button = questionNodes(modal).find((node) => node.tagName === 'BUTTON');
+    button.dispatch('click', {target: button});
+    assert.equal((await pending).allowed, true);
+    assert.deepEqual(bodies.map((body) => body.closeMode), ['save', 'save'], changed);
+    if (changed === 'input') assert.equal(bodies[1].get('Наименование'), 'новый ввод');
+    if (changed === 'grid') assert.equal(bodies[1].get('tp.Товары.0.Количество'), '2');
+  }
+});
+
+if (process.env.ONEBASE_CLOSE_QUESTION_HTTP_URL) {
+  test('BeforeClose question saves once through mounted HTTP', {timeout: 30000}, async () => {
+    const base = process.env.ONEBASE_CLOSE_QUESTION_HTTP_URL;
+    const page = await fetch(base + '/ui/document/ЗакрытиеСВопросом/new');
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    const match = html.match(/<script type="application\/json" id="ob-managed-config">([^]*?)<\/script>/);
+    assert.ok(match);
+    const cfg = JSON.parse(match[1]);
+    const cases = ['unchanged', 'first-read', 'second-read'].flatMap((scenario) =>
+      ['save', 'post', 'save_and_select'].map((mode) => [scenario, mode]));
+    for (const [scenario, mode] of cases) {
+      const bodies = [], replies = [];
+      const app = runtime(async (url, options) => {
+        bodies.push(capturedCloseBody(options));
+        const result = await fetch(base + url, options);
+        const data = await result.json();
+        replies.push(data);
+        return response(data, result.ok, result.status);
+      }, cfg, false, true);
+      app.context.crypto = {randomUUID: require('node:crypto').randomUUID};
+      if (mode === 'save_and_select') app.form.values.set('_popup', '1');
+      // The harness's hidden controls must participate in real FormData just
+      // as they do in a browser, including the optimistic version after save.
+      app.context.FormData = class extends FakeFormData {
+        constructor(form) {
+          super(form);
+          if (form && app.idInput.value) this.set('_id', app.idInput.value);
+          if (form && app.versionInput.value) this.set('_version', app.versionInput.value);
+        }
+      };
+      mountQuestionModal(app);
+      const pending = app.context.obRequestFormClose({reason: 'ok', mode});
+      const modal = await closeQuestion(app);
+      assert.equal(replies[0].close.saved, true, JSON.stringify(replies));
+      assert.equal(replies[0].version, 1);
+      assert.equal(replies[0].dirty, false);
+      let reads = 0;
+      let edited = false;
+      if (scenario !== 'unchanged') {
+        const editOnRead = scenario === 'first-read' ? 1 : 2;
+        const state = {get pending() {
+          const read = ++reads;
+          return Promise.resolve().then(() => {
+            if (read === editOnRead) {
+              edited = true;
+              app.form.values.set('Наименование', 'Новая правка во время чтения файла');
+              app.context.obSetManagedFormDirty(true);
+            }
+          });
+        }};
+        const helper = {_obFileReadState: state, getAttribute() { return null; }};
+        const query = app.form.querySelectorAll.bind(app.form);
+        app.form.querySelectorAll = (selector) => selector === '[data-ob-file-content-for]' ? [helper] : query(selector);
+      }
+      const button = questionNodes(modal).find((node) => node.textContent === 'Закрыть — ошиблись номером');
+      assert.ok(button);
+      button.dispatch('click', {target: button});
+      const decision = await pending;
+      if (scenario !== 'unchanged') {
+        assert.equal(edited, true, 'the concurrent input must actually occur');
+        assert.equal(app.form.values.get('Наименование'), 'Новая правка во время чтения файла');
+        assert.ok(!decision.allowed || replies[1].close.saved === true,
+          'new input must be saved or keep the form open: ' + JSON.stringify(replies));
+        if (replies[1].close.saved) {
+          assert.equal(bodies[1].closeMode, mode);
+          assert.equal(bodies[1].get('Наименование'), 'Новая правка во время чтения файла');
+          assert.equal(replies[1].version, 2);
+        } else {
+          assert.equal(decision.allowed, false);
+          assert.equal(app.context._obFormDirty, true);
+        }
+        continue;
+      }
+      assert.equal(decision.allowed, true, JSON.stringify(replies));
+      assert.equal(decision.saved, true);
+      assert.equal(decision.savedId, replies[0].savedId);
+      assert.equal(decision.mode, mode);
+      assert.equal(replies[1].close.saved, false, 'answer repeated the save pipeline');
+      assert.deepEqual(bodies.map((body) => body.closeMode), [mode, 'discard']);
+      assert.equal(bodies[1].get('_id'), replies[0].savedId);
+      assert.equal(bodies[1].get('_version'), '1');
+      assert.equal(app.versionInput.value, '1');
+    }
+  });
+}
+
+test('BeforeClose question recovers a lost answer without losing saved picker identity', async () => {
+  const bodies = [];
+  const app = runtime(async (url, options) => {
+    const body = capturedCloseBody(options);
+    bodies.push(body);
+    if (bodies.length === 2) throw Error('answer response lost');
+    return response({ok: true, dirty: false, savedId: bodies.length === 1 ? 'saved-picker' : '',
+      savedLabel: bodies.length === 1 ? 'Запись' : '', version: bodies.length === 1 ? 1 : 0,
+      close: {intentId: closeIntent(options), allowed: bodies.length > 1, saved: bodies.length === 1,
+        formUrl: bodies.length === 1 ? '/ui/catalog/Тест/saved-picker' : ''},
+      question: bodies.length === 1 ? {text: 'Закрыть?', variants: ['Да']} : null});
+  });
+  mountQuestionModal(app);
+  const pending = app.context.obRequestFormClose({reason: 'ok', mode: 'save_and_select'});
+  const modal = await closeQuestion(app);
+  const button = questionNodes(modal).find((node) => node.tagName === 'BUTTON');
+  button.dispatch('click', {target: button});
+  assert.equal((await pending).allowed, false);
+  const posted = [];
+  app.context.obManagedPostRefSaved = (decision) => posted.push(decision);
+  app.context.location.search = '?_popup=1';
+  assert.equal(dispatchSubmit(app).defaultPrevented, true);
+  await waitFor(() => posted.length);
+  assert.equal(posted[0].allowed, true);
+  assert.equal(posted[0].saved, true);
+  assert.equal(posted[0].savedId, 'saved-picker');
+  assert.equal(posted[0].savedLabel, 'Запись');
+  assert.equal(posted[0].formUrl, '/ui/catalog/Тест/saved-picker');
+  assert.deepEqual(bodies.map((body) => body.closeMode), ['save_and_select', 'discard', 'discard']);
+  assert.equal(bodies[2].closeIntent, bodies[1].closeIntent, 'unknown answer must reuse its own intent');
+});

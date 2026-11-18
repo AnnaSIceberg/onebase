@@ -17,6 +17,7 @@ import (
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/entityservice"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/msgstatus"
 	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/storage"
 	"github.com/ivantit66/onebase/internal/webhook"
@@ -295,7 +296,7 @@ func (h *handler) createObject(kind metadata.Kind) http.HandlerFunc {
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":       result.ID.String(),
-			"messages": result.DSLMessages,
+			"messages": msgstatus.StripAll(result.DSLMessages),
 		})
 	}
 }
@@ -410,20 +411,16 @@ func (h *handler) updateObject(kind metadata.Kind) http.HandlerFunc {
 			return
 		}
 
-		// План 88: масковый пользователь не перезаписывает реальное значение.
-		if err := h.protectMaskedFieldsOnWrite(r.Context(), entity, id, body.Fields); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error(), "", 0)
-			return
-		}
-
 		result, err := h.entitySvc.Save(r.Context(), entityservice.SaveRequest{
-			Entity:          entity,
-			ID:              id,
-			IsNew:           false,
-			Fields:          body.Fields,
-			TablePartRows:   body.TablePartRows,
-			Action:          body.Action,
-			ExpectedVersion: expectedVersion,
+			Entity:               entity,
+			ID:                   id,
+			IsNew:                false,
+			MergeExistingFields:  true,
+			PreparePartialUpdate: h.preparePartialUpdate(entity, body.Action),
+			Fields:               body.Fields,
+			TablePartRows:        body.TablePartRows,
+			Action:               body.Action,
+			ExpectedVersion:      expectedVersion,
 		})
 		if err != nil {
 			writeSaveError(w, err)
@@ -436,7 +433,7 @@ func (h *handler) updateObject(kind metadata.Kind) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":       id.String(),
-			"messages": result.DSLMessages,
+			"messages": msgstatus.StripAll(result.DSLMessages),
 		})
 	}
 }
@@ -571,7 +568,7 @@ func (h *handler) postDocument() http.HandlerFunc {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":       id.String(),
 			"posted":   true,
-			"messages": result.DSLMessages,
+			"messages": msgstatus.StripAll(result.DSLMessages),
 		})
 	}
 }
@@ -727,6 +724,8 @@ func writeError(w http.ResponseWriter, code int, msg, file string, line int) {
 // REST, чтобы сырой текст драйвера БД не утекал в ответ по create/update/post.
 func writeSaveError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errPartialUpdateDenied):
+		writeError(w, http.StatusForbidden, "forbidden", "", 0)
 	case errors.Is(err, storage.ErrVersionConflict):
 		writeError(w, http.StatusConflict, "version conflict: object was modified by another client", "", 0)
 	case errors.Is(err, storage.ErrInfoRegOwnershipConflict):

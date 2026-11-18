@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ivantit66/onebase/internal/report"
@@ -275,5 +276,138 @@ func TestCrossRowsSorted(t *testing.T) {
 			t.Fatalf("строка %d: ожидали %v, получили %v (порядок %v)", i, want[i], r.Key,
 				[]any{cr.Rows[0].Key, cr.Rows[1].Key, cr.Rows[2].Key})
 		}
+	}
+}
+
+// Колонка «Итого» по строке, как в СКД 1С: итог строки по всем колонкам и
+// угловой итог. Считается по исходным строкам, а не суммой ячеек: среднее по
+// строке — не сумма средних по колонкам.
+func TestCrossRowTotal(t *testing.T) {
+	rows := []Row{
+		{"Товар": "А", "Месяц": "Янв", "Сумма": "100"},
+		{"Товар": "А", "Месяц": "Янв", "Сумма": "300"},
+		{"Товар": "А", "Месяц": "Фев", "Сумма": "200"},
+		{"Товар": "Б", "Месяц": "Янв", "Сумма": "30"},
+	}
+	spec := report.Composition{
+		Groupings: []string{"Товар"},
+		Columns:   []string{"Месяц"},
+		Measures:  []report.Measure{{Field: "Сумма", Agg: "sum"}, {Field: "Сумма", Agg: "avg"}},
+	}
+	cr, err := ComposeCross(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rowA *CrossRow
+	for _, r := range cr.Rows {
+		if r.Key == "А" {
+			rowA = r
+		}
+	}
+	if rowA == nil {
+		t.Fatal("строка «А» не найдена")
+		return
+	}
+	decEq(t, rowA.Total[CrossTotalKey(0)], "600")
+	decEq(t, rowA.Total[CrossTotalKey(1)], "200") // (100+300+200)/3, а не 200+200
+	decEq(t, cr.GrandTotal[CrossTotalKey(0)], "630")
+	decEq(t, cr.GrandTotal[CrossTotalKey(1)], "157.5")
+}
+
+// column_group_totals: после подколонок каждого года — итог года (1С
+// РасположениеГруппировки = Конец); относительные показатели по соседним
+// колонкам итог группы не задевает.
+func TestCrossColumnGroupTotals(t *testing.T) {
+	rows := []Row{
+		{"Направление": "А", "Год": "2025", "Месяц": "12", "Звонки": "5"},
+		{"Направление": "А", "Год": "2026", "Месяц": "01", "Звонки": "10"},
+		{"Направление": "А", "Год": "2026", "Месяц": "02", "Звонки": "20"},
+	}
+	spec := report.Composition{
+		Groupings:         []string{"Направление"},
+		Columns:           []string{"Год", "Месяц"},
+		Measures:          []report.Measure{{Field: "Звонки", Agg: "sum"}},
+		ColumnGroupTotals: true,
+	}
+	cr, err := ComposeCross(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range cr.Cols {
+		got = append(got, pathKey(c.Path))
+	}
+	want := []string{"2025\x1f12", "2025", "2026\x1f01", "2026\x1f02", "2026"}
+	if strings.Join(got, "|") != strings.Join(want, "|") || !cr.Cols[1].Subtotal || cr.Cols[0].Subtotal {
+		t.Fatalf("порядок колонок: %q", got)
+	}
+	decEq(t, cr.Rows[0].Cells[colKey([]any{"2026"}, 0)], "30")
+	decEq(t, cr.RowTotal[colKey([]any{"2025"}, 0)], "5")
+	decEq(t, cr.Rows[0].Total[CrossTotalKey(0)], "35")
+}
+
+// Сортировка групп по полю запроса вне группировок и показателей (1С —
+// порядок по полю «Сортировка400»): по наименьшему значению в группе.
+func TestSortGroupsByNonGroupingField(t *testing.T) {
+	rows := []Row{
+		{"Направление": "Б", "Сортировка400": "1", "Месяц": "01", "Звонки": "1"},
+		{"Направление": "А", "Сортировка400": "2", "Месяц": "01", "Звонки": "1"},
+		{"Направление": "В", "Сортировка400": "3", "Месяц": "01", "Звонки": "1"},
+	}
+	spec := report.Composition{
+		Groupings: []string{"Направление"},
+		Measures:  []report.Measure{{Field: "Звонки", Agg: "sum"}},
+		Sort:      []report.SortKey{{Field: "Сортировка400"}},
+	}
+	res, err := Compose(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tree []string
+	for _, g := range res.Groups {
+		tree = append(tree, toStr(g.Key))
+	}
+	spec.Columns = []string{"Месяц"}
+	cr, err := ComposeCross(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cross []string
+	for _, r := range cr.Rows {
+		cross = append(cross, toStr(r.Key))
+	}
+	if strings.Join(tree, "") != "БАВ" || strings.Join(cross, "") != "БАВ" {
+		t.Fatalf("порядок групп: дерево %v, кросс %v", tree, cross)
+	}
+}
+
+// «Частота работ» (order СКД [Направление.ПорядокВОтчетах Asc, Заявка Desc]):
+// поле запроса упорядочивает направления, а внутри направления, где оно
+// одинаково, решает показатель по убыванию.
+func TestSortLevelsByFieldThenMeasure(t *testing.T) {
+	rows := []Row{
+		{"Направление": "СМА", "Порядок": "2", "Работа": "ТЭН", "Заявка": "1"},
+		{"Направление": "СМА", "Порядок": "2", "Работа": "Насос", "Заявка": "5"},
+		{"Направление": "ХД", "Порядок": "1", "Работа": "Фреон", "Заявка": "2"},
+		{"Направление": "ХД", "Порядок": "1", "Работа": "Компрессор", "Заявка": "7"},
+	}
+	spec := report.Composition{
+		Groupings: []string{"Направление", "Работа"},
+		Measures:  []report.Measure{{Field: "Заявка", Agg: "sum"}},
+		Sort:      []report.SortKey{{Field: "Порядок"}, {Field: "Заявка", Dir: "desc"}},
+	}
+	res, err := Compose(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, g := range res.Groups {
+		got = append(got, toStr(g.Key))
+		for _, c := range g.Children {
+			got = append(got, toStr(c.Key))
+		}
+	}
+	if strings.Join(got, ",") != "ХД,Компрессор,Фреон,СМА,Насос,ТЭН" {
+		t.Fatalf("порядок: %v", got)
 	}
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/ivantit66/onebase/internal/auth"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
+	"github.com/ivantit66/onebase/internal/report/resultfilter"
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
@@ -33,23 +34,9 @@ var errSettingsTooLarge = errors.New("настройки отчёта слишк
 var errReportPresetNameRequired = errors.New("укажите название варианта отчёта")
 
 type reportSettingsRequest struct {
+	Err            error
 	Settings       *reportpkg.UserReportSettings
 	ActivePresetID string
-}
-
-// readReportSettings разбирает пользовательские настройки из поля __settings
-// запроса (FormValue читает и POST-форму, и GET-query). Пустое или повреждённое
-// значение → nil (поведение отчёта по умолчанию).
-func readReportSettings(r *http.Request) *reportpkg.UserReportSettings {
-	raw := r.FormValue("__settings")
-	if raw == "" {
-		return nil
-	}
-	s, err := reportpkg.ParseUserSettings(raw)
-	if err != nil {
-		return nil
-	}
-	return s
 }
 
 // reportSettingsWithRequestVariant накладывает явный __variant из запроса поверх
@@ -86,54 +73,45 @@ func requestFormValue(r *http.Request, name string) (string, bool) {
 }
 
 func (s *Server) reportSettingsForRequest(r *http.Request, rep *reportpkg.Report) reportSettingsRequest {
+	raw := r.FormValue("__settings")
+	parsed, err := resultfilter.ParseSettings(raw)
+	if err != nil {
+		return reportSettingsRequest{Err: err}
+	}
 	if !reportSupportsRuntimeSettings(rep) {
+		if parsed != nil && len(parsed.Filters) > 0 {
+			return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, parsed)}
+		}
 		return reportSettingsRequest{}
 	}
-	presetID, hasPreset := requestFormValue(r, "__preset")
-	if settings := readReportSettings(r); settings != nil {
-		settings = reportSettingsWithRequestVariant(r, settings)
-		return reportSettingsRequest{Settings: settings, ActivePresetID: presetID}
+	preset, hasPreset := requestFormValue(r, "__preset")
+	loaded, loadErr := resultfilter.ResolveSettings(r.Context(), s.store, rep.Name, currentUserLogin(r), raw, preset, hasPreset)
+	if loadErr != nil {
+		return reportSettingsRequest{Err: loadErr}
 	}
-	if s.store == nil {
-		return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, nil), ActivePresetID: presetID}
+	// Choosing a named preset submits the previous form's variant too. The
+	// selected preset owns that variant; the standard preset and ordinary
+	// variant selector still accept an explicitly empty main variant.
+	if raw == "" && hasPreset && preset != "" && preset != standardReportPresetID {
+		return reportSettingsRequest{Settings: loaded.Settings, ActivePresetID: loaded.PresetID}
 	}
-
-	user := currentUserLogin(r)
-	if hasPreset {
-		if presetID == "" || presetID == standardReportPresetID {
-			return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, nil), ActivePresetID: standardReportPresetID}
-		}
-		if p, err := s.store.GetReportPreset(r.Context(), rep.Name, user, presetID); err == nil && p != nil {
-			if st, err := reportpkg.ParseUserSettings(p.SettingsJSON); err == nil {
-				return reportSettingsRequest{Settings: st, ActivePresetID: p.ID}
-			}
-		}
-		return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, nil), ActivePresetID: standardReportPresetID}
-	}
-
-	if p, err := s.store.GetDefaultReportPreset(r.Context(), rep.Name, user); err == nil && p != nil {
-		if st, err := reportpkg.ParseUserSettings(p.SettingsJSON); err == nil {
-			return reportSettingsRequest{Settings: st, ActivePresetID: p.ID}
-		}
-	}
-
-	// Fallback для баз, где до появления именованных пресетов уже была одна
-	// сохранённая настройка в _settings.
-	if settings := loadUserSettings(r.Context(), s.store, rep.Name, user); settings != nil {
-		settings = reportSettingsWithRequestVariant(r, settings)
-		return reportSettingsRequest{Settings: settings}
-	}
-	return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, nil)}
+	return reportSettingsRequest{Settings: reportSettingsWithRequestVariant(r, loaded.Settings), ActivePresetID: loaded.PresetID}
 }
 
 func reportSupportsRuntimeSettings(rep *reportpkg.Report) bool {
 	if rep == nil {
 		return false
 	}
+	if strings.TrimSpace(rep.Query) != "" {
+		return true
+	}
 	if rep.Composition != nil {
 		return true
 	}
 	for i := range rep.Variants {
+		if strings.TrimSpace(rep.Variants[i].Query) != "" {
+			return true
+		}
 		if rep.Variants[i].Composition != nil {
 			return true
 		}
@@ -189,6 +167,15 @@ func effectiveComposition(rep *reportpkg.Report, s *reportpkg.UserReportSettings
 		return nil
 	}
 	if s == nil || s.Composition == nil {
+		// Preserve the legacy shared read-only pointer for existing reports.
+		// New mutable rule slices must be detached from the trusted registry.
+		for _, m := range base.Measures {
+			if len(m.Calculations) > 0 {
+				out := *base
+				out.Measures = cloneTrustedMeasures(base.Measures)
+				return &out
+			}
+		}
 		return base
 	}
 	return mergeUserComposition(base, s.Composition)
@@ -215,9 +202,6 @@ func reportSettingsPanelState(rep *reportpkg.Report, s *reportpkg.UserReportSett
 		return nil
 	}
 	comp := effectiveComposition(rep, s)
-	if comp == nil {
-		return nil
-	}
 	out := &reportpkg.UserReportSettings{}
 	if s != nil {
 		out.Variant = s.Variant
@@ -226,7 +210,7 @@ func reportSettingsPanelState(rep *reportpkg.Report, s *reportpkg.UserReportSett
 	if comp != nil {
 		out.Composition = panelComposition(comp)
 	}
-	if out.Variant == "" && out.Composition == nil && len(out.Filters) == 0 {
+	if strings.TrimSpace(rep.Query) == "" && out.Variant == "" && out.Composition == nil && len(out.Filters) == 0 {
 		return nil
 	}
 	return out
@@ -290,11 +274,10 @@ func mergeUserComposition(base, u *reportpkg.Composition) *reportpkg.Composition
 		// должен переводить плоский отчёт в режим СКД.
 		return nil
 	}
-	// Доверенные показатели и поля по имени (регистронезависимо, как DSL).
-	// Expr всегда наследуется только отсюда; презентационные поля служат
+	// Доверенные показатели индексируются по полю, а повторяющиеся поля
+	// однозначно связываются также по агрегату. Scope/Expr берутся только отсюда; презентационные поля служат
 	// дефолтами, если пользовательский JSON пришёл частичным.
-	trustedExpr := make(map[string]string, len(base.Measures))
-	trustedMeasure := make(map[string]reportpkg.Measure, len(base.Measures))
+	trustedMeasures := make(map[string][]reportpkg.Measure, len(base.Measures))
 	canonicalField := make(map[string]string)
 	addCanonical := func(field string) {
 		if field != "" {
@@ -309,8 +292,7 @@ func mergeUserComposition(base, u *reportpkg.Composition) *reportpkg.Composition
 	}
 	for _, m := range base.Measures {
 		key := strings.ToLower(m.Field)
-		trustedExpr[key] = m.Expr
-		trustedMeasure[key] = m
+		trustedMeasures[key] = append(trustedMeasures[key], m)
 		addCanonical(m.Field)
 	}
 	for _, sk := range base.Sort {
@@ -318,6 +300,7 @@ func mergeUserComposition(base, u *reportpkg.Composition) *reportpkg.Composition
 	}
 
 	out := *base // копия: Conditional/Chart/DetailLink/DetailEntity — из доверенной.
+	out.Measures = cloneTrustedMeasures(base.Measures)
 
 	// Презентационные коллекции берём из пользовательского ввода, но только если
 	// поле реально присутствовало. Старый UI отправлял частичный JSON и тем самым
@@ -348,28 +331,45 @@ func mergeUserComposition(base, u *reportpkg.Composition) *reportpkg.Composition
 	out.Appearance = safeAppearance(u.Appearance) // презентация: безопасно из пользователя
 
 	// Показатели: презентация — из пользовательского ввода, Expr — только из
-	// доверенной компоновки (по совпадению Field), иначе обнуляем.
+	// доверенной компоновки по однозначной identity, иначе сохраняем trusted набор.
 	if len(u.Measures) > 0 && !invalidEmptyComposition {
 		measures := make([]reportpkg.Measure, 0, len(u.Measures))
+		unambiguous := true
 		for _, m := range u.Measures {
-			baseMeasure := trustedMeasure[strings.ToLower(m.Field)]
+			candidates := trustedMeasures[strings.ToLower(m.Field)]
+			baseMeasure, ok := trustedPresetMeasure(candidates, m)
+			if !ok {
+				unambiguous = false
+				break
+			}
+			agg := firstNonEmpty(m.Agg, baseMeasure.Agg)
+			if len(candidates) > 1 || len(baseMeasure.Calculations) > 0 {
+				agg = baseMeasure.Agg
+			}
 			field := m.Field
 			if baseMeasure.Field != "" {
 				field = baseMeasure.Field
 			}
 			safe := reportpkg.Measure{
 				Field:  field,
-				Agg:    firstNonEmpty(m.Agg, baseMeasure.Agg),
+				Agg:    agg,
 				Title:  firstNonEmpty(m.Title, baseMeasure.Title),
 				Align:  firstNonEmpty(m.Align, baseMeasure.Align),
 				Format: firstNonEmpty(m.Format, baseMeasure.Format),
 				// Expr НЕ из пользовательского ввода: берём доверенное значение
 				// по имени поля; если показателя нет в доверенной — Expr пуст.
-				Expr: trustedExpr[strings.ToLower(m.Field)],
+				Expr:         baseMeasure.Expr,
+				Scope:        append([]string(nil), baseMeasure.Scope...),
+				Calculations: append([]reportpkg.MeasureCalculation(nil), baseMeasure.Calculations...),
 			}
 			measures = append(measures, safe)
 		}
-		out.Measures = measures
+		// A preset without a unique resource identity cannot rewrite the
+		// trusted list. In particular Field+Agg duplicates never pick the last
+		// Scope/Expr by accident, even when the client selects only one entry.
+		if unambiguous {
+			out.Measures = measures
+		}
 	}
 	return &out
 }
@@ -467,7 +467,7 @@ func loadUserSettings(ctx context.Context, store *storage.DB, report, user strin
 	if err != nil || raw == "" {
 		return nil
 	}
-	st, err := reportpkg.ParseUserSettings(raw)
+	st, err := resultfilter.ParseSettings(raw)
 	if err != nil {
 		return nil
 	}
@@ -512,6 +512,9 @@ func reportRunURLAfterSettingsSave(name string, params []reportpkg.Param, r *htt
 	// reportParamValuesFromRequest подставил бы туда умолчание: очищенное поле и
 	// снятая галка возвращались бы сразу после сохранения настроек.
 	for _, p := range params {
+		if p.Context != nil {
+			continue
+		}
 		if val, ok := reportParamRequestValue(r, p); ok {
 			q.Set(p.Name, val)
 		}
@@ -578,6 +581,10 @@ func (s *Server) reportSettingsSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st = reportSettingsWithRequestVariant(r, st)
+	if err := s.validateReportResultSettings(r, rep, st); err != nil {
+		http.Error(w, s.errText(r, err), http.StatusBadRequest)
+		return
+	}
 	canon := ""
 	if normalized := reportSettingsPanelState(rep, st); normalized != nil {
 		if canon, err = normalized.JSON(); err != nil {
@@ -680,4 +687,43 @@ func (s *Server) reportSettingsReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, reportFormURLWithPreset(rep.Name, standardReportPresetID), http.StatusSeeOther)
+}
+
+func trustedPresetMeasure(candidates []reportpkg.Measure, requested reportpkg.Measure) (reportpkg.Measure, bool) {
+	if len(candidates) == 0 {
+		return reportpkg.Measure{}, true
+	}
+	if len(candidates) == 1 {
+		return candidates[0], true
+	}
+	aggKey := func(agg string) string {
+		if agg == "" {
+			return "sum"
+		}
+		return strings.ToLower(strings.TrimSpace(agg))
+	}
+	var found reportpkg.Measure
+	count := 0
+	for _, candidate := range candidates {
+		if aggKey(candidate.Agg) == aggKey(requested.Agg) {
+			found = candidate
+			count++
+		}
+	}
+	return found, count == 1
+}
+func cloneTrustedMeasures(in []reportpkg.Measure) []reportpkg.Measure {
+	if in == nil {
+		return nil
+	}
+	out := append([]reportpkg.Measure(nil), in...)
+	for i := range out {
+		if in[i].Calculations != nil {
+			out[i].Calculations = append([]reportpkg.MeasureCalculation{}, in[i].Calculations...)
+		}
+		if in[i].Scope != nil {
+			out[i].Scope = append([]string{}, in[i].Scope...)
+		}
+	}
+	return out
 }

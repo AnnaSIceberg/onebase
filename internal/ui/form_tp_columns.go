@@ -23,6 +23,12 @@ type managedTPColumn struct {
 	// индекс сам по видимым колонкам; с выбором состава эти порядки разошлись.
 	Index   int
 	Element *metadata.FormElement // элемент kind: Колонка, если объявлен
+	// ElPath / CondHidden — колонка с hidden_when: путь её размещения (ключ
+	// карты состояний элементов) и результат условия при отрисовке. В отличие
+	// от Hidden такая колонка видимостью меняется после каждого события формы:
+	// клиент находит её по ElPath в elementStates.hidden ответа.
+	ElPath     string
+	CondHidden bool
 }
 
 // Width — ширина колонки в пикселях из `width` элемента Колонка; 0 — ширину
@@ -128,8 +134,10 @@ func managedTPColumnPlan(el *metadata.FormElement, fields []metadata.Field) []ma
 	plan := make([]managedTPColumn, 0, len(fields))
 	for _, index := range order {
 		element := chosen[index]
+		field := managedColumnField(fields[index], element)
+		field.ChoiceShowDeleted = firstBool(element.ChoiceShowDeleted, field.ChoiceShowDeleted)
 		plan = append(plan, managedTPColumn{
-			Field:   managedColumnField(fields[index], element),
+			Field:   field,
 			Index:   index,
 			Element: element,
 		})
@@ -292,6 +300,26 @@ func managedTPColumnTitles(form *metadata.FormModule, entity *metadata.Entity, v
 	return out
 }
 
+// managedTPEditable сообщает, есть ли в плане табличной части хоть одна
+// колонка, доступная для правки. Таблица, у которой все видимые колонки
+// объявлены readonly, — это ВЫДАЧА (результаты поиска, итоги): строки в ней
+// появляются из обработчика, и «+ Добавить строку» с «− Удалить строку» под ней
+// обещают действие, которого нет.
+//
+// Отдельно от readonly самой ТАБЛИЦЫ: её закрывать нельзя, если нужен щелчок
+// по строке — платформа не пускает события к нередактируемому элементу.
+func managedTPEditable(plan []managedTPColumn) bool {
+	for _, column := range plan {
+		if column.Hidden {
+			continue
+		}
+		if column.Element == nil || !column.Element.ReadOnly {
+			return true
+		}
+	}
+	return false
+}
+
 func entityTablePartByName(entity *metadata.Entity, name string) *metadata.TablePart {
 	for i := range entity.TableParts {
 		if strings.EqualFold(entity.TableParts[i].Name, name) {
@@ -299,4 +327,36 @@ func entityTablePartByName(entity *metadata.Entity, name string) *metadata.Table
 		}
 	}
 	return nil
+}
+
+// managedTPColumnsHiddenWhen помечает колонки с hidden_when путём размещения и
+// состоянием условия при отрисовке. Само условие уже посчитано вместе с
+// остальными элементами формы (managedFormElementStates обходит и детей
+// табличной части), здесь его результат только переносится в план.
+//
+// Колонка, скрытая условием, остаётся в описании таблицы, а не выпадает из
+// него, как невыбранный реквизит: иначе показать её после события было бы
+// нечем. Значение её ячеек по-прежнему уходит в tp_json и доступно в
+// ТекущаяСтрока — скрывается показ, а не данные.
+func managedTPColumnsHiddenWhen(plan []managedTPColumn, ctx map[string]any) []managedTPColumn {
+	var out []managedTPColumn
+	hidden, _ := ctx["ElHidden"].(map[string]bool)
+	for i, column := range plan {
+		if column.Hidden || column.Element == nil || strings.TrimSpace(column.Element.HiddenWhen) == "" {
+			continue
+		}
+		path := elementStatePath(ctx, column.Element)
+		if path == "" {
+			continue
+		}
+		if out == nil {
+			out = append([]managedTPColumn(nil), plan...)
+		}
+		out[i].ElPath = path
+		out[i].CondHidden = hidden[path]
+	}
+	if out == nil {
+		return plan
+	}
+	return out
 }

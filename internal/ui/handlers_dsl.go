@@ -16,8 +16,10 @@ import (
 	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/dslvars"
+	"github.com/ivantit66/onebase/internal/entityservice"
 	"github.com/ivantit66/onebase/internal/exchange"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/msgstatus"
 	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/storage"
 )
@@ -57,9 +59,15 @@ func withLang(ctx context.Context, lang string) context.Context {
 func dslCurrentUserObject(ctx context.Context) (*interpreter.MapThis, string) {
 	var id, login, fullName string
 	var admin bool
+	roles := []any{}
 	ref := &interpreter.Ref{Type: metadata.SystemUsersEntity}
 	if u := auth.UserFromContext(ctx); u != nil {
 		id, login, fullName, admin = u.ID, u.Login, u.FullName, u.IsAdmin
+		for _, role := range u.Roles {
+			if role != nil {
+				roles = append(roles, role.Name)
+			}
+		}
 		label := u.FullName
 		if label == "" {
 			label = u.Login
@@ -68,9 +76,9 @@ func dslCurrentUserObject(ctx context.Context) (*interpreter.MapThis, string) {
 	}
 	return &interpreter.MapThis{M: map[string]any{
 		"ИД": id, "Имя": login, "ПолноеИмя": fullName, "Админ": admin,
-		"Ссылка": ref,
-		"ID":     id, "Login": login, "FullName": fullName, "IsAdmin": admin,
-		"Ref": ref,
+		"Ссылка": ref, "Роли": roles,
+		"ID": id, "Login": login, "FullName": fullName, "IsAdmin": admin,
+		"Ref": ref, "Roles": roles,
 	}}, login
 }
 
@@ -110,7 +118,7 @@ func (s *Server) buildDSLVarsTx(ctx context.Context, mc *runtime.MovementsCollec
 		NetGuard:          s.netGuard(ctx),
 		HTTPFileMaxBytes:  s.attachmentMaxBytes(),
 		ExecGuard:         s.execGuard(ctx),
-		Notifier:          s.notifier(),
+		Notifier:          s.notifier(txState),
 		Interp:            s.interp, // для hook-правила конфликта в ПланыОбмена.ЗагрузитьПакет
 		EmailFileResolver: s.emailAttachmentPathResolver(txState.Ctx),
 		// Подписи ссылочных констант: живой контекст, RowLabel, полевая
@@ -400,8 +408,9 @@ func (s *Server) buildDSLVarsWithMessagesTx(ctx context.Context, mc *runtime.Mov
 	vars, txState := s.buildDSLVarsTx(ctx, mc)
 	userKey := userKeyFromCtx(ctx)
 	msgFunc := interpreter.BuiltinFunc(func(args []any, file string, line int) (any, error) {
-		if len(args) > 0 {
-			text := fmt.Sprintf("%v", args[0])
+		// Второй аргумент — СтатусСообщения: метка едет в строке сообщения
+		// (msgstatus) и снимается там, где сообщение показывают.
+		if text, ok := msgstatus.FromArgs(args); ok {
 			if msgs != nil {
 				*msgs = append(*msgs, text)
 			}
@@ -427,8 +436,9 @@ type entityHookThis struct {
 // stored fields and values supplied by this operation. The assignment map is
 // shared so writes in either the module or its hook have the same export policy.
 type entityHookXDTOState struct {
-	loaded   bool
-	assigned map[string]bool
+	loaded         bool
+	assigned       map[string]bool
+	serverAssigned map[string]bool
 }
 
 func (o *entityHookThis) XDTOObject() *runtime.Object { return o.runtimeObject() }
@@ -553,6 +563,12 @@ func (s *Server) runOnWriteCtx(ctx context.Context, obj *runtime.Object, mc *run
 	if len(source) > 0 {
 		xdtoState = source[0]
 	}
+	var serverAssigned map[string]bool
+	if xdtoState != nil {
+		serverAssigned = xdtoState.serverAssigned
+	}
+	finishAssignmentQuery := entityservice.InstallServerAssignedFieldQuery(vars, serverAssigned)
+	defer finishAssignmentQuery()
 	runErr := s.runEntityHook(ctx, proc, obj, vars, xdtoState)
 	if runErr = finishDSLExecution(txState, runErr); runErr != nil {
 		return interpreter.FormatUserError(runErr), msgs

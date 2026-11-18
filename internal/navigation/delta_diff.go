@@ -16,7 +16,7 @@ func Diff(base, desired Tree, layer Layer) (Delta, error) {
 	if err != nil {
 		return Delta{}, err
 	}
-	if desired.Context != base.Context {
+	if desired.Context != base.Context || desired.Version != base.Version {
 		return Delta{}, fmt.Errorf("navigation: context mismatch")
 	}
 	work, err := readLayout(base)
@@ -35,7 +35,7 @@ func Diff(base, desired Tree, layer Layer) (Delta, error) {
 			}
 			continue
 		}
-		if node.kind != old.kind || node.kind == itemNode && node.item.Target != old.item.Target {
+		if node.kind != old.kind || node.kind == itemNode && (node.item.Target != old.item.Target || node.item.Variant != old.item.Variant || node.item.Action != old.item.Action) {
 			return Delta{}, fmt.Errorf("navigation: target or node kind changed")
 		}
 		if node.title == old.title && !maps.Equal(node.titles, old.titles) && len(node.titles) != 0 {
@@ -88,7 +88,7 @@ func Diff(base, desired Tree, layer Layer) (Delta, error) {
 					op = "add_group"
 				}
 				delta.Ops = append(delta.Ops, Operation{Op: op, ID: id, Parent: parent, After: previous, Title: &title})
-				work.nodes[id] = &layoutNode{kind: kind, title: title}
+				work.nodes[id] = &layoutNode{kind: w.kind, title: title}
 				work.insert(id, parent, previous)
 			} else if n.parent != parent {
 				move(id, parent, previous)
@@ -97,13 +97,28 @@ func Diff(base, desired Tree, layer Layer) (Delta, error) {
 		}
 	}
 	process("", sectionNode)
-	for _, sid := range wanted.list("", sectionNode) {
-		process(sid, groupNode)
-	}
-	for _, sid := range wanted.list("", sectionNode) {
-		process(sid, itemNode)
-		for _, gid := range wanted.list(sid, groupNode) {
-			process(gid, itemNode)
+	if base.Version == 2 {
+		var descendants func(string)
+		descendants = func(parent string) {
+			process(parent, groupNode)
+			for _, id := range wanted.list(parent, groupNode) {
+				if wanted.nodes[id].kind == groupNode {
+					descendants(id)
+				}
+			}
+		}
+		for _, sid := range wanted.list("", sectionNode) {
+			descendants(sid)
+		}
+	} else {
+		for _, sid := range wanted.list("", sectionNode) {
+			process(sid, groupNode)
+		}
+		for _, sid := range wanted.list("", sectionNode) {
+			process(sid, itemNode)
+			for _, gid := range wanted.list(sid, groupNode) {
+				process(gid, itemNode)
+			}
 		}
 	}
 	// Stable ID order makes identical requests byte-for-byte deterministic.

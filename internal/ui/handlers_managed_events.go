@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,9 +48,16 @@ import (
 type formEventResponse struct {
 	WorkbookDownloadURL string                      `json:"workbookDownloadUrl,omitempty"`
 	TabularDocuments    map[string]string           `json:"tabularDocuments,omitempty"`
+	AudioStops          []string                    `json:"audioStops,omitempty"`
+	UICommands          []uiResponseCommand         `json:"uiCommands,omitempty"`
+	RefreshLive         bool                        `json:"refreshLive,omitempty"`
+	ResultForm          *resultFormPayload          `json:"resultForm,omitempty"`
+	CloseResultForm     bool                        `json:"closeResultForm,omitempty"`
+	FormTitle           *string                     `json:"formTitle,omitempty"`
 	OK                  bool                        `json:"ok"`
 	Values              map[string]any              `json:"values,omitempty"`
 	Revealed            []string                    `json:"revealed,omitempty"`
+	Deferred            bool                        `json:"deferred,omitempty"`
 	TableParts          map[string][]map[string]any `json:"tableparts,omitempty"`
 	FormTables          map[string][]map[string]any `json:"formTables,omitempty"`
 	ConditionalCSS      string                      `json:"conditionalCss"`
@@ -70,6 +78,9 @@ type formEventResponse struct {
 	// рисует модал вопроса, ответ возвращается событием Ответ (#1528).
 	Question *questionPayload `json:"question,omitempty"`
 	CSV      *formCSVDownload `json:"csv,omitempty"`
+	// Idle — команды обработчиков ожидания (Подключить/ОтключитьОбработчикОжидания):
+	// браузер ставит или снимает таймер тика ОбработкаОжидания.
+	Idle []idleCommand `json:"idle,omitempty"`
 	// Navigation != nil — обработчик вызвал ОткрытьФорму: клиент переходит
 	// по серверно построенному адресу, только если форма не «грязная» (#1557).
 	Navigation *navigationPayload `json:"navigation,omitempty"`
@@ -103,6 +114,7 @@ type formEventResponse struct {
 	// TPRefOptions — подписи ссылок из строк табличных частей. Значения строк
 	// остаются UUID, а клиент обновляет этот словарь до перерисовки SlickGrid.
 	TPRefOptions map[string]map[string][]map[string]any `json:"tpRefOptions,omitempty"`
+	TPRefChoices map[string]map[string][]map[string]any `json:"tpRefChoices,omitempty"`
 	// Close присутствует только в ответе отдельного close-intent endpoint.
 	// Обычный /form-event не выдаёт разрешение уничтожить форму.
 	Close *formCloseDecision `json:"close,omitempty"`
@@ -136,6 +148,7 @@ const (
 // permission, row-filter, required, optimistic-version, form-hook and
 // entityservice semantics live here exactly once.
 func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, obj *runtime.Object, isNew bool, action string, requireReadableResult bool, onCommitted func(uuid.UUID, int64)) ([]string, int64, error) {
+	defer func() { obj.TakeServerFieldAssignments() }()
 	if !s.can(r, string(entity.Kind), entity.Name, "write") || isNew && !s.canInteractiveCreate(r, entity) {
 		return nil, 0, &managedCloseSaveError{status: http.StatusForbidden, kind: managedSaveForbidden, message: "доступ запрещён"}
 	}
@@ -196,7 +209,8 @@ func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, for
 	}
 	result, err := s.entitySvc.Save(r.Context(), entityservice.SaveRequest{
 		Entity: entity, ID: obj.ID, IsNew: isNew, Fields: obj.Fields,
-		TablePartRows: obj.TablePartRows, Action: action, ExpectedVersion: expectedVersion,
+		ServerAssignments: obj.TakeServerFieldAssignments(),
+		TablePartRows:     obj.TablePartRows, Action: action, ExpectedVersion: expectedVersion,
 		Preflight: func(txCtx context.Context, saveObj *runtime.Object) error {
 			if !isNew {
 				return nil
@@ -293,6 +307,7 @@ func (s *Server) saveManagedCloseObject(r *http.Request, entity *metadata.Entity
 
 // handleManagedFormEvent — единая точка обработки событий managed-форм.
 func (s *Server) handleManagedFormEvent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-OB-Boot", uiBootID)
 	s.handleManagedFormEventMode(w, r, nil)
 }
 
@@ -340,9 +355,19 @@ func (s *Server) installFormCloseAccessRecheck(
 }
 
 func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Request, closeInv *formCloseInvocation) {
-	r = withMessageReceipts(r)
+	r = withMessageReceipts(withFormCloseSource(r))
+	if closeInv == nil {
+		r = withUIResponseCommands(r)
+	}
+	r = r.WithContext(withShellID(r.Context(), r.Header.Get(shellHeader)))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)
+	// prepare — разбор запроса, сборка объекта и чтение базы до обработчика.
+	endPrepare := serverTimingSpan(r.Context(), "prepare")
+	// Счётчик записей этого запроса: строки ТЧ после обработчика перечитываются,
+	// только если обработчик писал в базу (storage.WithWriteCounter).
+	writeCtx, requestWrites := storage.WithWriteCounter(r.Context())
+	r = r.WithContext(withRequestRecordCache(writeCtx, requestWrites))
 
 	// Сущность резолвим ДО разбора тела: от неё зависит предел (#629). Пределы не
 	// композируются — прежняя пара «1 МиБ, затем limitMultipartRequest на 52 МиБ»
@@ -705,7 +730,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 				isTableTarget := eventTarget.parentTablePart != nil ||
 					eventTarget.element != nil && eventTarget.element.Kind == metadata.FormElementTablePart
 				if isTableTarget {
-					if err := validateManagedFormTableEventTarget(tableAuthorities, eventTarget); err != nil {
+					if err := validateManagedFormEventTarget(tableAuthorities, eventTarget, eventName); err != nil {
 						respondJSON(enc, formEventResponse{Error: err.Error()})
 						return
 					}
@@ -737,6 +762,17 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			respondJSON(enc, formEventResponse{OK: true})
 			return
 		}
+	} else if eventName == formIdleEvent && elementName == "" {
+		// Тик обработчика ожидания: процедуру называет браузер, а допускается
+		// только подключённая модулем формы (подпись подключения).
+		var idleErr error
+		idleFields := entityFormServiceFieldNames(entity, form)
+		idleProc := r.FormValue(idleFields["_idle_proc"])
+		procName, idleErr = s.resolveFormIdleTick(formIdleLogin(r), "entity:"+entity.Name, form, idleProc, r.FormValue(idleFields["_idle_token"]))
+		if idleErr != nil {
+			respondJSON(enc, formEventResponse{Error: idleErr.Error(), Idle: []idleCommand{{Proc: strings.TrimSpace(idleProc), Off: true}}})
+			return
+		}
 	} else {
 		var eligibilityErr error
 		procName, eventTarget, _, eligibilityErr = resolveBrowserFormEvent(form, elementName, eventName, false)
@@ -745,7 +781,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
-	if err := validateManagedFormTableEventTarget(tableAuthorities, eventTarget); err != nil {
+	if err := validateManagedFormEventTarget(tableAuthorities, eventTarget, eventName); err != nil {
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
 	}
@@ -915,7 +951,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if closeInv != nil {
-			persisted, loadErr := s.store.GetByID(dslCtx, entity.Name, obj.ID, entity)
+			persisted, loadErr := s.recordForRequest(dslCtx, entity, obj.ID)
 			if loadErr != nil {
 				if storage.IsNotFound(loadErr) {
 					finishTerminalClose()
@@ -1010,10 +1046,8 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if closeInv != nil {
-		baseline := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, nil).response(false)
-		closeInv.baselineValues = baseline.Values
-		closeInv.baselineTableParts = baseline.TableParts
-		closeInv.baselineFormTables = baseline.FormTables
+		s.captureFormCloseBaseline(r.Context(), form, entity, obj, closeInv)
+		r = r.WithContext(withFormCloseBaseline(r.Context(), closeInv))
 	}
 	var msgs []string
 	if closeInv != nil && closeInv.mode != "discard" {
@@ -1200,11 +1234,11 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// txState — «живой» контекст: обработчик может позвать модуль, который
 	// откроет транзакцию, и ссылки объекта обязаны выполнять ПолучитьОбъект()
 	// внутри неё, а не ждать второго соединения (пул SQLite — одно).
-	if eventName == string(metadata.FormEventOnSearch) {
+	if eventName == string(metadata.FormEventOnSearch) || deferredFormEvent(eventName) {
 		dslCtx = storage.ReadOnlyContext(dslCtx)
 	}
 	vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
-	s.bindFormCloseSource(vars, r)
+
 	defer rollbackDSLExecution(txState)
 	isNewForHandler := strings.TrimSpace(r.FormValue("_id")) == "" && (closeInv == nil || !closeInv.saved)
 	thisObj := s.newFormObjectThisLive(dslCtx, txState, obj, entity, form, isNewForHandler)
@@ -1308,6 +1342,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	if closeInv == nil && eventName == string(metadata.FormEventOnClick) {
 		s.bindWorkbookCommands(opCtx, w, r, vars, &workbook)
 	}
+	var requestedResult *resultFormRequest
+	resultFn := newResultFormBuiltin(&requestedResult, closeInv == nil)
+	vars["ОткрытьФормуРезультата"], vars["OpenResultForm"] = resultFn, resultFn
 	var navigation *navigationPayload
 	navFn := newNavigationBuiltin(&navigation, s.reg, s.store, auth.UserFromContext(r.Context()))
 	vars["ОткрытьФорму"] = navFn
@@ -1323,6 +1360,12 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	vars["ПоказатьПериод"] = periodFn
 	vars["ShowPeriod"] = periodFn
 
+	// Обработчик ожидания: команды уходят в ответ, таймер ставит браузер.
+	var idle []idleCommand
+	for k, v := range s.newFormIdleBuiltins(&idle, formIdleLogin(r), "entity:"+entity.Name, form) {
+		vars[k] = v
+	}
+
 	// Динамический список значений (НачалоВыбора): билтин ДобавитьЗначениеСписка
 	// копит пункты в sink; после Run они уходят в ответ как choiceList, и клиент
 	// заполняет ими <select> элемента ПолеСписка.
@@ -1332,8 +1375,11 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	vars["AddChoiceItem"] = choiceFn
 	if closeInv != nil {
 		disableDialogBuiltinsForClose(vars)
+		allowCloseQuestion(vars, questionFn, strings.TrimSpace(r.FormValue("_question_answer")) != "")
 	}
 
+	var audioStops []string
+	addFormAudioBuiltins(vars, form, &audioStops)
 	condRuntime := newFormConditionalRuntime(form)
 	for k, v := range condRuntime.builtins() {
 		vars[k] = v
@@ -1368,9 +1414,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	if qa := strings.TrimSpace(r.FormValue("_question_answer")); qa != "" {
 		vars["ВопросОтвет"] = qa
 		vars["QuestionAnswer"] = qa
-	} else if beforePost {
-		// ПередПроведением приходит и без ответа, и с ответом на свой же
-		// вопрос: пустая строка отличает первый вызов от ответа.
+	} else if beforePost || closeInv != nil {
+		// ПередПроведением и ПередЗакрытием приходят и без ответа, и с ответом
+		// на свой же вопрос: пустая строка отличает первый вызов от ответа.
 		vars["ВопросОтвет"] = ""
 		vars["QuestionAnswer"] = ""
 	}
@@ -1384,12 +1430,23 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
 	}
-
-	if err := addEntityTPEventContext(r, entity, form, tableAuthorities, eventTarget, obj, vars); err != nil {
+	// ОбработкаОповещения: что оповестили — из записи сервера по id.
+	notifyArgs, err := s.addFormNotifyContext(dslCtx, txState, eventName, strings.TrimSpace(r.FormValue("_notify_id")), vars)
+	if err != nil {
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
 	}
 
+	if err := addEntityTPEventContext(r, entity, form, tableAuthorities, eventTarget, obj, vars, eventName); err != nil {
+		respondJSON(enc, formEventResponse{Error: err.Error()})
+		return
+	}
+
+	var deferredBaseline *formEventState
+	if deferredFormEvent(eventName) {
+		baseline := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, nil)
+		deferredBaseline = &baseline
+	}
 	// Снимок полей до обработчика — по нему после Run отличаем «поле изменил сам
 	// обработчик» от «поле осталось прежним», см. refreshFieldsWrittenByHandler.
 	fieldsBefore := snapshotFieldValues(obj.Fields)
@@ -1409,12 +1466,19 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// клиент покажет красный баннер и не закроет форму.
 	var runErr error
 	timeout := interpreter.ClampWallClock(opCtx, s.operationTimeout(opFormEvent))
+	endPrepare()
+	// Счётчик записей до обработчика: строки ТЧ перечитываются после него,
+	// только если за это время в базу кто-то писал (см. storage.WriteSeq).
+	writesBefore := requestWrites.Load()
+	endDSL := serverTimingSpan(r.Context(), "dsl")
 	if closeInv != nil {
 		var entryResult interpreter.EntryCallResult
 		entryResult, runErr = s.interp.CallEntrySandboxedWithBindings(decl, thisObj, closeArgs,
 			interpreter.SandboxProfile{Context: dslCtx, MaxWallClock: timeout}, vars)
 		if runErr == nil {
-			closeInv.cancelled = formCloseBindingCancelled(decl, entryResult.Bindings)
+			// Заданный вопрос оставляет форму открытой: закрытие повторится с
+			// ответом, и решать будет уже второй ход.
+			closeInv.cancelled = formCloseBindingCancelled(decl, entryResult.Bindings) || question.Variants != nil
 		}
 	} else if beforePost && decl != nil {
 		var entryResult interpreter.EntryCallResult
@@ -1423,6 +1487,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		if runErr == nil {
 			postCancelled = formCloseBindingCancelled(decl, entryResult.Bindings)
 		}
+	} else if notifyArgs != nil {
+		_, runErr = s.interp.CallEntrySandboxedWithBindings(decl, thisObj, notifyArgs,
+			interpreter.SandboxProfile{Context: dslCtx, MaxWallClock: timeout}, vars)
 	} else if timeout > 0 {
 		runErr = s.interp.RunSandboxed(decl, thisObj,
 			interpreter.SandboxProfile{Context: dslCtx, MaxWallClock: timeout}, nil, vars)
@@ -1434,6 +1501,10 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// единственное соединение. Успешный выход с открытой транзакцией считается
 	// ошибкой процедуры, чтобы конфигурационная ошибка не оставалась незаметной.
 	runErr = finishDSLExecution(txState, runErr)
+	endDSL()
+	if n := requestWrites.Load() - writesBefore; n > 0 {
+		serverTimingNote(r.Context(), "handlerWrites", fmt.Sprintf("%d: %s", n, strings.Join(requestWrites.Sample(), " | ")))
+	}
 	// Cancelled BeforeClose/BeforePost revokes disclosure just like a failed handler.
 	concealSuccess := runErr == nil && !postCancelled && (closeInv == nil || !closeInv.cancelled)
 	s.finishConcealEvent(r, form, entity, obj, thisObj.assigned, concealSuccess)
@@ -1456,16 +1527,21 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// случайный uuid, поэтому obj.ID != uuid.Nil истинно ВСЕГДА и каждое событие
 	// на «Создать» уходило бы в базу за несуществующей строкой. Ровно эта ловушка
 	// описана выше у restoreUnsubmittedFields.
+	endRefresh := serverTimingSpan(r.Context(), "refresh")
 	if (existingRecord || savedFormID(thisObj) != "") && (closeInv == nil || !closeInv.saved) {
 		s.refreshFieldsWrittenByHandler(liveCtx, r, entity, form, obj, fieldsBefore)
 	}
-	if existingRecord && tpDBBefore != nil && !thisObj.saved {
+	// Без единой записи в базу за время обработчика строки ТЧ в ней те же,
+	// что до него, — перечитывать их незачем (у заявки колл-центра это 17
+	// запросов на событие). Запись через общий модуль (#579) сдвигает счётчик.
+	if existingRecord && tpDBBefore != nil && !thisObj.saved && requestWrites.Load() != writesBefore {
 		s.refreshTablePartsWrittenByHandler(liveCtx, entity, obj, tpBefore, tpDBBefore)
 	}
+	endRefresh()
 	var closePersisted map[string]any
 	var closePersistedErr error
 	if closeInv != nil && obj.ID != uuid.Nil && (existingFormID != "" || closeInv.saved) {
-		closePersisted, closePersistedErr = s.store.GetByID(liveCtx, entity.Name, obj.ID, entity)
+		closePersisted, closePersistedErr = s.recordForRequest(liveCtx, entity, obj.ID)
 		switch {
 		case storage.IsNotFound(closePersistedErr):
 			// A trusted handler may delete or replace the row through another
@@ -1531,40 +1607,59 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	// lifecycle calls. Programmatic values/TableParts/FormTables do not emit DOM
 	// input events; without this signal an unsaved command mutation on a clean
 	// form could be silently discarded by the next Close.
-	dirty := transientManagedStateDirty(obj, fieldsBefore, tpBefore)
+	endDirty := serverTimingSpan(r.Context(), "dirty")
+	audioViewFields := formViewStateFields(form, entity)
+	dirty := transientManagedFormDirty(obj, fieldsBefore, tpBefore, audioViewFields)
 	if existingRecord || thisObj.saved || (closeInv != nil && closeInv.saved) {
-		dirty = s.managedCloseStateDirty(liveCtx, entity, form, obj, fieldsBefore, tpBefore)
+		// Без записей за время обработчика строки ТЧ в базе — те же, что в
+		// снимке до него: повторно их не читаем.
+		var storedTP map[string][]map[string]any
+		if requestWrites.Load() == writesBefore {
+			storedTP = tpDBBefore
+		}
+		diag := newManagedDirtyAllDiagnostic(r, form, metadata.FormEventType(eventName))
+		reason := s.managedCloseStateDirtyReason(liveCtx, entity, form, obj, fieldsBefore, tpBefore, storedTP, diag)
+		dirty = reason != ""
+		diag.finish(liveCtx, dirty)
 	}
+	endDirty()
 	if formOpenEvent(elementName, eventName) && !thisObj.saved {
 		dirty = false
 	}
 	eventDirty := boolPtr(dirty)
 	if runErr != nil {
 		opStatus = operationStatus(opCtx, runErr)
-		resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, condRuntime.rules, msgs).response(false)
+		resp := s.serializeManagedFormEventState(withTPRefDelta(r.Context(), form, tpBefore, obj.TablePartRows), form, entity, obj, condRuntime.rules, msgs).response(false)
 		resp.Error = interpreter.FormatUserError(runErr)
+		resp.AudioStops = audioStops
 		resp.PickerData = picker
 		if question.Variants != nil {
 			q := question
 			resp.Question = &q
 		}
+		resp.Idle = idle
 		// Обработчик мог записать форму и упасть уже после этого: id всё равно
 		// нужен клиенту, иначе повтор действия создаст второй документ.
 		resp.SavedID = savedFormID(thisObj)
 		resp.Version = versionWrittenByHandler(thisObj)
 		resp.Dirty = eventDirty
+		filterDeferredResponse(deferredBaseline, &resp)
 		compactFormCloseDelta(&resp, closeInv)
 		respondJSON(enc, resp)
 		return
 	}
 
 	opStatus = "ok"
-	resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, condRuntime.rules, msgs).response(true)
+	endSerialize := serverTimingSpan(r.Context(), "serialize")
+	resp := s.serializeManagedFormEventState(withTPRefDelta(r.Context(), form, tpBefore, obj.TablePartRows), form, entity, obj, condRuntime.rules, msgs).response(true)
+	endSerialize()
+	resp.AudioStops = audioStops
 	resp.PickerData = picker
 	if question.Variants != nil {
 		q := question
 		resp.Question = &q
 	}
+	resp.Idle = idle
 	resp.Cancel = postCancelled
 	if navigation != nil {
 		resp.Navigation = navigation
@@ -1573,7 +1668,24 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	resp.SavedID = savedFormID(thisObj)
 	resp.Version = versionWrittenByHandler(thisObj)
 	resp.Dirty = eventDirty
-	if closeInv == nil {
+	if requestedResult != nil && resp.OK && !resp.Cancel {
+		if navigation != nil || question.Variants != nil {
+			resp.OK = false
+			resp.Error = "форма результата несовместима с вопросом или навигацией в том же ответе"
+		} else {
+			handoffReason := s.managedCloseStateDirtyReason(liveCtx, entity, resultHandoffForm(entity, form), obj, fieldsBefore, tpBefore, nil)
+			payload, resultErr := s.prepareResultForm(r, requestedResult, thisObj, handoffReason != "", handoffReason)
+			if resultErr != nil {
+				resp.OK = false
+				resp.Error = resultErr.Error()
+			} else {
+				resp.ResultForm = payload
+				resp.Dirty = boolPtr(false) // explicit handoff consumed only transient scalar view state
+			}
+		}
+	}
+	filterDeferredResponse(deferredBaseline, &resp)
+	if closeInv == nil && resp.OK {
 		scope := tabularScope{Kind: string(entity.Kind), Name: entity.Name, ID: rawID, Form: form.Name}
 		s.attachTabularResults(w, r, scope, thisObj, &resp)
 		if thisObj.obj != nil && thisObj.obj.ID != uuid.Nil {
@@ -1582,6 +1694,10 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		attachWorkbook(scope, workbook, &resp)
 	}
 	compactFormCloseDelta(&resp, closeInv)
+	if closeInv == nil {
+		attachUIResponseCommands(r, &resp, requestWrites.Load() > writesBefore)
+	}
+	defer serverTimingSpan(r.Context(), "encode")()
 	respondJSON(enc, resp)
 }
 
@@ -1786,31 +1902,92 @@ func mergePersistedFieldsUnchanged(entity *metadata.Entity, persisted, fields ma
 	}
 }
 
-// managedCloseStateDirty compares the final state returned to the browser
+// managedCloseStateDirtyWithRows compares the final state returned to the browser
 // with the durable record after BeforeClose. Entity fields/table parts are
 // compared with storage; form-only attributes and ValueTables are compared
 // with their pre-handler snapshot because they have no durable counterpart.
 // Read failures are fail-safe: the form stays dirty instead of risking loss.
-func (s *Server) managedCloseStateDirty(
+//
+// Строки ТЧ из базы можно передать готовыми (storedTP): событие формы, за
+// время обработчика которого в базу никто не писал, берёт их из снимка до
+// обработчика. nil — читать из базы.
+func (s *Server) managedCloseStateDirtyWithRows(
 	ctx context.Context,
 	entity *metadata.Entity,
 	form *metadata.FormModule,
 	obj *runtime.Object,
 	fieldsBefore map[string]string,
 	tpBefore map[string][]map[string]any,
+	storedTP map[string][]map[string]any,
 ) bool {
-	if s == nil || s.store == nil || entity == nil || obj == nil || obj.ID == uuid.Nil {
-		return true
+	return s.managedCloseStateDirtyReason(ctx, entity, form, obj, fieldsBefore, tpBefore, storedTP) != ""
+}
+
+// managedCloseStateDirtyReason — то же сравнение, но с первой причиной
+// расхождения ("" — форма чистая). Причина только для журнала сервера:
+// значения в ней не печатаются (ПДн), только длина и отпечаток (dirtyValueDigest).
+func (s *Server) managedCloseStateDirtyReason(
+	ctx context.Context,
+	entity *metadata.Entity,
+	form *metadata.FormModule,
+	obj *runtime.Object,
+	fieldsBefore map[string]string,
+	tpBefore map[string][]map[string]any,
+	storedTP map[string][]map[string]any,
+	diagnostics ...*managedDirtyAllDiagnostic,
+) string {
+	var diag *managedDirtyAllDiagnostic
+	if len(diagnostics) > 0 {
+		diag = diagnostics[0]
 	}
-	persisted, err := s.store.GetByID(ctx, entity.Name, obj.ID, entity)
-	if err != nil || persisted == nil {
-		return true
+	firstReason := ""
+	hit := func(reason string) bool {
+		if firstReason == "" {
+			firstReason = reason
+		}
+		return diag == nil
+	}
+	if s == nil || s.store == nil || entity == nil || obj == nil || obj.ID == uuid.Nil {
+		diag.failure("record", "", "record-unavailable")
+		return "no-record: объект без id"
+	}
+	persisted, err := s.recordForRequest(ctx, entity, obj.ID)
+	if err != nil {
+		diag.failure("record", "", "record-read-error")
+		return "record-read-error: " + err.Error()
+	}
+	if persisted == nil {
+		diag.failure("record", "", "record-missing")
+		return "record-missing: записи нет в базе"
 	}
 	dialect := s.store.Dialect().Name()
+	// Индексы вместо перебора на каждое поле (ci_index.go): obj.Get и
+	// maskCIKeyValue — O(ключей), а полей у заявки сотни. Карты в цикле не
+	// меняются.
+	persistedKeys := newCIIndex(persisted, equalFoldKey)
+	liveKeys := newCIIndex(obj.Fields, strings.ToLower)
+	var persistedView map[string]any
+	var viewKeys ciIndex
 	for _, field := range entity.Fields {
-		stored, _ := maskCIKeyValue(persisted, field.Name)
-		if tpCellNormStored(field, obj.Get(field.Name), dialect) != tpCellNormStored(field, stored, dialect) {
-			return true
+		_, stored, _ := ciGet(persisted, persistedKeys, field.Name)
+		liveValue := objectGetIndexed(obj, liveKeys, field.Name)
+		liveNorm, storedNorm := tpCellNormStored(field, liveValue, dialect), tpCellNormStored(field, stored, dialect)
+		if liveNorm != storedNorm {
+			// Save restores the form's safe view after writing durable PII.
+			// Build that view only on a difference, without mutating the object.
+			if persistedView == nil {
+				persistedView = cloneRecord(persisted)
+				s.maskRecordWithDecisions(s.recordFieldDecisions(ctx, entity, persisted), persistedView)
+				viewKeys = newCIIndex(persistedView, equalFoldKey)
+			}
+			_, view, _ := ciGet(persistedView, viewKeys, field.Name)
+			if liveNorm == tpCellNormStored(field, view, dialect) {
+				continue
+			}
+			if hit(fmt.Sprintf("entity-field %s type=%s live=%s stored=%s", field.Name, field.Type, dirtyValueDigest(liveNorm), dirtyValueDigest(storedNorm))) {
+				return firstReason
+			}
+			diag.cell("entity", field.Name, -1, field, liveValue, stored, "")
 		}
 	}
 	serviceKeys := []string{"deletion_mark"}
@@ -1832,26 +2009,60 @@ func (s *Server) managedCloseStateDirty(
 		stored, _ := maskCIKeyValue(persisted, name)
 		if name == "parent_id" {
 			if refValueString(live) != refValueString(stored) {
-				return true
+				if hit("service-field parent_id") {
+					return firstReason
+				}
+				diag.cell("service", name, -1, metadata.Field{Name: name, Type: metadata.FieldType("reference:" + entity.Name), RefEntity: entity.Name}, live, stored, "")
 			}
 		} else if boolCanon(asBool(live)) != boolCanon(asBool(stored)) {
-			return true
+			if hit(fmt.Sprintf("service-field %s live=%v stored=%v", name, asBool(live), asBool(stored))) {
+				return firstReason
+			}
+			diag.cell("service", name, -1, metadata.Field{Name: name, Type: metadata.FieldTypeBool}, live, stored, "")
 		}
 	}
 	for _, tablePart := range entity.TableParts {
-		stored, rowsErr := s.store.GetTablePartRows(ctx, entity.Name, tablePart.Name, obj.ID, tablePart)
-		if rowsErr != nil || !tpRowsEqualStored(obj.TablePartRows[tablePart.Name], stored, tablePart, dialect) {
-			return true
+		stored, cached := storedTP[tablePart.Name]
+		var rowsErr error
+		if !cached {
+			stored, rowsErr = s.store.GetTablePartRows(ctx, entity.Name, tablePart.Name, obj.ID, tablePart)
+		}
+		if rowsErr != nil {
+			if hit(fmt.Sprintf("table-part %s read-error: %v", tablePart.Name, rowsErr)) {
+				return firstReason
+			}
+			diag.failure("table-part", tablePart.Name, "read-error")
+			continue
+		}
+		if !tpRowsEqualStored(obj.TablePartRows[tablePart.Name], stored, tablePart, dialect) {
+			if hit(fmt.Sprintf("table-part %s live_rows=%d stored_rows=%d", tablePart.Name, len(obj.TablePartRows[tablePart.Name]), len(stored))) {
+				return firstReason
+			}
+			diag.tables("table-part", tablePart, obj.TablePartRows[tablePart.Name], stored, dialect)
 		}
 	}
+	viewFields := formViewStateFields(form, entity)
 	for _, attr := range form.Attributes {
 		if attr == nil || attr.MainAttribute || entityField(entity, attr.Name) != nil || entityServiceFieldName(attr.Name) {
 			continue
 		}
+		if viewFields[strings.ToLower(strings.TrimSpace(attr.Name))] {
+			continue
+		}
 		if strings.EqualFold(attr.TypeRef, "ValueTable") {
 			tp := formAttributeTablePart(attr)
-			if tp == nil || !tpRowsEqual(obj.TablePartRows[attr.Name], tpBefore[attr.Name], *tp) {
-				return true
+			if tp == nil {
+				if hit("form-table " + attr.Name + " без описания колонок") {
+					return firstReason
+				}
+				diag.failure("form-table", attr.Name, "unknown-shape")
+				continue
+			}
+			if !tpRowsEqual(obj.TablePartRows[attr.Name], tpBefore[attr.Name], *tp) {
+				if hit(fmt.Sprintf("form-table %s live_rows=%d before_rows=%d", attr.Name, len(obj.TablePartRows[attr.Name]), len(tpBefore[attr.Name]))) {
+					return firstReason
+				}
+				diag.tables("form-table", *tp, obj.TablePartRows[attr.Name], tpBefore[attr.Name], "")
 			}
 			continue
 		}
@@ -1861,10 +2072,25 @@ func (s *Server) managedCloseStateDirty(
 		before, beforeOK := snapshotValueCI(fieldsBefore, attr.Name)
 		after, afterOK := maskCIKeyValue(obj.Fields, attr.Name)
 		if beforeOK != afterOK || beforeOK && before != snapshotComparableValue(after) {
-			return true
+			afterCmp := ""
+			if afterOK {
+				afterCmp = snapshotComparableValue(after)
+			}
+			if hit(fmt.Sprintf("form-attr %s before_present=%t after_present=%t before=%s after=%s", attr.Name, beforeOK, afterOK, dirtyValueDigest(before), dirtyValueDigest(afterCmp))) {
+				return firstReason
+			}
+			beforeValue, beforeType := diagnosticSnapshot(before, beforeOK)
+			diag.cell("form-attr", attr.Name, -1, metadata.Field{Name: attr.Name, Type: metadata.FieldType(attr.TypeRef)}, after, beforeValue, beforeType)
 		}
 	}
-	return false
+	return firstReason
+}
+
+// dirtyValueDigest — значение для журнала без самого значения (ПДн): длина в
+// байтах и первые 8 hex SHA-256. Одинаковые отпечатки — одинаковые значения.
+func dirtyValueDigest(v string) string {
+	sum := sha256.Sum256([]byte(v))
+	return fmt.Sprintf("len%d:%x", len(v), sum[:4])
 }
 
 func snapshotValueCI(snapshot map[string]string, name string) (string, bool) {
@@ -1927,6 +2153,12 @@ func snapshotStringMapsEqual(left, right map[string]string) bool {
 		return false
 	}
 	for name, value := range left {
+		// Тот же ключ с тем же значением — один из исходов перебора ниже, и
+		// самый частый: снимки строятся из одной карты. Перебор (O(ключей) на
+		// каждый ключ) остаётся для расхождений.
+		if other, ok := right[name]; ok && other == value {
+			continue
+		}
 		other, ok := snapshotValueCI(right, name)
 		if !ok || other != value {
 			return false
@@ -1961,12 +2193,15 @@ func savedFormID(this *formObjectThis) string {
 // Прежняя россыпь возвратов и была бы ровно тем механизмом отказа, который
 // разбирает #615, — инвариант, применённый в N−1 месте из N.
 type formEventState struct {
+	FormTitle      *string
+	TitleError     error
 	Values         map[string]any
 	Revealed       []string
 	TableParts     map[string][]map[string]any
 	FormTables     map[string][]map[string]any
 	RefOptions     map[string][]map[string]any
 	TPRefOptions   map[string]map[string][]map[string]any
+	TPRefChoices   map[string]map[string][]map[string]any
 	ConditionalCSS string
 	Messages       []string
 	MessageIDs     []string
@@ -1976,20 +2211,26 @@ type formEventState struct {
 
 // response — единственное место, где состояние переносится в ответ.
 func (st formEventState) response(ok bool) formEventResponse {
-	return formEventResponse{
-		OK:             ok,
+	resp := formEventResponse{
+		OK:             ok && st.TitleError == nil,
+		FormTitle:      st.FormTitle,
 		Revealed:       st.Revealed,
 		Values:         st.Values,
 		TableParts:     st.TableParts,
 		FormTables:     st.FormTables,
 		RefOptions:     st.RefOptions,
 		TPRefOptions:   st.TPRefOptions,
+		TPRefChoices:   st.TPRefChoices,
 		ConditionalCSS: st.ConditionalCSS,
 		Messages:       st.Messages,
 		MessageIDs:     st.MessageIDs,
 		ElementStates:  st.ElementStates,
 		ColumnTitles:   st.ColumnTitles,
 	}
+	if st.TitleError != nil {
+		resp.Error = "form title evaluation failed"
+	}
+	return resp
 }
 
 // elementStates — состояние элементов формы, зависящее от полей записи.
@@ -2004,6 +2245,11 @@ func (st formEventState) response(ok bool) formEventResponse {
 type elementStates struct {
 	ReadOnly map[string]bool `json:"readonly,omitempty"`
 	Hidden   map[string]bool `json:"hidden,omitempty"`
+	// Hints — значения реквизитов, на которые ссылается hint_from, ПОСЛЕ
+	// обработчика: «реквизит → текст». Отдельно от values: у формы обработки
+	// в values едут только реквизиты с элементами на форме, а реквизит
+	// подсказки элемента обычно не имеет.
+	Hints map[string]string `json:"hints,omitempty"`
 }
 
 // applyRejectedFieldDefaults возвращает новой записи объявленные умолчания ровно
@@ -2054,10 +2300,11 @@ func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.E
 			ro[path] = true
 		}
 	}
-	if len(ro) == 0 && len(hidden) == 0 {
+	hints := formHintFromValues(form, entity, values)
+	if len(ro) == 0 && len(hidden) == 0 && len(hints) == 0 {
 		return nil
 	}
-	return &elementStates{ReadOnly: ro, Hidden: hidden}
+	return &elementStates{ReadOnly: ro, Hidden: hidden, Hints: hints}
 }
 
 // adminOnlyElementPaths — размещения формы, запертые для неадминистратора.
@@ -2078,6 +2325,67 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 	if obj == nil {
 		return formEventState{ConditionalCSS: conditionalCSS, Messages: msgs, MessageIDs: messageReceiptIDs(ctx, msgs)}
 	}
+	values, tableParts, revealed := s.serializeManagedFormEventValues(ctx, form, entity, obj)
+	// Ответ закрытия уходит браузеру дельтой к снимку до обработчика
+	// (compactFormCloseDelta): варианты выбора нужны только изменившимся
+	// полям и ТЧ, остальные он отбросит. Считать их заранее незачем — у
+	// заявки колл-центра это сотни мс на каждое закрытие.
+	refValues := values
+	if inv := formCloseBaselineFrom(ctx); inv != nil {
+		refValues = changedCloseValues(values, inv.baselineValues)
+		ctx = withTPRefOnly(ctx, changedCloseTables(tableParts, inv.baselineTableParts))
+	}
+	tpRefOptions, _ := s.loadTPReferenceData(ctx, entity, tableParts, values)
+	if s.interp != nil {
+		if warnings := applyManagedFormConditionalRules(form, tableParts, values, rules, newInterpEvaluator(s.interp)); len(warnings) > 0 {
+			msgs = append(msgs, warnings...)
+		}
+	}
+	title, titleErr := s.managedFormTitle(ctx, entity, form, obj)
+	return formEventState{
+		FormTitle:      title,
+		TitleError:     titleErr,
+		Revealed:       revealed,
+		Values:         values,
+		TableParts:     tableParts,
+		FormTables:     formTablesFromRows(tableParts, form),
+		RefOptions:     s.eventRefOptions(ctx, form, entity, refValues),
+		TPRefOptions:   tpRefOptions.Labels,
+		TPRefChoices:   tpRefOptions.Choices,
+		ConditionalCSS: conditionalCSS,
+		Messages:       msgs,
+		MessageIDs:     messageReceiptIDs(ctx, msgs),
+		// Условия readonly_when/hidden_when считаются здесь же, где известны
+		// значения ПОСЛЕ обработчика: команда, изменившая состояние объекта,
+		// сразу меняет доступность полей.
+		ElementStates: s.timedFormElementStates(ctx, form, entity, values),
+		ColumnTitles:  managedTPColumnTitles(form, entity, values, langFromCtx(ctx)),
+	}
+}
+
+// captureFormCloseBaseline запоминает значения и строки формы до обработчика
+// закрытия — то, к чему compactFormCloseDelta сводит ответ. Вариантов выбора
+// и состояний элементов снимок не считает: из него берутся только значения.
+// Условное оформление снимается так же, как в ответе (без правил оно только
+// очищает стили строк), иначе строки снимка и ответа разошлись бы на нём.
+func (s *Server) captureFormCloseBaseline(ctx context.Context, form *metadata.FormModule, entity *metadata.Entity, obj *runtime.Object, inv *formCloseInvocation) {
+	if obj == nil {
+		inv.baselineValues, inv.baselineTableParts, inv.baselineFormTables = nil, nil, nil
+		return
+	}
+	values, tableParts, _ := s.serializeManagedFormEventValues(ctx, form, entity, obj)
+	if s.interp != nil {
+		applyManagedFormConditionalRules(form, tableParts, values, nil, newInterpEvaluator(s.interp))
+	}
+	inv.baselineValues = values
+	inv.baselineTableParts = tableParts
+	inv.baselineFormTables = formTablesFromRows(tableParts, form)
+}
+
+// serializeManagedFormEventValues — значения шапки и строки ТЧ ответа события
+// в том виде, в каком их получает браузер: с маской, именами формы и
+// виртуальными колонками; третьим — раскрытые conceal-поля ответа.
+func (s *Server) serializeManagedFormEventValues(ctx context.Context, form *metadata.FormModule, entity *metadata.Entity, obj *runtime.Object) (map[string]any, map[string][]map[string]any, []string) {
 	fields := serializeFieldsForEntity(obj.Fields, entity)
 	// Маска накладывается ЗДЕСЬ, на пути к клиенту, а не при чтении из БД
 	// (issue #609). Разделение принципиальное: те же значения нужны настоящими
@@ -2089,8 +2397,15 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 	//
 	// serializeFieldsForEntity строит НОВУЮ карту, поэтому obj.Fields остаётся
 	// нетронутым и обработчик продолжает видеть настоящие значения.
-	echo := submittedFieldsToEcho(ctx, s.fieldDecisions(ctx, entity), obj.Fields, fields)
-	s.maskRecord(ctx, entity, fields)
+	decisions := s.fieldDecisions(ctx, entity)
+	// pii_open_when: условие — по сохранённой записи, не по присланной форме.
+	if len(decisions) > 0 && entityHasPIIOpenWhen(entity) && obj.ID != uuid.Nil {
+		if stored, err := s.store.GetByID(ctx, entity.Name, obj.ID, entity); err == nil {
+			decisions = s.openPIIByRecord(entity, decisions, stored)
+		}
+	}
+	echo := submittedFieldsToEcho(ctx, decisions, obj.Fields, fields)
+	s.maskRecordWithDecisions(decisions, fields)
 	for key, value := range echo {
 		fields[key] = value
 	}
@@ -2111,28 +2426,12 @@ func (s *Server) serializeManagedFormEventState(ctx context.Context, form *metad
 	// «пересчёт на лету»: выбрал в строке другую ссылку, обработчик строки
 	// отработал — колонка приехала обновлённой.
 	s.applyVirtualTPColumns(ctx, entity, form, tableParts)
-	tpRefOptions, _ := s.loadInitialTPRefOptions(ctx, entity, tableParts, values)
-	if s.interp != nil {
-		if warnings := applyManagedFormConditionalRules(form, tableParts, values, rules, newInterpEvaluator(s.interp)); len(warnings) > 0 {
-			msgs = append(msgs, warnings...)
-		}
-	}
-	return formEventState{
-		Revealed:       revealed,
-		Values:         values,
-		TableParts:     tableParts,
-		FormTables:     formTablesFromRows(tableParts, form),
-		RefOptions:     s.eventRefOptions(ctx, form, entity, values),
-		TPRefOptions:   tpRefOptions,
-		ConditionalCSS: conditionalCSS,
-		Messages:       msgs,
-		MessageIDs:     messageReceiptIDs(ctx, msgs),
-		// Условия readonly_when/hidden_when считаются здесь же, где известны
-		// значения ПОСЛЕ обработчика: команда, изменившая состояние объекта,
-		// сразу меняет доступность полей.
-		ElementStates: s.formElementStates(form, entity, values, s.isAdminCtx(ctx)),
-		ColumnTitles:  managedTPColumnTitles(form, entity, values, langFromCtx(ctx)),
-	}
+	return values, tableParts, revealed
+}
+
+func (s *Server) timedFormElementStates(ctx context.Context, form *metadata.FormModule, entity *metadata.Entity, values map[string]any) *elementStates {
+	defer serverTimingSpan(ctx, "elementStates")()
+	return s.formElementStates(form, entity, values, s.isAdminCtx(ctx))
 }
 
 // serializeFieldsForEntity нормализует имена полей к оригинальному регистру
@@ -2486,11 +2785,16 @@ func serializeValue(v any) any {
 // Аналог handleManagedFormEvent, но вместо Entity использует виртуальную entity
 // из параметров обработки. Кнопка «Выполнить» запускает proc.os через interp.
 func (s *Server) handleProcessorFormEvent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-OB-Boot", uiBootID)
 	s.handleProcessorFormEventMode(w, r, nil)
 }
 
 func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Request, closeInv *formCloseInvocation) {
-	r = withMessageReceipts(r)
+	r = withMessageReceipts(withFormCloseSource(r))
+	if closeInv == nil {
+		r = withUIResponseCommands(r)
+	}
+	r = r.WithContext(withShellID(r.Context(), r.Header.Get(shellHeader)))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)
 
@@ -2536,7 +2840,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		r, cancel = s.withFormCloseOperationDeadline(r, opProcessorRun)
 		defer cancel()
 		value := func(name string) string { return missingFormCloseValue(r, name) }
-		routeKey := "processor|" + strings.ToLower(proc.Name)
+		routeKey := processorResultCloseRoute(r, proc.Name)
 		renderedSchema := value("_close_schema")
 		currentSchema := processorFormCloseSchema(proc, form)
 		if renderedSchema == "" || renderedSchema != currentSchema {
@@ -2603,7 +2907,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			return
 		}
 		value := func(name string) string { return missingFormCloseValue(r, name) }
-		routeKey := "processor|" + strings.ToLower(proc.Name)
+		routeKey := processorResultCloseRoute(r, proc.Name)
 		if err := s.prepareFormCloseInvocation(r, closeInv, routeKey, value); err != nil {
 			var closeErr *formCloseHTTPError
 			reconcile := false
@@ -2691,6 +2995,16 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			respondJSON(enc, formEventResponse{OK: true})
 			return
 		}
+	} else if eventName == formIdleEvent && elementName == "" {
+		idleProc, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_idle_proc"))
+		idleToken, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_idle_token"))
+		var idleErr error
+		boundProcName, idleErr = s.resolveFormIdleTick(formIdleLogin(r), "processor:"+proc.Name, form, idleProc, idleToken)
+		if idleErr != nil {
+			opStatus = "error"
+			respondJSON(enc, formEventResponse{Error: idleErr.Error(), Idle: []idleCommand{{Proc: strings.TrimSpace(idleProc), Off: true}}})
+			return
+		}
 	} else {
 		var eligibilityErr error
 		boundProcName, eventTarget, executeFallback, eligibilityErr = resolveBrowserFormEvent(form, elementName, eventName, true)
@@ -2700,7 +3014,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			return
 		}
 	}
-	if err := validateManagedFormTableEventTarget(requestControls.tableAuthorities, eventTarget); err != nil {
+	if err := validateManagedFormEventTarget(requestControls.tableAuthorities, eventTarget, eventName); err != nil {
 		opStatus = "error"
 		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
@@ -2718,6 +3032,14 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		opStatus = "error"
 		w.WriteHeader(uploadErrorStatus(err))
 		respondJSON(enc, formEventResponse{Error: s.errText(r, err)})
+		return
+	}
+	// Параметры, которые браузер не присылает (нет элемента, нередактируемый,
+	// скрыт), приходят запечатанным состоянием формы (processor_form_carry.go).
+	carry := s.openProcessorCarry(r, proc, form)
+	applyProcessorCarryParams(proc, carry, paramValues)
+	if err := s.applyResultFormParameter(r, proc.Name, paramValues); err != nil {
+		respondJSON(enc, formEventResponse{Error: err.Error()})
 		return
 	}
 	progAny := form.ProgramAST
@@ -2760,13 +3082,24 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			respondJSON(enc, formEventResponse{Error: err.Error()})
 			return
 		}
+		// Присланные значения реквизитов уже приняты в пределах границы ввода
+		// (processorFormObjectFromRequest); недостающие — из перенесённого
+		// состояния.
+		s.applyProcessorCarryAttrs(r, proc, form, carry, obj.Fields)
 		if closeInv != nil {
-			baseline := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, nil, nil).response(false)
-			closeInv.baselineValues = baseline.Values
-			closeInv.baselineTableParts = baseline.TableParts
-			closeInv.baselineFormTables = baseline.FormTables
+			s.captureFormCloseBaseline(r.Context(), form, virtEntity, obj, closeInv)
+			r = r.WithContext(withFormCloseBaseline(r.Context(), closeInv))
+		}
+		var deferredBaseline *formEventState
+		if deferredFormEvent(eventName) {
+			baseline := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, nil, nil)
+			deferredBaseline = &baseline
 		}
 		fieldsBefore := snapshotFieldValues(obj.Fields)
+		var carryBefore map[string]string
+		if deferredBaseline != nil {
+			carryBefore = processorCarryValues(proc, form, obj.Fields)
+		}
 		tablesBefore := tablePartRowsSnapshot(obj.TablePartRows)
 		mc := runtime.NewMovementsCollector("processor", uuid.Nil)
 		var msgs []string
@@ -2774,11 +3107,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		// request ends even when operation timeouts are disabled.
 		dslCtx, cancelDSL := context.WithCancel(opCtx)
 		defer cancelDSL()
-		if eventName == string(metadata.FormEventOnSearch) {
+		if eventName == string(metadata.FormEventOnSearch) || deferredFormEvent(eventName) {
 			dslCtx = storage.ReadOnlyContext(dslCtx)
 		}
 		vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
-		s.bindFormCloseSource(vars, r)
+
 		if closeInv == nil && eventName == string(metadata.FormEventOnClick) && eventTarget.element != nil && eventTarget.element.TabularProgress != "" {
 			vars["СообщитьПрогрессФормирования"] = tabularProgressBuiltin(w, r, enc)
 		}
@@ -2834,12 +3167,19 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			vars["DownloadCSV"] = downloadCSV
 		}
 
+		var idle []idleCommand
+		for k, v := range s.newFormIdleBuiltins(&idle, formIdleLogin(r), "processor:"+proc.Name, form) {
+			vars[k] = v
+		}
+
 		var choiceItems []choiceListItem
 		choiceFn := newChoiceListBuiltin(&choiceItems)
 		vars["ДобавитьЗначениеСписка"] = choiceFn
 		vars["AddChoiceItem"] = choiceFn
 		if closeInv != nil {
 			disableDialogBuiltinsForClose(vars)
+			qa, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_question_answer"))
+			allowCloseQuestion(vars, questionFn, strings.TrimSpace(qa) != "")
 		}
 
 		// Навигация (#1557): ОткрытьФорму(Ссылка) из формы обработки — самое
@@ -2858,6 +3198,14 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		if !proc.External && closeInv == nil && eventName == string(metadata.FormEventOnClick) {
 			s.bindWorkbookCommands(opCtx, w, r, vars, &workbook)
 		}
+		var closeResult bool
+		closeResultFn := s.resultCloseBuiltin(r, proc.Name, &closeResult, closeInv == nil)
+		vars["ЗакрытьФормуРезультата"], vars["CloseResultForm"] = closeResultFn, closeResultFn
+		resultContextFn := s.resultContextBuiltin(r, proc.Name, resultContextCommandAllowed(eventTarget, eventName, closeInv != nil))
+		vars["КонтекстФормыРезультата"], vars["ResultFormContext"] = resultContextFn, resultContextFn
+		capabilityEvent := eventName == string(metadata.FormEventOnOpen) || eventName == string(metadata.FormEventOnClick) || eventName == string(metadata.FormEventOnAnswer)
+		capabilityFn := s.resultCapabilityBuiltin(r, proc, txState, closeInv == nil && capabilityEvent)
+		vars["ВозможностьФормыРезультата"], vars["ResultFormCapability"] = capabilityFn, capabilityFn
 		var navigation *navigationPayload
 		if closeInv == nil {
 			navFn := newNavigationBuiltin(&navigation, s.reg, s.store, auth.UserFromContext(r.Context()))
@@ -2865,6 +3213,8 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			vars["OpenForm"] = navFn
 		}
 
+		var audioStops []string
+		addFormAudioBuiltins(vars, form, &audioStops)
 		condRuntime := newFormConditionalRuntime(form)
 		for k, v := range condRuntime.builtins() {
 			vars[k] = v
@@ -2895,6 +3245,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		if qa, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_question_answer")); strings.TrimSpace(qa) != "" {
 			vars["ВопросОтвет"] = qa
 			vars["QuestionAnswer"] = qa
+		} else if closeInv != nil {
+			// ПередЗакрытием без ответа — первый ход: пустая строка, как у
+			// ПередПроведением формы объекта.
+			vars["ВопросОтвет"] = ""
+			vars["QuestionAnswer"] = ""
 		}
 		// Значения редактируемых полей диалога — структура ДиалогПоля.
 		if raw, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_question_fields")); strings.TrimSpace(raw) != "" {
@@ -2909,7 +3264,14 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			respondJSON(enc, formEventResponse{Error: err.Error()})
 			return
 		}
-		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars); err != nil {
+		notifyID, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_notify_id"))
+		notifyArgs, err := s.addFormNotifyContext(dslCtx, txState, eventName, strings.TrimSpace(notifyID), vars)
+		if err != nil {
+			opStatus = "error"
+			respondJSON(enc, formEventResponse{Error: err.Error()})
+			return
+		}
+		if err := addProcessorTPEventContext(r, proc, requestControls, eventTarget, obj, vars, eventName); err != nil {
 			opStatus = "error"
 			respondJSON(enc, formEventResponse{Error: err.Error()})
 			return
@@ -2922,8 +3284,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			entryResult, runErr = s.interp.CallEntrySandboxedWithBindings(decl, thisObj, closeArgs,
 				interpreter.SandboxProfile{Context: dslCtx, MaxWallClock: timeout}, vars)
 			if runErr == nil {
-				closeInv.cancelled = formCloseBindingCancelled(decl, entryResult.Bindings)
+				closeInv.cancelled = formCloseBindingCancelled(decl, entryResult.Bindings) || question.Variants != nil
 			}
+		} else if notifyArgs != nil {
+			_, runErr = s.interp.CallEntrySandboxedWithBindings(decl, thisObj, notifyArgs,
+				interpreter.SandboxProfile{Context: dslCtx, MaxWallClock: timeout}, vars)
 		} else if timeout > 0 {
 			runErr = s.interp.RunSandboxed(decl, thisObj,
 				interpreter.SandboxProfile{Context: dslCtx, MaxWallClock: timeout}, nil, vars)
@@ -2931,39 +3296,59 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			runErr = s.interp.Run(decl, thisObj, vars)
 		}
 		runErr = finishDSLExecution(txState, runErr)
+		// Parameters remain business inputs even when a same-name form
+		// attribute is bound to the player. Pure display state, however, is
+		// display state during selection and Close as well as explicit Play.
+		protected := &metadata.Entity{}
+		for _, param := range proc.Params {
+			protected.Fields = append(protected.Fields, metadata.Field{Name: param.Name})
+		}
+		audioViewFields := formViewStateFields(form, protected)
 		if runErr != nil {
 			opStatus = operationStatus(opCtx, runErr)
 			resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(false)
 			resp.Error = interpreter.FormatUserError(runErr)
+			resp.AudioStops = audioStops
 			resp.PickerData = picker
 			if question.Variants != nil {
 				q := question
 				resp.Question = &q
 			}
-			resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
+			resp.Idle = idle
+			resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedFormDirty(obj, fieldsBefore, tablesBefore, audioViewFields))
+			filterDeferredResponse(deferredBaseline, &resp)
 			compactFormCloseDelta(&resp, closeInv)
+			s.finishProcessorCarryEvent(r, proc, form, obj.Fields, carryBefore, deferredBaseline != nil, &resp)
 			respondJSON(enc, resp)
 			return
 		}
 
 		resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(true)
 		resp.CSV = csvFile
+		resp.AudioStops = audioStops
 		resp.PickerData = picker
 		if question.Variants != nil {
 			q := question
 			resp.Question = &q
 		}
+		resp.Idle = idle
 		if navigation != nil {
 			resp.Navigation = navigation
 		}
+		resp.CloseResultForm = closeResult && resp.OK
 		resp.ChoiceList = choiceItems
-		resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedStateDirty(obj, fieldsBefore, tablesBefore))
-		if closeInv == nil {
+		resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedFormDirty(obj, fieldsBefore, tablesBefore, audioViewFields))
+		filterDeferredResponse(deferredBaseline, &resp)
+		if closeInv == nil && resp.OK {
 			scope := tabularScope{Kind: "processor", Name: proc.Name, Form: form.Name}
 			s.attachTabularResults(w, r, scope, thisObj, &resp)
 			attachWorkbook(scope, workbook, &resp)
 		}
 		compactFormCloseDelta(&resp, closeInv)
+		s.finishProcessorCarryEvent(r, proc, form, obj.Fields, carryBefore, deferredBaseline != nil, &resp)
+		if closeInv == nil {
+			attachUIResponseCommands(r, &resp, false)
+		}
 		respondJSON(enc, resp)
 		return
 	}
@@ -2989,7 +3374,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		dslCtx, cancelDSL := context.WithCancel(opCtx)
 		defer cancelDSL()
 		dslVars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
-		s.bindFormCloseSource(dslVars, r)
+
 		defer rollbackDSLExecution(txState)
 		dslVars["Параметры"] = paramsThis
 		interpreter.InjectMaket(dslVars, proc.Layout)
@@ -3034,7 +3419,7 @@ func (s *Server) handleMissingProcessorFormClose(w http.ResponseWriter, r *http.
 	// See handleMissingEntityFormClose: after hot removal the old request body
 	// can be larger than any limit derivable from the remaining registry.
 	value := func(name string) string { return missingFormCloseValue(r, name) }
-	if err := s.prepareMissingFormCloseInvocation(r, inv, "processor|"+strings.ToLower(procName), value); err != nil {
+	if err := s.prepareMissingFormCloseInvocation(r, inv, processorResultCloseRoute(r, procName), value); err != nil {
 		status := http.StatusBadRequest
 		var closeErr *formCloseHTTPError
 		if errors.As(err, &closeErr) {

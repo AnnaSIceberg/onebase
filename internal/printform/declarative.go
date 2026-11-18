@@ -33,10 +33,8 @@ func BuildSheet(lt *LayoutTemplate, ctx *RenderContext) (*sheet.Document, error)
 	}
 
 	// Ширины колонок (1-based) — конвертация CSS-строк в px модели.
-	for i, c := range lt.Columns {
-		if px, ok := columnWidthPx(c.Width); ok {
-			doc.SetColumnWidth(i+1, px)
-		}
+	for col, px := range lt.ColumnWidthsPx() {
+		doc.SetColumnWidth(col, px)
 	}
 
 	binding := lt.Binding
@@ -130,6 +128,15 @@ func buildAreaSheet(area *LayoutArea, ctx *RenderContext, row map[string]any, ro
 				} else {
 					cell.Text = resolveParameter(ld.Parameter, params, ctx, row, rowNum)
 					cell.Value = cell.Text
+					// Формат ячейки макета (ДЛФ=D…) применяется к самой дате, а
+					// не к её строке «… +0000 UTC».
+					if ld.Format != "" {
+						if expr, spec := splitExprFormat(paramExpr(ld.Parameter, params)); spec == "" {
+							if t, ok := toTime(ResolveExpr(expr, ctx, row, rowNum)); ok {
+								cell.Value = t
+							}
+						}
+					}
 				}
 			} else if strings.Contains(ld.Text, "{{") {
 				cell.Text = InterpolateText(ld.Text, ctx, row, rowNum)
@@ -273,6 +280,44 @@ func layoutCellToSheet(ld LayoutCell) *sheet.Cell {
 // чтобы DSL-обвязка и декларативный движок строили ячейки одинаково.
 func BuildAreaCells(area *LayoutArea) *sheet.Area {
 	return buildAreaSheet(area, nil, nil, 0, nil)
+}
+
+// IntersectionArea — область «Строки|Колонки», как ПолучитьОбласть в 1С:
+// строки именованной строковой области, колонки — именованной колоночной.
+// Ячейки вне колонок отбрасываются, объединение на границе обрезается.
+// Второе значение — ширины колонок области (с 1) по ИСХОДНЫМ колонкам макета,
+// чтобы Присоединить/Вывести переносили их правильно, а не с первой колонки.
+func (lt *LayoutTemplate) IntersectionArea(spec string) (*sheet.Area, map[int]float64, bool) {
+	rowName, colName, ok := strings.Cut(spec, "|")
+	if !ok {
+		return nil, nil, false
+	}
+	rowDef, colDef := lt.Area(strings.TrimSpace(rowName)), lt.ColumnArea(strings.TrimSpace(colName))
+	if rowDef == nil || colDef == nil {
+		return nil, nil, false
+	}
+	full := BuildAreaCells(rowDef)
+	from, to := colDef.From-1, colDef.To-1
+	out := sheet.NewArea(0, 0, full.Bottom-full.Top, to-from)
+	out.Name = spec
+	for key, cell := range full.Cells {
+		var r, c int
+		if _, err := fmt.Sscanf(key, "%d,%d", &r, &c); err != nil || c < from || c > to {
+			continue
+		}
+		copied := *cell
+		if span := copied.ColSpan; span > 1 && c+span-1 > to {
+			copied.ColSpan = to - c + 1
+		}
+		out.Cells[fmt.Sprintf("%d,%d", r, c-from)] = &copied
+	}
+	widths := map[int]float64{}
+	for col, px := range lt.ColumnWidthsPx() {
+		if col >= colDef.From && col <= colDef.To {
+			widths[col-colDef.From+1] = px
+		}
+	}
+	return out, widths, true
 }
 
 // ColumnWidthsPx — ширины колонок макета (columns:) в px модели, 1-based;

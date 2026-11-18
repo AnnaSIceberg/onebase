@@ -23,6 +23,7 @@ type browserFormEventRule struct {
 }
 
 var browserFormEventRules = []browserFormEventRule{
+	{kinds: []FormElementType{FormElementAudio}, events: []FormEventType{FormEventAudioPlay}},
 	{kinds: []FormElementType{FormElementSpreadsheet}, events: []FormEventType{FormEventDrilldown, FormEventOnAnswer}},
 	{
 		kinds:  []FormElementType{FormElementButton},
@@ -44,8 +45,14 @@ var browserFormEventRules = []browserFormEventRule{
 		events: []FormEventType{
 			FormEventOnChange, FormEventOnRowAdded, FormEventOnRowDeleted,
 			FormEventOnChoice, FormEventOnRowActivated, FormEventOnRowChanged,
-			FormEventAfterRowAdd, FormEventOnAnswer,
+			FormEventAfterRowAdd, FormEventOnAnswer, FormEventAfterOpen,
 		},
+	},
+	{
+		// Группа сама ничего не вводит; она шлёт только отложенную загрузку
+		// своих данных после открытия формы (история клиента и т.п.).
+		kinds:  []FormElementType{FormElementGroupBox},
+		events: []FormEventType{FormEventAfterOpen},
 	},
 	{
 		// Набор страниц шлёт смену открытой страницы; обработчик вправе
@@ -82,7 +89,12 @@ var browserFormCommandEvents = []FormEventType{FormEventOnClick, FormEventOnSear
 // при открытии, как в 1С): у вопроса формы нет элемента-источника, и клиент
 // отправляет ответ без имени элемента. Вызывается только объявленный в events
 // формы обработчик — иначе fail-closed отказ, как у любого события.
-var browserFormLevelEvents = []FormEventType{FormEventOnOpen, FormEventBeforePost, FormEventOnAnswer}
+//
+// ОбработкаОповещения браузер шлёт сам, получив оповещение Оповестить(…) по
+// SSE: обработчик обязан видеть несохранённое состояние открытой формы, а оно
+// есть только в браузере. Что именно оповестили, сервер берёт из своей записи
+// по идентификатору оповещения, а не из запроса.
+var browserFormLevelEvents = []FormEventType{FormEventOnOpen, FormEventBeforePost, FormEventOnAnswer, FormEventNotify}
 
 // BrowserFormEventsFor возвращает копию перечня событий, которые браузер вправе
 // отправить элементу формы данного вида. Вид, ничего не отправляющий (надпись,

@@ -3,6 +3,7 @@ package formtest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -13,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // EqualColumnsYAML exercises fields, mixed children, explicit child layout,
@@ -61,7 +63,9 @@ elements:
 // AssertEqualColumns measures production HTML with the browser's CSS engine.
 // Each row must fill its container and have equal widths; narrow containers
 // must wrap without overflow. No test CSS changes the children themselves.
-func AssertEqualColumns(t *testing.T, browser, page string) {
+// An optional measurement transport lets callers reuse an owned CDP browser.
+// It changes neither the rendered probe nor any geometry assertion.
+func AssertEqualColumns(t *testing.T, browser, page string, measure ...func(context.Context, string) ([]byte, error)) {
 	t.Helper()
 	const script = `<script>
 window.addEventListener('load', () => {
@@ -94,26 +98,38 @@ window.addEventListener('load', () => {
 		_, _ = w.Write([]byte(page))
 	}))
 	defer server.Close()
-	args := []string{"--headless=new", "--disable-gpu", "--disable-background-networking", "--disable-extensions", "--no-first-run", "--user-data-dir=" + t.TempDir(), "--dump-dom", server.URL}
-	if runtime.GOOS == "linux" {
-		args = append([]string{"--no-sandbox"}, args...)
-	}
-	cmd := exec.CommandContext(t.Context(), browser, args...) //nolint:gosec // browser selected from existing test allow-list
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	dump, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("browser: %v: %s", err, stderr.String())
-	}
-	marker := []byte(`<pre id="equal-columns-measure">`)
-	start := bytes.Index(dump, marker)
-	if start < 0 {
-		t.Fatalf("browser did not measure: %s", stderr.String())
-	}
-	start += len(marker)
-	end = bytes.Index(dump[start:], []byte("</pre>"))
-	if end < 0 {
-		t.Fatal("measurement missing end")
+	var data []byte
+	if len(measure) > 0 {
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		var err error
+		data, err = measure[0](ctx, server.URL)
+		if err != nil {
+			t.Fatalf("browser measurement: %v", err)
+		}
+	} else {
+		args := []string{"--headless=new", "--disable-gpu", "--disable-background-networking", "--disable-extensions", "--no-first-run", "--user-data-dir=" + t.TempDir(), "--dump-dom", server.URL}
+		if runtime.GOOS == "linux" {
+			args = append([]string{"--no-sandbox"}, args...)
+		}
+		cmd := exec.CommandContext(t.Context(), browser, args...) //nolint:gosec // browser selected from existing test allow-list
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		dump, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("browser: %v: %s", err, stderr.String())
+		}
+		marker := []byte(`<pre id="equal-columns-measure">`)
+		start := bytes.Index(dump, marker)
+		if start < 0 {
+			t.Fatalf("browser did not measure: %s", stderr.String())
+		}
+		start += len(marker)
+		end = bytes.Index(dump[start:], []byte("</pre>"))
+		if end < 0 {
+			t.Fatal("measurement missing end")
+		}
+		data = []byte(html.UnescapeString(string(dump[start : start+end])))
 	}
 	var result struct {
 		Groups  int `json:"groups"`
@@ -123,7 +139,7 @@ window.addEventListener('load', () => {
 			Items  []struct{ Left, Width, Right float64 }
 		}
 	}
-	if err := json.Unmarshal([]byte(html.UnescapeString(string(dump[start:start+end]))), &result); err != nil {
+	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatal(err)
 	}
 	if result.Groups != 4 || len(result.Samples) != 12 {

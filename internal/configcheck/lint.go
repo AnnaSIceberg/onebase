@@ -368,7 +368,7 @@ func fieldYAMLSchema(allowRequired bool) *yamlLintSchema {
 	// который его честно читает, и DEVELOPER.md, где id описан как
 	// рекомендуемая практика. Пользователь, послушавшийся линта, снимал
 	// страховку от потери данных (#873, дефект Д11 из #668).
-	keys := []string{"id", "name", "title", "label", "type", "allow_inline_create", "pii"}
+	keys := []string{"id", "name", "title", "label", "type", "allow_inline_create", "choice_show_deleted", "pii", "report_pii"}
 	if allowRequired {
 		// Required is currently a write invariant for entity headers and table
 		// parts. Register recorders have a different persistence path and must
@@ -416,9 +416,9 @@ func entityYAMLSchema() *yamlLintSchema {
 		"name", "title", "description", "posting", "post_caption", "post_and_close_hidden", "hierarchical", "hierarchy_kind",
 		// owner — справочник-владелец (подчинённый справочник, 1С «Владелец»).
 		"owner",
-		"presentation", "order_by", "choice_preview", "choice_preview_proc",
+		"presentation", "order_by", "choice_preview", "choice_preview_proc", "choice_search_proc",
 		"list_form", "item_form", "based_on", "list_mode", "list_filters", "interactive_create", "notify_changes", "list_refresh_on",
-		"fulltext", "search_fields", "detail_panel",
+		"fulltext", "search_fields", "detail_panel", "choice_show_deleted",
 	), map[string]*yamlLintSchema{
 		"titles": freeMap(),
 		// item_form принимает и строку (имя реквизита), и запись
@@ -430,14 +430,14 @@ func entityYAMLSchema() *yamlLintSchema {
 		"tableparts": seq(tablePartYAMLSchema(true)),
 		"indexes":    seq(indexYAMLSchema()),
 		"numerator": with(obj("prefix", "length", "period", "scope", "base_prefix", "unique"), map[string]*yamlLintSchema{
-			"field": with(obj("title", "label", "required", "default", "pii"), map[string]*yamlLintSchema{"titles": freeMap()}),
+			"field": with(obj("title", "label", "required", "default", "pii", "report_pii"), map[string]*yamlLintSchema{"titles": freeMap()}),
 		}),
 		"predefined": seq(with(obj("name"), map[string]*yamlLintSchema{"fields": freeMap()})),
 		"tile_view":  obj("image", "title", "subtitle", "fields"),
 		"activity":   obj("field", "default_scope", "hide_from_choice"),
 		"choice_row_style": with(obj("for_roles"), map[string]*yamlLintSchema{
 			"for_user": obj("func", "card", "account_field", "field", "equals"),
-			"rules":    seq(obj("when", "color", "background", "bold", "italic")),
+			"rules":    seq(obj("when", "when_param", "when_in_folder", "color", "background", "color_from", "background_from", "bold", "italic", "disabled")),
 		}),
 		"detail_panel": detailPanel,
 		"stages":       stages,
@@ -474,9 +474,15 @@ func constantsYAMLSchema() *yamlLintSchema {
 	})
 }
 
+func roleOverrideYAMLSchema() *yamlLintSchema {
+	return seq(with(obj("include_admin", "background", "visible"), map[string]*yamlLintSchema{"roles": seq(obj()), "except_roles": seq(obj())}))
+}
+
 func widgetYAMLSchema() *yamlLintSchema {
-	return with(obj("name", "type", "title", "query", "format", "compare_to", "limit", "chart_kind", "chart_type", "x_field", "y_fields", "entities", "scope", "link", "refresh_on"), map[string]*yamlLintSchema{
-		"source": obj("entity", "id_field"),
+	return with(obj("name", "type", "title", "query", "format", "compare_to", "limit", "chart_kind", "chart_type", "x_field", "y_fields", "entities", "scope", "link", "refresh_on", "roles", "except_roles", "background"), map[string]*yamlLintSchema{
+		"role_overrides": roleOverrideYAMLSchema(),
+		"source":         obj("entity", "id_field"),
+		"row_style":      obj("background", "bold", "color"),
 		"filters": seq(with(obj("name", "label", "type", "param"), map[string]*yamlLintSchema{
 			"labels": freeMap(),
 			"values": seq(with(obj("value", "label"), map[string]*yamlLintSchema{
@@ -495,7 +501,7 @@ func widgetYAMLSchema() *yamlLintSchema {
 }
 
 func reportYAMLSchema() *yamlLintSchema {
-	measure := obj("field", "agg", "title", "align", "format", "expr")
+	measure := with(obj("field", "agg", "title", "align", "format", "expr"), map[string]*yamlLintSchema{"scope": seq(nil), "calculations": seq(obj("level", "agg", "expr", "group_by", "inner_agg"))})
 	sortKey := obj("field", "dir")
 	style := obj("color", "background", "bold", "italic")
 	conditional := with(obj("when", "field"), map[string]*yamlLintSchema{"style": style})
@@ -506,17 +512,22 @@ func reportYAMLSchema() *yamlLintSchema {
 		"conditional": seq(conditional),
 		"appearance":  obj("lines", "zebra", "collapse_to"),
 		"chart":       obj("type", "category", "series"),
+		// detail_fields — поля детальной записи (аналог «Выбранных полей» 1С).
+		"detail_fields": seq(obj("field", "title")),
 	})
 	return with(obj("name", "title", "query", "chart_proc", "result_proc", "output_format"), map[string]*yamlLintSchema{
 		"titles": freeMap(),
+		"drilldowns": seq(with(obj("field", "title", "id_field", "type_field"), map[string]*yamlLintSchema{
+			"target": obj("kind", "entity"), "targets": {values: obj("kind", "entity")},
+		})),
 		// У отчёта «required» НЕТ намеренно: report.Param такого поля не знает,
 		// и разрешённый линтом ключ молча ничего бы не делал. Обязательность
 		// параметра пока только у обработок (processor.Param). А вот «default»
 		// модель знает — параметр без значения получает умолчание, — поэтому
 		// ключ разрешён: иначе линт ругался бы на работающую возможность.
-		"params":      seq(with(obj("name", "type", "label", "options", "default", "period_end"), map[string]*yamlLintSchema{"labels": freeMap()})),
+		"params":      seq(with(obj("name", "type", "label", "options", "default", "period_end", "choice_show_deleted", "choice_label_suffix"), map[string]*yamlLintSchema{"labels": freeMap(), "visible_when": obj("param", "equals"), "choice_filter": seq(obj("field", "param")), "context": with(obj("user"), map[string]*yamlLintSchema{"user_card": obj("catalog", "account_field", "field", "table_part", "column")})})),
 		"composition": composition,
-		"variants":    seq(with(obj("name"), map[string]*yamlLintSchema{"composition": composition})),
+		"variants":    seq(with(obj("name", "query"), map[string]*yamlLintSchema{"composition": composition, "filters": seq(obj("field", "op", "value"))})),
 	})
 }
 
@@ -537,10 +548,12 @@ func roleYAMLSchema() *yamlLintSchema {
 }
 
 func processorYAMLSchema() *yamlLintSchema {
-	param := with(obj("name", "type", "label", "default", "options", "required"), map[string]*yamlLintSchema{"labels": freeMap()})
+	capability := obj("register", "reference_field", "owner_field", "enabled_field", "source_entity", "source_id_field", "source_version_field", "observed_at_field", "max_age_seconds")
+	param := with(obj("name", "type", "label", "default", "options", "required", "choice_show_deleted", "multiple"), map[string]*yamlLintSchema{"labels": freeMap()})
 	return with(obj("name", "title", "kind"), map[string]*yamlLintSchema{
-		"titles": freeMap(),
-		"params": seq(param),
+		"result_capabilities": {values: capability},
+		"titles":              freeMap(),
+		"params":              seq(param),
 		// Processor table parts are transient runtime values. Unlike entity table
 		// parts they have no storage writer enforcing required, so accepting the
 		// key here would advertise an invariant the platform does not provide.
@@ -555,7 +568,7 @@ func serviceYAMLSchema() *yamlLintSchema {
 	cache := obj("ttl", "vary", "public", "max_body")
 	securityHeaders := with(obj("csp", "frame_options", "referrer_policy", "hsts"),
 		map[string]*yamlLintSchema{"extra": freeMap()})
-	return with(obj("name", "title", "root_url", "auth", "secret", "rate_limit", "roles", "compress"),
+	return with(obj("name", "title", "root_url", "auth", "secret", "hmac_allow_repeated_get", "rate_limit", "roles", "compress"),
 		map[string]*yamlLintSchema{
 			"titles":           freeMap(),
 			"cors":             cors,
@@ -630,6 +643,14 @@ func homePageYAMLSchema() *yamlLintSchema {
 		"nav":         nav,
 		"nav_by_role": {values: nav},
 		"menu":        menuYAMLSchema(),
+		"status_bar": with(obj("roles", "source", "action", "interval"), map[string]*yamlLintSchema{
+			"buttons": seq(obj("name", "title")),
+		}),
+		"side_panel": with(obj("widget", "width", "hide_on_home", "background"), map[string]*yamlLintSchema{
+			"roles":          seq(obj()),
+			"except_roles":   seq(obj()),
+			"role_overrides": roleOverrideYAMLSchema(),
+		}),
 	})
 }
 
@@ -641,7 +662,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		"original_id", "data_path", "picture", "values_picture", "width", "height",
 		"halign", "valign", "readonly", "readonly_when", "hidden_when", "use_grid", "no_grid", "auto_sum", "hint", "mask",
 		"accesskey", "hotkey", "multiline", "format", "display_format", "type", "choice", "unknown_xml", "view",
-		"scroll_x", "primary", "editable_admin_only", "choice_folders", "choice_dropdown",
+		"scroll_x", "primary", "editable_admin_only", "choice_folders", "choice_dropdown", "choice_show_deleted", "choice_style_params", "choice_style_value", "hint_from",
 		// Явная видимость кнопки «Открыть карточку» у поля — сильнее ключей
 		// формы (#1876).
 		"ref_card_button",
@@ -649,11 +670,20 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		// неизвестными, а гейт CI считает предупреждение ошибкой — то есть
 		// документированный «language» у kind: ПолеКода не давал примеру
 		// пройти собственную проверку (#1014).
-		"orientation", "equal_columns", "background", "label_color", "text_bold", "input_mask", "language", "virtual_columns",
+		"orientation", "equal_columns", "background", "label_color", "text_bold", "title_color", "title_bold", "tab_titles_bold", "input_mask", "language", "virtual_columns",
 		"deadline_warn",
 		"conceal", "reveal_when",
 		"title_from",
 		"hint_inline",
+		"orientation", "background", "border_color", "header_background", "header_border_color", "frame", "grow", "title_hidden", "input_mask", "language", "virtual_columns",
+		// Таблица значений как выдача (история, результат поиска).
+		"rows", "show_count", "empty_text",
+
+		"equal_height", "fit_window",
+
+		"placement",
+		"text_color", "importance",
+		"choice_free_input",
 	} {
 		element.keys[k] = nil
 	}
@@ -696,13 +726,16 @@ func formModuleYAMLSchema() *yamlLintSchema {
 
 	// filter — постоянный отбор формы списка (поле ListFilter), читается
 	// загрузчиком внутри блока form:.
-	formHeader := with(obj("entity", "name", "kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "ref_card_button", "ref_card_button_admin_only", "enter_submits_form"), map[string]*yamlLintSchema{
+	formHeader := with(obj("entity", "name", "kind", "title_proc", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "ref_card_button", "ref_card_button_admin_only", "enter_submits_form", "density", "tab_skip_readonly", "autofocus", "group_titles", "header_inline"), map[string]*yamlLintSchema{
 		"roles":        seq(obj()),
 		"except_roles": seq(obj()),
-		"title": freeMap(),
+		"title":        freeMap(),
 		"filter": seq(with(obj("field", "op", "value", "roles", "query", "removable"), map[string]*yamlLintSchema{
 			"label": freeMap(),
 		})),
+		"row_style": with(obj("background_from", "bold_from", "color_from"), map[string]*yamlLintSchema{
+			"rules": seq(obj("field", "equals", "background", "bold", "color")),
+		}),
 	})
 	style := obj("color", "background", "bold", "italic")
 	conditional := with(obj("when", "target", "element", "table_part", "field"), map[string]*yamlLintSchema{
@@ -722,11 +755,19 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		// ok.post — «ОК» проводит документ, как в 1С.
 		"ok":    obj("visible", "post"),
 		"close": action,
+		// cancel.visible:false убирает подвальную «Отмена» формы обработки, у
+		// которой своя кнопка закрытия; ×, Escape и закрытие формы не меняются.
+		"cancel": action,
+		// copy.visible:false убирает «Скопировать» у документа, который не
+		// копируют по смыслу (звонок, заявка — свидетельство конкретного
+		// обращения, #2241). Право создания и адрес ?copy= не меняются.
+		"copy": action,
 		// attachments.visible:false скрывает панель вложений выбранной
 		// managed-формы (план 181C, #1621); attachment endpoint не меняется.
 		"attachments": action,
 	})
-	return with(obj("schema", "entity", "name", "kind", "layout_kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll"), map[string]*yamlLintSchema{
+	// tab_skip_readonly и autofocus также читаются только из form:.
+	return with(obj("schema", "entity", "name", "kind", "layout_kind", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "density"), map[string]*yamlLintSchema{
 		"form":                   formHeader,
 		"title":                  freeMap(),
 		"events":                 freeMap(),
@@ -1387,6 +1428,7 @@ func collectTablePartHandlerProcs(form *metadata.FormModule) map[string]bool {
 }
 
 func collectFormHandlerRoots(form *metadata.FormModule, roots map[string]bool) {
+	addRoot(roots, form.TitleProc)
 	for _, handler := range form.Handlers {
 		addRoot(roots, handler)
 	}

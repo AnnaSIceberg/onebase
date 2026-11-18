@@ -57,6 +57,14 @@ func Validate(entities []*Entity, enums []*Enum) error {
 			if f.EnumName != "" && len(enums) > 0 && !enumNames[f.EnumName] {
 				return fmt.Errorf("entity %s: field %s references unknown enum %s", e.Name, f.Name, f.EnumName)
 			}
+			// Условие раскрытия без признака ПДн — опечатка или забытый pii:
+			// раскрывать нечего, а читается как «поле защищено».
+			if f.PIIOpenWhen != "" && !f.PII {
+				return fmt.Errorf("entity %s: field %s: pii_open_when требует pii: true", e.Name, f.Name)
+			}
+			if f.PIIOpenWhen != "" && e.Kind != KindCatalog && e.Kind != KindDocument {
+				return fmt.Errorf("entity %s: field %s: pii_open_when поддерживается только у справочника и документа", e.Name, f.Name)
+			}
 		}
 		// presentation меняет представление объекта СРАЗУ ВЕЗДЕ — списки,
 		// подбор, поиск, REST, DSL. Опечатка в имени реквизита обязана падать
@@ -141,6 +149,13 @@ func Validate(entities []*Entity, enums []*Enum) error {
 			}
 			_ = fn
 		}
+		// choice_search_proc — то же правило имени, что у choice_preview_proc.
+		if proc := strings.TrimSpace(e.ChoiceSearchProc); proc != "" {
+			mod, fn, ok := strings.Cut(proc, ".")
+			if !ok || strings.TrimSpace(mod) == "" || strings.TrimSpace(fn) == "" || strings.Contains(fn, ".") || strings.ContainsAny(mod, " 	") || strings.ContainsAny(fn, " 	") {
+				return fmt.Errorf("entity %s: choice_search_proc должен быть вида Модуль.Функция (сейчас %q)", e.Name, proc)
+			}
+		}
 		if err := validateFieldIDs(e); err != nil {
 			return err
 		}
@@ -188,6 +203,9 @@ func Validate(entities []*Entity, enums []*Enum) error {
 				// Принятый и никогда не исполняемый признак ПДн опаснее
 				// отсутствующего — он читается как «поле защищено», а защиты
 				// нет (см. Field.PII).
+				if f.PIIOpenWhen != "" {
+					return fmt.Errorf("поле %s.%s: pii_open_when не поддерживается в табличных частях", tp.Name, f.Name)
+				}
 				if f.PII {
 					return fmt.Errorf("поле %s.%s: признак pii не поддерживается в табличных частях — маскирование их не адресует; перенесите реквизит в шапку объекта или снимите pii", tp.Name, f.Name)
 				}

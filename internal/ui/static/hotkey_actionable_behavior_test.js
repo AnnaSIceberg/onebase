@@ -19,6 +19,7 @@ if (resolverStart < 0 || resolverEnd < 0 || domStart < 0 || domEnd < 0 || delega
 const listeners = new Map();
 let mainForm = null;
 let candidates = [];
+let externalControls = [];
 let modal = false;
 
 function element(tag, attrs = {}, options = {}) {
@@ -88,6 +89,8 @@ obManagedInitDelegates();
 function reset() {
   mainForm = element('form', {id: 'main-form'}, {parent: body});
   candidates = [];
+  externalControls = [];
+  Object.defineProperty(mainForm, 'elements', {get() { return candidates.concat(externalControls); }});
   modal = false;
 }
 
@@ -243,4 +246,34 @@ test('real no_grid handler and generic bubble give F9 to exactly one action', ()
   dispatchDOM();
   assert.equal(copies, copiesAfterFallbacks + 1, 'missing main form did not fall back to one no_grid copy');
   mainForm = connectedForm;
+});
+
+
+test('header commands use native ownership and dispatch once from the active form', () => {
+  reset();
+  const header = button({parent: body, attrs: {form: 'main-form'}});
+  header.form = mainForm;
+  externalControls = [header];
+  assert.equal(window.obResolveActionableFormHotkey('F9'), header);
+  fire();
+  assert.equal(header.clickCount, 1);
+  fire({target: header});
+  assert.equal(header.clickCount, 2, 'focus on the header command belongs to the same form');
+
+  header.hidden = true;
+  assert.equal(window.obResolveActionableFormHotkey('F9'), null);
+  header.hidden = false;
+  header.disabled = true;
+  assert.equal(window.obResolveActionableFormHotkey('F9'), null);
+  header.disabled = false;
+  header.form = element('form', {id: 'other-form'}, {parent: body});
+  assert.equal(window.obResolveActionableFormHotkey('F9'), null, 'another form cannot consume F9');
+  header.form = mainForm;
+  header.parentElement = null;
+  assert.equal(window.obResolveActionableFormHotkey('F9'), null, 'detached header cannot consume F9');
+  header.parentElement = element('div', {}, {parent: body, style: {display: 'none'}});
+  assert.equal(window.obResolveActionableFormHotkey('F9'), null, 'hidden header cannot consume F9');
+  header.parentElement = body;
+  mainForm.hidden = true;
+  assert.equal(window.obResolveActionableFormHotkey('F9'), null, 'hidden active form cannot expose external commands');
 });

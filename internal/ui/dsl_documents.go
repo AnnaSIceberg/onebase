@@ -588,9 +588,11 @@ func (p *docProxy) LoadObject(uuidStr string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	version, err := p.s.store.EntityVersion(p.ctx(), p.entity.Name, id)
-	if err != nil {
-		return nil, err
+	// The CAS token belongs to the header just loaded, not to a later SELECT.
+	// A concurrent writer may commit while table parts/refs are being loaded.
+	version, ok := row["_version"].(int64)
+	if !ok {
+		return nil, fmt.Errorf("объект %s/%s: не прочитана версия", p.entity.Name, id)
 	}
 	w := &docWriter{
 		s:               p.s,
@@ -740,6 +742,7 @@ func (w *docWriter) Set(name string, v any) {
 	}
 	w.assigned[strings.ToLower(strings.TrimSpace(name))] = true
 	w.obj.Set(name, v)
+	w.obj.MarkServerFieldAssignment(name)
 }
 
 func (w *docWriter) GetDynamicField(name string) (any, bool) {
@@ -805,10 +808,12 @@ func (w *docWriter) CallMethod(method string, args []any) any {
 func (w *docWriter) forgetAssigned(names []string) {
 	for _, n := range names {
 		delete(w.assigned, strings.ToLower(strings.TrimSpace(n)))
+		w.obj.ForgetServerFieldAssignment(n)
 	}
 }
 
 func (w *docWriter) read() error {
+	w.obj.TakeServerFieldAssignments()
 	if err := w.s.checkDSLRowAccess(w.ctx(), w.entity, "read", w.obj.ID, nil); err != nil {
 		return err
 	}
@@ -842,9 +847,9 @@ func (w *docWriter) read() error {
 	for _, tp := range w.entity.TableParts {
 		w.s.enrichTPRowsWithRefs(w.ctx(), tp, tpRows[tp.Name])
 	}
-	version, err := w.s.store.EntityVersion(w.ctx(), w.entity.Name, w.obj.ID)
-	if err != nil {
-		return err
+	version, ok := row["_version"].(int64)
+	if !ok {
+		return fmt.Errorf("объект %s/%s: не прочитана версия", w.entity.Name, w.obj.ID)
 	}
 	w.expectedVersion = &version
 	w.loaded = true
@@ -944,6 +949,9 @@ func (w *docWriter) write() error {
 // транзакции, а не утекают навсегда. Зеркалит entityservice.Save
 // (service.go: lockCollector + defer ReleaseAll).
 func (w *docWriter) withLockScope(fn func(ctx context.Context) error) error {
+	// Beginning the transaction may fail before writeInContext can consume
+	// the journal. Even that failed attempt must not authorize a later retry.
+	defer func() { w.obj.TakeServerFieldAssignments() }()
 	base := w.ctx()
 	if runtime.LockCollectorFromContext(base) != nil {
 		return w.s.store.WithTxScope(base, fn)
@@ -960,6 +968,8 @@ func (w *docWriter) writeInContext(ctx context.Context) error {
 }
 
 func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) error {
+	serverAssigned := w.obj.TakeServerFieldAssignments().Consume(w.entity, w.obj.ID)
+	defer func() { w.obj.TakeServerFieldAssignments() }()
 	if w.loaded || w.saved {
 		if err := w.s.store.LockMovementRecorder(ctx, w.entity, w.obj.ID); err != nil {
 			return err
@@ -1034,7 +1044,9 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 			return err
 		}
 	}
-	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc, w.hookXDTOState())
+	hookOrigin := w.hookXDTOState()
+	hookOrigin = &entityHookXDTOState{loaded: hookOrigin.loaded, assigned: hookOrigin.assigned, serverAssigned: serverAssigned}
+	errMsg, hookMessages := w.s.runOnWriteCtx(ctx, w.obj, mc, hookOrigin)
 	w.appendHookMessages(hookMessages)
 	if errMsg != "" {
 		return fmt.Errorf("%s", errMsg)

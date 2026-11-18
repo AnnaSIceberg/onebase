@@ -39,6 +39,11 @@ type mobileLayoutBrowserStartup struct {
 
 func newMobileLayoutBrowser(t *testing.T, executable string, startup ...mobileLayoutBrowserStartup) *mobileLayoutBrowser {
 	t.Helper()
+	return newMobileLayoutBrowserSize(t, executable, 1440, 1000, startup...)
+}
+
+func newMobileLayoutBrowserSize(t *testing.T, executable string, width, height int, startup ...mobileLayoutBrowserStartup) *mobileLayoutBrowser {
+	t.Helper()
 	if len(startup) > 1 {
 		t.Fatal("multiple browser startup configurations")
 	}
@@ -59,7 +64,11 @@ func newMobileLayoutBrowser(t *testing.T, executable string, startup ...mobileLa
 	// testing cancels t.Context before cleanup; keep the process alive until
 	// cleanup stops its owned process tree and releases the owned profile.
 	processCtx, stop := context.WithTimeout(context.Background(), 5*time.Minute)
-	args := []string{"--headless=new", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--disable-extensions", "--disable-sync", "--no-first-run", "--no-default-browser-check", "--force-device-scale-factor=1", "--window-size=1440,1000", "--remote-debugging-port=0", "--user-data-dir=" + profile, "about:blank"}
+	args := []string{"--headless=new", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--disable-extensions", "--disable-sync", "--no-first-run", "--no-default-browser-check", "--force-device-scale-factor=1", "--remote-debugging-port=0", "--user-data-dir=" + profile, "about:blank"}
+	// Zero preserves the browser default viewport for legacy scenarios.
+	if width > 0 && height > 0 {
+		args = append(args, fmt.Sprintf("--window-size=%d,%d", width, height))
+	}
 	if runtime.GOOS == "linux" {
 		args = append([]string{"--no-sandbox"}, args...)
 	}
@@ -199,7 +208,12 @@ func (b *mobileLayoutBrowser) call(ctx context.Context, session, method string, 
 	}
 }
 
-func (b *mobileLayoutBrowser) measure(ctx context.Context, target string) (data []byte, err error) {
+func (b *mobileLayoutBrowser) measure(ctx context.Context, target string) ([]byte, error) {
+	return b.measureElement(ctx, target, "list-mobile-measure")
+}
+
+func (b *mobileLayoutBrowser) measureElement(ctx context.Context, target, marker string) (data []byte, err error) {
+	markerJSON, _ := json.Marshal(marker)
 	var isolated struct {
 		ID string `json:"browserContextId"`
 	}
@@ -238,7 +252,7 @@ func (b *mobileLayoutBrowser) measure(ctx context.Context, target string) (data 
 			ExceptionDetails json.RawMessage `json:"exceptionDetails"`
 		}
 		err := b.call(ctx, attached.SessionID, "Runtime.evaluate", map[string]any{
-			"expression":    `({measurement: document.getElementById('list-mobile-measure')?.textContent || '', error: document.getElementById('list-mobile-error')?.textContent || ''})`,
+			"expression":    fmt.Sprintf(`({measurement: document.getElementById(%s)?.textContent || '', error: document.getElementById('list-mobile-error')?.textContent || ''})`, markerJSON),
 			"returnByValue": true,
 		}, &evaluation)
 		if err != nil {

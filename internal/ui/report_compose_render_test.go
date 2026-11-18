@@ -71,7 +71,7 @@ func TestBuildComposedChart(t *testing.T) {
 		Chart:     &report.ChartSpec{Type: "bar", Category: "М", Series: []string{"Сумма"}},
 	}
 	res, _ := compose.Compose(rows, spec, nil)
-	opt := buildComposedChart(res, spec.Chart, rows, spec, nil)
+	opt := buildComposedChart(res, spec.Chart, rows, spec, nil, reportCompositionPresentation{})
 	if opt == nil {
 		t.Fatal("nil chart option")
 	}
@@ -97,7 +97,7 @@ func TestBuildComposedChart_HonorsCategory(t *testing.T) {
 		Chart:     &report.ChartSpec{Type: "bar", Category: "Регион", Series: []string{"Сумма"}},
 	}
 	res, _ := compose.Compose(rows, spec, nil)
-	opt := buildComposedChart(res, spec.Chart, rows, spec, nil)
+	opt := buildComposedChart(res, spec.Chart, rows, spec, nil, reportCompositionPresentation{})
 	if opt == nil {
 		t.Fatal("nil chart option")
 	}
@@ -129,7 +129,7 @@ func TestBuildComposedChart_Category_RespectsCap(t *testing.T) {
 		Chart:     &report.ChartSpec{Type: "bar", Category: "Регион", Series: []string{"Сумма"}},
 	}
 	res, _ := compose.ComposeN(rows, spec, nil, 1) // потолок 1 строка
-	opt := buildComposedChart(res, spec.Chart, rows, spec, nil)
+	opt := buildComposedChart(res, spec.Chart, rows, spec, nil, reportCompositionPresentation{})
 	xAxis, _ := opt["xAxis"].(map[string]any)
 	cats, _ := xAxis["data"].([]string)
 	if len(cats) != 1 || cats[0] != "Юг" {
@@ -149,7 +149,7 @@ func TestRenderComposedTable(t *testing.T) {
 	}
 	res, _ := compose.Compose(rows, spec, nil)
 	out := string(renderComposedTable(res, &spec))
-	for _, want := range []string{"Иванов", "Петров", "150", "Сумма, ₽", "ВСЕГО", "data-group", "<table"} {
+	for _, want := range []string{"Иванов", "Петров", "150", "Сумма, ₽", "Итого", "data-group", "<table"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("HTML не содержит %q:\n%s", want, out)
 		}

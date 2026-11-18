@@ -44,6 +44,79 @@ func CheckFormAdminOnly(proj *project.Project) []Issue {
 	return issues
 }
 
+// CheckFormHintFrom — hint_from называет реквизит формы или реквизит объекта
+// формы. Опечатка иначе молча оставляла бы статическую подсказку.
+func CheckFormHintFrom(proj *project.Project) []Issue {
+	if proj == nil {
+		return nil
+	}
+	var issues []Issue
+	forEachProjectForm(proj, func(owner *metadata.Entity, form *metadata.FormModule) {
+		known := map[string]bool{}
+		for _, a := range form.Attributes {
+			if a != nil {
+				known[a.Name] = true
+			}
+		}
+		if owner != nil {
+			for _, f := range owner.Fields {
+				known[f.Name] = true
+			}
+		}
+		for _, el := range unknownHintFrom(form, known) {
+			issues = append(issues, formKeyIssue(owner, form, el, "form.hint-from",
+				fmt.Sprintf("hint_from: реквизит %q не найден ни среди реквизитов формы, ни среди реквизитов объекта", el.HintFrom),
+				"Укажите имя реквизита формы (attributes) или объекта."))
+		}
+	})
+	// Формы обработок — основной сценарий hint_from (подсказка из реквизита
+	// формы обработки): известны реквизиты формы и параметры обработки.
+	for _, proc := range proj.Processors {
+		if proc == nil {
+			continue
+		}
+		for _, form := range proc.Forms {
+			if form == nil {
+				continue
+			}
+			known := map[string]bool{}
+			for _, a := range form.Attributes {
+				if a != nil {
+					known[a.Name] = true
+				}
+			}
+			for _, prm := range proc.Params {
+				known[prm.Name] = true
+			}
+			for _, el := range unknownHintFrom(form, known) {
+				issues = append(issues, Issue{
+					File:         formAttrFileLabel(proc.Name, form),
+					Object:       proc.Name,
+					Kind:         "Управляемая форма",
+					Code:         "form.hint-from",
+					Message:      fmt.Sprintf("элемент %q: hint_from: реквизит %q не найден ни среди реквизитов формы, ни среди параметров обработки", formElementName(el), el.HintFrom),
+					SuggestedFix: "Укажите имя реквизита формы (attributes) или параметра обработки.",
+				})
+			}
+		}
+	}
+	return issues
+}
+
+// unknownHintFrom — элементы формы, чей hint_from не называет известный реквизит.
+func unknownHintFrom(form *metadata.FormModule, known map[string]bool) []*metadata.FormElement {
+	var out []*metadata.FormElement
+	walkFormElements(form.Elements, func(el *metadata.FormElement) {
+		if el == nil || strings.TrimSpace(el.HintFrom) == "" {
+			return
+		}
+		if !known[strings.TrimPrefix(strings.TrimSpace(el.HintFrom), "Форма.")] {
+			out = append(out, el)
+		}
+	})
+	return out
+}
+
 // CheckFormChoiceFolders requires the stable element id used by the picker
 // context. Without it, applyManagedChoiceFilters skips the field entirely.
 func CheckFormChoiceFolders(proj *project.Project) []Issue {
@@ -91,6 +164,17 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 
 	var warns []Issue
 	forEachProjectForm(proj, func(owner *metadata.Entity, form *metadata.FormModule) {
+		if d := form.Density; d != "" && d != metadata.FormDensityCompact && d != metadata.FormDensityDense {
+			object := ""
+			if owner != nil {
+				object = owner.Name
+			}
+			warns = append(warns, Issue{
+				File: formFileLabel(owner, form), Object: object, Kind: "Управляемая форма", Code: "form.density",
+				Message:      fmt.Sprintf("density: %q не поддерживается — раскладка формы останется обычной", d),
+				SuggestedFix: "Задайте density: compact или dense либо уберите ключ.",
+			})
+		}
 		walkFormElements(form.Elements, func(el *metadata.FormElement) {
 			if el == nil {
 				return
@@ -99,6 +183,11 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 				warns = append(warns, formKeyIssue(owner, form, el, "form.scroll-x",
 					"ключ scroll_x игнорируется — прокрутка вместо переноса есть только у ГруппаФормы с orientation: horizontal",
 					"Задайте orientation: horizontal у группы или уберите ключ."))
+			}
+			if el.Placement != "" && !metadata.FormHeaderPlaced(el) {
+				warns = append(warns, formKeyIssue(owner, form, el, "form.placement",
+					fmt.Sprintf("placement: %q игнорируется — поддерживаются header и header_end у kind: %s, %s, %s, %s", el.Placement, metadata.FormElementButton, metadata.FormElementField, metadata.FormElementCheckbox, metadata.FormElementAudio),
+					"Уберите ключ или перенесите его на кнопку или поле."))
 			}
 			if el.Primary && el.Kind != metadata.FormElementButton {
 				warns = append(warns, formKeyIssue(owner, form, el, "form.primary",
@@ -112,6 +201,24 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 						fmt.Sprintf("ключ ref_card_button игнорируется — data_path %q не выбирает ссылку, кнопки «Открыть карточку» у поля нет", el.DataPath),
 						"Оставьте ключ только у ссылочного поля ввода."))
 				}
+			}
+			// rows у многострочного поля ввода — видимых строк textarea.
+			multilineRows := el.Kind == metadata.FormElementField && el.Multiline && !el.ShowCount && el.EmptyText == ""
+			if (el.Rows != 0 || el.ShowCount || el.EmptyText != "") && !multilineRows {
+				if el.Kind != metadata.FormElementTablePart || !formValueTableElement(form, el) {
+					warns = append(warns, formKeyIssue(owner, form, el, "form.vt-output",
+						"ключи rows/show_count/empty_text игнорируются — они действуют у ТабличнаяЧасть над реквизитом формы типа ValueTable (rows — ещё у многострочного ПолеВвода)",
+						"Уберите ключи или покажите таблицу через реквизит формы ValueTable."))
+				} else if el.Rows < 0 || el.Rows > 50 {
+					warns = append(warns, formKeyIssue(owner, form, el, "form.vt-output",
+						fmt.Sprintf("rows: %d вне диапазона 1–50: отрицательное значение не действует, больше 50 — показано 50 строк", el.Rows),
+						"Задайте rows от 1 до 50."))
+				}
+			}
+			if el.ChoiceFreeInput && (el.Kind != metadata.FormElementInputList || len(el.Choices) == 0) {
+				warns = append(warns, formKeyIssue(owner, form, el, "form.choice-free-input",
+					fmt.Sprintf("ключ choice_free_input игнорируется — ввод со списком есть только у kind: %s с choices", metadata.FormElementInputList),
+					"Задайте kind: ПолеСписка и choices или уберите ключ."))
 			}
 			if !el.ChoiceFolders && el.ChoiceDropdown == nil {
 				return
@@ -159,6 +266,25 @@ func formRefCardFieldPath(owner *metadata.Entity, form *metadata.FormModule, pat
 			if attr != nil && attr.Name == name {
 				return formChoiceTypeRefEntity(attr.TypeRef) != ""
 			}
+		}
+	}
+	return false
+}
+
+// formValueTableElement — таблица формы показывает реквизит формы типа
+// ValueTable (по table_part или последнему сегменту data_path).
+func formValueTableElement(form *metadata.FormModule, el *metadata.FormElement) bool {
+	if form == nil || el == nil {
+		return false
+	}
+	name := strings.TrimSpace(el.TablePart)
+	if name == "" {
+		path := strings.TrimSpace(el.DataPath)
+		name = path[strings.LastIndex(path, ".")+1:]
+	}
+	for _, attr := range form.Attributes {
+		if attr != nil && strings.EqualFold(attr.Name, name) && strings.EqualFold(attr.TypeRef, "ValueTable") {
+			return true
 		}
 	}
 	return false

@@ -7,6 +7,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/ivantit66/onebase/internal/excel"
 	"github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/report/compose"
 )
@@ -16,26 +17,42 @@ import (
 // measureCellForExcel (nil → пустая ячейка; формат показателя учитывается, как в
 // обычной выгрузке), чтобы вид совпадал с HTML и Excel видел числа, а не текст.
 func crossSheetRows(cr *compose.CrossResult, spec *report.Composition) (headers []string, rows [][]any) {
+	headers, rows, _ = crossSheetRowsPresented(cr, spec, reportCompositionPresentation{})
+	return headers, rows
+}
+
+func crossSheetRowsPresented(cr *compose.CrossResult, spec *report.Composition, presentation reportCompositionPresentation) (headers []string, rows [][]any, styles []excel.RowStyle) {
 	// Показатель колонки берём по ИНДЕКСУ (CrossCol.MeasureIdx), а не по Field —
 	// общий с HTML-рендером хелпер (issue #17), чтобы пути не расходились.
 	measureAt := measureByIdx(spec)
 	multiMeasure := len(spec.Measures) > 1
 
 	headers = make([]string, 0, 1+len(cr.Cols))
-	headers = append(headers, strings.Join(spec.Groupings, " / "))
+	headers = append(headers, presentation.groupHeader(spec))
 	for _, c := range cr.Cols {
-		headers = append(headers, crossColTitle(c, measureAt(c), multiMeasure))
+		headers = append(headers, crossColTitle(c, measureAt(c), multiMeasure, spec, presentation))
+	}
+	totalMeasures := crossTotalMeasures(spec)
+	for _, m := range totalMeasures {
+		headers = append(headers, crossTotalTitle(presentation.grandTitle(), m, multiMeasure))
 	}
 
-	colCount := 1 + len(cr.Cols)
+	colCount := 1 + len(cr.Cols) + len(totalMeasures)
+	totalsAt := func(r []any, totals map[string]any) {
+		for mi, m := range totalMeasures {
+			r[1+len(cr.Cols)+mi] = measureCellForExcel(totals[compose.CrossTotalKey(mi)], m)
+		}
+	}
 	var walk func(row *compose.CrossRow, level int)
 	walk = func(row *compose.CrossRow, level int) {
 		r := make([]any, colCount)
-		r[0] = strings.Repeat("  ", level) + fmtVal(row.Key)
+		r[0] = strings.Repeat("  ", level) + presentation.groupLabel(row.Field, row.Key)
 		for i, c := range cr.Cols {
 			r[i+1] = measureCellForExcel(row.Cells[c.Key()], measureAt(c))
 		}
+		totalsAt(r, row.Total)
 		rows = append(rows, r)
+		styles = append(styles, excel.RowStyle{Background: composedGroupFill(level, len(spec.Groupings)), Bold: true})
 		for _, ch := range row.Children {
 			walk(ch, level+1)
 		}
@@ -45,10 +62,12 @@ func crossSheetRows(cr *compose.CrossResult, spec *report.Composition) (headers 
 	}
 
 	tot := make([]any, colCount)
-	tot[0] = "ВСЕГО"
+	tot[0] = presentation.grandTitle()
 	for i, c := range cr.Cols {
 		tot[i+1] = measureCellForExcel(cr.RowTotal[c.Key()], measureAt(c))
 	}
+	totalsAt(tot, cr.GrandTotal)
 	rows = append(rows, tot)
-	return headers, rows
+	styles = append(styles, excel.RowStyle{Bold: true})
+	return headers, rows, styles
 }

@@ -29,9 +29,14 @@ import (
 
 var maskHelperGateFuncs = map[string]bool{
 	"maskRecord": true, "maskRecords": true,
+	// maskRecordWithDecisions — maskRecord с решениями, вычисленными заранее
+	// (форма объекта с pii_open_when по сохранённой записи).
+	"maskRecordWithDecisions": true,
 	// maskedRecordLabel зовёт maskRecord и отдаёт наружу только представление
 	// (field_access.go:82) — законная точка наложения маски.
 	"maskedRecordLabel": true,
+	// Mandatory report labels return only technical identity for protected rows.
+	"reportOutputRecordLabel": true,
 	// maskDSLValue — та же полевая политика для одиночного значения в DSL.
 	"maskDSLValue": true,
 }
@@ -53,6 +58,10 @@ type maskHelperExemption struct {
 }
 
 var maskHelperExempt = map[string]maskHelperExemption{
+	// Кэш записи запроса формы: отдаёт вызывающему сырую строку, как
+	// store.GetByID; вызов recordForRequest страж считает чтением store, так что
+	// каждый вызывающий сам стоит под этим правилом.
+	"Server.recordForRequest": {reason: "обёртка GetByID с кэшем на время запроса; маску накладывают вызывающие, их чтения страж видит"},
 	// ── Проверки строкового доступа (RLS): наружу идёт bool, 403 или
 	// ErrRowAccessDenied, значения реквизитов никуда не отдаются. Маскировать
 	// строку здесь означало бы решать доступ по маске вместо данных.
@@ -95,9 +104,8 @@ var maskHelperExempt = map[string]maskHelperExemption{
 	// DelegatedGatesStillMask следит, что он там действительно есть.
 	"docWriter.read":                       {reason: "значения кладутся в obj и маскируются на выдаче", maskedBy: "docWriter.Get"},
 	"dslRefAttrResolver.preloadIDs":        {reason: "наполняет кэш, значения отдаёт только ResolveRefAttr", maskedBy: "dslRefAttrResolver.ResolveRefAttr"},
-	"Server.restoreUnsubmittedFields":      {reason: "дочитывает неприсланные реквизиты ДЛЯ ЗАПИСИ, к клиенту они идут через сериализацию ответа (#609)", maskedBy: "Server.serializeManagedFormEventState"},
-	"Server.refreshFieldsWrittenByHandler": {reason: "перечитывает записанное обработчиком ДЛЯ ЗАПИСИ, к клиенту — через сериализацию ответа (#609)", maskedBy: "Server.serializeManagedFormEventState"},
-	"Server.managedCloseStateDirty":        {reason: "сравнивает серверное состояние с БД и наружу отдаёт только bool; сами поля идут через сериализацию ответа", maskedBy: "Server.serializeManagedFormEventState"},
+	"Server.restoreUnsubmittedFields":      {reason: "дочитывает неприсланные реквизиты ДЛЯ ЗАПИСИ, к клиенту они идут через сериализацию ответа (#609)", maskedBy: "Server.serializeManagedFormEventValues"},
+	"Server.refreshFieldsWrittenByHandler": {reason: "перечитывает записанное обработчиком ДЛЯ ЗАПИСИ, к клиенту — через сериализацию ответа (#609)", maskedBy: "Server.serializeManagedFormEventValues"},
 	"Server.saveManagedObject":             {reason: "путь записи: GetByID используется только для RLS-предиката, значения клиенту не возвращаются"},
 
 	// ── Особый случай.
@@ -172,6 +180,12 @@ func maskHelperScan(t *testing.T) map[string]maskHelperFact {
 					if inner, ok := sel.X.(*ast.SelectorExpr); ok && inner.Sel.Name == "store" {
 						readsStore = true
 					}
+				}
+				// recordForRequest — GetByID с кэшем запроса: вызывающий читает
+				// ту же сырую запись, что и прямым store.GetByID, и отвечает за
+				// маску сам. Без этого обёртка спрятала бы чтение от стража.
+				if sel.Sel.Name == "recordForRequest" {
+					readsStore = true
 				}
 				return true
 			})
@@ -267,5 +281,12 @@ func TestFieldMaskHelperChokepoint_DelegatedGatesStillMask(t *testing.T) {
 		t.Fatalf("делегированные гейты маскирования сломаны (%d):\n  %s\n\n"+
 			"Либо верните маску в названную функцию, либо наложите её на месте чтения.",
 			len(broken), strings.Join(broken, "\n  "))
+	}
+}
+
+func TestFieldMaskHelperChokepoint_ReportOutputStillMasks(t *testing.T) {
+	facts := maskHelperScan(t)
+	if helper, ok := facts["Server.reportOutputRecordLabel"]; !ok || !helper.gated {
+		t.Fatal("report output label must retain its delegated masking gate")
 	}
 }

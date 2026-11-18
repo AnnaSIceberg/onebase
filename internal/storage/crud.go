@@ -20,7 +20,10 @@ type ListParams struct {
 	Filters map[string]FilterValue
 	// ChoicePredicates are trusted, metadata-derived choice_filter conditions.
 	ChoicePredicates []ChoicePredicate
-	RowFilter        *Predicate // additional SQL-side row-level access predicate
+	// ChoiceSearchIDs limits a configuration search independently of the eight
+	// form conditions. nil means unrestricted; a non-nil empty slice denies all.
+	ChoiceSearchIDs []uuid.UUID
+	RowFilter       *Predicate // additional SQL-side row-level access predicate
 	// RowFilterEvaluated — строковый доступ был вычислен для этого списка (план
 	// 79F): хендлер прошёл через applyRowFilter/rowFilterFor (даже если политика
 	// неограничивающая — RowFilter при этом nil). Используется strict-RLS
@@ -59,6 +62,7 @@ type FilterValue struct {
 	Value string // used for string and reference equality
 	From  string // used for date range start (inclusive)
 	To    string // used for date range end (inclusive)
+	Exact bool   // exact scalar equality, including an empty string
 }
 
 // Upsert inserts or updates the object fields.
@@ -185,6 +189,9 @@ func (db *DB) upsert(ctx context.Context, entityName string, id uuid.UUID, field
 		return err
 	}
 	if err := db.enumBackstop(ctx, entity, fields); err != nil {
+		return err
+	}
+	if err := db.maskBackstop(ctx, entity, id, fields); err != nil {
 		return err
 	}
 	// Сущность с объявленными этапами (план 121) пишется сериализованным циклом
@@ -794,6 +801,10 @@ func (db *DB) listWhere(entityName string, entity *metadata.Entity, params ListP
 				}
 			}
 		case field.RefEntity != "":
+			if filter.Exact && filter.Value == "" {
+				whereParts = append(whereParts, column+" IS NULL")
+				continue
+			}
 			if filter.Value != "" {
 				whereParts = append(whereParts, fmt.Sprintf("%s = %s", column, d.Placeholder(argIdx)))
 				if id, err := uuid.Parse(filter.Value); err == nil {
@@ -804,6 +815,26 @@ func (db *DB) listWhere(entityName string, entity *metadata.Entity, params ListP
 				argIdx++
 			}
 		default:
+			if filter.Exact {
+				value := filter.Value
+				if field.Type == metadata.FieldTypeNumber {
+					if len(value) > 128 {
+						whereParts = append(whereParts, "1 = 0")
+						continue
+					}
+					n, err := decimal.NewFromString(value)
+					if err != nil || n.Exponent() < -128 || n.Exponent() > 128 {
+						whereParts = append(whereParts, "1 = 0")
+						continue
+					}
+					column = "CAST(" + column + " AS NUMERIC)"
+					value = n.String()
+				}
+				whereParts = append(whereParts, column+" = "+d.Placeholder(argIdx))
+				args = append(args, value)
+				argIdx++
+				continue
+			}
 			if filter.Value != "" {
 				whereParts = append(whereParts, d.LowerLike(column)+" LIKE "+d.LowerLike(d.Placeholder(argIdx)))
 				args = append(args, "%"+filter.Value+"%")
@@ -870,6 +901,16 @@ func (db *DB) listWhere(entityName string, entity *metadata.Entity, params ListP
 	if cond, condArgs, next, err := choicePredicateSQL(d, entity, params.ChoicePredicates, argIdx); err != nil {
 		return "", nil, fmt.Errorf("choice filter: %w", err)
 	} else if cond != "" {
+		whereParts = append(whereParts, cond)
+		args = append(args, condArgs...)
+		argIdx = next
+	}
+	if params.ChoiceSearchIDs != nil {
+		cond, condArgs, next, err := choicePredicateSQL(d, entity,
+			[]ChoicePredicate{{ByIDs: true, IDs: params.ChoiceSearchIDs}}, argIdx)
+		if err != nil {
+			return "", nil, fmt.Errorf("choice search: %w", err)
+		}
 		whereParts = append(whereParts, cond)
 		args = append(args, condArgs...)
 		argIdx = next
@@ -1372,6 +1413,9 @@ func (db *DB) upsertTablePartRows(ctx context.Context, entityName, tpName string
 	// Страховка значений перечислений в строках (#962, Н3): шапочная проверка
 	// сюда не достаёт — строки пишутся отдельным вызовом.
 	if err := db.enumBackstopRows(ctx, entityName, tp, rows); err != nil {
+		return err
+	}
+	if err := db.maskBackstopRows(ctx, entityName, tp, parentID, rows); err != nil {
 		return err
 	}
 	if validateRequired {

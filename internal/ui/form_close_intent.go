@@ -1210,6 +1210,7 @@ func redactUnreadableSavedFormResponse(response *formEventResponse) {
 	response.FormTables = nil
 	response.RefOptions = nil
 	response.TPRefOptions = nil
+	response.TPRefChoices = nil
 	response.ConditionalCSS = ""
 	response.ElementStates = nil
 	response.ColumnTitles = nil
@@ -1293,6 +1294,7 @@ func compactFormCloseDelta(response *formEventResponse, inv *formCloseInvocation
 	response.FormTables = changedCloseTables(response.FormTables, inv.baselineFormTables)
 	response.RefOptions = filterCloseRefOptions(response.RefOptions, response.Values)
 	response.TPRefOptions = filterCloseTPRefOptions(response.TPRefOptions, response.TableParts)
+	response.TPRefChoices = filterCloseTPRefOptions(response.TPRefChoices, response.TableParts)
 }
 
 func changedCloseValues(after, before map[string]any) map[string]any {
@@ -1448,4 +1450,21 @@ func formCloseClientTimeoutMS(timeout time.Duration) int64 {
 		return formCloseDefaultClientMS
 	}
 	return timeout.Milliseconds() + 1500
+}
+
+type formCloseBaselineKey struct{}
+
+// withFormCloseBaseline отмечает запрос закрытия, снимок которого уже снят:
+// дальше сериализация ответа считает варианты выбора только для того, что
+// изменилось относительно снимка.
+func withFormCloseBaseline(ctx context.Context, inv *formCloseInvocation) context.Context {
+	if inv == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, formCloseBaselineKey{}, inv)
+}
+
+func formCloseBaselineFrom(ctx context.Context) *formCloseInvocation {
+	inv, _ := ctx.Value(formCloseBaselineKey{}).(*formCloseInvocation)
+	return inv
 }

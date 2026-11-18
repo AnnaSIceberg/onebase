@@ -38,6 +38,7 @@ type queryProxy struct {
 	ctxSrc   CtxSource
 	compiler QueryCompiler
 	guard    QueryGuard
+	runner   QueryExecutor
 	// liveTx — живое состояние транзакций исполнения. Используется НЕ для
 	// чтения через транзакцию (это работа живого CtxSource, #1216), а только
 	// для точного обнаружения self-deadlock (#1272): контекст, снятый до
@@ -46,6 +47,10 @@ type queryProxy struct {
 }
 
 type QueryCompiler func(ctx context.Context, text string, params map[string]any) (query.Result, error)
+
+// QueryExecutor is a host-selected execution boundary over the successful
+// compiler result. The query object cannot replace it from DSL code.
+type QueryExecutor func(ctx context.Context, res query.Result) ([]map[string]any, error)
 
 // GuardedColumns records fields changed by a host security guard for each row.
 // Later normalization must not reinterpret a masked nil/empty string as the
@@ -104,6 +109,13 @@ func NewQueryFactoryGuarded(ctx context.Context, db QueryDB, reg QueryRegistry, 
 // would send Выполнить() through a second connection. A live CtxSource keeps
 // reads on the same transaction as catalog/document writes.
 func NewQueryFactoryGuardedSource(ctxSrc CtxSource, db QueryDB, reg QueryRegistry, compiler QueryCompiler, guard QueryGuard) func(args []any) any {
+	return NewQueryFactoryGuardedRunnerSource(ctxSrc, db, reg, compiler, guard, nil)
+}
+
+// NewQueryFactoryGuardedRunnerSource preserves live transaction context and
+// the existing post-read guard while allowing a report host to stream/filter
+// its SQL before row caps. Ordinary factories keep the default executor.
+func NewQueryFactoryGuardedRunnerSource(ctxSrc CtxSource, db QueryDB, reg QueryRegistry, compiler QueryCompiler, guard QueryGuard, runner QueryExecutor) func(args []any) any {
 	return func(args []any) any {
 		return &queryProxy{
 			params:   make(map[string]any),
@@ -112,6 +124,7 @@ func NewQueryFactoryGuardedSource(ctxSrc CtxSource, db QueryDB, reg QueryRegistr
 			ctxSrc:   ctxSrc,
 			compiler: compiler,
 			guard:    guard,
+			runner:   runner,
 		}
 	}
 }
@@ -254,18 +267,23 @@ func (q *queryProxy) execute() *Array {
 		})
 	}
 	if err != nil {
-		panic(userError{Msg: "Ошибка запроса: " + err.Error()})
+		panic(userError{Msg: "Ошибка запроса: " + err.Error(), Err: err})
 	}
-	rows, err := q.db.QueryAll(ctx, res.SQL, res.Args...)
+	var rows []map[string]any
+	if q.runner != nil {
+		rows, err = q.runner(ctx, res)
+	} else {
+		rows, err = q.db.QueryAll(ctx, res.SQL, res.Args...)
+	}
 	if err != nil {
-		panic(userError{Msg: "Ошибка выполнения SQL: " + err.Error() + "\nSQL: " + res.SQL})
+		panic(userError{Msg: "Ошибка выполнения SQL: " + err.Error() + "\nSQL: " + res.SQL, Err: err})
 	}
 	query.RestoreLongLabels(&res, rows, nil)
 	var guarded GuardedColumns
 	if q.guard != nil {
 		guarded, err = q.guard(ctx, res, rows)
 		if err != nil {
-			panic(userError{Msg: "Запрос: " + err.Error()})
+			panic(userError{Msg: "Запрос: " + err.Error(), Err: err})
 		}
 	}
 	query.NormalizeColumns(&res, rows)
