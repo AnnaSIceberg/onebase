@@ -69,6 +69,7 @@ type formEventResponse struct {
 	// Question != nil — обработчик фазы 1 вызвал ПоказатьВопрос: клиент
 	// рисует модал вопроса, ответ возвращается событием Ответ (#1528).
 	Question *questionPayload `json:"question,omitempty"`
+	CSV      *formCSVDownload `json:"csv,omitempty"`
 	// Navigation != nil — обработчик вызвал ОткрытьФорму: клиент переходит
 	// по серверно построенному адресу, только если форма не «грязная» (#1557).
 	Navigation *navigationPayload `json:"navigation,omitempty"`
@@ -2823,6 +2824,13 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		vars["ПоказатьПериод"] = periodFn
 		vars["ShowPeriod"] = periodFn
 
+		var csvFile *formCSVDownload
+		if !proc.External && closeInv == nil && eventName == string(metadata.FormEventOnClick) {
+			downloadCSV := newFormCSVDownloadBuiltin(&csvFile)
+			vars["СкачатьCSV"] = downloadCSV
+			vars["DownloadCSV"] = downloadCSV
+		}
+
 		var choiceItems []choiceListItem
 		choiceFn := newChoiceListBuiltin(&choiceItems)
 		vars["ДобавитьЗначениеСписка"] = choiceFn
@@ -2936,6 +2944,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		}
 
 		resp := s.serializeManagedFormEventState(r.Context(), form, virtEntity, obj, condRuntime.rules, msgs).response(true)
+		resp.CSV = csvFile
 		resp.PickerData = picker
 		if question.Variants != nil {
 			q := question
