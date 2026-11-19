@@ -207,6 +207,8 @@ type QueueConfig struct {
 // AppConfig holds the optional config/app.yaml metadata.
 // UIConfig — оформление интерфейса базы.
 type UIConfig struct {
+	ReportNativeChoices []string `yaml:"report_native_choices,omitempty"`
+
 	HideHomeNavigation bool     `yaml:"hide_home_navigation,omitempty"`
 	NavigationByType   bool     `yaml:"navigation_by_type,omitempty"`
 	ReportRoles        []string `yaml:"report_roles,omitempty"`

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/access"
+	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/storage"
@@ -17,7 +18,7 @@ import (
 const reportChoiceKind = "report"
 
 func (p reportParamUI) ChoiceContext(reportName string, allParams ...[]reportpkg.Param) string {
-	if len(p.Choice.ChoiceFilter) == 0 && p.Choice.ChoiceLabelSuffix == "" {
+	if !p.NativeChoice && len(p.Choice.ChoiceFilter) == 0 && p.Choice.ChoiceLabelSuffix == "" {
 		return ""
 	}
 	sources := map[string]string{}
@@ -125,6 +126,27 @@ func recordValueFold(row map[string]any, name string) any {
 	return nil
 }
 
+// reportUsesNativeChoice lets selected catalogs share the ordinary input
+// picker with forms, while historical report choices remain available elsewhere.
+func (s *Server) reportUsesNativeChoice(ctx context.Context, target string) bool {
+	if !auth.RoleScopeMatches(auth.UserFromContext(ctx), nil, s.cfg.UIExceptRoles, false) {
+		return false
+	}
+	for _, name := range s.cfg.UIReportNativeChoices {
+		if strings.EqualFold(name, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) reportChoiceMode(ctx context.Context, target string, showDeleted *bool) refOptionsMode {
+	if s.reportUsesNativeChoice(ctx, target) {
+		return refOptionsChoice
+	}
+	return refOptionsFilter.withMarked(showDeleted)
+}
+
 func (s *Server) reportReferenceOptions(ctx context.Context, p reportpkg.Param, values map[string]any, target *metadata.Entity) ([]map[string]any, error) {
 	ctx = access.WithReportOutput(ctx)
 	if target == nil || !s.canCtx(ctx, string(target.Kind), target.Name, "read") {
@@ -141,7 +163,7 @@ func (s *Server) reportReferenceOptions(ctx context.Context, p reportpkg.Param, 
 	if access.ReportOutputLabelProtected(target) {
 		listParams.Sort, listParams.Dir = "id", "asc"
 	}
-	rows, err := s.referenceOptionsWithParams(ctx, target, refOptionsFilter.withMarked(p.ChoiceShowDeleted), listParams)
+	rows, err := s.referenceOptionsWithParams(ctx, target, s.reportChoiceMode(ctx, target.Name, p.ChoiceShowDeleted), listParams)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +206,7 @@ func (s *Server) resolveReportChoiceRequest(r *http.Request, target *metadata.En
 		return nil, err
 	}
 	p := reportChoiceParam(rep, element)
-	if p == nil || p.Context != nil || !strings.EqualFold(p.Type, "reference:"+target.Name) || (len(p.ChoiceFilter) == 0 && p.ChoiceLabelSuffix == "") {
+	if p == nil || p.Context != nil || !strings.EqualFold(p.Type, "reference:"+target.Name) || (!s.reportUsesNativeChoice(r.Context(), target.Name) && len(p.ChoiceFilter) == 0 && p.ChoiceLabelSuffix == "") {
 		return nil, fmt.Errorf("invalid report choice target")
 	}
 	if _, ok := q["row_id"]; ok {

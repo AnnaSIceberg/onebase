@@ -12,24 +12,11 @@
   return true;
  };
  var activeProgress=new WeakMap(), resultPaths=new WeakMap();
- function reportDate(fieldName) {
-  var form=document.getElementById('main-form');
-  var field=form&&fieldName&&form.elements.namedItem(fieldName);
-  var value=field&&field.value;
-  var iso=/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(value||'');
-  if(iso)return iso[3]+'.'+iso[2]+'.'+iso[1];
-  var typed=/^(\d{2})\.(\d{2})\.(\d{4})(?:$| )/.exec(value||'');
-  return typed?typed[1]+'.'+typed[2]+'.'+typed[3]:'';
- }
  function openResultTab(frame, key, path) {
   if(!frame.hasAttribute('data-ob-tabular-result-tab'))return false;
-  var from=reportDate(frame.getAttribute('data-ob-tabular-period-from'));
-  var to=reportDate(frame.getAttribute('data-ob-tabular-period-to'));
-  var period=from&&to&&from!==to?from+' – '+to:(from||to);
-  var url=path+(period?'?period='+encodeURIComponent(period):'');
   try {
    if(window.parent!==window&&typeof window.parent.obOpenReportResult==='function'&&
-      window.parent.obOpenReportResult(window,key,url,'Результат отчёта')) {
+      window.parent.obOpenReportResult(window,key,path,'Результат отчёта')) {
     resultPaths.set(frame,path);
     return true;
    }

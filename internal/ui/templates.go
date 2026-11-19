@@ -868,6 +868,16 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return ""
 		},
+		"formButtonBackground": formButtonBackground,
+		"formDateOnly":         formDateOnly,
+		"dateOnlyValue": func(value string) string {
+			if len(value) >= len(time.DateOnly) {
+				if date, err := time.Parse(time.DateOnly, value[:len(time.DateOnly)]); err == nil {
+					return date.Format(time.DateOnly)
+				}
+			}
+			return ""
+		},
 		"elBackground": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementBackgroundCSS(el)) //nolint:gosec // G203: значение прошло csssafe.Color, иначе пустая строка
 		},
@@ -3960,7 +3970,7 @@ const tplReport = `
         </select>
       {{else if $p.IsRef}}
         <div style="display:flex;gap:4px;align-items:center">
-          <select name="{{$pname}}" id="rp-{{$pname}}" style="flex:1;min-width:0" data-ref-entity="{{$p.RefEntity}}" data-ref-empty-label="{{t $.Lang "— все —"}}"{{refPickAttrs true $p.ChoiceShowDeleted}}{{with $p.ChoiceContext $.Report.Name $.Report.Params}} data-ref-choice-context="{{.}}"{{end}}>
+          <select name="{{$pname}}" id="rp-{{$pname}}" style="flex:1;min-width:0" data-ref-entity="{{$p.RefEntity}}" data-ref-empty-label="{{t $.Lang "— все —"}}"{{refPickAttrs (not $p.NativeChoice) $p.ChoiceShowDeleted}}{{with $p.ChoiceContext $.Report.Name $.Report.Params}} data-ref-choice-context="{{.}}"{{end}}>
             <option value="">{{t $.Lang "— все —"}}</option>
             {{range $p.Opts}}
               <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq $pval (str (index . "id"))}}selected{{end}}>{{index . "_label"}}</option>

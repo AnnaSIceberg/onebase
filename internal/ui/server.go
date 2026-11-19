@@ -31,6 +31,8 @@ import (
 
 // Config holds static info shown in «О программе».
 type Config struct {
+	UIReportNativeChoices []string
+
 	UIReportRoles        []string
 	UIReportExceptRoles  []string
 	DefaultReportDensity string

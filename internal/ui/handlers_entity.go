@@ -1404,7 +1404,7 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 		optCtx := withLang(r.Context(), s.resolveLang(r))
 		if choice != nil {
 			if choice.ReportParam != nil {
-				mode = refOptionsFilter.withMarked(choice.ShowDeleted)
+				mode = s.reportChoiceMode(optCtx, ent.Name, choice.ShowDeleted)
 			} else {
 				mode = mode.withMarked(choice.ShowDeleted)
 			}

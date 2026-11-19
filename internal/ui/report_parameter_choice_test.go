@@ -121,3 +121,78 @@ func TestReportParameterChoiceHTTPMatrix(t *testing.T) {
 		}
 	})
 }
+
+func TestReportNativeCatalogChoiceThroughHTTP(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		branches := &metadata.Entity{
+			Name: "Branches", Kind: metadata.KindCatalog, OrderBy: []string{"Priority", "Name"},
+			Activity: &metadata.ActivityConfig{Field: "Active", HideFromChoice: true},
+			Fields: []metadata.Field{
+				{Name: "Name", Type: metadata.FieldTypeString},
+				{Name: "Priority", Type: metadata.FieldTypeNumber},
+				{Name: "Active", Type: metadata.FieldTypeBool},
+			},
+		}
+		if err := db.Migrate(ctx, []*metadata.Entity{branches}); err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range []struct {
+			name           string
+			order          int
+			active, marked bool
+		}{{"Second", 2, true, false}, {"First", 1, true, false}, {"Inactive", 0, false, false}, {"Marked", 0, true, true}} {
+			id := uuid.New()
+			if err := db.Upsert(ctx, branches.Name, id, map[string]any{"Name": item.name, "Priority": item.order, "Active": item.active}, branches); err != nil {
+				t.Fatal(err)
+			}
+			if item.marked {
+				if err := db.MarkForDeletion(ctx, branches.Name, id, true); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		rep := &reportpkg.Report{Name: "BranchesReport", Params: []reportpkg.Param{{Name: "Branch", Type: "reference:Branches"}}, Query: "ВЫБРАТЬ 1 КАК X"}
+		reg := runtime.NewRegistry()
+		reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{branches}, Reports: []*reportpkg.Report{rep}})
+		s := &Server{store: db, reg: reg, cfg: Config{UIReportNativeChoices: []string{branches.Name}, UIExceptRoles: []string{"Operator", "Messenger"}}}
+		check := func(body string) {
+			t.Helper()
+			first, second := strings.Index(body, "First"), strings.Index(body, "Second")
+			if first < 0 || second < first || strings.Contains(body, "Inactive") || strings.Contains(body, "Marked") {
+				t.Fatalf("native branch picker has incorrect order/scope: %s", body)
+			}
+		}
+		user := &auth.User{Login: "chief", IsAdmin: true, Roles: []*auth.Role{{Name: "Chief"}}}
+		if w := serveRefOptions(t, s, branches.Name, "", user); w.Code == 200 {
+			check(w.Body.String())
+		} else {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		r := reqWithChi("GET", "/ui/report/"+rep.Name, nil, map[string]string{"name": rep.Name})
+		r = r.WithContext(auth.ContextWithUser(r.Context(), user))
+		w := httptest.NewRecorder()
+		s.reportForm(w, r)
+		page := w.Body.String()
+		start, end := strings.Index(page, `name="Branch"`), strings.Index(page, ">First<")
+		if w.Code != http.StatusOK || start < 0 || end < start || !strings.Contains(page[start:end], "data-ref-choice-context=") {
+			t.Fatalf("report choice missing: %d", w.Code)
+		}
+		check(page[start : start+strings.Index(page[start:], "</select>")])
+		q := url.Values{"form_kind": {"report"}, "form_entity": {rep.Name}, "form": {"params"}, "element": {"Branch"}, "search": {"1"}}
+		w = serveRefOptions(t, s, branches.Name, q.Encode(), user)
+		if w.Code != http.StatusOK {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		check(w.Body.String())
+		q.Set("q", "Second")
+		if w = serveRefOptions(t, s, branches.Name, q.Encode(), user); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Second") || strings.Contains(w.Body.String(), "First") {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		mixed := &auth.User{Login: "mixed", IsAdmin: true, Roles: []*auth.Role{{Name: "Chief"}, {Name: "Operator"}}}
+		w = serveRefOptions(t, s, branches.Name, "search=1", mixed)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Inactive") || !strings.Contains(w.Body.String(), "Marked") {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	})
+}

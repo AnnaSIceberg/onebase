@@ -247,9 +247,11 @@ func (el *FormElement) FooterButton() bool {
 
 // FormPresentation overrides visual properties in the enhanced interface.
 type FormPresentation struct {
-	Primary  bool              `yaml:"primary,omitempty"`
-	Enhanced *FormPresentation `yaml:"enhanced,omitempty"`
-	Height   int               `yaml:"height,omitempty"`
+	Primary    bool              `yaml:"primary,omitempty"`
+	Enhanced   *FormPresentation `yaml:"enhanced,omitempty"`
+	Height     int               `yaml:"height,omitempty"`
+	Background string            `yaml:"background,omitempty"`
+	DateOnly   bool              `yaml:"date_only,omitempty"`
 }
 
 type FormElement struct {

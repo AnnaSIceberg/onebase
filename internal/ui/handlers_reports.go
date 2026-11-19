@@ -629,6 +629,7 @@ type reportParamUI struct {
 	Opts        []map[string]any // for IsRef: [{id, _label}]
 	// ChoiceShowDeleted — ключ choice_show_deleted параметра.
 	ChoiceShowDeleted *bool
+	NativeChoice      bool
 	// RefEntity — имя сущности (для IsRef), используется на UI для лупы
 	// в picker'е (открытие карточки через /ui/_ref-open/<entity>/<id>).
 	RefEntity string
@@ -671,6 +672,10 @@ func (s *Server) buildReportParams(ctx context.Context, lang string, params []re
 			entityName := strings.TrimPrefix(p.Type, "reference:")
 			ui.RefEntity = entityName
 			ui.ChoiceShowDeleted = p.ChoiceShowDeleted
+			ui.NativeChoice = s.reportUsesNativeChoice(ctx, entityName)
+			if ui.NativeChoice {
+				ui.ChoiceShowDeleted = nil
+			}
 			if entity := s.reg.GetEntity(entityName); entity != nil {
 				rows, _ := s.reportInitialChoiceOptions(ctx, p, params, values, entity, reports...)
 				ui.Opts = rows

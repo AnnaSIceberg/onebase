@@ -7172,6 +7172,13 @@ window.onebaseDevice = {
       if (typeof window.obOpenTab === 'function') { window.obOpenTab(url, title); return; }
       // Мы во фрейме оболочки — просим родителя открыть вкладку.
       if (window.parent && window.parent !== window && typeof window.parent.obOpenTab === 'function') {
+        if (!document.body.hasAttribute('data-ob-legacy-entity-ui') && typeof window.parent.obOpenReportResult === 'function') {
+          var target = new URL(url, location.origin);
+          if (/^\/ui\/report\/[^/]+$/.test(target.pathname) && target.searchParams.get('__run') === '1') {
+            target.searchParams.set('__result', '1');
+            if (window.parent.obOpenReportResult(window, 'report:' + target.pathname, target.pathname + target.search, title)) return;
+          }
+        }
         window.parent.postMessage({ source: 'obOpenTab', url: url, title: title }, window.location.origin);
         return;
       }

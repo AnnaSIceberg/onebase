@@ -357,14 +357,8 @@ func (s *Server) tabularView(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		if flow && title != "" {
-			period := v.scope.Period
-			if raw := r.URL.Query().Get("period"); validReportPeriodCaption(raw) {
-				period = raw
-			}
-			if period != "" {
-				title += " — " + period
-			}
+		if flow && title != "" && v.scope.Period != "" {
+			title += " — " + v.scope.Period
 		}
 		_, _ = w.Write([]byte(v.doc.HTML(sheet.HTMLOptions{Title: title, CellTextFlow: flow, DoubleClickReferences: flow && (v.scope.Kind == "report" || v.scope.Kind == "processor"), PDFURL: base + "/pdf", PrintURL: printURL, XLSXURL: base + "/xlsx", Embedded: v.scope.Form != "", PlainRows: v.scope.PlainRows, Compact: v.scope.Compact, ParentDrilldown: v.scope.CustomDrilldown, DrilldownURL: func(row, col int) string {
 			return base + "/cell?row=" + strconv.Itoa(row) + "&col=" + strconv.Itoa(col)
@@ -428,6 +422,9 @@ func (s *Server) attachTabularResults(w http.ResponseWriter, r *http.Request, sc
 				fieldScope.CustomDrilldown = fieldScope.CustomDrilldown || el.Handlers[metadata.FormEventDrilldown] != ""
 				fieldScope.PlainRows = fieldScope.PlainRows || el.TabularPlainRows
 				fieldScope.Compact = fieldScope.Compact || el.TabularCompact
+				if el.TabularResultTab {
+					fieldScope.Period = displayedReportPeriod(f.Get(el.TabularPeriodFrom), f.Get(el.TabularPeriodTo))
+				}
 			}
 			return true
 		})

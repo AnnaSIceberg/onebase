@@ -42,6 +42,19 @@ func formButtonPrimary(el *metadata.FormElement, legacy any) bool {
 	return el.Primary || (legacy != true && el.Enhanced != nil && el.Enhanced.Primary)
 }
 
+func formButtonBackground(el *metadata.FormElement, legacy any) *metadata.FormElement {
+	if legacy == true || el.Enhanced == nil || el.Enhanced.Background == "" {
+		return el
+	}
+	styled := *el
+	styled.Background = el.Enhanced.Background
+	return &styled
+}
+
+func formDateOnly(el *metadata.FormElement, legacy any) bool {
+	return legacy != true && el.Enhanced != nil && el.Enhanced.DateOnly
+}
+
 func enhancedTableLayout(el *metadata.FormElement, legacy any) *metadata.FormElement {
 	if legacy == true || el.Enhanced == nil || el.Enhanced.Height <= 0 || el.Enhanced.Height > metadata.FormLayoutMaxSize {
 		return el
@@ -213,7 +226,7 @@ const tplManagedForm = `
 {{else if eq (str $el.Kind) "ПолеТабличногоДокумента"}}
   <div class="form-group" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}>
     <div data-ob-tabular-progress-status role="status" hidden><span aria-hidden="true">⌛</span> <span data-ob-tabular-percent>0%</span></div>
-    <iframe data-ob-tabular-field="{{dpField $el.DataPath}}"{{if and $el.TabularResultTab (not $ctx.LegacyEntityUI)}} data-ob-tabular-result-tab data-ob-tabular-period-from="{{$el.TabularPeriodFrom}}" data-ob-tabular-period-to="{{$el.TabularPeriodTo}}"{{end}} title="{{fieldTitleRU $el.TitleMap (dpField $el.DataPath)}}" style="width:100%;height:480px;border:1px solid #cbd5e1" hidden></iframe>
+    <iframe data-ob-tabular-field="{{dpField $el.DataPath}}"{{if and $el.TabularResultTab (not $ctx.LegacyEntityUI)}} data-ob-tabular-result-tab{{end}} title="{{fieldTitleRU $el.TitleMap (dpField $el.DataPath)}}" style="width:100%;height:480px;border:1px solid #cbd5e1" hidden></iframe>
   </div>
   <script src="/static/tabular.js"></script>
 {{else if eq (str $el.Kind) "ПолеВвода"}}
@@ -260,7 +273,8 @@ const tplManagedForm = `
         </select>
         {{if or $ro $el.ReadOnlyWhen}}<input type="hidden" name="{{$fn}}" value="{{index $ctx.Values $fn}}" id="ro-mirror-{{$fn}}" data-ob-ro-mirror="1"{{if not $ro}} disabled{{end}}>{{end}}
       {{else if eq (str $f.Type) "date"}}
-        <input type="datetime-local" step="1" name="{{$fn}}"{{elHintAttrs $ctx $el ""}} value="{{index $ctx.Values $fn}}"{{if gt $el.DeadlineWarn 0}} data-ob-deadline="{{$el.DeadlineWarn}}"{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+        {{$dateOnly := formDateOnly $el $ctx.LegacyEntityUI}}
+        <input {{if $dateOnly}}type="date"{{else}}type="datetime-local" step="1"{{end}} name="{{$fn}}"{{elHintAttrs $ctx $el ""}} value="{{if $dateOnly}}{{dateOnlyValue (index $ctx.Values $fn)}}{{else}}{{index $ctx.Values $fn}}{{end}}"{{if gt $el.DeadlineWarn 0}} data-ob-deadline="{{$el.DeadlineWarn}}"{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{else if eq (str $f.Type) "bool"}}
         <select name="{{$fn}}"{{elHintAttrs $ctx $el ""}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} disabled{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
           <option value="false" {{if eq (index $ctx.Values $fn) "false"}}selected{{end}}>Нет</option>
@@ -448,7 +462,7 @@ const tplManagedForm = `
   {{$buttonLayout := elLayout $el}}
   {{$buttonHidden := elHidden $ctx $el}}
   {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{if $buttonHidden}}display:none;{{end}}{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn {{appFormButtonClass $el.Name (fieldTitleRU $el.TitleMap $el.Name) (formButtonPrimary $el $ctx.LegacyEntityUI) $ctx.LegacyEntityUI}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground $el}}"{{else}}{{with elBackground $el}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{with $el.TabularProgress}} data-ob-tabular-progress="{{.}}"{{end}}{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
+  <button type="button" class="btn {{appFormButtonClass $el.Name (fieldTitleRU $el.TitleMap $el.Name) (formButtonPrimary $el $ctx.LegacyEntityUI) $ctx.LegacyEntityUI}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}}"{{else}}{{with elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{with $el.TabularProgress}} data-ob-tabular-progress="{{.}}"{{end}}{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
   {{if $buttonLayout}}</div>{{end}}

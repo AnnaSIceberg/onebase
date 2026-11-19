@@ -29,6 +29,7 @@ func applyAppUIPresentation(dst *ui.Config, app *project.AppConfig) {
 	dst.DefaultFormDensity = settings.FormDensity
 	dst.UIReportRoles = settings.ReportRoles
 	dst.UIReportExceptRoles = settings.ReportExceptRoles
+	dst.UIReportNativeChoices = settings.ReportNativeChoices
 	dst.DefaultReportDensity = settings.ReportDensity
 	dst.ShortDateInput = settings.ShortDateInput
 }

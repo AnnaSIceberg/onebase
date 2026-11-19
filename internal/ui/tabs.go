@@ -390,7 +390,10 @@ body.ob-side-dragging iframe{pointer-events:none}
     if(url){
       var target;
       try { target=new URL(url,location.origin); } catch(_) { return ''; }
-      if(target.origin!==location.origin||!/^\/ui\/tabular\/[0-9a-f-]{36}$/.test(target.pathname)||target.hash)return '';
+      if(target.origin!==location.origin||target.hash)return '';
+      var sheet=/^\/ui\/tabular\/[0-9a-f-]{36}$/.test(target.pathname);
+      var report=/^\/ui\/report\/[^/]+$/.test(target.pathname)&&target.searchParams.get('__run')==='1'&&target.searchParams.get('__result')==='1';
+      if(!sheet&&!report)return '';
     }
     var result=tabs.find(function(t){return t.reportOwner===owner&&t.reportField===key;});
     if(result){
