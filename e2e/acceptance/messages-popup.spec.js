@@ -138,3 +138,24 @@ test('event delivered after switching tabs remains visible in the shell exactly 
     await page.unrouteAll({ behavior: 'wait' });
   }
 });
+
+
+test('popup close button and Escape dismiss one notification without closing a form tab', async ({ page }) => {
+  await page.goto('/ui/app');
+  await page.evaluate(() => window.obOpenTab('/ui/catalog/PopupProbe/new', 'Popup'));
+  const form = await (await page.locator('#ob-tabbody iframe').last().elementHandle()).contentFrame();
+  const notify = form.locator('[data-ob-el="Notify"]');
+  await expect(notify).toBeVisible();
+  await notify.click();
+  await expect(toast(page)).toHaveCount(1);
+  await notify.click();
+  await expect(toast(page)).toHaveCount(2);
+  // Keep the close control clickable even when the message wraps.
+  await page.setViewportSize({ width: 380, height: 720 });
+  await toast(page).first().getByRole('button', { name: 'Закрыть сообщение' }).click();
+  await expect(toast(page)).toHaveCount(1);
+  await notify.focus();
+  await page.keyboard.press('Escape');
+  await expect(toast(page)).toHaveCount(0);
+  await expect(notify).toBeVisible();
+});
