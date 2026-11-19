@@ -100,14 +100,14 @@ func TestReportMeasureScopeHTTPExports(t *testing.T) {
 	}
 	// reportPDF uses exactly these export rows as buildReportSheet input.
 	req := reqWithChi(http.MethodGet, "/ui/report/scope/pdf", nil, map[string]string{"name": "scope"})
-	headers, rows, styles, err := s.reportExportTable(req, rep)
+	headers, rows, stats, err := s.reportExportTable(req, rep)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(styles) != len(rows) {
+	if len(stats.rowStyles) != len(rows) {
 		t.Fatal("export row styles lost alignment")
 	}
-	doc := buildReportSheet("scope", headers, rows, styles)
+	doc := buildReportSheet("scope", headers, rows, stats)
 	count := 0
 	for i, row := range rows {
 		if row[1] != nil {
@@ -123,7 +123,7 @@ func TestReportMeasureScopeHTTPExports(t *testing.T) {
 		if cell == nil || cell.Text != fmtVal(row[1]) {
 			t.Fatal("PDF document changed resource value")
 		}
-		if cell.BackColor != styles[i].Background || cell.Bold != styles[i].Bold {
+		if cell.BackColor != stats.rowStyles[i].Background || cell.Bold != stats.rowStyles[i].Bold {
 			t.Fatal("PDF document changed export row style")
 		}
 	}

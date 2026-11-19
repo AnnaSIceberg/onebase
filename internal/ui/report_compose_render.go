@@ -275,8 +275,8 @@ func measureAlign(m report.Measure) string {
 // appearanceClass возвращает CSS-классы таблицы отчёта по оформлению компоновки
 // (план 71). База — "report-composed"; доп. классы выбираются switch'ем по
 // фиксированным именам, поэтому недоверенное значение Appearance.Lines (приходит
-// и из __settings) не попадает в разметку произвольной строкой. "" и "horizontal"
-// → без доп. класса (исторический вид: только нижние границы).
+// и из __settings) не попадает в разметку произвольной строкой. По умолчанию
+// выводится полная сетка; явная настройка horizontal оставляет границы строк.
 func appearanceClass(spec *report.Composition) string {
 	cls := "report-composed"
 	if spec == nil {
@@ -285,10 +285,11 @@ func appearanceClass(spec *report.Composition) string {
 	switch spec.Appearance.Lines {
 	case "vertical":
 		cls += " rep-lines-v"
-	case "both":
-		cls += " rep-lines-both"
+	case "horizontal":
 	case "none":
 		cls += " rep-lines-none"
+	default:
+		cls += " rep-lines-both"
 	}
 	if spec.Appearance.Zebra {
 		cls += " rep-zebra"

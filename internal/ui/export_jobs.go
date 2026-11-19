@@ -405,7 +405,7 @@ func (s *Server) buildReportExportFile(ctx context.Context, r *http.Request, rep
 			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 		}, nil
 	case "pdf":
-		doc := buildReportSheet(reportDisplayTitle(rep, s.resolveLang(r)), headers, rows, stats.rowStyles)
+		doc := buildReportSheet(reportDisplayTitle(rep, s.resolveLang(r)), headers, rows, *stats)
 		data, err := doc.PDF(sheet.PDFOptions{Title: rep.Name})
 		if err != nil {
 			return reportExportFile{}, newReportExportError(http.StatusInternalServerError, "PDF error", err)

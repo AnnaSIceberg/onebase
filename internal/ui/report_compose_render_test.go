@@ -309,14 +309,14 @@ func TestAppearanceClass(t *testing.T) {
 		app  report.Appearance
 		want string
 	}{
-		{report.Appearance{}, "report-composed"},
-		{report.Appearance{Lines: "horizontal"}, "report-composed"}, // синоним умолчания
+		{report.Appearance{}, "report-composed rep-lines-both"},
+		{report.Appearance{Lines: "horizontal"}, "report-composed"}, // явная настройка
 		{report.Appearance{Lines: "vertical"}, "report-composed rep-lines-v"},
 		{report.Appearance{Lines: "both"}, "report-composed rep-lines-both"},
 		{report.Appearance{Lines: "none"}, "report-composed rep-lines-none"},
-		{report.Appearance{Zebra: true}, "report-composed rep-zebra"},
+		{report.Appearance{Zebra: true}, "report-composed rep-lines-both rep-zebra"},
 		{report.Appearance{Lines: "both", Zebra: true}, "report-composed rep-lines-both rep-zebra"},
-		{report.Appearance{Lines: "мусор"}, "report-composed"}, // неизвестное → дефолт
+		{report.Appearance{Lines: "мусор"}, "report-composed rep-lines-both"}, // неизвестное → дефолт
 	}
 	for _, c := range cases {
 		spec := &report.Composition{Appearance: c.app}
@@ -346,7 +346,7 @@ func TestRenderComposedAppearance(t *testing.T) {
 	specDef.Appearance = report.Appearance{}
 	res2, _ := compose.Compose(rows, specDef, nil)
 	out2 := string(renderComposedTable(res2, &specDef))
-	if !strings.Contains(out2, `class="report-composed"`) || strings.Contains(out2, "rep-lines") || strings.Contains(out2, "rep-zebra") {
+	if !strings.Contains(out2, `class="report-composed rep-lines-both"`) || strings.Contains(out2, "rep-zebra") {
 		t.Fatalf("дефолт не должен содержать классы оформления:\n%s", out2)
 	}
 }

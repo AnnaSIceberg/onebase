@@ -2082,8 +2082,13 @@ td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .report-composed tr.grand td{font-weight:700;border-top:2px solid #e2e8f0}
 .report-composed.rep-lines-v td,.report-composed.rep-lines-v th{border-bottom:none;border-right:1px solid #eef2f7}
 .report-composed.rep-lines-v td:last-child,.report-composed.rep-lines-v th:last-child{border-right:none}
-.report-composed.rep-lines-both td,.report-composed.rep-lines-both th{border-right:1px solid #eef2f7}
-.report-composed.rep-lines-both td:last-child,.report-composed.rep-lines-both th:last-child{border-right:none}
+.report-composed.rep-lines-both{--report-grid-border:#a8b4c2;border-collapse:separate;border-spacing:0}
+.report-composed.rep-lines-both :is(td,th){border:0;border-right:1px solid var(--report-grid-border);border-bottom:1px solid var(--report-grid-border)}
+.report-composed.rep-lines-both tr.grand td{border-top:0}
+.report-composed.rep-lines-both :is(td,th):first-child{border-left:1px solid var(--report-grid-border)}
+.report-composed.rep-lines-both thead tr:first-child th{border-top:1px solid var(--report-grid-border)}
+body[data-theme="dark"] .report-composed.rep-lines-both{--report-grid-border:#72839a}
+@media print{.report-composed.rep-lines-both{--report-grid-border:#8894a2}.report-composed.rep-lines-both thead th{position:static}}
 .report-composed.rep-lines-none td,.report-composed.rep-lines-none th{border-bottom:none}
 .report-composed.rep-zebra tbody tr.det:nth-child(even){background:#fafbfc}
 /* min-height:0 у строки и её колонок: у flex-элемента min-height по умолчанию

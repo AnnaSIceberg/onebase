@@ -114,14 +114,14 @@ composition:
 		})
 	}
 	req := reqWithChi(http.MethodGet, "/ui/report/calculations/pdf", nil, map[string]string{"name": "calculations"})
-	headers, rows, styles, err := s.reportExportTable(req, rep)
+	headers, rows, stats, err := s.reportExportTable(req, rep)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(styles) != len(rows) {
+	if len(stats.rowStyles) != len(rows) {
 		t.Fatal("export row styles lost alignment")
 	}
-	doc := buildReportSheet("calculations", headers, rows, styles)
+	doc := buildReportSheet("calculations", headers, rows, stats)
 	found := false
 	for i, row := range rows {
 		if len(row) < 2 {
@@ -135,7 +135,7 @@ composition:
 			if cell == nil || cell.Text != "87,50" {
 				t.Fatal("TabDoc changed grand")
 			}
-			if cell.BackColor != styles[i].Background || cell.Bold != styles[i].Bold {
+			if cell.BackColor != stats.rowStyles[i].Background || cell.Bold != stats.rowStyles[i].Bold {
 				t.Fatal("TabDoc changed export row style")
 			}
 			found = true

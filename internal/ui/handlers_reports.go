@@ -705,10 +705,11 @@ func (s *Server) writeReportExportError(w http.ResponseWriter, r *http.Request, 
 }
 
 type reportExportStats struct {
-	rows      int
-	truncated bool
-	attrs     []slog.Attr
-	rowStyles []excel.RowStyle
+	rows        int
+	truncated   bool
+	attrs       []slog.Attr
+	rowStyles   []excel.RowStyle
+	composition *reportpkg.Composition
 }
 
 func reportExportOpStatus(ctx context.Context, err error) string {
@@ -727,21 +728,20 @@ func reportExportOpStatus(ctx context.Context, err error) string {
 // GET). HTTP-ответ об ошибке пишет вызывающий. Общий код reportExcel и reportPDF
 // (issue #218) — чтобы обе выгрузки шли из одних и тех же данных и не расходились
 // с экраном (runReport использует те же crossSheetRows/composedRows).
-func (s *Server) reportExportTable(r *http.Request, rep *reportpkg.Report) (headers []string, rows [][]any, styles []excel.RowStyle, err error) {
+func (s *Server) reportExportTable(r *http.Request, rep *reportpkg.Report) (headers []string, rows [][]any, stats reportExportStats, err error) {
 	opCtx, finish, ok := s.beginOperation(r, opReportExport, rep.Name)
 	if !ok {
-		return nil, nil, nil, newReportExportError(http.StatusTooManyRequests, "export limit", fmt.Errorf("слишком много одновременно выполняемых выгрузок, повторите позже"))
+		return nil, nil, stats, newReportExportError(http.StatusTooManyRequests, "export limit", fmt.Errorf("слишком много одновременно выполняемых выгрузок, повторите позже"))
 	}
-	stats := &reportExportStats{}
 	opStatus := "ok"
 	defer func() { finish(opStatus, stats.rows, stats.truncated, stats.attrs...) }()
 
-	headers, rows, err = s.reportExportRowsWithContext(opCtx, r, rep, stats)
+	headers, rows, err = s.reportExportRowsWithContext(opCtx, r, rep, &stats)
 	if err != nil {
 		opStatus = reportExportOpStatus(opCtx, err)
-		return nil, nil, nil, err
+		return nil, nil, stats, err
 	}
-	return headers, rows, stats.rowStyles, nil
+	return headers, rows, stats, nil
 }
 
 func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Request, rep *reportpkg.Report, stats *reportExportStats) (headers []string, rows [][]any, err error) {
@@ -756,6 +756,9 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 	}
 	settings := rs.Settings
 	comp := effectiveComposition(rep, settings)
+	if stats != nil {
+		stats.composition = comp
+	}
 	paramValues := make(map[string]any, len(rep.Params))
 	// Ссылка выгрузки — снимок формы: reportParamQuery выкладывает в неё ВСЕ
 	// объявленные параметры, включая пустые. Поэтому здесь работает то же
@@ -885,12 +888,12 @@ func (s *Server) reportExcel(w http.ResponseWriter, r *http.Request) {
 	if !s.requirePerm(w, r, "report", rep.Name, "run") {
 		return
 	}
-	headers, rows, styles, err := s.reportExportTable(r, rep)
+	headers, rows, stats, err := s.reportExportTable(r, rep)
 	if err != nil {
 		s.writeReportExportError(w, r, err)
 		return
 	}
-	data, err := excel.ExportListWithRowStyles(headers, rows, styles)
+	data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles)
 	if err != nil {
 		http.Error(w, "Excel error: "+s.errText(r, err), 500)
 		return

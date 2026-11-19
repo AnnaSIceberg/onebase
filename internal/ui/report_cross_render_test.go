@@ -89,7 +89,7 @@ func TestRenderCrossAppearance(t *testing.T) {
 	specDef.Appearance = report.Appearance{}
 	cr2, _ := compose.ComposeCross(rows, specDef, nil)
 	out2 := string(renderCrossTable(cr2, &specDef))
-	if !strings.Contains(out2, `class="report-composed report-cross"`) {
+	if !strings.Contains(out2, `class="report-composed rep-lines-both report-cross"`) {
 		t.Fatalf("дефолт кросс-таблицы должен сохранять прежний класс:\n%s", out2)
 	}
 }

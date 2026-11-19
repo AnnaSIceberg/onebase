@@ -8,7 +8,6 @@ package ui
 import (
 	"net/http"
 
-	"github.com/ivantit66/onebase/internal/excel"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/sheet"
 )
@@ -21,12 +20,12 @@ func (s *Server) reportPDF(w http.ResponseWriter, r *http.Request) {
 	if !s.requirePerm(w, r, "report", rep.Name, "run") {
 		return
 	}
-	headers, rows, styles, err := s.reportExportTable(r, rep)
+	headers, rows, stats, err := s.reportExportTable(r, rep)
 	if err != nil {
 		s.writeReportExportError(w, r, err)
 		return
 	}
-	doc := buildReportSheet(reportDisplayTitle(rep, s.resolveLang(r)), headers, rows, styles)
+	doc := buildReportSheet(reportDisplayTitle(rep, s.resolveLang(r)), headers, rows, stats)
 	pdfBytes, err := doc.PDF(sheet.PDFOptions{Title: rep.Name})
 	if err != nil {
 		http.Error(w, "PDF error: "+s.errText(r, err), 500)
@@ -43,9 +42,27 @@ func (s *Server) reportPDF(w http.ResponseWriter, r *http.Request) {
 // Числовые ячейки выравниваются вправо, прочие — влево. Ширины колонок проставляет
 // PDF-движок автоматически (sheet.resolveColumnWidthsMM), специально задавать не
 // нужно.
-func buildReportSheet(title string, headers []string, rows [][]any, presentation ...[]excel.RowStyle) *sheet.Document {
+func buildReportSheet(title string, headers []string, rows [][]any, presentation ...reportExportStats) *sheet.Document {
 	doc := sheet.NewDocument()
 	headerRow := 0
+	var output reportExportStats
+	if len(presentation) > 0 {
+		output = presentation[0]
+	}
+	applyGrid := func(c *sheet.Cell) {
+		if output.composition == nil {
+			return
+		}
+		switch output.composition.Appearance.Lines {
+		case "none":
+		case "horizontal":
+			c.BorderBottom = "thin"
+		case "vertical":
+			c.BorderLeft, c.BorderRight = "thin", "thin"
+		default:
+			c.Border = "thin"
+		}
+	}
 
 	// Заголовок отчёта над таблицей — на всю ширину, без рамки.
 	if title != "" && len(headers) > 0 {
@@ -67,14 +84,16 @@ func buildReportSheet(title string, headers []string, rows [][]any, presentation
 		c.Bold = true
 		c.Align = "center"
 		c.BackColor = "#e2e8f0"
+		applyGrid(c)
 	}
 	for i, dataRow := range rows {
 		for j, v := range dataRow {
 			c := doc.GetOrCreateCell(headerRow+1+i, j)
 			c.Text = fmtVal(v)
-			if len(presentation) > 0 && i < len(presentation[0]) {
-				c.BackColor = presentation[0][i].Background
-				c.Bold = presentation[0][i].Bold
+			applyGrid(c)
+			if i < len(output.rowStyles) {
+				c.BackColor = output.rowStyles[i].Background
+				c.Bold = output.rowStyles[i].Bold
 			}
 			if isNumericCell(v) {
 				c.Align = "right"
