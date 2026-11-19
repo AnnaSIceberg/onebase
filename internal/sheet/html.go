@@ -231,7 +231,7 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 					attrs += ` class="sheet-wrap-text"`
 				} else {
 					end := col
-					if cell.Align == "" || cell.Align == "left" {
+					if width > 0 && (cell.Align == "" || cell.Align == "left") {
 						end = d.textFlowEnd(row, col, maxCol, covered)
 					}
 					flow := ""

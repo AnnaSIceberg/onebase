@@ -33,6 +33,11 @@ func TestHTMLTextFlowStopsAtOccupiedAndMergedCells(t *testing.T) {
 	if strings.Contains(view, `data-sheet-flow-end="3"><span>Вторая непустая ячейка`) {
 		t.Error("текст вышел за непустую соседнюю ячейку")
 	}
+	d.ColWidths[1] = 0
+	auto := d.HTML(HTMLOptions{CellTextFlow: true})
+	if !strings.Contains(auto, `<td data-sheet-col="0" style=""><div class="sheet-flow"><span>Отчёт с длинной шапкой</span>`) {
+		t.Error("ячейка с автоматической шириной должна учитывать размер текста")
+	}
 	if strings.Contains(d.HTML(HTMLOptions{}), "data-sheet-flow-end") {
 		t.Error("прежний режим просмотра изменился")
 	}

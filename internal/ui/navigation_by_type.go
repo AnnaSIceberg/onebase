@@ -58,29 +58,29 @@ func sortTypedMenu(nodes []navTreeNode, documents bool) {
 }
 
 // navigationByType operates on already permission-filtered menu entries.
-// Report folders are retained. The configured KPI folder also contains
-// 1C reports implemented as processors; their menu placement is explicit.
+// Report folders are retained. Some 1C reports open through processors
+// or pages and are explicitly placed in Reports or its KPI folder.
 func (s *Server) navigationByType(r *http.Request, sub string, groups []navGroup) []navGroup {
 	const reports = 2
 	lang, context := s.resolveLang(r), navContext(sub)
 	buckets := make([][]navTreeNode, len(menuObjectTypes))
-	add := func(node navTreeNode, reportNodes *[]navTreeNode, inKPI bool) {
+	add := func(node navTreeNode, reportNodes *[]navTreeNode, inReports bool) {
 		kind := menuObjectType(node.TargetKind)
-		if kind == reports || (inKPI && node.TargetKind == "processor") {
+		if kind == reports || (inReports && (node.TargetKind == "processor" || node.TargetKind == "page")) {
 			*reportNodes = append(*reportNodes, node)
 		} else {
 			buckets[kind] = append(buckets[kind], node)
 		}
 	}
 	var regroup func([]navTreeNode, bool) []navTreeNode
-	regroup = func(nodes []navTreeNode, inKPI bool) []navTreeNode {
+	regroup = func(nodes []navTreeNode, inReports bool) []navTreeNode {
 		var out []navTreeNode
 		for _, node := range nodes {
 			if node.URL != "" {
-				add(node, &out, inKPI)
+				add(node, &out, inReports)
 				continue
 			}
-			node.Nodes = regroup(node.Nodes, inKPI || strings.EqualFold(node.Label, "KPI"))
+			node.Nodes = regroup(node.Nodes, inReports || strings.EqualFold(node.Label, "KPI"))
 			if len(node.Nodes) > 0 {
 				sortTypedMenu(node.Nodes, false)
 				out = append(out, node)
@@ -89,15 +89,18 @@ func (s *Server) navigationByType(r *http.Request, sub string, groups []navGroup
 		return out
 	}
 	for _, group := range groups {
-		buckets[reports] = append(buckets[reports], regroup(group.Nodes, false)...)
+		title := menuSortKey(group.Kind)
+		inReports := title == menuSortKey(menuObjectTypes[reports].title) ||
+			title == menuSortKey(s.tr(lang, menuObjectTypes[reports].title))
+		buckets[reports] = append(buckets[reports], regroup(group.Nodes, inReports)...)
 		for _, item := range group.Items {
-			add(menuNodeFromItem(item), &buckets[reports], false)
+			add(menuNodeFromItem(item), &buckets[reports], inReports)
 		}
 		for _, folder := range group.Groups {
 			node := navTreeNode{ID: folder.ID, DOMID: folder.DOMID, Icon: folder.Icon, Label: folder.Kind,
 				CollapseKey: "navtree:" + navDOMID(currentUserLogin(r)+"\x00"+context, folder.ID)}
 			for _, item := range folder.Items {
-				add(menuNodeFromItem(item), &node.Nodes, strings.EqualFold(folder.Kind, "KPI"))
+				add(menuNodeFromItem(item), &node.Nodes, inReports || strings.EqualFold(folder.Kind, "KPI"))
 			}
 			if len(node.Nodes) > 0 {
 				sortTypedMenu(node.Nodes, false)
