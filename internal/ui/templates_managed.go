@@ -910,8 +910,6 @@ input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#
 .tp-table input[readonly]{text-overflow:ellipsis}
 .ob-form-action-spacing .managed-group-horizontal:not(.ob-equal-columns)>.managed-group-body:has(>.managed-btn,>.managed-btn-layout){gap:4px;padding-block:2px}
 .ob-form-action-spacing .managed-command-bar{gap:4px !important}
-.ob-form-action-spacing .btn-app-primary{background:#dbeafe;color:#1e3a8a;box-shadow:inset 0 0 0 1px #60a5fa}
-.ob-form-action-spacing .btn-app-primary:hover:not(:disabled){background:#bfdbfe}
 .ob-form-action-spacing .btn-app-secondary{background:#f8fafc;color:#334155;box-shadow:inset 0 0 0 1px #a6b8ce}
 .ob-form-action-spacing .btn-app-secondary:hover:not(:disabled){background:#e2e8f0}
 .ob-form-action-spacing .btn-app-danger{background:#fee2e2;color:#991b1b;box-shadow:inset 0 0 0 1px #fca5a5}
@@ -1233,7 +1231,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   <a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel"{{if not .LegacyEntityUI}} data-ob-form-footer-close{{end}}>{{if .LegacyEntityUI}}Отмена{{else}}{{t $.Lang "Закрыть"}}{{end}}</a>
   {{end}}
   {{else}}
-  {{if and .CanWrite (formActionVisible .Form "save")}}<button class="btn btn-secondary" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
+  {{if and .CanWrite (formActionVisible .Form "save")}}<button class="btn {{if .LegacyEntityUI}}btn-secondary{{else}}btn-primary{{end}}" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
   {{if and .CanWrite (formActionVisible .Form "ok")}}<button class="btn btn-primary" type="button" data-ob-form-close="{{if and .Entity.Posting .CanPost .Form.OKPosts (ne (index .Values "deletion_mark") "true")}}post{{else}}save{{end}}" data-ob-close-reason="ok" data-ob-close-href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}">{{t $.Lang "ОК"}}</button>{{end}}
   {{if formActionVisible .Form "close"}}<button class="btn btn-cancel" type="button" data-ob-form-close="" data-ob-close-reason="close" data-ob-close-href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}">{{t $.Lang "Закрыть"}}</button>{{end}}
   {{end}}

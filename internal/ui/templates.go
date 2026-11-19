@@ -2189,6 +2189,13 @@ tr.ob-row-styled:hover td{background:inherit;filter:brightness(.95)}
 td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .btn{display:inline-block;padding:8px 18px;border-radius:7px;font-size:14px;font-weight:500;text-decoration:none;cursor:pointer;border:none;line-height:1}
 .btn-primary{background:#3b82f6;color:#fff}.btn-primary:hover{background:#2563eb}
+/* A primary command is a single accessible palette, including forms with a
+   configured inline background. Operator layouts keep their existing styles. */
+body:not([data-ob-legacy-entity-ui]) .btn:is(.btn-primary,.btn-app-primary){background:#1a4a80!important;color:#fff!important;font-weight:700}
+body:not([data-ob-legacy-entity-ui]) .btn:is(.btn-primary,.btn-app-primary):is(:hover,:focus):not(:disabled){background:#163e6c!important;color:#fff!important}
+body:not([data-ob-legacy-entity-ui]) .btn:is(.btn-primary,.btn-app-primary):focus-visible{outline:2px solid #3b82f6;outline-offset:2px}
+body:not([data-ob-legacy-entity-ui]) .btn:is(.btn-primary,.btn-app-primary):disabled{background:#e2e8f0!important;color:#475569!important}
+
 .btn-post{background:#e8b400;color:#1a1a1a;font-weight:700}.btn-post:hover{background:#d4a200}
 .btn-secondary{background:#e2e8f0;color:#374151}.btn-secondary:hover{background:#cbd5e1}
 .entity-command-group{display:inline-flex;align-items:center;gap:3px}
@@ -2422,7 +2429,7 @@ th.ob-ls-th.ob-ls-drop{box-shadow:inset 3px 0 0 #3b82f6}
 .img-actions{display:flex;gap:8px;align-items:center}
 .img-field label.btn{cursor:pointer;margin:0}
 </style>
-</head><body data-ob-dev="{{if .Cfg.Dev}}1{{else}}0{{end}}"{{if .Cfg.CompactLists}} class="ob-compact-lists"{{end}}>
+</head><body{{if .LegacyEntityUI}} data-ob-legacy-entity-ui{{end}} data-ob-dev="{{if .Cfg.Dev}}1{{else}}0{{end}}"{{if .Cfg.CompactLists}} class="ob-compact-lists"{{end}}>
 {{end}}
 `
 
@@ -3411,7 +3418,7 @@ const tplForm = `
       {{end}}
     {{end}}
   {{end}}
-  {{if .CanWrite}}<button class="btn btn-secondary" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
+  {{if .CanWrite}}<button class="btn {{if .LegacyEntityUI}}btn-secondary{{else}}btn-primary{{end}}" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
   {{if and .LegacyEntityUI .Entity.Posting}}
     {{if ne (index .Values "deletion_mark") "true"}}
       {{if $.CanPost}}<button class="btn btn-primary" type="submit" name="_action" value="post" form="main-form">{{if $.Entity.PostCaption}}{{$.Entity.PostCaption}}{{else}}{{t $.Lang "Провести"}}{{end}}</button>{{end}}
@@ -3682,7 +3689,7 @@ const tplForm = `
   {{if .CanWrite}}<button class="btn btn-primary" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать и выбрать"}}</button>{{end}}
   <a href="#" data-ob-popup-cancel class="btn btn-cancel">{{t $.Lang "Отмена"}}</a>
   {{else}}
-  {{if .CanWrite}}<button class="btn btn-secondary" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
+  {{if .CanWrite}}<button class="btn {{if .LegacyEntityUI}}btn-secondary{{else}}btn-primary{{end}}" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
   <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}" class="btn btn-cancel"{{if not .LegacyEntityUI}} data-ob-close-tab data-ob-close-reason="close"{{end}}>{{if .LegacyEntityUI}}{{t $.Lang "Отмена"}}{{else}}{{t $.Lang "Закрыть"}}{{end}}</a>
   {{end}}
 </div>
