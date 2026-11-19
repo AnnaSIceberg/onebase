@@ -3761,7 +3761,7 @@ const tplReport = `
   {{end}}
   </div>
   {{end}}
-  {{if or (not .CompactReport) .Report.FormActions}}{{if .Report.FormActions}}<div class="report-form-actions" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap">{{end}}
+  {{if or (not .CompactReport) .Report.FormActions}}{{if .Report.FormActions}}<div class="report-form-actions" style="display:flex;flex-basis:100%;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap">{{end}}
   <button class="btn btn-primary" type="submit"{{with reportPrimaryStyle .Report.FormActions}} style="{{.}}"{{end}}>{{t $.Lang "Сформировать"}}</button>
   {{with .Report.FormActions}}{{if .Cancel}}<a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">{{t $.Lang "Отмена"}}</a>{{end}}</div>{{end}}{{end}}
 </form>
