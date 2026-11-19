@@ -238,6 +238,11 @@ func FormHeaderPlaced(el *FormElement) bool {
 	return el.Kind == FormElementAudio || el.Kind == FormElementButton || el.Kind == FormElementField || el.Kind == FormElementCheckbox
 }
 
+// FooterButton identifies managed processor buttons placed next to Cancel.
+func (el *FormElement) FooterButton() bool {
+	return el != nil && el.Kind == FormElementButton && el.Placement == "footer"
+}
+
 // FormElement represents a single form element (field, button, etc.)
 
 type FormElement struct {

@@ -21,6 +21,16 @@ type managedHeaderButton struct {
 // Опциональность: managed-форма выбирается в handlers.go только если в
 // Entity.Forms есть FormModule с IsManaged()==true и подходящим Kind.
 // Иначе работает старая авто-форма (tplForm) — backward-compat.
+func formFooterButtons(form *metadata.FormModule) []*metadata.FormElement {
+	var buttons []*metadata.FormElement
+	walkBrowserFormElements(form, func(visit browserFormElementVisit) {
+		if visit.parentTablePart == nil && visit.element.FooterButton() {
+			buttons = append(buttons, visit.element)
+		}
+	})
+	return buttons
+}
+
 const tplManagedForm = `
 {{define "managed-element"}}
 {{$el := .El}}{{$ctx := .Ctx}}
@@ -35,7 +45,8 @@ const tplManagedForm = `
 		{{$roUnlockable := and (not (adminOnlyLocked $ctx $el)) (or (not $ro) (ne $el.ReadOnlyWhen ""))}}
 {{$effectiveReq := effectiveFormElementRequired $ctx.Entity $el}}{{$req := nativeFormElementRequired $ctx.Entity $el}}
 {{/* Кнопка, скрытая hidden_when при отрисовке, рисуется с display:none, а не пропускается: иначе после события формы, снявшего условие, показать её нечем — «Утвердить» после «ОК» появлялась только при повторном открытии. Остальные виды пока пропускаются (поля — #1914). Защитой hidden_when не служит: событие кнопки сервер принимает и без неё в разметке. */}}
-{{if and $.HeaderPass (ne (str $el.Kind) "Кнопка") (ne (str $el.Kind) "Аудиоплеер")}}
+{{if and $ctx.IsProcessor $el.FooterButton (not $.FooterPass)}}
+{{else if and $.HeaderPass (ne (str $el.Kind) "Кнопка") (ne (str $el.Kind) "Аудиоплеер")}}
   {{/* Поле в строке команд — только чтение, «Подпись: значение» одной строкой.
        Сам контрол остаётся в теле формы (скрыт стилем строки команд): с ним
        работают запись, события и hidden_when, а зеркало берёт у него значение
@@ -1100,7 +1111,8 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   {{if .CanWrite}}<button class="btn btn-primary" type="button" data-ob-form-close="save_and_select" data-ob-close-reason="ok" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать и выбрать"}}</button>{{end}}
   <a href="#" data-ob-ref-cancel class="btn btn-cancel">Отмена</a>
   {{else if .IsProcessor}}
-  {{/* Кнопка «Выполнить» скрыта: managed-форма использует свои кнопки */}}
+  {{$page := .}}
+  {{range formFooterButtons .Form}}{{template "managed-element" (dict "El" . "Ctx" $page "FooterPass" true)}}{{end}}
   {{if formActionVisible .Form "cancel"}}<a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">Отмена</a>{{end}}
   {{else}}
   {{if and .CanWrite (formActionVisible .Form "save")}}<button class="btn btn-secondary" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}

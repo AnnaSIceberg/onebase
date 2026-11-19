@@ -516,7 +516,8 @@ func reportYAMLSchema() *yamlLintSchema {
 		"detail_fields": seq(obj("field", "title")),
 	})
 	return with(obj("name", "title", "query", "chart_proc", "result_proc", "compare_phone_field", "output_format"), map[string]*yamlLintSchema{
-		"titles": freeMap(),
+		"form_actions": obj("primary_background", "cancel"),
+		"titles":       freeMap(),
 		"drilldowns": seq(with(obj("field", "title", "id_field", "type_field"), map[string]*yamlLintSchema{
 			"target": obj("kind", "entity"), "targets": {values: obj("kind", "entity")},
 		})),

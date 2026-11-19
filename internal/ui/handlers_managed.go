@@ -407,10 +407,10 @@ func managedFormElementStates(form *metadata.FormModule, header map[string]any, 
 		if hasHidden {
 			hiddenState = eval(el.HiddenWhen, "условие hidden_when", el.Name)
 		}
-		// Header commands leave their ancestor DOM containers. Carry those
+		// Placed commands leave their ancestor DOM containers. Carry those
 		// containers' visibility to the command's own placement key, including
 		// false states so a later form event can reveal it again.
-		if metadata.FormHeaderPlaced(el) {
+		if metadata.FormHeaderPlaced(el) || visit.parentTablePart == nil && el.FooterButton() {
 			for path := visit.path; strings.Contains(path, "."); {
 				path = path[:strings.LastIndex(path, ".")]
 				if state, ok := hidden[path]; ok {

@@ -854,6 +854,15 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return template.CSS(css) //nolint:gosec // G203: цвет прошёл csssafe.Color, остальное — константы
 		},
+		"formFooterButtons": formFooterButtons,
+		"reportPrimaryStyle": func(actions *reportpkg.FormActions) template.CSS {
+			if actions != nil {
+				if color := csssafe.Color(actions.PrimaryBackground); color != "" {
+					return template.CSS("background:" + color + ";") //nolint:gosec // csssafe.Color validates the value.
+				}
+			}
+			return ""
+		},
 		"elBackground": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementBackgroundCSS(el)) //nolint:gosec // G203: значение прошло csssafe.Color, иначе пустая строка
 		},
@@ -3666,8 +3675,8 @@ const tplReport = `
 {{if .CompactReport}}<div class="ob-report-titlebar">
 <h2>{{.Report.DisplayName $.Lang}}</h2>
 <div class="ob-report-commandbar">
-  {{if not (or .ReportParams .Report.Variants .ReportPresets)}}<form id="ob-report-params" method="POST" hidden>{{if .UserSettings}}<input type="hidden" name="__settings" value="{{if .ReportSettingsJSON}}{{.ReportSettingsJSON}}{{else}}{{.UserSettings.JSON}}{{end}}">{{end}}</form>{{end}}
-  <button class="btn btn-primary" type="submit" form="ob-report-params">{{t $.Lang "Сформировать"}}</button>
+  {{if not (or .ReportParams .Report.Variants .ReportPresets .Report.FormActions)}}<form id="ob-report-params" method="POST" hidden>{{if .UserSettings}}<input type="hidden" name="__settings" value="{{if .ReportSettingsJSON}}{{.ReportSettingsJSON}}{{else}}{{.UserSettings.JSON}}{{end}}">{{end}}</form>{{end}}
+  {{if not .Report.FormActions}}<button class="btn btn-primary" type="submit" form="ob-report-params">{{t $.Lang "Сформировать"}}</button>{{end}}
   {{if or .Cols .ComposedHTML}}{{template "report-export-buttons" .}}{{end}}
   <a class="btn btn-sm" href="/ui/export-jobs">{{t $.Lang "Мои выгрузки"}}</a>
 </div>
@@ -3676,7 +3685,7 @@ const tplReport = `
 <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
   <a class="btn btn-sm" href="/ui/export-jobs">{{t $.Lang "Мои выгрузки"}}</a>
 </div>{{end}}
-{{if or .ReportParams .Report.Variants .ReportPresets}}
+{{if or .ReportParams .Report.Variants .ReportPresets .Report.FormActions}}
 <details class="card report-block" data-block="params" open style="margin-bottom:16px">
 <summary>{{t $.Lang "Параметры"}}</summary>
 <form method="POST"{{if .CompactReport}} id="ob-report-params" data-ob-report-params{{end}}>
@@ -3752,7 +3761,9 @@ const tplReport = `
   {{end}}
   </div>
   {{end}}
-  {{if not .CompactReport}}<button class="btn btn-primary" type="submit">{{t $.Lang "Сформировать"}}</button>{{end}}
+  {{if or (not .CompactReport) .Report.FormActions}}{{if .Report.FormActions}}<div class="report-form-actions" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap">{{end}}
+  <button class="btn btn-primary" type="submit"{{with reportPrimaryStyle .Report.FormActions}} style="{{.}}"{{end}}>{{t $.Lang "Сформировать"}}</button>
+  {{with .Report.FormActions}}{{if .Cancel}}<a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">{{t $.Lang "Отмена"}}</a>{{end}}</div>{{end}}{{end}}
 </form>
 {{if .ReportParams}}<script src="/static/report_params.js" defer></script>{{end}}
 </details>

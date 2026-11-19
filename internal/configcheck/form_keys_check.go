@@ -184,9 +184,9 @@ func CheckFormKeyPlacement(proj *project.Project) []Issue {
 					"ключ scroll_x игнорируется — прокрутка вместо переноса есть только у ГруппаФормы с orientation: horizontal",
 					"Задайте orientation: horizontal у группы или уберите ключ."))
 			}
-			if el.Placement != "" && !metadata.FormHeaderPlaced(el) {
+			if el.Placement != "" && !metadata.FormHeaderPlaced(el) && !el.FooterButton() {
 				warns = append(warns, formKeyIssue(owner, form, el, "form.placement",
-					fmt.Sprintf("placement: %q игнорируется — поддерживаются header и header_end у kind: %s, %s, %s, %s", el.Placement, metadata.FormElementButton, metadata.FormElementField, metadata.FormElementCheckbox, metadata.FormElementAudio),
+					fmt.Sprintf("placement: %q игнорируется — footer — для кнопки обработки, header и header_end — у kind: %s, %s, %s, %s", el.Placement, metadata.FormElementButton, metadata.FormElementField, metadata.FormElementCheckbox, metadata.FormElementAudio),
 					"Уберите ключ или перенесите его на кнопку или поле."))
 			}
 			if el.Primary && el.Kind != metadata.FormElementButton {
