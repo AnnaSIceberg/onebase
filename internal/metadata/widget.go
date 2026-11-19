@@ -146,6 +146,8 @@ func (f WidgetFilter) ReferenceEntity() string {
 
 // Widget describes a single dashboard widget loaded from widgets/<Name>.yaml.
 type Widget struct {
+	// ScrollFromEnd uses Limit as a batch size and expects a newest-first query.
+	ScrollFromEnd bool              `yaml:"scroll_from_end,omitempty"`
 	Roles         []string          `yaml:"roles,omitempty"`
 	ExceptRoles   []string          `yaml:"except_roles,omitempty"`
 	RoleOverrides []RoleOverride    `yaml:"role_overrides,omitempty"`

@@ -480,9 +480,10 @@ func roleOverrideYAMLSchema() *yamlLintSchema {
 
 func widgetYAMLSchema() *yamlLintSchema {
 	return with(obj("name", "type", "title", "query", "format", "compare_to", "limit", "chart_kind", "chart_type", "x_field", "y_fields", "entities", "scope", "link", "refresh_on", "roles", "except_roles", "background"), map[string]*yamlLintSchema{
-		"role_overrides": roleOverrideYAMLSchema(),
-		"source":         obj("entity", "id_field"),
-		"row_style":      obj("background", "bold", "color"),
+		"role_overrides":  roleOverrideYAMLSchema(),
+		"scroll_from_end": nil,
+		"source":          obj("entity", "id_field"),
+		"row_style":       obj("background", "bold", "color"),
 		"filters": seq(with(obj("name", "label", "type", "param"), map[string]*yamlLintSchema{
 			"labels": freeMap(),
 			"values": seq(with(obj("value", "label"), map[string]*yamlLintSchema{

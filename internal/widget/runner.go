@@ -62,9 +62,12 @@ type Result struct {
 	Rows    []map[string]any
 	Columns []ColumnSpec
 	// User-specific presentation, filled after the shared query cache.
-	WidthsURL    string
-	ColumnWidths map[string]int
-	TableWidth   int
+	WidthsURL        string
+	ColumnWidths     map[string]int
+	TableWidth       int
+	Stream           bool
+	StreamNextOffset int
+	StreamURL        string
 
 	// chart
 	Chart *ChartData
@@ -200,6 +203,8 @@ type RunOptions struct {
 	Params            map[string]any
 	CellFilter        *CellFilter
 	CaptureCellValues bool
+	Stream            bool
+	StreamOffset      int
 	Fresh             bool
 }
 
@@ -260,6 +265,11 @@ func (r *Runner) RunWithOptions(ctx context.Context, w *metadata.Widget, opts Ru
 		}
 	}
 
+	if opts.Stream && w.Type == metadata.WidgetTypeList {
+		res := Result{Name: w.Name, Type: string(w.Type), Title: w.Title, Stream: true}
+		r.runListEnhanced(ctx, w, params, &res, opts.CellFilter, opts.StreamOffset)
+		return res
+	}
 	if opts.CellFilter != nil {
 		return r.runOnce(ctx, w, params, opts.CellFilter, true)
 	}
@@ -299,7 +309,7 @@ func (r *Runner) runOnce(ctx context.Context, w *metadata.Widget, params map[str
 		r.runKPI(ctx, w, params, &res)
 	case metadata.WidgetTypeList:
 		if capture || filter != nil {
-			r.runListEnhanced(ctx, w, params, &res, filter)
+			r.runListEnhanced(ctx, w, params, &res, filter, 0)
 		} else {
 			r.runList(ctx, w, params, &res)
 		}
@@ -381,8 +391,16 @@ func (r *Runner) runList(ctx context.Context, w *metadata.Widget, params map[str
 	r.resolveUUIDsForColumns(ctx, rows, visible)
 }
 
-func (r *Runner) runListEnhanced(ctx context.Context, w *metadata.Widget, params map[string]any, res *Result, filter *CellFilter) {
-	rows, cols, compiled, err := r.runQuery(ctx, w, params)
+func (r *Runner) runListEnhanced(ctx context.Context, w *metadata.Widget, params map[string]any, res *Result, filter *CellFilter, offset int) {
+	batch := w.Limit
+	if batch <= 0 || batch > storage.MaxListPageSize {
+		batch = 50
+	}
+	var page []int
+	if res.Stream && filter == nil {
+		page = []int{batch + 1, offset}
+	}
+	rows, cols, compiled, err := r.runQuery(ctx, w, params, page...)
 	if err != nil {
 		setResultError(res, err)
 		return
@@ -404,7 +422,7 @@ func (r *Runner) runListEnhanced(ctx context.Context, w *metadata.Widget, params
 	}
 	res.Columns = columnsForList(w, displayCols)
 	// With no equality filter, tokenize only the rows actually displayed.
-	if filter == nil && w.Limit > 0 && len(rows) > w.Limit {
+	if !res.Stream && filter == nil && w.Limit > 0 && len(rows) > w.Limit {
 		rows = rows[:w.Limit]
 	}
 	captureCellValues(rows, res.Columns)
@@ -414,7 +432,20 @@ func (r *Runner) runListEnhanced(ctx context.Context, w *metadata.Widget, params
 		setResultError(res, err)
 		return
 	}
-	if w.Limit > 0 && len(rows) > w.Limit {
+	if res.Stream {
+		if filter != nil {
+			rows = rows[min(offset, len(rows)):]
+		}
+		if len(rows) > batch {
+			rows = rows[:batch]
+			res.StreamNextOffset = offset + batch
+		}
+		// The query is newest-first. The viewport displays each batch in
+		// chronological order, with older batches prepended above it.
+		for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+			rows[i], rows[j] = rows[j], rows[i]
+		}
+	} else if w.Limit > 0 && len(rows) > w.Limit {
 		rows = rows[:w.Limit]
 	}
 	_, rawIDs := r.navigationIDs(w, cols, rows, compiled)
@@ -726,7 +757,7 @@ func (r *Runner) navigationIDs(w *metadata.Widget, cols []string, rows []map[str
 }
 
 // runQuery is the shared back-end for kpi/list/chart widgets.
-func (r *Runner) runQuery(ctx context.Context, w *metadata.Widget, params map[string]any) ([]map[string]any, []string, *query.Result, error) {
+func (r *Runner) runQuery(ctx context.Context, w *metadata.Widget, params map[string]any, page ...int) ([]map[string]any, []string, *query.Result, error) {
 	rowFilters, err := access.QueryRowFiltersWithContext(ctx, r.User, r.Reg.Entities(), r.Reg.Registers(), r.Reg.InfoRegisters(), r.Reg.AccountRegisters(), access.RuntimeContext(r.Reg, r.Store))
 	if err != nil {
 		return nil, nil, nil, err
@@ -752,7 +783,13 @@ func (r *Runner) runQuery(ctx context.Context, w *metadata.Widget, params map[st
 	if maskPlan.Denied != "" {
 		return nil, nil, nil, &accessDeniedError{object: "поле «" + maskPlan.Denied + "»"}
 	}
-	rows, cols, err := query.Run(ctx, r.Store, &compiled)
+	var rows []map[string]any
+	var cols []string
+	if len(page) == 2 {
+		rows, cols, err = query.RunPage(ctx, r.Store, &compiled, page[0], page[1])
+	} else {
+		rows, cols, err = query.Run(ctx, r.Store, &compiled)
+	}
 	if err != nil {
 		return rows, cols, &compiled, err
 	}

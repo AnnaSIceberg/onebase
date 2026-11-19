@@ -1102,6 +1102,7 @@ function obWidgetController(card) {
         if (!payload || typeof payload.html !== 'string') throw new Error('invalid widget response');
         obDisposeWidgetChart(card);
         body.innerHTML = payload.html;
+        if (typeof obInitContinuousLists === "function") obInitContinuousLists(body);
         if (payload.chart) obInitWidgetChart(card, payload.chart);
         return true;
       }).catch(function (error) {
@@ -2289,6 +2290,7 @@ function obReplaceLiveListContents(cur, fresh) {
   if (oldFeed && oldFeed.__obFeedDispose) oldFeed.__obFeedDispose();
   cur.innerHTML = fresh.innerHTML;
   obInitFeed(cur);
+  obInitContinuousLists(cur);
   if (selMine) listRestoreSel(selKey, cur, { focus: restoreFocus });
   else obEnsureListRovingTabindex(cur);
 }
@@ -3403,6 +3405,77 @@ function listSubmit(url, msg) {
   }
 }
 
+// Table fragments use the same access checks, filters and format as the
+// first render. Keep the old first row anchored when adding earlier records.
+function obInitContinuousLists(root) {
+  (root || document).querySelectorAll('[data-ob-stream]').forEach(function (viewport) {
+    if (viewport._obStreamReady) return;
+    var body = viewport.querySelector('[data-stream-rows], tbody');
+    if (!body) return;
+    viewport._obStreamReady = true;
+    var up = viewport.getAttribute('data-ob-stream') === 'up';
+    var widget = viewport.hasAttribute('data-stream-widget');
+    var busy = false;
+    var failed = false;
+    var rowKey = function (row) {
+      return row.getAttribute('data-ob-entity-id') || row.getAttribute('data-ob-row-url') || row.getAttribute('data-open-url');
+    };
+    var rows = new Set(Array.from(body.children, rowKey).filter(Boolean));
+    var next = viewport.getAttribute('data-stream-next');
+    function load() {
+      if (!next || busy || failed || !viewport.isConnected || !viewport.clientHeight) return;
+      var remaining = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
+      if ((up ? viewport.scrollTop : remaining) > 80) return;
+      busy = true;
+      viewport.setAttribute('aria-busy', 'true');
+      fetch(next, {credentials: 'same-origin'})
+        .then(function (response) {
+          if (!response.ok) throw new Error('list stream');
+          return widget ? response.json().then(function (data) { return data.html; }) : response.text();
+        })
+        .then(function (html) {
+          if (!viewport.isConnected) return;
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var chunk = doc.querySelector('[data-ob-stream]');
+          var part = chunk && chunk.querySelector('[data-stream-rows], tbody');
+          if (!part) { next = ''; return; }
+          var batch = document.createDocumentFragment();
+          var anchor = body.firstElementChild;
+          var before = anchor ? anchor.getBoundingClientRect().top : 0;
+          Array.from(part.children).forEach(function (row) {
+            var key = rowKey(row);
+            if (key && rows.has(key)) return;
+            if (key) rows.add(key);
+            batch.appendChild(document.importNode(row, true));
+          });
+          if (up) {
+            body.prepend(batch);
+            if (anchor) viewport.scrollTop += anchor.getBoundingClientRect().top - before;
+          } else {
+            body.appendChild(batch);
+          }
+          var following = chunk.getAttribute('data-stream-next');
+          next = following === next ? '' : following;
+        })
+        .catch(function () { failed = true; })
+        .finally(function () {
+          busy = false;
+          viewport.removeAttribute('aria-busy');
+          if (!failed) requestAnimationFrame(load);
+        });
+    }
+    viewport.addEventListener('scroll', function () { failed = false; load(); }, {passive: true});
+    requestAnimationFrame(function () {
+      if (up) viewport.scrollTop = viewport.scrollHeight;
+      if (viewport.hasAttribute('data-stream-select-last')) {
+        var last = body.lastElementChild;
+        if (last) listSetSel(last);
+      }
+      load();
+    });
+  });
+}
+
 function obInitFeed(root) {
   root = root || document;
   var more = root.querySelector('#feed-more');
@@ -3498,6 +3571,7 @@ obReady(function () {
   }
   document.querySelectorAll('.tree-toggle').forEach(initTreeToggle);
   obInitFeed();
+  obInitContinuousLists();
   initDetailPanel();
 });
 

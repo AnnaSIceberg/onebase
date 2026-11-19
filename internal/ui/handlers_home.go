@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -203,7 +204,7 @@ func (s *Server) homeDashboardData(r *http.Request) map[string]any {
 		// Фильтры полной страницы (план 182D): URL-значения применяются к данным
 		// толерантно — мусор трактуется как пустой отбор, страница не ломается.
 		// Иначе после F5 контролы заполнены, а строки неотфильтрованы.
-		res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: lenientWidgetFilterParams(r, wMeta), CellFilter: s.lenientWidgetCellFilter(r, wMeta), CaptureCellValues: s.uiEnhancementsAllowed(r)})
+		res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: lenientWidgetFilterParams(r, wMeta), Stream: s.widgetStreams(r, wMeta), CellFilter: s.lenientWidgetCellFilter(r, wMeta), CaptureCellValues: s.uiEnhancementsAllowed(r)})
 		res.Title = wMeta.DisplayTitle(lang)
 		s.decorateRefreshResult(r, wMeta, &res, runner)
 		return res
@@ -294,6 +295,7 @@ func (s *Server) decorateRefreshResult(r *http.Request, wMeta *metadata.Widget, 
 	} else {
 		res.PartialURL = widgetPartialURL(res.Name, wMeta, subsystem, rawValues)
 	}
+	res.StreamURL = widgetStreamURL(res.PartialURL, res.StreamNextOffset)
 	lang := s.resolveLang(r)
 	res.RefreshLabel = s.tr(lang, "Обновить")
 	res.RefreshError = s.tr(lang, "Не удалось обновить виджет")
@@ -336,6 +338,26 @@ func (s *Server) dashboardWidget(r *http.Request, name string) *metadata.Widget 
 	return nil
 }
 
+const widgetOlderParam = "__older"
+
+func (s *Server) widgetStreams(r *http.Request, w *metadata.Widget) bool {
+	return w != nil && w.Type == metadata.WidgetTypeList && w.ScrollFromEnd && s.uiEnhancementsAllowed(r)
+}
+
+func widgetStreamURL(base string, offset int) string {
+	if offset == 0 {
+		return ""
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return ""
+	}
+	q := u.Query()
+	q.Set(widgetOlderParam, strconv.Itoa(offset))
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 type widgetPartialResponse struct {
 	HTML  string         `json:"html"`
 	Chart map[string]any `json:"chart"`
@@ -352,7 +374,20 @@ func (s *Server) widgetPartial(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	stream := s.widgetStreams(r, wMeta)
+	offset := 0
 	allowed := map[string]bool{"subsystem": true}
+	if stream {
+		allowed[widgetOlderParam] = true
+		if raw := r.URL.Query().Get(widgetOlderParam); raw != "" {
+			n, err := strconv.ParseInt(raw, 10, 31)
+			if err != nil || n <= 0 {
+				http.Error(w, "unsupported widget offset", http.StatusBadRequest)
+				return
+			}
+			offset = int(n)
+		}
+	}
 	for key := range widgetFilterKeys(wMeta) {
 		allowed[key] = true
 	}
@@ -399,7 +434,7 @@ func (s *Server) widgetPartial(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: filterParams, Fresh: true, CellFilter: cellFilter, CaptureCellValues: s.uiEnhancementsAllowed(r)})
+	res := runner.RunWithOptions(r.Context(), wMeta, widget.RunOptions{Params: filterParams, Stream: stream, StreamOffset: offset, Fresh: true, CellFilter: cellFilter, CaptureCellValues: s.uiEnhancementsAllowed(r)})
 	res.Title = wMeta.DisplayTitle(s.resolveLang(r))
 	if res.InvalidCellFilter {
 		http.Error(w, "unsupported widget parameter", http.StatusBadRequest)
@@ -418,6 +453,7 @@ func (s *Server) widgetPartial(w http.ResponseWriter, r *http.Request) {
 	if t == nil {
 		t = tmpl
 	}
+	res.StreamURL = widgetStreamURL(r.URL.RequestURI(), res.StreamNextOffset)
 	s.prepareWidgetColumnWidths(r, &res)
 	var body bytes.Buffer
 	if err := t.ExecuteTemplate(&body, "widget-body", res); err != nil {

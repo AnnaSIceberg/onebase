@@ -2671,6 +2671,8 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 .w-card-list .w-cell-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
 .w-cell-filters .btn{box-sizing:border-box;min-height:0;height:24px;padding:1px 8px;font-size:12px;line-height:20px}
 .w-list td.ob-widget-cell-selected{outline:2px solid #2563eb;outline-offset:-2px}
+.w-card-list.ob-widget-stream .w-title{font-size:16px;font-weight:700;color:#0f172a;text-transform:none}
+.ob-widget-stream .w-list th{font-size:12px;font-weight:700;color:#0f172a;background:#dbeafe;border-bottom-color:#93c5fd}
 .w-card-list.ob-widget-fill{box-sizing:border-box;min-height:180px}
 .ob-widget-fill>[data-ob-widget-body]{flex:1;min-height:0;display:flex;flex-direction:column}
 .ob-widget-fill .w-list{flex:1;min-height:0;overflow:auto}
@@ -2710,7 +2712,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 {{end}}
 
 {{define "widget-card"}}
-<div class="w-card w-card-{{.Type}}"{{with .Background}} style="{{wBackground .}}"{{end}}{{if .PartialURL}} data-ob-widget-card data-widget-name="{{.Name}}" data-widget-url="{{.PartialURL}}" data-refresh-error="{{.RefreshError}}"{{if .RefreshOn}} data-ob-refresh-on="{{.RefreshOn}}" data-ob-live="widget/{{.Name}}"{{end}}{{end}}>
+<div class="w-card w-card-{{.Type}}{{if .Stream}} ob-widget-stream{{end}}"{{with .Background}} style="{{wBackground .}}"{{end}}{{if .PartialURL}} data-ob-widget-card data-widget-name="{{.Name}}" data-widget-url="{{.PartialURL}}" data-refresh-error="{{.RefreshError}}"{{if .RefreshOn}} data-ob-refresh-on="{{.RefreshOn}}" data-ob-live="widget/{{.Name}}"{{end}}{{end}}>
   {{if or .Title .PartialURL}}
   <div class="w-head">
     {{if .Title}}<div class="w-title">{{.Title}}</div>{{end}}
@@ -2764,7 +2766,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 {{end}}
 
 {{define "widget-list-body"}}
-<div class="w-list">
+<div class="w-list"{{if .Stream}} data-ob-stream="up" data-stream-widget data-stream-next="{{.StreamURL}}" tabindex="0"{{end}}>
   {{if .Rows}}
   <table{{if .WidthsURL}} data-ob-widget-widths="{{.WidthsURL}}"{{end}}{{if .TableWidth}} class="ob-widget-fixed" style="width:{{.TableWidth}}px"{{end}}>
     {{if .TableWidth}}<colgroup>{{range .Columns}}<col style="width:{{index $.ColumnWidths .Field}}px">{{end}}</colgroup>{{end}}
