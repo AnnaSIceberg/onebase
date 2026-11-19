@@ -870,15 +870,9 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		},
 		"formButtonBackground": formButtonBackground,
 		"formDateOnly":         formDateOnly,
-		"dateOnlyValue": func(value string) string {
-			if len(value) >= len(time.DateOnly) {
-				for _, layout := range []string{time.DateOnly, "02.01.2006"} {
-					if date, err := time.Parse(layout, value[:len(time.DateOnly)]); err == nil {
-						return date.Format(time.DateOnly)
-					}
-				}
-			}
-			return ""
+		"dateOnlyValue":        parseDateInputValue,
+		"reportDateOnly": func(p reportpkg.Param) bool {
+			return p.Type == "string" && p.Enhanced.DateOnly
 		},
 		"elBackground": func(el *metadata.FormElement) template.CSS {
 			return template.CSS(metadata.FormElementBackgroundCSS(el)) //nolint:gosec // G203: значение прошло csssafe.Color, иначе пустая строка
@@ -3955,6 +3949,8 @@ const tplReport = `
       <label>{{$p.Label}}</label>
       {{if $p.IsDate}}
         <input type="date" name="{{$pname}}" value="{{$pval}}">
+      {{else if and (not $.LegacyEntityUI) (reportDateOnly $p.Choice)}}
+        <input type="date" name="{{$pname}}" value="{{dateOnlyValue $pval}}">
       {{else if $p.IsDateTime}}
         {{/* step="1" обязателен: шаг поля по умолчанию — 60 секунд, а {{now}}
              отдаёт секунды, и почти всякое умолчание получило бы stepMismatch. */}}

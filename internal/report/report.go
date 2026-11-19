@@ -42,6 +42,12 @@ type Param struct {
 	VisibleWhen *ParamVisibility `yaml:"visible_when,omitempty"`
 	// Context is a trusted server binding, not an editable/default form value.
 	Context *ParamContext `yaml:"context,omitempty"`
+	// Enhanced changes the input control while keeping the parameter value and type.
+	Enhanced ParamEnhancements `yaml:"enhanced,omitempty"`
+}
+
+type ParamEnhancements struct {
+	DateOnly bool `yaml:"date_only,omitempty"`
 }
 
 type ParamChoiceFilter struct {

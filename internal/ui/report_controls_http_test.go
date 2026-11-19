@@ -14,7 +14,9 @@ import (
 func TestCompactReportsRoleScopeThroughHTTP(t *testing.T) {
 	for _, kind := range []string{"parameters", "table", "composed", "no-parameters"} {
 		t.Run(kind, func(t *testing.T) {
-			report := &reportpkg.Report{Name: "CompactProbe", Query: "ВЫБРАТЬ &Число КАК Число", Params: []reportpkg.Param{{Name: "Число", Type: "number", Default: "1"}, {Name: "Day", Type: "date"}}}
+			report := &reportpkg.Report{Name: "CompactProbe", Query: "ВЫБРАТЬ &Число КАК Число", Params: []reportpkg.Param{{Name: "Число", Type: "number", Default: "1"}, {Name: "Day", Type: "date"},
+				{Name: "ReportDay", Type: "string", Default: "30.09.2026", Enhanced: reportpkg.ParamEnhancements{DateOnly: true}},
+			}}
 			if kind == "composed" {
 				report.Composition = &reportpkg.Composition{Groupings: []string{"Число"}, Detail: true}
 			}
@@ -67,6 +69,15 @@ func TestCompactReportsRoleScopeThroughHTTP(t *testing.T) {
 					}
 					if !profile.active && after != before {
 						t.Fatal("excluded operator report HTML changed")
+					}
+					if kind == "parameters" {
+						input := `type="date" name="ReportDay" value="2026-09-30"`
+						if !profile.active {
+							input = `type="text" name="ReportDay" value="30.09.2026"`
+						}
+						if !strings.Contains(after, input) {
+							t.Fatalf("missing scoped report input: %s", input)
+						}
 					}
 					if !strings.Contains(after, "/static/date-input.js") {
 						t.Fatal("short date behavior must include operator profiles")
