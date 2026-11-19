@@ -48,9 +48,10 @@ type MenuGroup struct {
 }
 
 type MenuItem struct {
-	ID     string            `yaml:"id" json:"id"`
-	Target string            `yaml:"target" json:"target"`
-	Title  string            `yaml:"title,omitempty" json:"title,omitempty"`
-	Titles map[string]string `yaml:"titles,omitempty" json:"titles,omitempty"`
-	Icon   string            `yaml:"icon,omitempty" json:"icon,omitempty"`
+	ListFilters map[string]string `yaml:"list_filters,omitempty" json:"list_filters,omitempty"`
+	ID          string            `yaml:"id" json:"id"`
+	Target      string            `yaml:"target" json:"target"`
+	Title       string            `yaml:"title,omitempty" json:"title,omitempty"`
+	Titles      map[string]string `yaml:"titles,omitempty" json:"titles,omitempty"`
+	Icon        string            `yaml:"icon,omitempty" json:"icon,omitempty"`
 }

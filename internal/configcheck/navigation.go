@@ -16,6 +16,7 @@ func navigationObjects(p *project.Project) []navigation.Object {
 	}
 	for _, e := range p.Entities {
 		add(string(e.Kind), e.Name, e.DisplayName(""), e.Titles)
+		objects[len(objects)-1].ListFilterFields = navigation.ListFilterFields(e)
 	}
 	for _, r := range p.Registers {
 		for _, view := range []string{"movements", "balances"} {

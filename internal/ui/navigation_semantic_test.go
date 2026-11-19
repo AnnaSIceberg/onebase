@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os/exec"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ func semanticSchoolServer(t *testing.T, name string) *Server {
 		Entities: []*metadata.Entity{
 			{Name: "Years", Kind: metadata.KindCatalog, Title: "Учебные годы", Titles: map[string]string{"en": "Academic years"}},
 			{Name: "Classes", Kind: metadata.KindCatalog, Title: "Default classes", Titles: map[string]string{"ru": "Классы"}},
-			{Name: "Orders", Kind: metadata.KindDocument, Title: "Приказы", Titles: map[string]string{"en": "Orders"}},
+			{Name: "Orders", Kind: metadata.KindDocument, Title: "Приказы", Fields: []metadata.Field{{Name: "State", Type: metadata.FieldTypeString}}, Titles: map[string]string{"en": "Orders"}},
 			{Name: "Private", Kind: metadata.KindCatalog, Title: "Private object"},
 		},
 		Registers: []*metadata.Register{{Name: "Attendance", Title: "Посещаемость", Titles: map[string]string{"en": "Attendance"}}},
@@ -305,5 +306,34 @@ func TestNavigationCollapseBehaviorInNode(t *testing.T) {
 	cmd := exec.Command(node, "--test", "static/navigation_behavior_test.js") //nolint:gosec // test-only executable resolved by exec.LookPath
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("navigation browser behavior: %v\n%s", err, output)
+	}
+}
+
+func TestSemanticNavigation_ListPresetUsesStandardReadLink(t *testing.T) {
+	s := semanticSchoolServer(t, "School")
+	items := &s.reg.GetSubsystem("School").Menu.Sections[0].Groups[0].Items
+	*items = append(*items, metadata.MenuItem{ID: "orders-station", Target: "document:Orders", Title: "Station",
+		ListFilters: map[string]string{"State": "Ready & checked"}})
+	nav := renderSemanticNav(t, s, "/ui?subsystem=School", "en", semanticTeacher())
+	count := 0
+	for _, link := range semanticLinks(nav) {
+		parsed, err := url.Parse(link)
+		if err == nil && parsed.Path == "/ui/document/Orders" && parsed.Query().Get("f.State.eq") == "Ready & checked" {
+			if parsed.Query().Get("subsystem") != "School" {
+				t.Fatalf("lost subsystem: %q", link)
+			}
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected one filtered entry, got %d; links=%v", count, semanticLinks(nav))
+	}
+	no := semanticTeacher()
+	delete(no.Roles[0].Permissions.Documents, "Orders")
+	nav = renderSemanticNav(t, s, "/ui?subsystem=School", "en", no)
+	for _, link := range semanticLinks(nav) {
+		if strings.Contains(link, "f.State.eq") {
+			t.Fatalf("filter entry without document permission: %q", link)
+		}
 	}
 }

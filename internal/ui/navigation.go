@@ -286,6 +286,7 @@ func NavigationObjects(reg *runtime.Registry) []navigation.Object {
 	}
 	for _, e := range reg.Entities() {
 		add(string(e.Kind), e.Name, e.DisplayName(""), e.Titles)
+		objects[len(objects)-1].ListFilterFields = navigation.ListFilterFields(e)
 	}
 	for _, o := range reg.Registers() {
 		for _, view := range []string{"movements", "balances"} {

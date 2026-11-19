@@ -19,12 +19,13 @@ const (
 
 // Object is a metadata projection, independent of HTTP, SQL and user access.
 type Object struct {
-	Target   Target            `json:"target"`
-	Title    string            `json:"title"`
-	Titles   map[string]string `json:"titles,omitempty"`
-	Periodic bool              `json:"periodic,omitempty"`
-	External bool              `json:"external,omitempty"`
-	Trusted  bool              `json:"trusted,omitempty"`
+	ListFilterFields []string          `json:"-"`
+	Target           Target            `json:"target"`
+	Title            string            `json:"title"`
+	Titles           map[string]string `json:"titles,omitempty"`
+	Periodic         bool              `json:"periodic,omitempty"`
+	External         bool              `json:"external,omitempty"`
+	Trusted          bool              `json:"trusted,omitempty"`
 }
 
 // Label shares target-specific suffixes across metadata preview and rendering.
@@ -65,7 +66,7 @@ func ResolveItem(item Item, lang, context string, translate func(string) string,
 		label = item.Object.Label(lang, translate, flat)
 	}
 	t := item.Object.Target
-	return ResolvedItem{ID: item.ID, Label: label, URL: t.URL(context), Kind: t.Kind, Name: t.Name, Action: t.Action()}
+	return ResolvedItem{ID: item.ID, Label: label, URL: listPresetURL(t.URL(context), item.ListQuery), Kind: t.Kind, Name: t.Name, Action: t.Action()}
 }
 
 // Scope contains the permitted metadata targets before per-request RBAC.
@@ -102,12 +103,13 @@ type Group struct {
 }
 
 type Item struct {
-	ID     string            `json:"id"`
-	Target string            `json:"target"`
-	Title  string            `json:"title"`
-	Titles map[string]string `json:"titles,omitempty"`
-	Icon   string            `json:"icon,omitempty"`
-	Object Object            `json:"object"`
+	ListQuery string            `json:"list_query,omitempty"`
+	ID        string            `json:"id"`
+	Target    string            `json:"target"`
+	Title     string            `json:"title"`
+	Titles    map[string]string `json:"titles,omitempty"`
+	Icon      string            `json:"icon,omitempty"`
+	Object    Object            `json:"object"`
 }
 
 type Diagnostic struct {
@@ -163,11 +165,17 @@ func Normalize(context string, menu *metadata.Menu, scope Scope) (Tree, []Diagno
 				add("navigation.membership", item.ID, fmt.Sprintf("target %q отсутствует в допустимом наборе contents/nav", item.Target), false)
 				continue
 			}
-			if seen[target.key()] {
+			listQuery, err := listPresetQuery(object, item.ListFilters)
+			if err != nil {
+				add("navigation.list-filters", item.ID, err.Error(), false)
+				continue
+			}
+			binding := target.key() + "\x00" + listQuery
+			if seen[binding] {
 				add("navigation.duplicate-target", item.ID, "повтор target в одном родителе: "+item.Target, true)
 			}
-			seen[target.key()], placed[target.key()] = true, true
-			output = append(output, Item{ID: "cfg:" + item.ID, Target: object.Target.String(), Title: item.Title,
+			seen[binding], placed[target.key()] = true, true
+			output = append(output, Item{ID: "cfg:" + item.ID, ListQuery: listQuery, Target: object.Target.String(), Title: item.Title,
 				Titles: copyTitles(item.Titles), Icon: metadata.NormalizeIconName(item.Icon), Object: cloneObject(object)})
 		}
 		return output
