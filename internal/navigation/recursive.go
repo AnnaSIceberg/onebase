@@ -214,7 +214,7 @@ func normalizeRecursive(context string, menu *metadata.Menu, scope Scope) (Tree,
 			}
 		}
 		clauses := withRoles(nil, raw.Roles)
-		section := Section{ID: "cfg:" + raw.ID, Title: raw.Title, Titles: copyTitles(raw.Titles), Icon: metadata.NormalizeIconName(raw.Icon), RoleClauses: clauses}
+		section := Section{ID: "cfg:" + raw.ID, Title: raw.Title, Titles: copyTitles(raw.Titles), Icon: metadata.NormalizeIconName(raw.Icon), Gradient: raw.Gradient, RoleClauses: clauses}
 		section.Nodes = children(input, 2, clauses)
 		tree.Sections = append(tree.Sections, section)
 	}

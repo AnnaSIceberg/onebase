@@ -24,6 +24,7 @@ import (
 const recursiveSchoolYAML = `sections:
 - id: reports
   title: Reports
+  gradient: true
   nodes:
   - id: direct
     target: catalog:Classes
@@ -90,7 +91,15 @@ func TestRecursiveNavigationHTTPOrderAccessAndRoles(t *testing.T) {
 			t.Fatal("restricted node", id)
 		}
 	}
-	got := semanticLinks(semanticFind(nav, "data-nav-id", "cfg:reports"))
+	section := semanticFind(nav, "data-nav-id", "cfg:reports")
+	if !strings.Contains(semanticAttr(section, "class"), "navsec-gradient") {
+		t.Fatal("configured section lost its gradient")
+	}
+	folder := semanticFind(nav, "data-nav-id", "cfg:masters")
+	if strings.Contains(semanticAttr(folder, "class"), "navsec-gradient") {
+		t.Fatal("nested folder must not have a gradient of its own")
+	}
+	got := semanticLinks(section)
 	want := []string{"/ui/catalog/Classes?subsystem=School", "/ui/catalog/Classes?subsystem=School", "/ui/document/Orders?subsystem=School", "/ui/catalog/Classes?subsystem=School"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatal("mixed order or duplicate entry lost", got)

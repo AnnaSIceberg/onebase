@@ -21,6 +21,7 @@ type layoutNode struct {
 	title         string
 	titles        map[string]string
 	icon          string
+	gradient      bool
 	item          Item
 	roleClauses   [][]string
 }
@@ -59,7 +60,7 @@ func readLayout(tree Tree) (*layout, error) {
 		return add(i.ID, &layoutNode{kind: itemNode, parent: parent, title: i.Title, titles: copyTitles(i.Titles), icon: i.Icon, item: cloneItem(i)})
 	}
 	for _, s := range tree.Sections {
-		if err := add(s.ID, &layoutNode{kind: sectionNode, titleExplicit: s.TitleExplicit, title: s.Title, titles: copyTitles(s.Titles), icon: s.Icon, roleClauses: cloneClauses(s.RoleClauses)}); err != nil {
+		if err := add(s.ID, &layoutNode{kind: sectionNode, titleExplicit: s.TitleExplicit, title: s.Title, titles: copyTitles(s.Titles), icon: s.Icon, gradient: s.Gradient, roleClauses: cloneClauses(s.RoleClauses)}); err != nil {
 			return nil, err
 		}
 		if tree.Version == 2 {
@@ -173,7 +174,7 @@ func (l *layout) tree(context string) Tree {
 	}
 	for _, id := range l.list("", sectionNode) {
 		n := l.nodes[id]
-		s := Section{ID: id, TitleExplicit: n.titleExplicit, Title: n.title, Titles: copyTitles(n.titles), Icon: n.icon, RoleClauses: cloneClauses(n.roleClauses)}
+		s := Section{ID: id, TitleExplicit: n.titleExplicit, Title: n.title, Titles: copyTitles(n.titles), Icon: n.icon, Gradient: n.gradient, RoleClauses: cloneClauses(n.roleClauses)}
 		if l.version == 2 {
 			s.Nodes = l.childNodes(id)
 			result.Sections = append(result.Sections, s)

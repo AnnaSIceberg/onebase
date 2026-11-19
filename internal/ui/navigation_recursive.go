@@ -105,7 +105,7 @@ func (s *Server) recursiveNavigationGroups(r *http.Request, tree navigation.Tree
 	}
 	var out []navGroup
 	for _, section := range tree.Sections {
-		out = append(out, navGroup{ID: section.ID, DOMID: navDOMID(tree.Context, section.ID), Icon: section.Icon, Kind: navigation.DisplayTitle(section.Title, section.Titles, lang), Open: true, Nodes: nodes(section.Nodes), Recursive: true, CollapseKey: key(section.ID)})
+		out = append(out, navGroup{ID: section.ID, DOMID: navDOMID(tree.Context, section.ID), Icon: section.Icon, Gradient: section.Gradient, Kind: navigation.DisplayTitle(section.Title, section.Titles, lang), Open: true, Nodes: nodes(section.Nodes), Recursive: true, CollapseKey: key(section.ID)})
 	}
 	return out
 }

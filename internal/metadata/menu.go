@@ -42,14 +42,15 @@ func (m *Menu) UnmarshalYAML(node *yaml.Node) error {
 }
 
 type MenuSection struct {
-	ID     string            `yaml:"id" json:"id"`
-	Title  string            `yaml:"title" json:"title"`
-	Titles map[string]string `yaml:"titles,omitempty" json:"titles,omitempty"`
-	Icon   string            `yaml:"icon,omitempty" json:"icon,omitempty"`
-	Items  []MenuItem        `yaml:"items,omitempty" json:"items,omitempty"`
-	Groups []MenuGroup       `yaml:"groups,omitempty" json:"groups,omitempty"`
-	Nodes  []MenuNode        `yaml:"nodes,omitempty" json:"nodes,omitempty"`
-	Roles  []string          `yaml:"roles,omitempty" json:"roles,omitempty"`
+	Gradient bool              `yaml:"gradient,omitempty" json:"gradient,omitempty"`
+	ID       string            `yaml:"id" json:"id"`
+	Title    string            `yaml:"title" json:"title"`
+	Titles   map[string]string `yaml:"titles,omitempty" json:"titles,omitempty"`
+	Icon     string            `yaml:"icon,omitempty" json:"icon,omitempty"`
+	Items    []MenuItem        `yaml:"items,omitempty" json:"items,omitempty"`
+	Groups   []MenuGroup       `yaml:"groups,omitempty" json:"groups,omitempty"`
+	Nodes    []MenuNode        `yaml:"nodes,omitempty" json:"nodes,omitempty"`
+	Roles    []string          `yaml:"roles,omitempty" json:"roles,omitempty"`
 }
 
 // MenuNode is one ordered command or folder. A command has a typed target;

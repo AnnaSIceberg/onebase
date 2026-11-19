@@ -2089,6 +2089,7 @@ aside details.navsec>summary::-webkit-details-marker{display:none}
 aside details.navsec>summary::before{content:"\25B8";display:inline-block;width:1em;color:#64748b}
 aside details.navsec[open]>summary::before{content:"\25BE"}
 aside details.navsec>summary:hover{color:#cbd5e1}
+#ob-nav>:is(.navsec,.navtree,section).navsec-gradient{margin:0 6px 9px;padding:4px 0 6px;border-radius:8px;background:linear-gradient(180deg,rgba(203,213,225,.14),rgba(203,213,225,.015))}
 aside details.navfolder{margin-left:12px}
 aside details.navfolder>summary{text-transform:none;font-size:12px;margin-top:8px}
 aside .navfolder-title{margin-left:12px;text-transform:none}
@@ -2488,7 +2489,7 @@ const tplNav = `
   {{if .CollapsibleNav}}
   {{range .Nav}}
   {{if .Recursive}}{{template "nav-recursive-section" .}}{{else}}
-  <details class="navsec" id="{{.DOMID}}" data-nav-id="{{.ID}}" data-navsec="{{.DOMID}}"{{if .LegacyTitle}} data-navsec-legacy="{{.LegacyTitle}}"{{end}}{{if .Open}} open{{end}}>
+  <details class="navsec{{if .Gradient}} navsec-gradient{{end}}" id="{{.DOMID}}" data-nav-id="{{.ID}}" data-navsec="{{.DOMID}}"{{if .LegacyTitle}} data-navsec-legacy="{{.LegacyTitle}}"{{end}}{{if .Open}} open{{end}}>
     <summary>{{lucideIcon .Icon}}{{.Kind}}</summary>
     {{template "nav-items" .Items}}
     {{range .Groups}}
@@ -2502,17 +2503,19 @@ const tplNav = `
   {{else}}
   {{range .Nav}}
   {{if .Recursive}}{{template "nav-recursive-section" .}}{{else}}
+  {{if .Gradient}}<section class="navsec-gradient">{{end}}
   <div class="sec" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{.Kind}}</div>
   {{template "nav-items" .Items}}
   {{range .Groups}}
   <div class="sec navfolder-title" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{.Kind}}</div>
   <div class="navfolder-items">{{template "nav-items" .Items}}</div>
-  {{end}}{{end}}{{end}}
+  {{end}}
+  {{if .Gradient}}</section>{{end}}{{end}}{{end}}
   {{end}}
 </aside>
 {{end}}
 {{define "nav-recursive-section"}}
-<details class="navtree navtree-section" id="{{.DOMID}}" data-nav-id="{{.ID}}" data-nav-key="{{.CollapseKey}}" open>
+<details class="navtree navtree-section{{if .Gradient}} navsec-gradient{{end}}" id="{{.DOMID}}" data-nav-id="{{.ID}}" data-nav-key="{{.CollapseKey}}" open>
 <summary aria-expanded="true">{{lucideIcon .Icon}}{{.Kind}}</summary>
 {{template "nav-recursive-nodes" .Nodes}}
 </details>
