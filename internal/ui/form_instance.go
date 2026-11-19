@@ -64,29 +64,55 @@ func (s *Server) managedFormInstanceSignature(r *http.Request, schema, scope, pa
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+func (s *Server) validManagedFormInstance(r *http.Request, scope, schema string) (nonce, expiry string) {
+	tokens := r.Header.Values(managedFormInstanceHeader)
+	if len(tokens) != 1 || len(tokens[0]) > 128 {
+		return "", ""
+	}
+	nonce, rest, ok := strings.Cut(tokens[0], ".")
+	expiry, proof, hasProof := strings.Cut(rest, ".")
+	expires, err := strconv.ParseInt(expiry, 10, 64)
+	if !ok || !hasProof || err != nil || !time.Now().Before(time.Unix(expires, 0)) {
+		return "", ""
+	}
+	want := s.managedFormInstanceSignature(r, schema, scope, nonce+"."+expiry)
+	if want == "" || !hmac.Equal([]byte(want), []byte(proof)) {
+		return "", ""
+	}
+	return nonce, expiry
+}
+
 func (s *Server) managedFormInstanceBuiltin(r *http.Request, form *metadata.FormModule, scope string, schema func() string) interpreter.BuiltinFunc {
 	return func(args []any, _ string, _ int) (any, error) {
 		if len(args) != 0 {
 			return nil, fmt.Errorf("ИдЭкземпляраФормы: аргументы не ожидаются")
 		}
-		if form == nil || !form.InstanceContext {
-			return "", nil
-		}
-		tokens := r.Header.Values(managedFormInstanceHeader)
-		if len(tokens) != 1 || len(tokens[0]) > 128 {
-			return "", nil
-		}
-		payload, signature, ok := strings.Cut(tokens[0], ".")
-		expiry, proof, hasProof := strings.Cut(signature, ".")
-		expires, err := strconv.ParseInt(expiry, 10, 64)
-		if !ok || !hasProof || err != nil || !time.Now().Before(time.Unix(expires, 0)) {
-			return "", nil
-		}
-		want := s.managedFormInstanceSignature(r, schema(), scope, payload+"."+expiry)
-		if want == "" || !hmac.Equal([]byte(want), []byte(proof)) {
+		if form == nil || !form.InstanceContext || r.Header.Get(managedFormInstanceHeader) == "" {
 			return "", nil
 		}
 		// Only the signed nonce is an identity. The bearer never enters DSL.
-		return payload, nil
+		nonce, _ := s.validManagedFormInstance(r, scope, schema())
+		return nonce, nil
 	}
+}
+
+// Only a confirmed insert can move a new form's existing identity to that row.
+func (s *Server) rebindManagedFormInstance(r *http.Request, form *metadata.FormModule, savedID string, schema func() string) string {
+	if form == nil || !form.InstanceContext || savedID == "" || r.Header.Get(managedFormInstanceHeader) == "" {
+		return ""
+	}
+	if id, err := uuid.Parse(savedID); err != nil || id == uuid.Nil {
+		return ""
+	}
+	formSchema := schema()
+	nonce, expiry := s.validManagedFormInstance(r, "", formSchema)
+	if nonce == "" {
+		return ""
+	}
+	payload := nonce + "." + expiry
+	signature := s.managedFormInstanceSignature(r, formSchema, savedID, payload)
+	if signature == "" {
+		return ""
+	}
+	return payload + "." + signature
 }

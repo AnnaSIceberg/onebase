@@ -135,6 +135,7 @@ type formCloseInvocation struct {
 	reconcile            bool
 	accessCheckFailed    bool
 	recheckAccess        func()
+	rebindInstance       func(string) string
 	authorization        [sha256.Size]byte
 	authorizationOK      bool
 	authorizationChanged bool
@@ -445,6 +446,14 @@ func formCloseRequestFingerprint(r *http.Request) ([sha256.Size]byte, error) {
 		writeFormCloseFingerprintString(h, "envelope")
 		writeFormCloseFingerprintString(h, name)
 		writeFormCloseFingerprintString(h, missingFormCloseValue(r, name))
+	}
+
+	if instances := r.Header.Values(managedFormInstanceHeader); len(instances) != 0 {
+		writeFormCloseFingerprintString(h, managedFormInstanceHeader)
+		writeFormCloseFingerprintUint64(h, uint64(len(instances)))
+		for _, instance := range instances {
+			writeFormCloseFingerprintString(h, instance)
+		}
 	}
 
 	valueKeys := make([]string, 0, len(r.PostForm))
@@ -1031,6 +1040,9 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 		response.Close.Reload = false
 		response.Close.Reconcile = false
 	}
+	if inv.rebindInstance != nil && !inv.suppressState && !inv.forceReload && response.SavedID != "" {
+		response.FormInstance = inv.rebindInstance(response.SavedID)
+	}
 	body, err := json.Marshal(response)
 	if err != nil {
 		status = http.StatusInternalServerError
@@ -1128,6 +1140,7 @@ func sanitizeFormCloseReplay(inv *formCloseInvocation, replay formCloseReplayRes
 			response.OK = false
 			response.Error = "права доступа изменились; обновите форму перед повтором"
 			response.SavedID = ""
+			response.FormInstance = ""
 			response.Version = 0
 			response.Close.Saved = false
 			response.Close.FormURL = ""
@@ -1144,6 +1157,7 @@ func sanitizeFormCloseReplay(inv *formCloseInvocation, replay formCloseReplayRes
 		response.Error = "не удалось проверить итоговый доступ к форме"
 		response.Dirty = boolPtr(true)
 		response.SavedID = ""
+		response.FormInstance = ""
 		response.SavedLabel = ""
 		response.Version = 0
 		response.Close.Saved = false
@@ -1162,6 +1176,7 @@ func sanitizeFormCloseReplay(inv *formCloseInvocation, replay formCloseReplayRes
 		response.Error = "описание объекта удалено с сервера; проверьте результат и обновите форму"
 		response.Dirty = boolPtr(true)
 		response.SavedID = ""
+		response.FormInstance = ""
 		response.SavedLabel = ""
 		response.Version = 0
 		response.Close.Allowed = false
@@ -1176,6 +1191,7 @@ func sanitizeFormCloseReplay(inv *formCloseInvocation, replay formCloseReplayRes
 		response.OK = true
 		response.Error = ""
 		response.SavedID = ""
+		response.FormInstance = ""
 		response.SavedLabel = ""
 		response.Version = 0
 		response.Dirty = boolPtr(false)
@@ -1205,6 +1221,7 @@ func redactUnreadableSavedFormResponse(response *formEventResponse) {
 	if response == nil {
 		return
 	}
+	response.FormInstance = ""
 	response.Values = nil
 	response.TableParts = nil
 	response.FormTables = nil

@@ -87,7 +87,8 @@ type formEventResponse struct {
 	// SavedID заполняется, когда обработчик записал ЕЩЁ НЕ СОХРАНЁННУЮ форму
 	// через Объект.Записать(). Клиент подставляет его в _id следующих событий и
 	// в адрес страницы — иначе второе действие подряд создало бы второй документ.
-	SavedID string `json:"savedId,omitempty"`
+	SavedID      string `json:"savedId,omitempty"`
+	FormInstance string `json:"formInstance,omitempty"`
 	// SavedLabel accompanies savedId for popup save-and-select. It is derived
 	// from the persisted object, never trusted from the browser.
 	SavedLabel string `json:"savedLabel,omitempty"`
@@ -1318,8 +1319,20 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	vars["__form_procs__"] = formProcs
-	instanceFn := s.managedFormInstanceBuiltin(r, form, existingFormID, func() string { return entityFormCloseSchema(entity, form) })
+	instanceSchema := func() string { return entityFormCloseSchema(entity, form) }
+	instanceFn := s.managedFormInstanceBuiltin(r, form, existingFormID, instanceSchema)
 	vars["ИдЭкземпляраФормы"], vars["ManagedFormInstanceID"] = instanceFn, instanceFn
+	rebindInstance := func(savedID string) string {
+		return s.rebindManagedFormInstance(r, form, savedID, instanceSchema)
+	}
+	if closeInv != nil && existingFormID == "" && form.InstanceContext {
+		closeInv.rebindInstance = rebindInstance
+	}
+	attachInstance := func(resp *formEventResponse) {
+		if closeInv == nil && existingFormID == "" && resp.SavedID != "" {
+			resp.FormInstance = rebindInstance(resp.SavedID)
+		}
+	}
 	if closeInv != nil {
 		vars["ПричинаЗакрытия"] = closeInv.reason
 		vars["CloseReason"] = closeInv.reason
@@ -1630,6 +1643,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		// Обработчик мог записать форму и упасть уже после этого: id всё равно
 		// нужен клиенту, иначе повтор действия создаст второй документ.
 		resp.SavedID = savedFormID(thisObj)
+		attachInstance(&resp)
 		resp.Version = versionWrittenByHandler(thisObj)
 		resp.Dirty = eventDirty
 		filterDeferredResponse(deferredBaseline, &resp)
@@ -1655,6 +1669,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	}
 	resp.ChoiceList = choiceItems
 	resp.SavedID = savedFormID(thisObj)
+	attachInstance(&resp)
 	resp.Version = versionWrittenByHandler(thisObj)
 	resp.Dirty = eventDirty
 	if requestedResult != nil && resp.OK && !resp.Cancel {

@@ -2615,6 +2615,7 @@ test('BeforeClose question: answer repeats close with the answer, dismiss keeps 
   const app = runtime(async (url, options) => {
     const body = capturedCloseBody(options);
     bodies.push(body);
+    assert.equal(options.headers['X-OneBase-Form-Instance'], 'signed-instance');
     const intentId = closeIntent(options);
     const answer = body.get('_question_answer');
     if (!answer) {
@@ -2625,6 +2626,8 @@ test('BeforeClose question: answer repeats close with the answer, dismiss keeps 
     }
     return response({ok: true, close: {intentId, allowed: answer === 'Закрыть', saved: false}});
   });
+  const getAttribute = app.form.getAttribute;
+  app.form.getAttribute = name => name === 'data-ob-form-instance' ? 'signed-instance' : getAttribute?.call(app.form, name);
   let asked = null;
   app.context.obOpenQuestion = (payload, elementName, handlers) => { asked = {payload, handlers}; };
   const settle = async () => { for (let i = 0; i < 20 && !asked; i++) await new Promise((r) => setTimeout(r, 0)); };
