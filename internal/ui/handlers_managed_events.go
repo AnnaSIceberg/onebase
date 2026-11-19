@@ -1318,6 +1318,8 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	vars["__form_procs__"] = formProcs
+	instanceFn := s.managedFormInstanceBuiltin(r, form, existingFormID, func() string { return entityFormCloseSchema(entity, form) })
+	vars["ИдЭкземпляраФормы"], vars["ManagedFormInstanceID"] = instanceFn, instanceFn
 	if closeInv != nil {
 		vars["ПричинаЗакрытия"] = closeInv.reason
 		vars["CloseReason"] = closeInv.reason
@@ -3159,6 +3161,8 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		vars["ЗакрытьФормуРезультата"], vars["CloseResultForm"] = closeResultFn, closeResultFn
 		resultContextFn := s.resultContextBuiltin(r, proc.Name, resultContextCommandAllowed(eventTarget, eventName, closeInv != nil))
 		vars["КонтекстФормыРезультата"], vars["ResultFormContext"] = resultContextFn, resultContextFn
+		instanceFn := s.managedFormInstanceBuiltin(r, form, r.URL.Query().Get(resultContextQuery), func() string { return processorFormCloseSchema(proc, form) })
+		vars["ИдЭкземпляраФормы"], vars["ManagedFormInstanceID"] = instanceFn, instanceFn
 		capabilityEvent := eventName == string(metadata.FormEventOnOpen) || eventName == string(metadata.FormEventOnClick) || eventName == string(metadata.FormEventOnAnswer)
 		capabilityFn := s.resultCapabilityBuiltin(r, proc, txState, closeInv == nil && capabilityEvent)
 		vars["ВозможностьФормыРезультата"], vars["ResultFormCapability"] = capabilityFn, capabilityFn

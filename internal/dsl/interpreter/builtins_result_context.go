@@ -10,4 +10,8 @@ func init() {
 	})
 	builtins["контекстформырезультата"] = blocked
 	builtins["resultformcontext"] = blocked
+
+	noInstance := BuiltinFunc(func(_ []any, _ string, _ int) (any, error) { return "", nil })
+	builtins["идэкземпляраформы"] = noInstance
+	builtins["managedforminstanceid"] = noInstance
 }

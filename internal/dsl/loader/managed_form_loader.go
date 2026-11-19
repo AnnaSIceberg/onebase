@@ -173,6 +173,7 @@ type formYAMLDoc struct {
 		Kind                   string            `yaml:"kind"`
 		Entity                 string            `yaml:"entity"`
 		TitleProc              string            `yaml:"title_proc"`
+		InstanceContext        bool              `yaml:"instance_context"`
 		Title                  map[string]string `yaml:"title"`
 		OriginalID             string            `yaml:"original_id"`
 		AutoSaveDataInSettings bool              `yaml:"auto_save_settings"`
@@ -245,6 +246,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		Kind:                   doc.Form.Kind,
 		LayoutKind:             metadata.FormLayoutManaged,
 		TitleProc:              doc.Form.TitleProc,
+		InstanceContext:        doc.Form.InstanceContext,
 		Title:                  doc.Form.Title,
 		OriginalID:             doc.Form.OriginalID,
 		AutoSaveDataInSettings: doc.Form.AutoSaveDataInSettings,

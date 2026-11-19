@@ -923,6 +923,9 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	if data == nil {
 		data = make(map[string]any)
 	}
+	if name == "page-managed-form" {
+		s.issueManagedFormInstance(r, data)
+	}
 	if supplied, ok := data["Cfg"].(Config); ok {
 		data["Cfg"] = s.uiConfigForRequest(r, supplied)
 	} else if _, ok := data["Cfg"]; !ok {
