@@ -927,6 +927,9 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		data["Cfg"] = s.uiConfigForRequest(r)
 	}
 	effectiveCfg, _ := data["Cfg"].(Config)
+	if len(effectiveCfg.UIExceptRoles) != 0 {
+		data["PlainMenuSections"] = !auth.RoleScopeMatches(auth.UserFromContext(r.Context()), nil, effectiveCfg.UIExceptRoles, false)
+	}
 	if ent, ok := data["Entity"].(*metadata.Entity); ok && ent != nil {
 		data["AudioOnlyPlayer"] = ent.AudioPlayer && effectiveCfg.HideAttachments
 	}
