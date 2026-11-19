@@ -356,7 +356,7 @@ func (s *Server) tabularView(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		_, _ = w.Write([]byte(v.doc.HTML(sheet.HTMLOptions{Title: title, CellTextFlow: flow, PDFURL: base + "/pdf", PrintURL: printURL, XLSXURL: base + "/xlsx", Embedded: v.scope.Form != "", PlainRows: v.scope.PlainRows, Compact: v.scope.Compact, ParentDrilldown: v.scope.CustomDrilldown, DrilldownURL: func(row, col int) string {
+		_, _ = w.Write([]byte(v.doc.HTML(sheet.HTMLOptions{Title: title, CellTextFlow: flow, DoubleClickReferences: flow && (v.scope.Kind == "report" || v.scope.Kind == "processor"), PDFURL: base + "/pdf", PrintURL: printURL, XLSXURL: base + "/xlsx", Embedded: v.scope.Form != "", PlainRows: v.scope.PlainRows, Compact: v.scope.Compact, ParentDrilldown: v.scope.CustomDrilldown, DrilldownURL: func(row, col int) string {
 			return base + "/cell?row=" + strconv.Itoa(row) + "&col=" + strconv.Itoa(col)
 		}})))
 	}

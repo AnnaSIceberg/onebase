@@ -850,6 +850,26 @@ if (window.__obEmbedded) {
     if (!window.obOpenInShell(href, title)) return;
     e.preventDefault();
   });
+  // Allow keyboard activation. Mouse navigation requires a double click.
+  document.addEventListener('click', function (event) {
+    if (event.detail === 0 || !event.target.closest('a[data-ob-report-reference]')) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+  document.addEventListener('dblclick', function (event) {
+    if (event.defaultPrevented || event.button !== 0) return;
+    var link = event.target.closest('a[data-ob-report-reference]');
+    if (!link) {
+      if (event.target.closest('a,button,input,select,textarea')) return;
+      var cell = event.target.closest('td');
+      if (!cell) return;
+      var choices = cell.querySelectorAll('a[data-ob-report-reference]');
+      if (choices.length !== 1) return;
+      link = choices[0];
+    }
+    event.preventDefault();
+    link.click();
+  });
   // Фаза 3: сообщаем оболочке о несохранённых правках, чтобы она предупредила при
   // закрытии вкладки/окна (защита от потери ввода).
   (function () {

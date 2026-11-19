@@ -2071,6 +2071,8 @@ td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .report-composed thead th{position:sticky;top:38px;background:#eef2f7;z-index:5;text-align:left;padding:8px 10px;border-bottom:2px solid #cbd5e1;color:#334155;font-weight:600;font-size:12px}
 .report-composed td{padding:6px 10px;border-bottom:1px solid #f1f5f9;color:#334155}
 .report-composed td.num{font-variant-numeric:tabular-nums}
+td a[data-ob-report-reference]{color:inherit;text-decoration:none;cursor:pointer}
+td:has(a[data-ob-report-reference]):hover{cursor:pointer;box-shadow:inset 0 0 0 100vmax #3b82f615}
 .report-composed tr.grp{background:var(--rc-group-fill,transparent);font-weight:600;color:#334155}
 .report-composed tr.grp td{color:inherit}
 .rc-fold{border:1px solid currentColor;border-radius:2px;background:transparent;color:inherit;cursor:pointer;width:1.25em;height:1.25em;line-height:1;padding:0;vertical-align:middle}

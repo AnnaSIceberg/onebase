@@ -14,8 +14,9 @@ import (
 )
 
 type reportDrilldownRenderer struct {
-	rep      *report.Report
-	rowTitle string
+	rep         *report.Report
+	rowTitle    string
+	doubleClick bool
 }
 
 func (d *reportDrilldownRenderer) HasRows() bool {
@@ -57,7 +58,8 @@ func (d *reportDrilldownRenderer) link(index int, a report.Drilldown, row map[st
 		return html.EscapeString(label)
 	}
 	typ := reportDrilldownValue(row, a.TypeField)
-	if _, ok := a.SelectTarget(typ); !ok {
+	target, ok := a.SelectTarget(typ)
+	if !ok {
 		return html.EscapeString(label)
 	}
 	q := url.Values{"d": {strconv.Itoa(index)}, "id": {id.String()}}
@@ -65,7 +67,15 @@ func (d *reportDrilldownRenderer) link(index int, a report.Drilldown, row map[st
 		q.Set("type", typ)
 	}
 	href := "/ui/report/" + url.PathEscape(d.rep.Name) + "/drilldown?" + q.Encode()
-	return `<a class="report-drilldown" href="` + html.EscapeString(href) + `">` + html.EscapeString(label) + `</a>`
+	return reportReferenceLink(href, label, d.doubleClick && target.Kind == "entity")
+}
+
+func reportReferenceLink(href, label string, doubleClick bool) string {
+	attr := ""
+	if doubleClick {
+		attr = ` data-ob-report-reference`
+	}
+	return `<a class="report-drilldown"` + attr + ` href="` + html.EscapeString(href) + `">` + html.EscapeString(label) + `</a>`
 }
 
 func (d *reportDrilldownRenderer) Cell(field string, row map[string]any, label string) template.HTML {

@@ -20,17 +20,18 @@ var tabularCellOpenJS string
 // при пустом PDFURL вывод бит-в-бит совпадает с прежним (кнопка → window.print()).
 // Точная семантика повторяет прежний toHTML из interpreter.
 type HTMLOptions struct {
-	Title           string
-	CellTextFlow    bool
-	BackURL         string
-	PDFURL          string
-	PrintURL        string // native PDF print preview for uniformly scaled documents
-	XLSXURL         string
-	Embedded        bool
-	PlainRows       bool
-	Compact         bool
-	ParentDrilldown bool
-	DrilldownURL    func(row, col int) string
+	Title                 string
+	CellTextFlow          bool
+	BackURL               string
+	PDFURL                string
+	PrintURL              string // native PDF print preview for uniformly scaled documents
+	XLSXURL               string
+	Embedded              bool
+	PlainRows             bool
+	Compact               bool
+	ParentDrilldown       bool
+	DoubleClickReferences bool
+	DrilldownURL          func(row, col int) string
 }
 
 // HTMLString рендерит документ в HTML, используя BackURL из самого документа.
@@ -72,6 +73,11 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 `)
 	if opts.CellTextFlow {
 		sb.WriteString(cellTextFlowCSS)
+	}
+	if opts.DoubleClickReferences {
+		sb.WriteString(`td a[data-sheet-reference]{color:inherit;text-decoration:none;cursor:pointer}
+td:has(a[data-sheet-reference]):hover{cursor:pointer;box-shadow:inset 0 0 0 100vmax #3b82f615}
+`)
 	}
 	if !opts.PlainRows {
 		sb.WriteString("tr:nth-child(even) td{background:#f8fafc}\n")
@@ -224,8 +230,11 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 					linkStyle := ""
 					// Explicit safe cell color also applies to its drilldown text. Keep the
 					// ordinary browser link color when the cell has no valid explicit color.
+					if opts.DoubleClickReferences {
+						linkStyle = ` data-sheet-reference="1"`
+					}
 					if safeColor(cell.TextColor) != "" {
-						linkStyle = ` style="color:inherit"`
+						linkStyle += ` style="color:inherit"`
 					}
 					text = `<a data-sheet-drilldown="1" target="_blank" rel="noopener"` + linkStyle + ` href="` + escapeHTML(opts.DrilldownURL(row, col)) + `">` + text + `</a>`
 				}

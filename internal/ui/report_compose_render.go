@@ -173,7 +173,7 @@ func (h *htmlComposeSink) detail(d compose.DetailRow, level int, path string) {
 		if h.spec.DetailLink != "" && h.spec.DetailEntity != "" {
 			if v := fmtVal(d.Values[h.spec.DetailLink]); v != "" {
 				href := "/ui/document/" + url.PathEscape(h.spec.DetailEntity) + "/" + url.PathEscape(v)
-				fmt.Fprintf(h.b, `<td style="padding-left:%dpx"><a href="%s">→</a></td>`, 8+level*18, html.EscapeString(href))
+				fmt.Fprintf(h.b, `<td style="padding-left:%dpx">%s</td>`, 8+level*18, reportReferenceLink(href, "→", h.drilldowns != nil && h.drilldowns.doubleClick))
 				linked = true
 			}
 		}

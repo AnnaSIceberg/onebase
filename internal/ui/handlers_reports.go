@@ -429,14 +429,13 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 	if comp != nil {
 		detailLinkCol = comp.DetailLink
 	}
-	var drilldowns *reportDrilldownRenderer
+	drilldowns := &reportDrilldownRenderer{rep: rep, rowTitle: s.tr(s.resolveLang(r), "Действия"), doubleClick: !s.legacyEntityUI(r)}
 	if len(rep.Drilldowns) > 0 {
 		if err := reportpkg.ValidateDrilldowns(rep, s.reg); err != nil {
 			opStatus = "error"
 			http.Error(w, "invalid report drilldown metadata", http.StatusBadRequest)
 			return
 		}
-		drilldowns = &reportDrilldownRenderer{rep: rep, rowTitle: s.tr(s.resolveLang(r), "Действия")}
 	}
 	s.resolveUUIDsInReport(opCtx, rows, compiled, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
 
