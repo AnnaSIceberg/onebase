@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	"github.com/ivantit66/onebase/internal/access"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 )
@@ -61,12 +63,75 @@ func (s *Server) reportWorkbookBuiltin(tx *interpreter.TxState) interpreter.Buil
 			Method: http.MethodGet,
 			URL:    &url.URL{RawQuery: values.Encode()},
 		}).WithContext(ctx)
+		if rep.ResultProc != "" {
+			data, err := s.reportTabularWorkbook(ctx, req, rep)
+			if err != nil {
+				return nil, fmt.Errorf("%s %q: %w", function, rep.Name, err)
+			}
+			return base64.StdEncoding.EncodeToString(data), nil
+		}
 		file, err := s.buildReportExportFile(ctx, req, rep, "excel", &reportExportStats{})
 		if err != nil {
 			return nil, fmt.Errorf("%s %q: %w", function, rep.Name, err)
 		}
 		return base64.StdEncoding.EncodeToString(file.Data), nil
 	}
+}
+
+// reportTabularWorkbook builds the same tabular result as the report form,
+// using the standard preset selected by the caller. No browser tab is published.
+func (s *Server) reportTabularWorkbook(ctx context.Context, r *http.Request, rep *reportpkg.Report) ([]byte, error) {
+	ctx = access.WithReportOutput(ctx)
+	r = r.WithContext(ctx)
+	rs := s.reportSettingsForRequest(r, rep)
+	if rs.Err != nil {
+		return nil, rs.Err
+	}
+	params, err := s.reportExportParamValues(ctx, r, rep)
+	if err != nil {
+		return nil, err
+	}
+	variant := r.FormValue("__variant")
+	if rs.Settings != nil {
+		variant = rs.Settings.Variant
+		if len(rs.Settings.Filters) > 0 {
+			return nil, errReportFilterProducerUnproven
+		}
+	}
+	text, _, err := rep.QueryForVariant(variant, params)
+	if err != nil {
+		return nil, err
+	}
+	var rows []map[string]any
+	if strings.TrimSpace(text) != "" {
+		compiled, err := s.compileReportVariantQuery(ctx, rep, variant, params)
+		if err != nil {
+			return nil, err
+		}
+		if denied := s.deniedQuerySource(ctx, compiled.Sources); denied != "" {
+			return nil, fmt.Errorf("нет доступа к объекту: %s", denied)
+		}
+		mask := s.reportOutputMaskPlan(ctx, compiled)
+		if mask.Denied != "" {
+			return nil, fmt.Errorf("отчёт содержит защищённое поле: %s", mask.Denied)
+		}
+		var truncated bool
+		rows, _, truncated, err = s.runReportResultRows(ctx, &compiled, rs.Settings, s.cfg.Limits.ExportMaxRows)
+		if err != nil {
+			return nil, err
+		}
+		if truncated {
+			return nil, fmt.Errorf("результат выгрузки превышает export_max_rows")
+		}
+		if err := mask.Apply(rows); err != nil {
+			return nil, err
+		}
+	}
+	doc, err := s.buildTabularReportDocument(r, rep, params, rows)
+	if err != nil {
+		return nil, err
+	}
+	return doc.XLSX()
 }
 
 func reportWorkbookParams(defs []reportpkg.Param, params *interpreter.Struct) (url.Values, error) {

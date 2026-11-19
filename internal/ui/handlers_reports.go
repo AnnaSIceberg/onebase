@@ -772,43 +772,9 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 	if stats != nil {
 		stats.composition = comp
 	}
-	paramValues := make(map[string]any, len(rep.Params))
-	// Ссылка выгрузки — снимок формы: reportParamQuery выкладывает в неё ВСЕ
-	// объявленные параметры, включая пустые. Поэтому здесь работает то же
-	// правило, что и на экране: умолчание подставляется, только если параметра в
-	// ссылке нет вовсе (прямой вызов /export/excel без параметров).
-	qs := r.URL.Query()
-	for _, p := range rep.Params {
-		if p.Context != nil {
-			continue
-		}
-		val := qs.Get(p.Name)
-		if _, ok := qs[p.Name]; !ok {
-			d, derr := reportParamDefault(p, s.constantResolver(ctx))
-			if derr != nil {
-				return nil, nil, derr
-			}
-			val = d
-		}
-		if p.Type == "number" {
-			paramValues[p.Name] = parseParamValue(val, "number")
-			continue
-		}
-		v, perr := reportpkg.ParseParamValue(val, p, reportpkg.ParamParseForm)
-		if perr != nil {
-			v = val // как на экране: негодное значение остаётся строкой
-		}
-		paramValues[p.Name] = v
-	}
-	paramValues, err = reportpkg.ResolveContextParams(ctx, rep, paramValues, s.reg, s.store)
+	paramValues, err := s.reportExportParamValues(ctx, r, rep)
 	if err != nil {
-		return nil, nil, newReportExportError(http.StatusForbidden, "report context", err)
-	}
-	if err := reportpkg.ValidateEnumParams(rep.Params, paramValues, s.reg); err != nil {
-		return nil, nil, newReportExportError(http.StatusBadRequest, "invalid report parameter", err)
-	}
-	if err := s.validateReportChoiceValues(ctx, rep, paramValues); err != nil {
-		return nil, nil, newReportExportError(http.StatusBadRequest, "report parameters", err)
+		return nil, nil, err
 	}
 	variant := r.FormValue("__variant")
 	if settings != nil {
@@ -891,6 +857,48 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 		flat[i] = cells
 	}
 	return cols, flat, nil
+}
+
+func (s *Server) reportExportParamValues(ctx context.Context, r *http.Request, rep *reportpkg.Report) (map[string]any, error) {
+	paramValues := make(map[string]any, len(rep.Params))
+	// Ссылка выгрузки — снимок формы: reportParamQuery выкладывает в неё ВСЕ
+	// объявленные параметры, включая пустые. Поэтому здесь работает то же
+	// правило, что и на экране: умолчание подставляется, только если параметра в
+	// ссылке нет вовсе (прямой вызов /export/excel без параметров).
+	qs := r.URL.Query()
+	for _, p := range rep.Params {
+		if p.Context != nil {
+			continue
+		}
+		val := qs.Get(p.Name)
+		if _, ok := qs[p.Name]; !ok {
+			d, derr := reportParamDefault(p, s.constantResolver(ctx))
+			if derr != nil {
+				return nil, derr
+			}
+			val = d
+		}
+		if p.Type == "number" {
+			paramValues[p.Name] = parseParamValue(val, "number")
+			continue
+		}
+		v, perr := reportpkg.ParseParamValue(val, p, reportpkg.ParamParseForm)
+		if perr != nil {
+			v = val // как на экране: негодное значение остаётся строкой
+		}
+		paramValues[p.Name] = v
+	}
+	paramValues, err := reportpkg.ResolveContextParams(ctx, rep, paramValues, s.reg, s.store)
+	if err != nil {
+		return nil, newReportExportError(http.StatusForbidden, "report context", err)
+	}
+	if err := reportpkg.ValidateEnumParams(rep.Params, paramValues, s.reg); err != nil {
+		return nil, newReportExportError(http.StatusBadRequest, "invalid report parameter", err)
+	}
+	if err := s.validateReportChoiceValues(ctx, rep, paramValues); err != nil {
+		return nil, newReportExportError(http.StatusBadRequest, "report parameters", err)
+	}
+	return paramValues, nil
 }
 
 func (s *Server) reportExcel(w http.ResponseWriter, r *http.Request) {

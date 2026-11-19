@@ -34,12 +34,33 @@ query: |
   ИЗ Справочник.Запись ГДЕ День >= &Начало
 variants:
   - name: По группам
+    query: |
+      ВЫБРАТЬ Группа КАК Группа, Сумма * 2 КАК Сумма
+      ИЗ Справочник.Запись ГДЕ День >= &Начало
     composition:
       groupings: [Группа]
       measures:
         - {field: Сумма, agg: sum, title: Итого}
       totals: {grand: true}
 `,
+		"reports/seeded-tabular.yaml": `name: Книга
+result_proc: Построить
+params:
+  - {name: Имя, type: string}
+`,
+		"src/книга.rep.os": `Функция Построить()
+  ТД = Новый ТабличныйДокумент;
+  ТД.Ячейка(1, 1).Значение = Параметры.Имя;
+  ТД.Ячейка(2, 1).Значение = 42;
+  Возврат ТД;
+КонецФункции
+`,
+		"processors/export-tabular.yaml": "name: ExportTabular\n",
+		"src/exporttabular.proc.os": `Процедура Выполнить()
+  Сообщить(СформироватьОтчетXLSX("Книга", "", Новый Структура("Имя", "Строка из result_proc")));
+КонецПроцедуры
+`,
+
 		"processors/seed.yaml": "name: seed\n",
 		"src/seed.proc.os": `Процедура Выполнить()
   Факт(Дата(2026, 5, 10), 3);
@@ -83,7 +104,7 @@ variants:
 		user := &auth.User{Login: "worker", Roles: []*auth.Role{{
 			Permissions: auth.Permission{
 				Catalogs: map[string][]string{"Запись": {"read"}},
-				Reports:  map[string][]string{"Итоги": {"run"}},
+				Reports:  map[string][]string{"Итоги": {"run"}, "Книга": {"run"}},
 			},
 		}}}
 		userCtx := auth.ContextWithUser(ctx, user)
@@ -105,8 +126,21 @@ variants:
 		t.Cleanup(func() { require.NoError(t, book.Close()) })
 		rows, err := book.GetRows(book.GetSheetName(0))
 		require.NoError(t, err)
-		require.Contains(t, rows, []string{"Север", "7"})
+		require.Contains(t, rows, []string{"Север", "14"})
 		require.Contains(t, rows[0], "Итого")
+
+		messages, runErr, err = server.RunProcessor(userCtx, reg, "ExportTabular", nil, nil, nil)
+		require.NoError(t, err)
+		require.NoError(t, runErr)
+		require.Len(t, messages, 1)
+		data, err = base64.StdEncoding.DecodeString(messages[0])
+		require.NoError(t, err)
+		tabular, err := excelize.OpenReader(bytes.NewReader(data))
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, tabular.Close()) })
+		rows, err = tabular.GetRows(tabular.GetSheetName(0))
+		require.NoError(t, err)
+		require.Equal(t, [][]string{{"Строка из result_proc"}, {"42"}}, rows)
 
 		_, runErr, err = server.RunProcessor(userCtx, reg, "export", map[string]string{"Вариант": "Опечатка"}, nil, nil)
 		require.NoError(t, err)
