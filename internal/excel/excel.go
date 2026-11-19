@@ -83,7 +83,11 @@ type RowStyle struct {
 
 var rowColorRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
-func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle) ([]byte, error) {
+func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle, columnAlignments ...map[int]string) ([]byte, error) {
+	var alignments map[int]string
+	if len(columnAlignments) > 0 {
+		alignments = columnAlignments[0]
+	}
 	f := excelize.NewFile()
 	defer closeBook(f)
 
@@ -98,17 +102,25 @@ func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle) 
 
 	boldStyle, cellStyle, numStyle := listStyles(f)
 	styled := make(map[string]int)
-	rowStyleID := func(base int, row RowStyle) (int, error) {
+	rowStyleID := func(base int, row RowStyle, align string) (int, error) {
 		if row.Background != "" && !rowColorRE.MatchString(row.Background) {
 			return 0, fmt.Errorf("invalid row background color: expected #RRGGBB")
 		}
-		key := fmt.Sprintf("%d/%s/%t", base, row.Background, row.Bold)
+		key := fmt.Sprintf("%d/%s/%t/%s", base, row.Background, row.Bold, align)
 		if id, ok := styled[key]; ok {
 			return id, nil
 		}
 		style, err := f.GetStyle(base)
 		if err != nil {
 			return 0, err
+		}
+		if align != "" {
+			alignment := excelize.Alignment{Vertical: "top"}
+			if style.Alignment != nil {
+				alignment = *style.Alignment
+			}
+			alignment.Horizontal = align
+			style.Alignment = &alignment
 		}
 		if row.Background != "" {
 			style.Fill = excelize.Fill{Type: "pattern", Color: []string{strings.TrimPrefix(row.Background, "#")}, Pattern: 1}
@@ -166,8 +178,12 @@ func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle) 
 				sh.setCell(cell, fmt.Sprintf("%v", v))
 				sh.setStyle(cell, cellStyle)
 			}
-			if ri < len(rowStyles) && (rowStyles[ri].Background != "" || rowStyles[ri].Bold) {
-				id, err := rowStyleID(baseStyle, rowStyles[ri])
+			var rowStyle RowStyle
+			if ri < len(rowStyles) {
+				rowStyle = rowStyles[ri]
+			}
+			if align := alignments[ci]; align != "" || rowStyle.Background != "" || rowStyle.Bold {
+				id, err := rowStyleID(baseStyle, rowStyle, align)
 				if err != nil {
 					return nil, err
 				}

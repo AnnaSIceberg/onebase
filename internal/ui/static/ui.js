@@ -1576,7 +1576,6 @@ function obPresetReportSettings() {
     document.querySelectorAll('.rs-measure').forEach(function (el) { if (measureMap[rsNorm(el.value)]) el.checked = true; });
     var ap = comp.Appearance || comp.appearance || {};
     var lines = ap.lines || ap.Lines || '';
-    if (lines === 'horizontal') lines = '';
     var le = document.getElementById('rs-lines');
     if (le) le.value = lines;
     var ze = document.getElementById('rs-zebra');

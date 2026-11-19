@@ -42,7 +42,7 @@ func TestCompactListsThroughHTTP(t *testing.T) {
 		}
 		// Правила всегда в CSS, действуют только под классом; проверяем их суть.
 		for _, rule := range []string{
-			`.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) td{padding:2px 6px;font-size:12px;line-height:17px;border:1px solid #cbd5e1`,
+			`.ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *) td{padding:2px 6px;font-size:12px;line-height:17px;border:1px solid #cbd5e1`,
 		} {
 			if !strings.Contains(page, rule) {
 				t.Fatalf("compact CSS rule missing: %s", rule)

@@ -184,19 +184,13 @@ func parseCollapseTo(v string) *int {
 	return &n
 }
 
-// normLines нормализует значение линий сетки по белому списку. "horizontal"
-// (синоним умолчания) и любой неизвестный ввод → "" — исторический вид только с
-// нижними границами. Значение уходит в CSS-класс рендера, поэтому произвольный
-// ввод из недоверенной рантайм-формы (__settings) сюда не просачивается.
+// normLines сохраняет явно выбранные границы. Пустое или неизвестное
+// значение означает полную сетку.
 func normLines(v string) string {
 	switch strings.TrimSpace(strings.ToLower(v)) {
-	case "vertical":
-		return "vertical"
-	case "both":
-		return "both"
-	case "none":
-		return "none"
-	default: // "", "horizontal", мусор
+	case "horizontal", "vertical", "both", "none":
+		return strings.TrimSpace(strings.ToLower(v))
+	default:
 		return ""
 	}
 }

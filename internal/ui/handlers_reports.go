@@ -892,7 +892,7 @@ func (s *Server) reportExcel(w http.ResponseWriter, r *http.Request) {
 		s.writeReportExportError(w, r, err)
 		return
 	}
-	data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles)
+	data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles, stats.measureAlignment(len(headers)))
 	if err != nil {
 		http.Error(w, "Excel error: "+s.errText(r, err), 500)
 		return

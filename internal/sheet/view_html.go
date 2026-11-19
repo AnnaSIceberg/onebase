@@ -25,7 +25,7 @@ var details=rows.some(function(row,i){return groups.some(function(g){return i>g.
 var panel=document.createElement('span');panel.className='sheet-levels';panel.setAttribute('role','group');panel.setAttribute('aria-label','Уровни группировки');
 for(var n=1;n<=max-min+1+(details?1:0);n++){(function(level){var b=document.createElement('button');b.type='button';b.className='sheet-level';b.textContent=String(level);b.setAttribute('data-sheet-level',String(level));b.setAttribute('aria-pressed','false');b.onclick=function(){groups.forEach(function(g){g.Expanded=g.Level-min+1<level;});levelButtons.forEach(function(button){button.setAttribute('aria-pressed',String(button===b));});paint();};levelButtons.push(b);panel.appendChild(b);})(n);}toolbar.appendChild(panel);}paint();
 var freezeRows=%d,freezeCols=%d,table=document.querySelector('.sheet-frozen');
-if(table){
+if(table&&(freezeRows>0||freezeCols>0)){
 var columns=Array.from(table.querySelectorAll('colgroup>col')),fixed=[],scheduled=0;
 rows.forEach(function(row,i){Array.from(row.cells).forEach(function(c){
  var col=Number(c.dataset.sheetCol),flow=c.querySelector('[data-sheet-flow-end]');

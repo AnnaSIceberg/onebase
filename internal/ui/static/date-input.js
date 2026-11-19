@@ -55,6 +55,7 @@
       paddingRight:el.style ? el.style.paddingRight : ''};
     if (state.type==='datetime-local' && el.hasAttribute && !el.hasAttribute('step')) el.setAttribute('step','1');
     editing.set(el, state); el.type = 'text';
+    if (el.setAttribute) el.setAttribute('data-ob-editing-date', state.type);
     if (el.setAttribute) { el.setAttribute('placeholder', mask.replace(/_/g,' ')); el.setAttribute('inputmode', 'numeric'); }
     calendarButton(el); placeCalendar(el); buttonVisible(el, true); draw(el, state, 0); return state;
   }
@@ -65,6 +66,7 @@
   function finish(el, state, value) {
     clearError(el, state); editing.delete(el); el.type = state.type; el.value = value;
     if (el.style) el.style.paddingRight=state.paddingRight;
+    if (el.removeAttribute) el.removeAttribute('data-ob-editing-date');
     restoreAttr(el, 'placeholder', state.placeholder); restoreAttr(el, 'inputmode', state.inputmode); buttonVisible(el, false);
   }
   function normalized(state) {

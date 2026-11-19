@@ -2067,7 +2067,9 @@ body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;height:
 .tbl td{padding:6px 10px;border-bottom:1px solid #f1f5f9;color:#334155;font-size:13px}
 .tbl tr:hover td{background:#f8fafc}
 td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
-.report-composed{width:100%;border-collapse:collapse;font-size:13px}
+.report-composed{width:100%;table-layout:auto;border-collapse:collapse;font-size:13px}
+.report-composed :is(th,td){white-space:normal;overflow-wrap:anywhere;overflow:hidden}
+.report-composed :is(th,td).num{white-space:normal;text-align:right}
 .report-composed thead th{position:sticky;top:38px;background:#eef2f7;z-index:5;text-align:left;padding:8px 10px;border-bottom:2px solid #cbd5e1;color:#334155;font-weight:600;font-size:12px}
 .report-composed td{padding:6px 10px;border-bottom:1px solid #f1f5f9;color:#334155}
 .report-composed td.num{font-variant-numeric:tabular-nums}
@@ -2187,11 +2189,11 @@ tr.ob-row-styled:hover td{background:inherit;filter:brightness(.95)}
    виджеты-списки, как в 1С: 12px, строка ≈ 22px, видимые границы строк и
    столбцов. Табличные части, «ключ — значение» и всё внутри формы объекта
    (#main-form) не трогаются. */
-.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *){font-size:12px}
-.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) th,
-.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) td{padding:2px 6px;font-size:12px;line-height:17px;border:1px solid #cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
-.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) th{background:#e8edf3;border-bottom:1px solid #94a3b8;font-weight:600}
-.ob-compact-lists main table:not(.tp-table):not(.tbl-plain):not(#main-form *) tr:last-child td{border-bottom:1px solid #cbd5e1}
+.ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *){font-size:12px}
+.ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *) th,
+.ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *) td{padding:2px 6px;font-size:12px;line-height:17px;border:1px solid #cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
+.ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *) th{background:#e8edf3;border-bottom:1px solid #94a3b8;font-weight:600}
+.ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *) tr:last-child td{border-bottom:1px solid #cbd5e1}
 
 td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .btn{display:inline-block;padding:8px 18px;border-radius:7px;font-size:14px;font-weight:500;text-decoration:none;cursor:pointer;border:none;line-height:1}
@@ -2229,6 +2231,8 @@ body:not([data-ob-legacy-entity-ui]) .btn:is(.btn-primary,.btn-app-primary):disa
 .form-group{margin-bottom:16px}
 label{display:block;font-size:13px;font-weight:500;margin-bottom:5px;color:#475569}
 input[type=text],input[type=datetime-local],input[type=date],input[type=number],select{width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:7px;font-size:14px;outline:none;background:#fff}
+body:not([data-ob-legacy-entity-ui]) input:is([type=date],[data-ob-editing-date="date"]){width:120px;max-width:100%;min-width:0;padding-left:6px;padding-right:5px;font-variant-numeric:tabular-nums}
+body:not([data-ob-legacy-entity-ui]) input:is([type=datetime-local],[data-ob-editing-date="datetime-local"]){width:208px;max-width:100%;min-width:0;font-variant-numeric:tabular-nums}
 input:focus,select:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
 /* Реквизит «только просмотр» (item_form: readonly, #1011): видно, что поле не
    для ввода. Без этого readonly-поле неотличимо от обычного, и пользователь

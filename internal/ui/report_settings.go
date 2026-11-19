@@ -442,11 +442,11 @@ func containsFold(values []string, want string) bool {
 
 // safeAppearance канонизирует оформление из пользовательского ввода (__settings —
 // JSON, минует compform.normLines): Lines сводится к известным значениям, иначе
-// "" (исторический вид). Рендер (appearanceClass) и так игнорирует неизвестный
+// "" (полная сетка). Рендер (appearanceClass) и так игнорирует неизвестный
 // Lines, но канонизация не даёт мусору оседать в _settings. Zebra — bool, как есть.
 func safeAppearance(a reportpkg.Appearance) reportpkg.Appearance {
 	switch a.Lines {
-	case "vertical", "both", "none": // допустимые
+	case "horizontal", "vertical", "both", "none": // допустимые
 	default:
 		a.Lines = ""
 	}

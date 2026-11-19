@@ -86,6 +86,7 @@ func buildReportSheet(title string, headers []string, rows [][]any, presentation
 		c.BackColor = "#e2e8f0"
 		applyGrid(c)
 	}
+	alignment := output.measureAlignment(len(headers))
 	for i, dataRow := range rows {
 		for j, v := range dataRow {
 			c := doc.GetOrCreateCell(headerRow+1+i, j)
@@ -95,7 +96,9 @@ func buildReportSheet(title string, headers []string, rows [][]any, presentation
 				c.BackColor = output.rowStyles[i].Background
 				c.Bold = output.rowStyles[i].Bold
 			}
-			if isNumericCell(v) {
+			if align := alignment[j]; align != "" {
+				c.Align = align
+			} else if isNumericCell(v) {
 				c.Align = "right"
 			} else {
 				c.Align = "left"
@@ -103,6 +106,30 @@ func buildReportSheet(title string, headers []string, rows [][]any, presentation
 		}
 	}
 	return doc
+}
+
+// measureAlignment carries the report's alignments to formats where a
+// formatted number is represented by a string.
+func (output reportExportStats) measureAlignment(columns int) map[int]string {
+	comp := output.composition
+	if comp == nil || len(comp.Measures) == 0 {
+		return nil
+	}
+	first := columns - len(comp.Measures)
+	if len(comp.Columns) != 0 {
+		first = 1 // pivot: group label, measure columns, then optional totals
+	}
+	alignment := make(map[int]string)
+	for column := first; column < columns; column++ {
+		measure := comp.Measures[(column-first)%len(comp.Measures)]
+		switch measure.Align {
+		case "left", "center":
+			alignment[column] = measure.Align
+		default:
+			alignment[column] = "right"
+		}
+	}
+	return alignment
 }
 
 // isNumericCell сообщает, что значение ячейки числовое (для выравнивания вправо).
