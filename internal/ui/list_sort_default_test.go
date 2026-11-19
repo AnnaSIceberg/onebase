@@ -68,6 +68,10 @@ func TestListSortDefaultSnapshot(t *testing.T) {
 						}
 					}
 					user := user1485(scenario + mode)
+					if scenario == "document" {
+						s.cfg.UIExceptRoles = []string{"legacy-list"}
+						user.Roles = []*auth.Role{{Name: "legacy-list"}}
+					}
 					if scenario == "removed_field" {
 						if err := db.SaveListSortUserSettings(t.Context(), ent.Name, user.Login, "Удалено", "desc"); err != nil {
 							t.Fatal(err)
@@ -164,13 +168,20 @@ func TestListSortDefaultSnapshot(t *testing.T) {
 						t.Fatalf("invalid field saved: %s/%s", f, d)
 					}
 					// No user: preserve the old URL behavior without a preference snapshot.
-					anonymous := get(nil, query)
+					anonymousQuery, err := url.ParseQuery(query.Encode())
+					if err != nil {
+						t.Fatal(err)
+					}
+					anonymousQuery.Set("page", "1")
+					anonymous := get(nil, anonymousQuery)
 					anonNext, _, _, _ := defaultSortState(t, anonymous)
 					if anonNext.Has("sort_default") {
 						t.Fatalf("anonymous list changed: %v", anonNext)
 					}
 					// Other users still open with their own default order.
-					assertDefaultSortRows(t, get(user1485("other"+scenario+mode), query), want[:2])
+					other := user1485("other" + scenario + mode)
+					other.Roles = user.Roles
+					assertDefaultSortRows(t, get(other, query), want[:2])
 				})
 			})
 		}

@@ -48,6 +48,28 @@ func ownFormCloseButton(name, title string) bool {
 	return false
 }
 
+func hasOwnFormCloseButton(form *metadata.FormModule) bool {
+	if form == nil {
+		return false
+	}
+	found := false
+	form.Walk(func(el *metadata.FormElement) bool {
+		if el.Kind == metadata.FormElementButton && ownFormCloseButton(el.Name, el.TitleMap["ru"]) {
+			found = true
+		}
+		return !found
+	})
+	if found {
+		return true
+	}
+	for _, command := range unplacedCommands(form) {
+		if ownFormCloseButton(command.Name, command.Title["ru"]) {
+			return true
+		}
+	}
+	return false
+}
+
 type managedHeaderButton struct {
 	Element *metadata.FormElement
 	Table   *metadata.FormElement
@@ -870,9 +892,9 @@ input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#
 .managed-vt-rows>.tp-table thead th{position:sticky;top:0;z-index:1}
 .tp-table .ob-vt-empty td{color:#94a3b8;font-style:italic;text-align:center;padding:10px}
 .tp-table input[readonly]{text-overflow:ellipsis}
-.ob-form-action-spacing .managed-group-horizontal>.managed-group-body:has(>.managed-btn,>.managed-btn-layout){gap:4px}
-.ob-form-action-spacing .managed-group-horizontal:has(>.managed-group-body> :is(.managed-btn,.managed-btn-layout)){margin-block:4px !important}
-.ob-form-action-spacing .managed-group-horizontal:has(>.managed-group-body> :is(.managed-btn,.managed-btn-layout)) + .managed-group-horizontal:has(>.managed-group-body> :is(.managed-btn,.managed-btn-layout)){margin-block-start:0 !important}
+.ob-form-action-spacing .managed-group-horizontal:not(.ob-equal-columns)>.managed-group-body:has(>.managed-btn,>.managed-btn-layout){gap:4px}
+.ob-form-action-spacing .managed-group-horizontal:not(.ob-equal-columns):has(>.managed-group-body> :is(.managed-btn,.managed-btn-layout)){margin-block:4px !important}
+.ob-form-action-spacing .managed-group-horizontal:not(.ob-equal-columns):has(>.managed-group-body> :is(.managed-btn,.managed-btn-layout)) + .managed-group-horizontal:has(>.managed-group-body> :is(.managed-btn,.managed-btn-layout)){margin-block-start:0 !important}
 .ob-form-action-spacing .managed-command-bar{gap:4px !important}
 .ob-form-action-spacing .btn-app-primary{background:#dbeafe;color:#1e3a8a;box-shadow:inset 0 0 0 1px #60a5fa}
 .ob-form-action-spacing .btn-app-primary:hover:not(:disabled){background:#bfdbfe}
@@ -1032,7 +1054,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
     <div class="entity-command-group" role="group" aria-label="{{t .Lang "Действия"}}">
       {{template "document-form-post-commands" .}}
       {{template "entity-form-copy-command" .}}
-      {{template "entity-form-mark-command" .}}
+      {{if not (deleteHidden .Form)}}{{template "entity-form-mark-command" .}}{{end}}
     </div>
   {{end}}
   {{end}}
@@ -1193,7 +1215,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   {{else if .IsProcessor}}
   {{$page := .}}
   {{range formFooterButtons .Form}}{{template "managed-element" (dict "El" . "Ctx" $page "FooterPass" true)}}{{end}}
-  {{if or (not .LegacyEntityUI) (formActionVisible .Form "cancel")}}
+  {{if or (formActionVisible .Form "cancel") (and (not .LegacyEntityUI) (hasOwnFormCloseButton .Form))}}
   <a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel"{{if not .LegacyEntityUI}} data-ob-form-footer-close{{end}}>{{if .LegacyEntityUI}}Отмена{{else}}{{t $.Lang "Закрыть"}}{{end}}</a>
   {{end}}
   {{else}}

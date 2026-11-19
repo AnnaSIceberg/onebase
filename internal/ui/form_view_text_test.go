@@ -19,7 +19,7 @@ import (
 // сверху (как поля прежнего диалога 1С), и actions.cancel.visible: false у
 // формы обработки. Тест идёт пользовательским путём: YAML проекта →
 // project.Load → production-маршруты GET формы документа и формы обработки.
-func viewTextProject(t *testing.T, processorActions string) *project.Project {
+func viewTextProject(t *testing.T, processorActions string, ownClose bool) *project.Project {
 	t.Helper()
 	dir := t.TempDir()
 	write := func(rel, body string) {
@@ -51,8 +51,11 @@ elements:
     title: {ru: Примечание к заказчику}
 `)
 	write("processors/итог.yaml", "name: Итог\n")
-	write("forms/итог/обработки.form.yaml", "schema: onebase.form/v1\nform:\n  name: ФормаОбработки\n  kind: object\n  entity: Итог\n"+processorActions+
-		"elements:\n  - kind: Кнопка\n    name: Закрыть\n    title: {ru: Закрыть}\n")
+	elements := "elements: []\n"
+	if ownClose {
+		elements = "elements:\n  - kind: Кнопка\n    name: Закрыть\n    title: {ru: Закрыть}\n"
+	}
+	write("forms/итог/обработки.form.yaml", "schema: onebase.form/v1\nform:\n  name: ФормаОбработки\n  kind: object\n  entity: Итог\n"+processorActions+elements)
 	proj, err := project.Load(dir)
 	if err != nil {
 		t.Fatalf("project.Load: %v", err)
@@ -62,7 +65,7 @@ elements:
 }
 
 func TestFormViewTextThroughHTTP(t *testing.T) {
-	proj := viewTextProject(t, "")
+	proj := viewTextProject(t, "", true)
 	s, ctx := newSubmitTestServer(t, proj.Entities)
 	s.reg.LoadProcessors(proj.Processors)
 	id := uuid.New()
@@ -131,14 +134,15 @@ func TestFormViewTextThroughHTTP(t *testing.T) {
 
 func TestProcessorCancelActionVisibilityThroughHTTP(t *testing.T) {
 	for _, tc := range []struct {
-		name, actions string
-		want          bool
+		name, actions  string
+		ownClose, want bool
 	}{
-		{"по умолчанию «Отмена» есть", "", true},
-		{"cancel.visible: false скрывает", "actions:\n  cancel: {visible: false}\n", false},
+		{"по умолчанию «Закрыть» есть", "", false, true},
+		{"cancel.visible: false скрывает", "actions:\n  cancel: {visible: false}\n", false, false},
+		{"собственное «Закрыть» заменено нижним", "actions:\n  cancel: {visible: false}\n", true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			proj := viewTextProject(t, tc.actions)
+			proj := viewTextProject(t, tc.actions, tc.ownClose)
 			s, _ := newSubmitTestServer(t, proj.Entities)
 			s.reg.LoadProcessors(proj.Processors)
 			router := chi.NewRouter()
@@ -149,9 +153,12 @@ func TestProcessorCancelActionVisibilityThroughHTTP(t *testing.T) {
 				t.Fatalf("GET processor: %d %.600s", rec.Code, rec.Body.String())
 			}
 			body := rec.Body.String()
-			got := strings.Contains(body, `class="btn btn-cancel">Отмена</a>`)
+			got := strings.Contains(body, `data-ob-form-footer-close>Закрыть</a>`)
 			if got != tc.want {
-				t.Fatalf("footer «Отмена» present=%t, want %t", got, tc.want)
+				t.Fatalf("footer «Закрыть» present=%t, want %t", got, tc.want)
+			}
+			if strings.Contains(body, `data-ob-fire-click="Закрыть"`) {
+				t.Fatal("form body still contains its close button")
 			}
 			// The header cross still closes the form.
 			if !strings.Contains(body, "data-ob-close-tab") {
