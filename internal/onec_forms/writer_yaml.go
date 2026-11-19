@@ -124,9 +124,12 @@ type yamlElement struct {
 	Height        int                        `yaml:"height,omitempty"`
 	Enhanced      *metadata.FormPresentation `yaml:"enhanced,omitempty"`
 
-	TabularProgress  string `yaml:"tabular_progress,omitempty"`
-	TabularPlainRows bool   `yaml:"tabular_plain_rows,omitempty"`
-	TabularCompact   bool   `yaml:"tabular_compact,omitempty"`
+	TabularProgress   string `yaml:"tabular_progress,omitempty"`
+	TabularPlainRows  bool   `yaml:"tabular_plain_rows,omitempty"`
+	TabularCompact    bool   `yaml:"tabular_compact,omitempty"`
+	TabularResultTab  bool   `yaml:"tabular_result_tab,omitempty"`
+	TabularPeriodFrom string `yaml:"tabular_period_from,omitempty"`
+	TabularPeriodTo   string `yaml:"tabular_period_to,omitempty"`
 
 	Hint          string            `yaml:"hint,omitempty"`
 	Mask          string            `yaml:"mask,omitempty"`
@@ -282,9 +285,12 @@ func elementToYAML(el *IRElement) yamlElement {
 		Height:        el.Height,
 		Enhanced:      el.Enhanced,
 
-		TabularProgress:  el.TabularProgress,
-		TabularPlainRows: el.TabularPlainRows,
-		TabularCompact:   el.TabularCompact,
+		TabularProgress:   el.TabularProgress,
+		TabularPlainRows:  el.TabularPlainRows,
+		TabularCompact:    el.TabularCompact,
+		TabularResultTab:  el.TabularResultTab,
+		TabularPeriodFrom: el.TabularPeriodFrom,
+		TabularPeriodTo:   el.TabularPeriodTo,
 
 		Hint: el.Hint,
 		Mask: el.Mask,

@@ -213,7 +213,7 @@ const tplManagedForm = `
 {{else if eq (str $el.Kind) "ПолеТабличногоДокумента"}}
   <div class="form-group" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}>
     <div data-ob-tabular-progress-status role="status" hidden><span aria-hidden="true">⌛</span> <span data-ob-tabular-percent>0%</span></div>
-    <iframe data-ob-tabular-field="{{dpField $el.DataPath}}" title="{{fieldTitleRU $el.TitleMap (dpField $el.DataPath)}}" style="width:100%;height:480px;border:1px solid #cbd5e1" hidden></iframe>
+    <iframe data-ob-tabular-field="{{dpField $el.DataPath}}"{{if and $el.TabularResultTab (not $ctx.LegacyEntityUI)}} data-ob-tabular-result-tab data-ob-tabular-period-from="{{$el.TabularPeriodFrom}}" data-ob-tabular-period-to="{{$el.TabularPeriodTo}}"{{end}} title="{{fieldTitleRU $el.TitleMap (dpField $el.DataPath)}}" style="width:100%;height:480px;border:1px solid #cbd5e1" hidden></iframe>
   </div>
   <script src="/static/tabular.js"></script>
 {{else if eq (str $el.Kind) "ПолеВвода"}}

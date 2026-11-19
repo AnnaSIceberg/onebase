@@ -166,9 +166,12 @@ func yamlElementToIR(el yamlElement) *IRElement {
 		Height:     el.Height,
 		Enhanced:   el.Enhanced,
 
-		TabularProgress:  el.TabularProgress,
-		TabularPlainRows: el.TabularPlainRows,
-		TabularCompact:   el.TabularCompact,
+		TabularProgress:   el.TabularProgress,
+		TabularPlainRows:  el.TabularPlainRows,
+		TabularCompact:    el.TabularCompact,
+		TabularResultTab:  el.TabularResultTab,
+		TabularPeriodFrom: el.TabularPeriodFrom,
+		TabularPeriodTo:   el.TabularPeriodTo,
 
 		Hint:    el.Hint,
 		Mask:    el.Mask,

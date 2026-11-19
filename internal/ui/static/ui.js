@@ -870,6 +870,26 @@ if (window.__obEmbedded) {
     event.preventDefault();
     link.click();
   });
+
+  document.addEventListener('submit', function (event) {
+    var form = event.target;
+    if (event.defaultPrevented || !form.hasAttribute('data-ob-report-result-form')) return;
+    try {
+      if (window.parent === window || typeof window.parent.obOpenReportResult !== 'function') return;
+      var heading = document.querySelector('main h2');
+      var target = window.parent.obOpenReportResult(window, 'report', '', heading ? heading.textContent : 'Результат отчёта');
+      if (!target) return;
+      var priorTarget = form.getAttribute('target'), priorAction = form.getAttribute('action');
+      var result = new URL(form.action, location.href);
+      result.searchParams.set('__result', '1');
+      form.target = target;
+      form.action = result.href;
+      setTimeout(function () {
+        if (priorTarget === null) form.removeAttribute('target'); else form.setAttribute('target', priorTarget);
+        if (priorAction === null) form.removeAttribute('action'); else form.setAttribute('action', priorAction);
+      }, 0);
+    } catch (_) {}
+  });
   // Фаза 3: сообщаем оболочке о несохранённых правках, чтобы она предупредила при
   // закрытии вкладки/окна (защита от потери ввода).
   (function () {

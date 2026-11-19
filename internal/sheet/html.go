@@ -123,7 +123,7 @@ td:has(a[data-sheet-reference]):hover{cursor:pointer;box-shadow:inset 0 0 0 100v
 	}
 	if opts.XLSXURL != "" {
 		label := "XLSX"
-		if opts.Compact {
+		if opts.Compact || opts.DoubleClickReferences {
 			label = "Excel"
 		}
 		sb.WriteString(`<a class="btn" href="` + escapeHTML(opts.XLSXURL) + `">` + label + `</a>`)

@@ -2082,7 +2082,7 @@ td:has(a[data-ob-report-reference]):hover{cursor:pointer;box-shadow:inset 0 0 0 
 .rc-level{min-width:2em}
 .rc-level[aria-pressed=true]{font-weight:700;outline:2px solid currentColor;outline-offset:-2px}
 @media(prefers-color-scheme:dark){.report-composed tr.grp{background:var(--rc-group-dark,#1e293b);color:#e2e8f0}}
-@media print{.rc-toolbar,.rc-fold{display:none!important}.report-composed tr{display:table-row!important}}
+@media print{.rc-toolbar,.rc-fold,.ob-report-result-actions{display:none!important}.report-composed tr{display:table-row!important}}
 .report-composed tr.grand td{font-weight:700;border-top:2px solid #e2e8f0}
 .report-composed.rep-lines-v td,.report-composed.rep-lines-v th{border-bottom:none;border-right:1px solid #eef2f7}
 .report-composed.rep-lines-v td:last-child,.report-composed.rep-lines-v th:last-child{border-right:none}
@@ -3877,10 +3877,20 @@ const tplReport = `
 <main{{if .CompactReport}} class="ob-report-compact{{if eq .ReportDensity "dense"}} ob-report-dense{{end}}"{{end}}>
 {{$headerActions := not .LegacyEntityUI}}
 {{$reportTitlebar := or .CompactReport $headerActions}}
+{{if .ReportResultOnly}}
+<meta name="ob-tab-title" content="{{.ReportResultTitle}}">
+<div class="ob-report-titlebar">
+  <h2>{{.ReportResultTitle}}</h2>
+  <div class="ob-report-commandbar ob-report-result-actions">
+    <button type="button" class="btn btn-sm" onclick="window.print()">{{t $.Lang "Печать"}}</button>
+    {{if or .Cols .ComposedHTML}}{{template "report-export-buttons" .}}{{end}}
+  </div>
+</div>
+{{else}}
 {{if $reportTitlebar}}<div class="ob-report-titlebar">
 <h2>{{.Report.DisplayName $.Lang}}</h2>
 <div class="ob-report-commandbar">
-  {{if not (or .ReportParams .Report.Variants .ReportPresets .Report.FormActions)}}<form id="ob-report-params" method="POST" hidden>{{if .UserSettings}}<input type="hidden" name="__settings" value="{{if .ReportSettingsJSON}}{{.ReportSettingsJSON}}{{else}}{{.UserSettings.JSON}}{{end}}">{{end}}</form>{{end}}
+  {{if not (or .ReportParams .Report.Variants .ReportPresets .Report.FormActions)}}<form id="ob-report-params" method="POST"{{if $headerActions}} data-ob-report-result-form{{end}} hidden>{{if .UserSettings}}<input type="hidden" name="__settings" value="{{if .ReportSettingsJSON}}{{.ReportSettingsJSON}}{{else}}{{.UserSettings.JSON}}{{end}}">{{end}}</form>{{end}}
   {{if or $headerActions (not .Report.FormActions)}}<button class="btn btn-primary" type="submit" form="ob-report-params"{{with reportPrimaryStyle .Report.FormActions}} style="{{.}}"{{end}}>{{t $.Lang "Сформировать"}}</button>{{end}}
   {{if or .Cols .ComposedHTML}}{{template "report-export-buttons" .}}{{end}}
   <a class="btn btn-sm" href="/ui/export-jobs">{{t $.Lang "Мои выгрузки"}}</a>
@@ -3894,7 +3904,7 @@ const tplReport = `
 {{if or .ReportParams .Report.Variants .ReportPresets .Report.FormActions}}
 <details class="card report-block" data-block="params" open style="margin-bottom:16px">
 <summary>{{t $.Lang "Параметры"}}</summary>
-<form method="POST"{{if $reportTitlebar}} id="ob-report-params" data-ob-report-params{{end}}>
+<form method="POST"{{if $reportTitlebar}} id="ob-report-params" data-ob-report-params{{end}}{{if $headerActions}} data-ob-report-result-form{{end}}>
   {{if .UserSettings}}<input type="hidden" name="__settings" value="{{if .ReportSettingsJSON}}{{.ReportSettingsJSON}}{{else}}{{.UserSettings.JSON}}{{end}}">{{end}}
   {{if .ReportPresets}}
   <div class="form-group" style="margin-bottom:16px;max-width:360px">
@@ -3973,6 +3983,7 @@ const tplReport = `
 </form>
 {{if .ReportParams}}<script src="/static/report_params.js" defer></script>{{end}}
 </details>
+{{end}}
 {{end}}
 {{if and .ReportCols .ReportSettingsJSON}}
 <details class="card report-block" data-block="settings" style="margin-bottom:16px">
@@ -4093,7 +4104,7 @@ const tplReport = `
 {{if .ComposedHTML}}
 {{if .Capped}}<div class="card" style="background:#fffbeb;border-color:#fde68a;margin-bottom:8px;padding:8px 12px">{{t $.Lang "Показаны первые строки — данных больше потолка."}}</div>{{end}}
 {{if .ComposeWarnings}}<div class="card" style="background:#fef2f2;border-color:#fecaca;margin-bottom:8px;padding:8px 12px"><strong>{{t $.Lang "Предупреждения компоновки:"}}</strong><ul style="margin:4px 0 0;padding-left:20px">{{range .ComposeWarnings}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-{{if not .CompactReport}}{{template "report-export-buttons" .}}{{end}}
+{{if not (or .CompactReport .ReportResultOnly)}}{{template "report-export-buttons" .}}{{end}}
 <details class="card report-block" data-block="data" open>
 <summary>{{t $.Lang "Данные"}}</summary>
 <div class="rc-toolbar" role="group" aria-label="{{t $.Lang "Уровни группировки"}}" style="margin-bottom:8px;display:flex;gap:4px"></div>
@@ -4101,7 +4112,7 @@ const tplReport = `
 </details>
 {{end}}
 {{if .Cols}}
-{{if not .CompactReport}}{{template "report-export-buttons" .}}{{end}}
+{{if not (or .CompactReport .ReportResultOnly)}}{{template "report-export-buttons" .}}{{end}}
 <div class="card">
 {{if .Rows}}
 <table><thead><tr>{{range .Cols}}<th>{{.}}</th>{{end}}{{if .Drilldowns}}{{if .Drilldowns.HasRows}}<th>{{.Drilldowns.RowTitle}}</th>{{end}}{{end}}</tr></thead>
@@ -4170,8 +4181,7 @@ const tplRegister = `
 {{template "reg-filter-form" (dict "Fields" .FilterFields "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" .ShowPeriodFilter "ShowToOnly" false "HasFilters" .HasFilters "ResetURL" (printf "/ui/register/%s" (lower .Register.Name)) "Lang" $.Lang)}}
 <div class="card">
 {{if .Rows}}
-<div style="overflow-x:auto">
-{{if .StreamDir}}<div {{template "list-stream-attrs" .}}>{{end}}
+<div style="overflow-x:auto"{{if .StreamDir}} {{template "list-stream-attrs" .}}{{end}}>
 <table><thead><tr>
   {{if .ShowMovementKind}}<th>{{t $.Lang "Вид движения"}}</th>{{end}}
   {{if .ShowRecorder}}<th>{{t $.Lang "Регистратор"}}</th>{{end}}
@@ -4187,7 +4197,6 @@ const tplRegister = `
   {{range $.VisibleAttributes}}<td>{{index $row .Name}}</td>{{end}}
 </tr>{{end}}
 </tbody></table>
-{{if .StreamDir}}</div>{{end}}
 </div>
 {{else}}<p class="empty">{{t $.Lang "Движений нет"}}</p>{{end}}
 </div></main></div></body></html>
@@ -4203,8 +4212,7 @@ const tplRegister = `
 {{template "reg-filter-form" (dict "Fields" .FilterFields "Filter" .Filter "RefOpts" .RefOpts "ShowFromTo" false "ShowToOnly" .ShowPeriodFilter "HasFilters" .HasFilters "ResetURL" (printf "/ui/register/%s/balances" (lower .Register.Name)) "Lang" $.Lang)}}
 <div class="card">
 {{if .Rows}}
-<div style="overflow-x:auto">
-{{if .StreamDir}}<div {{template "list-stream-attrs" .}}>{{end}}
+<div style="overflow-x:auto"{{if .StreamDir}} {{template "list-stream-attrs" .}}{{end}}>
 <table><thead><tr>
   {{range .VisibleDimensions}}<th>{{.DisplayName $.Lang}}</th>{{end}}
   {{range .VisibleResources}}<th>{{.DisplayName $.Lang}}</th>{{end}}
@@ -4214,7 +4222,6 @@ const tplRegister = `
   {{range $.VisibleResources}}<td style="font-weight:600">{{index $row .Name}}</td>{{end}}
 </tr>{{end}}
 </tbody></table>
-{{if .StreamDir}}</div>{{end}}
 </div>
 {{else}}<p class="empty">{{t $.Lang "Остатков нет"}}</p>{{end}}
 </div></main></div></body></html>

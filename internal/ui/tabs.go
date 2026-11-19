@@ -188,8 +188,8 @@ body.ob-side-dragging iframe{pointer-events:none}
     // До появления стабильных id ключ содержал голый URL.
     return {id:'',url:raw};
   }
-  function persist(){ if(!storageOwned())return; try{ sessionStorage.setItem(STORE, JSON.stringify(tabs.map(function(t){return {id:t.id,url:t.url,title:t.title};}))); }catch(e){} }
-  function persistActive(t){ if(!storageOwned())return; try{ sessionStorage.setItem(STORE_ACTIVE, JSON.stringify({id:t.id,url:t.url})); }catch(e){} }
+  function persist(){ if(!storageOwned())return; try{ sessionStorage.setItem(STORE, JSON.stringify(tabs.filter(function(t){return !t.reportOwner;}).map(function(t){return {id:t.id,url:t.url,title:t.title};}))); }catch(e){} }
+  function persistActive(t){ if(!storageOwned())return; if(t.reportOwner)t=t.reportOwner; try{ sessionStorage.setItem(STORE_ACTIVE, JSON.stringify({id:t.id,url:t.url})); }catch(e){} }
   function clearPersistedActive(){ if(!storageOwned())return; try{ sessionStorage.removeItem(STORE_ACTIVE); }catch(e){} }
   function syncEmpty(){ if(empty) empty.style.display = (!home && !tabs.length) ? '' : 'none'; }
   function setActive(t){
@@ -307,10 +307,10 @@ body.ob-side-dragging iframe{pointer-events:none}
       /^\/ui\/(constants|delete-marked|export-jobs|messages|pos)\/?$/.test(path);
   }
   function duplicateTab(t){
-    if(canDuplicateTab(t.url))openTab(t.url,t.title,{allowDup:true});
+    if(!t.reportOwner&&canDuplicateTab(t.url))openTab(t.url,t.title,{allowDup:true});
   }
   function syncDuplicateControl(t){
-    if(canDuplicateTab(t.url)){
+    if(!t.reportOwner&&canDuplicateTab(t.url)){
       if(!t.duplicate.parentNode)t.btn.insertBefore(t.duplicate,t.close);
     }else{
       t.duplicate.remove();
@@ -323,7 +323,7 @@ body.ob-side-dragging iframe{pointer-events:none}
     var m=document.createElement('div'); m.id='ob-tabmenu'; m.className='ob-tabmenu'; m.style.left=x+'px'; m.style.top=y+'px';
     m.setAttribute('data-tab-id',t.id);
     var actions=[['Закрыть',function(){closeTab(t,'close');}],['Закрыть другие',function(){closeOthers(t);}],['Закрыть все',function(){closeSequence(tabs.slice(),'close');}]];
-    if(canDuplicateTab(t.url))actions.unshift([duplicateLabel,function(){duplicateTab(t);}]);
+    if(!t.reportOwner&&canDuplicateTab(t.url))actions.unshift([duplicateLabel,function(){duplicateTab(t);}]);
     actions.forEach(function(it){
       var b=document.createElement('div'); b.className='ob-tabmenu-item'; b.textContent=it[0];
       b.addEventListener('click',function(){ m.remove(); it[1](); });
@@ -357,7 +357,7 @@ body.ob-side-dragging iframe{pointer-events:none}
     var dup=document.createElement('span'); dup.className='ob-tab-dup'; dup.textContent='⧉'; dup.title=duplicateLabel;
     var cl=document.createElement('span'); cl.className='ob-tab-close'; cl.textContent='✕'; cl.title='Закрыть'; btn.appendChild(cl);
     var frame=document.createElement('iframe'); frame.src=url;
-    var t={id:uniqueTabID(opts.id),url:url,title:title,btn:btn,frame:frame,label:lab,duplicate:dup,close:cl};
+    var t={id:uniqueTabID(opts.id),url:url,title:title,btn:btn,frame:frame,label:lab,duplicate:dup,close:cl,reportOwner:opts.reportOwner,reportField:opts.reportField};
     syncDuplicateControl(t);
     // Стабильное имя фрейма «ob-tab-<id>»: страница внутри iframe читает его
     // через window.frameElement.name и различает себя от других вкладок
@@ -368,7 +368,7 @@ body.ob-side-dragging iframe{pointer-events:none}
       syncFrameURL(t);
       try {
         var child=t.frame.contentWindow;
-        if(child.location.origin!==location.origin || !/^\/ui\/tabular\/[0-9a-f-]+$/.test(child.location.pathname))return;
+        if(child.location.origin!==location.origin || (!t.reportOwner && !/^\/ui\/tabular\/[0-9a-f-]+$/.test(child.location.pathname)))return;
         var meta=child.document.querySelector('meta[name="ob-tab-title"]');
         var resultTitle=meta&&meta.getAttribute('content');
         if(resultTitle){t.title=resultTitle;t.label.textContent=resultTitle;t.btn.title=resultTitle;persist();}
@@ -384,6 +384,23 @@ body.ob-side-dragging iframe{pointer-events:none}
     return t;
   }
   window.obOpenTab=openTab;
+  window.obOpenReportResult=function(source,key,url,title){
+    var owner=tabByWindow(source);
+    if(!owner||owner.reportOwner||typeof key!=='string'||!key||key.length>256)return '';
+    if(url){
+      var target;
+      try { target=new URL(url,location.origin); } catch(_) { return ''; }
+      if(target.origin!==location.origin||!/^\/ui\/tabular\/[0-9a-f-]{36}$/.test(target.pathname)||target.hash)return '';
+    }
+    var result=tabs.find(function(t){return t.reportOwner===owner&&t.reportField===key;});
+    if(result){
+      if(url){result.frame.src=url;result.url=url;}
+      setActive(result);
+    } else {
+      result=openTab(url||'about:blank',title,{allowDup:true,reportOwner:owner,reportField:key});
+    }
+    return result.frame.name;
+  };
   // The widget, saved form and notification may spell the same record path
   // differently (entity case, raw Unicode, percent-escape case). Reuse its
   // existing iframe so its edit buffer and optimistic version stay together.
@@ -629,6 +646,16 @@ body.ob-side-dragging iframe{pointer-events:none}
     if(ev.origin!==location.origin)return;
     var d=ev.data; if(!d||typeof d!=='object')return;
     if(resultMessage(ev,d))return;
+    if(d.type==='ob-tabular-cell'&&typeof d.url==='string'){
+      var rt=tabByWindow(ev.source);
+      if(rt&&rt.reportOwner&&tabs.indexOf(rt.reportOwner)>=0){
+        try{
+          var originForm=rt.reportOwner.frame.contentWindow;
+          if(typeof originForm.obDrilldownReportResult==='function'){setActive(rt.reportOwner);originForm.obDrilldownReportResult(rt.reportField,d.url);}
+        }catch(_){}
+      }
+      return;
+    }
     if(d.source==='obOpenTab' && d.url){ var ou=String(d.url); if(!openable(ou))return; openTab(ou, d.title?String(d.title):'Форма', {allowDup:!!d.allowDup}); }
     else if(d.source==='obCloseTab'){ if(d.url){ closeTabByURL(String(d.url),d.reason||'programmatic',d.closeSource); } else { var ct=tabByWindow(ev.source); if(ct)closeTab(ct,d.reason||'cross',d.mode||''); } }
     else if(d.source==='obFrameURLChanged' && d.url){ var ut=tabByWindow(ev.source); if(ut && frameShows(ut,String(d.url),d.documentToken)){ syncFrameURL(ut,String(d.url)); var pc=takePendingClose(ut); if(pc)closeCommandTab(ut,pc.reason,pc.source); } }

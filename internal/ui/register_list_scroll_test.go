@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ import (
 // должна прокручиваться внутри белой карточки, а не вылезать за её край.
 // У справочников и документов таблица давно обёрнута в overflow-x:auto;
 // у регистров и журнала обёртки не было, и строки уходили за рамку формы.
-const scrollTableOpen = "<div style=\"overflow-x:auto\">\n<table><thead><tr>"
+var scrollTableOpen = regexp.MustCompile(`<div style="overflow-x:auto"[^>]*>\s*<table><thead><tr>`)
 
 func requireScrollableListTable(t *testing.T, router http.Handler, target string) {
 	t.Helper()
@@ -38,7 +39,7 @@ func requireScrollableListTable(t *testing.T, router http.Handler, target string
 	if !strings.Contains(body, "<table><thead><tr>") {
 		t.Fatalf("GET %s: в ответе нет таблицы списка: %s", target, body)
 	}
-	if !strings.Contains(body, scrollTableOpen) {
+	if !scrollTableOpen.MatchString(body) {
 		t.Fatalf("GET %s: таблица списка не обёрнута в прокручиваемый блок overflow-x:auto", target)
 	}
 }
@@ -192,7 +193,7 @@ func TestListTablesScrollHTTPMatrix(t *testing.T) {
 				for _, target := range []string{page.path, page.path + "?" + url.Values{page.filter: {longValue}}.Encode()} {
 					w := request(target, nil)
 					body := w.Body.String()
-					if w.Code != http.StatusOK || !strings.Contains(body, longValue) || !strings.Contains(body, scrollTableOpen) {
+					if w.Code != http.StatusOK || !strings.Contains(body, longValue) || !scrollTableOpen.MatchString(body) {
 						t.Fatalf("populated/filtered GET %s: %d; row or scroll wrapper missing", page.path, w.Code)
 					}
 					if page.details {
@@ -207,12 +208,12 @@ func TestListTablesScrollHTTPMatrix(t *testing.T) {
 					}
 				}
 				empty := request(page.path+"?"+url.Values{page.filter: {"no-match-1922"}}.Encode(), nil)
-				if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), page.empty) || strings.Contains(empty.Body.String(), scrollTableOpen) {
+				if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), page.empty) || scrollTableOpen.MatchString(empty.Body.String()) {
 					t.Fatalf("empty filter %s: %d; empty state missing or populated table remains", page.path, empty.Code)
 				}
 				w := request(page.path, masked)
 				body := w.Body.String()
-				if w.Code != http.StatusOK || !strings.Contains(body, "••••••") || strings.Contains(body, page.secret) || !strings.Contains(body, scrollTableOpen) {
+				if w.Code != http.StatusOK || !strings.Contains(body, "••••••") || strings.Contains(body, page.secret) || !scrollTableOpen.MatchString(body) {
 					t.Fatalf("masked GET %s: %d; field mask or wrapper not preserved", page.path, w.Code)
 				}
 				w = request(page.path, denied)

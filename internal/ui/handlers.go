@@ -16,6 +16,7 @@ import (
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/i18n/i18nerr"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/richtext"
 	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/storage"
@@ -952,6 +953,17 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	}
 	legacyEntityUI := s.legacyEntityUI(r)
 	data["LegacyEntityUI"] = legacyEntityUI
+	if name == "page-report" && !legacyEntityUI && r.URL.Query().Get("__result") == "1" {
+		data["ReportResultOnly"] = true
+		if rep, ok := data["Report"].(*report.Report); ok {
+			title := rep.DisplayName(s.resolveLang(r))
+			params, _ := data["ParamValues"].(map[string]any)
+			if period := reportPeriodCaption(rep, params); period != "" {
+				title += " — " + period
+			}
+			data["ReportResultTitle"] = title
+		}
+	}
 	s.addHelpContext(r, data)
 	if name == "page-report" {
 		s.addReportResultFilterData(r, data)

@@ -69,9 +69,12 @@ type IRElement struct {
 	Height     int
 	Enhanced   *metadata.FormPresentation
 
-	TabularProgress  string
-	TabularPlainRows bool
-	TabularCompact   bool
+	TabularProgress   string
+	TabularPlainRows  bool
+	TabularCompact    bool
+	TabularResultTab  bool
+	TabularPeriodFrom string
+	TabularPeriodTo   string
 
 	HAlign     string
 	VAlign     string

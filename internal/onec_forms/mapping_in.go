@@ -300,9 +300,12 @@ func irElementToMeta(el *IRElement) *metadata.FormElement {
 		Height:        el.Height,
 		Enhanced:      el.Enhanced,
 
-		TabularProgress:  el.TabularProgress,
-		TabularPlainRows: el.TabularPlainRows,
-		TabularCompact:   el.TabularCompact,
+		TabularProgress:   el.TabularProgress,
+		TabularPlainRows:  el.TabularPlainRows,
+		TabularCompact:    el.TabularCompact,
+		TabularResultTab:  el.TabularResultTab,
+		TabularPeriodFrom: el.TabularPeriodFrom,
+		TabularPeriodTo:   el.TabularPeriodTo,
 
 		HorizontalAlign: el.HAlign,
 		VerticalAlign:   el.VAlign,
