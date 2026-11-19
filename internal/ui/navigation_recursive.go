@@ -11,9 +11,7 @@ import (
 
 type navTreeNode struct {
 	ID, DOMID, Icon, Label, URL, CollapseKey string
-	CreateDenied                             bool
 	TargetKind, TargetAction                 string
-	CreateURL, CreateTitle                   string
 	Nodes                                    []navTreeNode
 }
 
@@ -100,7 +98,6 @@ func (s *Server) recursiveNavigationGroups(r *http.Request, tree navigation.Tree
 				resolved := navigation.ResolveItem(n.Item, lang, sub, func(key string) string { return s.tr(lang, key) }, false)
 				next.Label, next.URL = resolved.Label, resolved.URL
 				next.TargetKind, next.TargetAction = resolved.Kind, resolved.Action
-				next.CreateURL, next.CreateTitle, next.CreateDenied = s.navigationCreateAction(r, resolved, sub, lang)
 			} else {
 				next.Nodes = nodes(n.Nodes)
 			}

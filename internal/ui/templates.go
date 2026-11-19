@@ -2117,14 +2117,7 @@ aside details.navsec>summary:hover{color:#cbd5e1}
 aside details.navfolder{margin-left:12px}
 aside details.navfolder>summary{text-transform:none;font-size:12px;margin-top:8px}
 aside .navfolder-title{margin-left:12px;text-transform:none}
-aside .navfolder-items>a,aside .navfolder-items>.nav-list-row>a:first-child{padding-left:26px}
-#ob-nav .nav-list-row{display:flex;align-items:center;gap:3px;padding-right:8px}
-#ob-nav .nav-list-row>a:first-child{flex:1;min-width:0;margin-right:0}
-#ob-nav .nav-list-row>a.nav-list-create{display:grid;place-items:center;flex:none;width:18px;height:18px;padding:0;margin:0;border-radius:50%;background:#15803d;color:#fff;font-size:14px;font-weight:700;line-height:1}
-#ob-nav .nav-list-row>a.nav-list-create:hover{background:#166534}
-#ob-nav .nav-list-row .nav-list-create-disabled{display:grid;place-items:center;flex:none;width:18px;height:18px}
-#ob-nav .nav-list-row .nav-list-create-disabled button{border:0;border-radius:50%;width:18px;height:18px;padding:0;background:#475569;color:#e2e8f0;pointer-events:none;font-weight:700}
-#ob-nav .nav-list-row>a.nav-list-create:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
+aside .navfolder-items>a{padding-left:26px}
 main{flex:1;padding:28px;overflow-y:auto;min-height:0;min-width:0}
 h2{font-size:22px;font-weight:600;margin-bottom:20px;color:#1e293b}
 h3{font-size:16px;font-weight:600;margin:24px 0 10px;color:#1e293b}
@@ -2145,6 +2138,25 @@ h3{font-size:16px;font-weight:600;margin:24px 0 10px;color:#1e293b}
 .ob-list-scroll thead th{position:sticky;top:0;z-index:2;background:#eef2f7}
 .ob-list-pages{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .ob-list-pages .btn[aria-disabled="true"]{opacity:.5;cursor:default}
+
+/* Compact toolbar, with the actual disclosure panels still in the document flow. */
+.ob-compact-list-header>h2{margin:0 0 6px}
+.ob-compact-list-header>.ob-list-header{justify-content:flex-start;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+.ob-list-header>[data-ob-compact-search]{display:flex;gap:4px;align-items:center;flex:1 1 180px;max-width:330px;margin:0!important}
+.ob-list-header>[data-ob-compact-search] input{min-width:0;height:26px;box-sizing:border-box;padding:2px 8px!important;font-size:12px!important}
+.ob-list-header>.ob-list-header-view{margin-inline-start:auto;gap:4px!important}
+.ob-list-header-disclosures{display:none;align-items:center;gap:4px;flex:none}
+.ob-list-disclosures-ready .ob-list-header-disclosures{display:flex}
+.ob-list-header-disclosures .btn{white-space:nowrap}
+.ob-list-header-disclosures button::before{content:"▸";margin-inline-end:4px}
+.ob-list-header-disclosures button[aria-expanded="true"]::before{content:"▾"}
+.ob-list-settings-active{margin-inline-start:3px;font-weight:600}
+.ob-list-disclosures-ready>details:is(#ob-list-filter-panel,#ob-list-settings-panel){margin-bottom:4px!important}
+.ob-list-disclosures-ready>details:is(#ob-list-filter-panel,#ob-list-settings-panel):not([open]){display:none}
+.ob-list-disclosures-ready>details:is(#ob-list-filter-panel,#ob-list-settings-panel)>summary{display:none}
+.ob-list-header .btn.btn-command{width:26px;height:26px;padding:0}
+.ob-compact-list-header .ob-list-pages{gap:4px;margin-bottom:4px;font-size:12px}
+.ob-compact-list-header .ob-list-pages .btn{height:22px;box-sizing:border-box;padding:2px 8px;line-height:18px;font-size:12px}
 
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{text-align:left;padding:10px 12px;border-bottom:2px solid #cbd5e1;color:#334155;font-weight:600;background:#eef2f7}
@@ -2172,10 +2184,10 @@ td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .btn-primary{background:#3b82f6;color:#fff}.btn-primary:hover{background:#2563eb}
 .btn-post{background:#e8b400;color:#1a1a1a;font-weight:700}.btn-post:hover{background:#d4a200}
 .btn-secondary{background:#e2e8f0;color:#374151}.btn-secondary:hover{background:#cbd5e1}
-.entity-command-group{display:inline-flex;align-items:center;gap:5px}
+.entity-command-group{display:inline-flex;align-items:center;gap:3px}
 .entity-command{display:inline-flex;align-items:center}
-.btn.btn-command{display:inline-flex;align-items:center;justify-content:center;width:34px;height:33px;padding:0;font-size:18px}
-.btn-command.btn-command-create{border-radius:50%;width:33px;background:#15803d;color:#fff}
+.btn.btn-command{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border-radius:5px;font-size:18px}
+.btn-command.btn-command-create{border-radius:50%;background:#15803d;color:#fff}
 .btn-command.btn-command-create:hover{background:#166534}
 .btn-document-post{background:#dcfce7;color:#166534}.btn-document-post:hover{background:#bbf7d0}
 .btn-document-unpost{background:#ffedd5;color:#9a3412}.btn-document-unpost:hover{background:#fed7aa}
@@ -2584,7 +2596,7 @@ const tplNav = `
 {{define "nav-items"}}{{range .}}{{template "nav-item-link" .}}
 {{end}}{{end}}
 {{define "nav-item-link"}}
-{{if .CreateURL}}<div class="nav-list-row">{{end}}<a href="{{.URL}}" title="{{.Label}}" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{navLabel .Label}}</a>{{if .CreateURL}}{{if .CreateDenied}}<span class="nav-list-create-disabled" title="{{.CreateTitle}}"><button type="button" data-nav-list-create="1" aria-label="{{.CreateTitle}}" disabled>+</button></span>{{else}}<a class="nav-list-create" data-nav-list-create="1" href="{{.CreateURL}}" title="{{.CreateTitle}}" aria-label="{{.CreateTitle}}">+</a>{{end}}</div>{{end}}
+<a href="{{.URL}}" title="{{.Label}}" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{navLabel .Label}}</a>
 {{end}}
 `
 
@@ -2833,6 +2845,17 @@ const tplList = `
 {{end}}
 
 
+{{define "entity-list-search"}}
+<form{{if .Cfg.UIEnhancements}} class="ob-list-search"{{end}} method="GET" {{if .LegacyEntityUI}}style="display:flex;gap:8px;margin-bottom:12px;max-width:460px"{{else}}data-ob-compact-search{{end}}>
+  <input type="text" id="ob-list-search" name="q" value="{{.Params.Search}}" placeholder="{{t $.Lang "Поиск..."}}" style="flex:1;padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px" data-ob-list-search data-ob-auto-submit="320" title="Ctrl+F" aria-keyshortcuts="Control+F">
+  {{if .Params.Search}}<a class="btn btn-sm" href="{{listURL $.Query "q" ""}}" style="background:#e2e8f0;color:#475569;align-self:center">✕</a>{{end}}
+  {{/* Форма владеет только q — остальное состояние списка (вид, папка,
+       отбор, сортировка, раздел) уезжает скрытыми полями, иначе поиск
+       выкидывал бы из плитки и из папки. */}}
+  {{if .TreeView}}{{listHidden $.Query "q" "view"}}{{else}}{{listHidden $.Query "q"}}{{end}}
+</form>
+{{end}}
+
 {{define "entity-command"}}
 <span class="entity-command" title="{{.Title}}"{{if .ListCommand}} data-ob-list-command="{{.ListCommand}}" data-ob-command-denied="{{if not .Allowed}}1{{end}}" data-ob-command-label="{{.Label}}"{{end}}>
   {{if and .Href .Allowed}}<a class="btn btn-command {{.Class}}" href="{{.Href}}" aria-label="{{.Label}}"{{if .Create}} data-ob-list-create aria-keyshortcuts="Insert"{{end}}>{{lucideIcon .Icon}}</a>
@@ -2849,8 +2872,8 @@ const tplList = `
   {{$postTitle := $post}}{{$unpostTitle := $unpost}}
   {{if not .CanPost}}{{$postTitle = t .Lang "Недостаточно прав"}}{{else if $marked}}{{$postTitle = t .Lang "Документ помечен на удаление"}}{{end}}
   {{if not .CanUnpost}}{{$unpostTitle = t .Lang "Недостаточно прав"}}{{else if not $posted}}{{$unpostTitle = t .Lang "Не проведён"}}{{end}}
-  {{template "entity-command" (dict "Icon" "circle-check" "Class" "btn-document-post" "Form" "main-form" "Name" "_action" "Value" "post" "Allowed" (and .CanPost (not $marked)) "Label" $post "Title" $postTitle)}}
-  {{template "entity-command" (dict "Icon" "undo-2" "Class" "btn-document-unpost" "Form" "form-unpost" "Allowed" (and .CanUnpost $posted) "Label" $unpost "Title" $unpostTitle)}}
+  {{template "entity-command" (dict "Icon" "file-input" "Class" "btn-document-post" "Form" "main-form" "Name" "_action" "Value" "post" "Allowed" (and .CanPost (not $marked)) "Label" $post "Title" $postTitle)}}
+  {{template "entity-command" (dict "Icon" "file-output" "Class" "btn-document-unpost" "Form" "form-unpost" "Allowed" (and .CanUnpost $posted) "Label" $unpost "Title" $unpostTitle)}}
 {{end}}
 {{end}}
 
@@ -2866,7 +2889,7 @@ const tplList = `
 {{if not .IsNew}}
   {{$marked := eq (index .Values "deletion_mark") "true"}}
   {{$label := t .Lang "Пометить на удаление"}}
-  {{$param := "1"}}{{$icon := "trash-2"}}
+  {{$param := "1"}}{{$icon := "x"}}
   {{if $marked}}{{$label = t .Lang "Снять пометку на удаление"}}{{$param = "0"}}{{$icon = "rotate-ccw"}}{{end}}
   <form id="form-mark-command" action="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/{{.ID}}/delete?mark={{$param}}" method="POST"></form>
   {{template "entity-command" (dict "Icon" $icon "Class" "btn-command-mark" "Form" "form-mark-command" "Allowed" .CanMark "Label" $label "Title" (or (and .CanMark $label) (t .Lang "Недостаточно прав")))}}
@@ -2897,24 +2920,29 @@ const tplList = `
 {{template "head" .}}{{template "nav" .}}
 {{/* Колонки списка с «Настройкой списка» пользователя; без неё — как в конфигурации. */}}
 {{$listCols := .ListColumns}}{{if not $listCols}}{{$listCols = defaultListColumns .Entity}}{{end}}
-<main class="main-list ob-entity-list{{if .Cfg.UIEnhancements}} ob-list-panels{{end}}"{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
+<main class="main-list ob-entity-list{{if not .LegacyEntityUI}} ob-compact-list-header{{end}}{{if .Cfg.UIEnhancements}} ob-list-panels{{end}}"{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 {{if not .LegacyEntityUI}}<h2>{{.Entity.DisplayName $.Lang}}</h2>{{end}}
-<div class="row-top">
+<div class="row-top{{if not .LegacyEntityUI}} ob-list-header{{end}}">
   {{if .LegacyEntityUI}}<h2>{{.Entity.DisplayName $.Lang}}</h2>{{else}}
   <div class="entity-command-group" role="group" aria-label="{{t .Lang "Действия"}}">
-    {{$newURL := printf "/ui/%s/%s/new%s" (lower (str .Entity.Kind)) (lower .Entity.Name) (listURL nil "parent" (str .ParentStr) "subsystem" (str .CurrentSubsystem))}}
+    {{$newURL := printf "/ui/%s/%s/new%s" (lower (str .Entity.Kind)) (lower .Entity.Name) (listURL nil "parent" (str .ParentStr) "subsystem" (str .CurrentSubsystem) "_list_create" "1")}}
     {{$create := t .Lang "Создать"}}
     {{template "entity-command" (dict "Icon" "plus" "Class" "btn-command-create" "Create" true "Href" $newURL "Allowed" .CanCreate "Label" $create "Title" (or (and .CanCreate $create) (t .Lang "Недостаточно прав")))}}
     {{if .Entity.Posting}}
       {{$post := or .Entity.PostCaption (t .Lang "Провести")}}
-      {{template "entity-command" (dict "Icon" "circle-check" "Class" "btn-document-post" "ListCommand" "post" "Allowed" .CanPost "Label" $post "Title" (or (and .CanPost (t .Lang "Сначала выберите строку списка")) (t .Lang "Недостаточно прав")))}}
-      {{template "entity-command" (dict "Icon" "undo-2" "Class" "btn-document-unpost" "ListCommand" "unpost" "Allowed" .CanUnpost "Label" (t .Lang "Отменить проведение") "Title" (or (and .CanUnpost (t .Lang "Сначала выберите строку списка")) (t .Lang "Недостаточно прав")))}}
+      {{template "entity-command" (dict "Icon" "file-input" "Class" "btn-document-post" "ListCommand" "post" "Allowed" .CanPost "Label" $post "Title" (or (and .CanPost (t .Lang "Сначала выберите строку списка")) (t .Lang "Недостаточно прав")))}}
+      {{template "entity-command" (dict "Icon" "file-output" "Class" "btn-document-unpost" "ListCommand" "unpost" "Allowed" .CanUnpost "Label" (t .Lang "Отменить проведение") "Title" (or (and .CanUnpost (t .Lang "Сначала выберите строку списка")) (t .Lang "Недостаточно прав")))}}
     {{end}}
     {{template "entity-command" (dict "Icon" "copy" "Class" "btn-command-copy" "ListCommand" "copy" "Allowed" .CanCopy "Label" (t .Lang "Скопировать") "Title" (or (and .CanCopy (t .Lang "Сначала выберите строку списка")) (t .Lang "Недостаточно прав")))}}
-    {{template "entity-command" (dict "Icon" "trash-2" "Class" "btn-command-mark" "ListCommand" "mark" "Allowed" .CanMark "Label" (t .Lang "Пометить на удаление") "Title" (or (and .CanMark (t .Lang "Сначала выберите строку списка")) (t .Lang "Недостаточно прав")))}}
+    {{template "entity-command" (dict "Icon" "x" "Class" "btn-command-mark" "ListCommand" "mark" "Allowed" .CanMark "Label" (t .Lang "Пометить на удаление") "Title" (or (and .CanMark (t .Lang "Сначала выберите строку списка")) (t .Lang "Недостаточно прав")))}}
+  </div>
+  {{template "entity-list-search" .}}
+  <div class="ob-list-header-disclosures">
+    <button type="button" class="btn btn-sm btn-secondary" data-ob-list-disclosure aria-controls="ob-list-filter-panel" aria-expanded="false">{{t $.Lang "Отбор"}}</button>
+    {{if not .TilesView}}<button type="button" class="btn btn-sm btn-secondary" data-ob-list-disclosure aria-controls="ob-list-settings-panel" aria-expanded="false">{{t $.Lang "Настройка списка"}}{{if .ListSettingsActive}} <span class="ob-list-settings-active">{{t $.Lang "изменено"}}</span>{{end}}</button>{{end}}
   </div>
   {{end}}
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+  <div{{if not .LegacyEntityUI}} class="ob-list-header-view"{{end}} style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     {{template "list-refresh" (dict "URL" .RequestURI "Lang" $.Lang)}}
     <div class="view-switch">
       {{/* Переключение вида меняет только вид: поиск, отбор и сортировка
@@ -2961,14 +2989,7 @@ const tplList = `
     <a class="btn btn-sm" href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/excel{{listExcelSuffix .Params .ListFormOff}}" style="background:#16a34a;color:#fff" title="{{t $.Lang "Скачать Excel"}}">{{t $.Lang "Excel ↓"}}</a>
   </div>
 </div>
-<form{{if .Cfg.UIEnhancements}} class="ob-list-search"{{end}} method="GET" style="display:flex;gap:8px;margin-bottom:12px;max-width:460px">
-  <input type="text" id="ob-list-search" name="q" value="{{.Params.Search}}" placeholder="{{t $.Lang "Поиск..."}}" style="flex:1;padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px" data-ob-list-search data-ob-auto-submit="320" title="Ctrl+F" aria-keyshortcuts="Control+F">
-  {{if .Params.Search}}<a class="btn btn-sm" href="{{listURL $.Query "q" ""}}" style="background:#e2e8f0;color:#475569;align-self:center">✕</a>{{end}}
-  {{/* Форма владеет только q — остальное состояние списка (вид, папка,
-       отбор, сортировка, раздел) уезжает скрытыми полями, иначе поиск
-       выкидывал бы из плитки и из папки. */}}
-  {{if .TreeView}}{{listHidden $.Query "q" "view"}}{{else}}{{listHidden $.Query "q"}}{{end}}
-</form>
+{{if .LegacyEntityUI}}{{template "entity-list-search" .}}{{end}}
 {{if .Breadcrumbs}}
 <nav class="breadcrumb">
   <a href="{{listURL $.Query "parent" ""}}">{{t $.Lang "Корень"}}</a>
@@ -2978,7 +2999,7 @@ const tplList = `
 {{if .SearchAll}}<p class="list-search-scope" style="margin:6px 0 10px;color:#64748b;font-size:13px">{{t $.Lang "Результаты поиска по всему справочнику"}}</p>{{end}}
 
 {{$entity := .Entity}}{{$params := .Params}}{{$refOpts := .RefFilterOptions}}
-{{if .Cfg.UIEnhancements}}<details class="ob-list-filters" data-ob-list-panel="filters">{{else}}<details{{if hasFilter $params}} open{{end}}>{{end}}
+{{if .Cfg.UIEnhancements}}<details class="ob-list-filters" data-ob-list-panel="filters"{{if not .LegacyEntityUI}} id="ob-list-filter-panel"{{end}}>{{else}}<details{{if hasFilter $params}} open{{end}}{{if not .LegacyEntityUI}} id="ob-list-filter-panel"{{end}}>{{end}}
   <summary>{{t $.Lang "Отбор"}}</summary>
   <form method="GET" action="">
   <div class="filter-body">
@@ -3055,7 +3076,7 @@ const tplList = `
 </details>
 
 {{if not .TilesView}}
-<details class="card report-block ob-list-settings" data-block="list-settings" style="margin-bottom:12px">
+<details class="card report-block ob-list-settings" data-block="list-settings"{{if not .LegacyEntityUI}} id="ob-list-settings-panel"{{end}} style="margin-bottom:12px">
   <summary>{{t $.Lang "Настройка списка"}}{{if .ListSettingsActive}} <span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:600">{{t $.Lang "изменено"}}</span>{{end}}</summary>
   <form method="POST" action="{{.ListSettingsURL}}/save" data-ob-ls-before-submit style="padding:0 16px 12px">
     <input type="hidden" name="__return" value="{{.RequestURI}}">
@@ -3156,7 +3177,7 @@ const tplList = `
 </tbody></table>
 </div>
 {{else}}
-<p class="empty">{{t $.Lang "Записей нет"}}{{if $.CanCreate}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}</p>
+<p class="empty">{{t $.Lang "Записей нет"}}{{if and $.LegacyEntityUI $.CanCreate}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}</p>
 {{end}}
 {{else if .TilesView}}
 {{/* ===== TILES VIEW (плитка) ===== */}}
@@ -3202,7 +3223,7 @@ const tplList = `
 </div>{{end}}
 </div>
 {{else}}
-<p class="empty">{{if .Params.Search}}{{t $.Lang "Ничего не найдено по запросу"}} «{{.Params.Search}}» — <a href="{{listURL $.Query "q" ""}}">{{t $.Lang "сбросить поиск"}}</a>{{else}}{{t $.Lang "Записей нет"}}{{if $.CanCreate}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}{{end}}</p>
+<p class="empty">{{if .Params.Search}}{{t $.Lang "Ничего не найдено по запросу"}} «{{.Params.Search}}» — <a href="{{listURL $.Query "q" ""}}">{{t $.Lang "сбросить поиск"}}</a>{{else}}{{t $.Lang "Записей нет"}}{{if and $.LegacyEntityUI $.CanCreate}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}{{end}}</p>
 {{end}}
 {{else}}
 {{/* ===== LIST VIEW (default) ===== */}}
@@ -3271,7 +3292,7 @@ const tplList = `
 </tbody></table>
 </div>
 {{else}}
-<p class="empty">{{if .Params.Search}}{{t $.Lang "Ничего не найдено по запросу"}} «{{.Params.Search}}» — <a href="{{listURL $.Query "q" ""}}">{{t $.Lang "сбросить поиск"}}</a>{{else}}{{t $.Lang "Записей нет"}}{{if $.CanCreate}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}{{end}}</p>
+<p class="empty">{{if .Params.Search}}{{t $.Lang "Ничего не найдено по запросу"}} «{{.Params.Search}}» — <a href="{{listURL $.Query "q" ""}}">{{t $.Lang "сбросить поиск"}}</a>{{else}}{{t $.Lang "Записей нет"}}{{if and $.LegacyEntityUI $.CanCreate}} — <a href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/new">{{t $.Lang "создать первую"}}</a>{{end}}{{end}}</p>
 {{end}}
 {{end}}
 </div>

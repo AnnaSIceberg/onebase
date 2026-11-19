@@ -11,7 +11,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-func TestNavigationListCreateFromSidebar(t *testing.T) {
+func TestCreateFromListToolbarOnly(t *testing.T) {
 	f := newNavigationHTTPFixture(t)
 	f.server.entitySvc = f.server.newEntityService(nil)
 	f.server.cfg.Lang = "ru"
@@ -67,26 +67,48 @@ func TestNavigationListCreateFromSidebar(t *testing.T) {
 				if list == nil || semanticAttr(list, "href") != menu.path+"?subsystem=School" {
 					t.Fatalf("%s list link missing or changed", menu.id)
 				}
-				plus := semanticFind(list.Parent, "data-nav-list-create", "1")
-				if plus == nil || !strings.HasPrefix(semanticAttr(plus, "aria-label"), "Создать: ") {
-					t.Fatalf("%s: missing accessible create action for %s", menu.id, tc.login)
+				page := f.request(t, "GET", menu.path+"?subsystem=School", tc.login, nil)
+				if page.Code != http.StatusOK {
+					t.Fatalf("%s list: HTTP %d", menu.id, page.Code)
 				}
-				link, err := url.Parse(semanticAttr(plus, "href"))
-				if err != nil || link.Path != menu.path+"/new" || link.Query().Get("subsystem") != "School" {
-					t.Fatalf("bad form URL %v: %v", link, err)
+				tree, err := html.Parse(strings.NewReader(page.Body.String()))
+				if err != nil {
+					t.Fatal(err)
 				}
-				form := f.request(t, "GET", link.String(), tc.login, nil)
-				if form.Code != tc.status || (tc.status == http.StatusForbidden && !strings.Contains(form.Body.String(), "Недостаточно прав")) {
-					t.Fatalf("%s via create action: HTTP %d, want %d", menu.id, form.Code, tc.status)
+				button := semanticFind(tree, "aria-label", "Создать")
+				if button == nil || !strings.Contains(semanticAttr(button, "class"), "btn-command-create") ||
+					semanticAttr(button.Parent.Parent, "class") != "entity-command-group" {
+					t.Fatalf("%s: create button must be first in list toolbar", menu.id)
 				}
-			}
-			if tc.login == "alice" {
-				for _, id := range []string{"class-journal", "bells", "movements", "balances"} {
-					link := semanticFind(doc, "data-nav-id", "cfg:"+id)
-					if link == nil || semanticAttr(link.Parent, "class") == "nav-list-row" {
-						t.Fatalf("%s: secondary create action on a non-object link", id)
+				for sibling := button.Parent.PrevSibling; sibling != nil; sibling = sibling.PrevSibling {
+					if sibling.Type == html.ElementNode {
+						t.Fatalf("%s: create action is not the first toolbar control", menu.id)
 					}
 				}
+				if tc.status == http.StatusOK {
+					link, err := url.Parse(semanticAttr(button, "href"))
+					if err != nil || !strings.EqualFold(link.Path, menu.path+"/new") ||
+						link.Query().Get("subsystem") != "School" || link.Query().Get("_list_create") != "1" {
+						t.Fatalf("bad form URL %v: %v", link, err)
+					}
+					if form := f.request(t, "GET", link.String(), tc.login, nil); form.Code != http.StatusOK {
+						t.Fatalf("create form: HTTP %d", form.Code)
+					}
+				} else {
+					if button.Data != "button" || !strings.Contains(semanticAttr(button.Parent, "title"), "Недостаточно прав") {
+						t.Fatalf("%s: unavailable create action has no explanation", menu.id)
+					}
+					if _, disabled := keyboardHTMLAttr(button, "disabled"); !disabled {
+						t.Fatalf("%s: create button is active without permission", menu.id)
+					}
+					form := f.request(t, "GET", menu.path+"/new?_list_create=1", tc.login, nil)
+					if form.Code != tc.status || !strings.Contains(form.Body.String(), "Недостаточно прав") {
+						t.Fatalf("unauthorized create form: HTTP %d", form.Code)
+					}
+				}
+			}
+			if strings.Contains(r.Body.String(), "data-nav-list-create") {
+				t.Fatal("sidebar still contains a create shortcut")
 			}
 		})
 	}

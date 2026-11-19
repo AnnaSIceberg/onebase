@@ -37,7 +37,6 @@ func menuObjectType(kind string) int {
 
 func menuNodeFromItem(item navItem) navTreeNode {
 	return navTreeNode{ID: item.ID, DOMID: item.DOMID, Icon: item.Icon, Label: item.Label, URL: item.URL,
-		CreateURL: item.CreateURL, CreateTitle: item.CreateTitle, CreateDenied: item.CreateDenied,
 		TargetKind: item.TargetKind, TargetAction: item.TargetAction}
 }
 

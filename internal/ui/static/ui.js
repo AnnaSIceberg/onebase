@@ -2237,8 +2237,8 @@ function listSyncActionsBtn() {
     if (command === 'mark' && row) {
       var marked = row.dataset.marked === '1';
       label = marked ? obListLabel('unmarkDelete', 'Снять пометку на удаление') : label;
-      var trash = button.querySelector('use');
-      if (trash) trash.setAttribute('href', trash.getAttribute('href').split('#')[0] + (marked ? '#rotate-ccw' : '#trash-2'));
+      var icon = button.querySelector('use');
+      if (icon) icon.setAttribute('href', icon.getAttribute('href').split('#')[0] + (marked ? '#rotate-ccw' : '#x'));
       if (!reason && !obListCanMarkDelete(row)) {
         reason = label;
         if (row.dataset.predefined === '1') reason = obListLabel('predefinedNoDelete', 'Предопределённый — нельзя удалить');
@@ -8051,3 +8051,17 @@ window.obApplyFormTitle = function(title) {
   },true);
 })();
 // END widget-column-widths
+
+obReady(function () {
+  var list = document.querySelector('main.ob-compact-list-header');
+  if (!list) return;
+  list.querySelectorAll('[data-ob-list-disclosure]').forEach(function (button) {
+    var panel = document.getElementById(button.getAttribute('aria-controls'));
+    if (!panel) return;
+    function sync() { button.setAttribute('aria-expanded', String(panel.open)); }
+    button.addEventListener('click', function () { panel.open = !panel.open; sync(); });
+    panel.addEventListener('toggle', sync);
+    sync();
+  });
+  list.classList.add('ob-list-disclosures-ready');
+});

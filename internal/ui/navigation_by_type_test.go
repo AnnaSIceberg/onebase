@@ -74,11 +74,6 @@ func TestTypedMenuOperatorKeepsExistingMenu(t *testing.T) {
 			if strings.HasPrefix(g.ID, "cfg:menu-type:") {
 				t.Fatalf("новая иерархия применена к %s", role)
 			}
-			for _, item := range g.Items {
-				if item.CreateURL != "" {
-					t.Fatalf("у %s появилась новая кнопка +", role)
-				}
-			}
 		}
 	}
 }

@@ -249,6 +249,9 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"ListFormOff":      r.URL.Query().Get(listFormFilterOffParam),
 		"ListFilterExtra":  listFilterExtra,
 	}
+	if !s.legacyEntityUI(r) {
+		data["CanCreate"] = s.canCreateFromList(r, entity)
+	}
 	s.listSettingsData(r, entity, data)
 	s.render(w, r, "page-list", data)
 }
@@ -405,8 +408,8 @@ func (s *Server) form(w http.ResponseWriter, r *http.Request) {
 	if entity == nil {
 		return
 	}
-	if r.URL.Query().Get(navListCreateParam) == "1" &&
-		(!s.can(r, string(entity.Kind), entity.Name, "create") || !s.canInteractiveCreate(r, entity)) {
+	query := r.URL.Query()
+	if (query.Get("_list_create") == "1" || query.Get("_menu_create") == "1") && !s.canCreateFromList(r, entity) {
 		w.WriteHeader(http.StatusForbidden)
 		s.render(w, r, "page-forbidden", map[string]any{
 			"Reason": s.tr(s.resolveLang(r), "Недостаточно прав"),
@@ -1271,6 +1274,10 @@ func (s *Server) refCreateRedirect(w http.ResponseWriter, r *http.Request) {
 	}
 	kind := strings.ToLower(string(ent.Kind))
 	http.Redirect(w, r, "/ui/"+kind+"/"+ent.Name+"/new?_popup=1", http.StatusFound)
+}
+
+func (s *Server) canCreateFromList(r *http.Request, entity *metadata.Entity) bool {
+	return s.can(r, string(entity.Kind), entity.Name, "create") && s.canInteractiveCreate(r, entity)
 }
 
 // canInteractiveCreate — можно ли создать объект из интерфейса: право записи,

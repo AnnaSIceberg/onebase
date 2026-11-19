@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 
@@ -20,8 +19,6 @@ import (
 
 type navItem struct {
 	ID, DOMID, Icon, Label, URL string
-	CreateURL, CreateTitle      string
-	CreateDenied                bool
 	TargetKind, TargetAction    string
 }
 
@@ -40,37 +37,6 @@ type navGroup struct {
 	Nodes                 []navTreeNode
 	Recursive             bool
 	CollapseKey           string
-}
-
-const navListCreateParam = "_menu_create"
-
-// The secondary action belongs to an object list. Its own form request
-// checks create permission, independently of visibility of the list.
-func navListCreate(item navigation.ResolvedItem, subsystem, createLabel string) (string, string) {
-	if item.Action != "read" || (item.Kind != "catalog" && item.Kind != "document") {
-		return "", ""
-	}
-	q := url.Values{navListCreateParam: {"1"}}
-	if subsystem != "" {
-		q.Set("subsystem", subsystem)
-	}
-	u := url.URL{Path: "/ui/" + item.Kind + "/" + item.Name + "/new", RawQuery: q.Encode()}
-	return u.String(), createLabel + ": " + item.Label
-}
-
-func (s *Server) navigationCreateAction(r *http.Request, item navigation.ResolvedItem, sub, lang string) (string, string, bool) {
-	if s.reg == nil || s.legacyEntityUI(r) {
-		return "", "", false
-	}
-	link, title := navListCreate(item, sub, s.tr(lang, "Создать"))
-	if link == "" || !s.cfg.NavigationByType {
-		return link, title, false
-	}
-	entity := s.reg.GetEntity(item.Name)
-	if !s.can(r, item.Kind, item.Name, "create") || !s.canInteractiveCreate(r, entity) {
-		return link, s.tr(lang, "Недостаточно прав"), true
-	}
-	return link, title, false
 }
 
 func sortNavItems(items []navItem) {
@@ -476,9 +442,8 @@ func (s *Server) navigationGroups(r *http.Request, tree, base navigation.Tree, c
 			if !s.navigationItemVisible(r, item.Object, resolved, semantic, flat) {
 				continue
 			}
-			createURL, createTitle, denied := s.navigationCreateAction(r, resolved, sub, lang)
 			output = append(output, navItem{ID: item.ID, DOMID: navDOMID(context, item.ID), Icon: item.Icon, Label: resolved.Label, URL: resolved.URL,
-				CreateURL: createURL, CreateTitle: createTitle, CreateDenied: denied, TargetKind: resolved.Kind, TargetAction: resolved.Action})
+				TargetKind: resolved.Kind, TargetAction: resolved.Action})
 		}
 		if !semantic && flat {
 			sortNavItems(output)
