@@ -410,7 +410,7 @@ func (h *handler) runReportV2() http.HandlerFunc {
 		}
 		params, err = reportpkg.ResolveContextParams(r.Context(), rep, params, h.reg, h.store)
 		if err != nil {
-			writeError(w, http.StatusForbidden, "report context unavailable", "", 0)
+			writeError(w, http.StatusForbidden, reportpkg.ContextErrorText(err), "", 0)
 			return
 		}
 		if err := reportpkg.ValidateEnumParams(rep.Params, params, h.reg); err != nil {
