@@ -587,7 +587,10 @@ window.obManagedApplyHints = obManagedApplyHints;
         // Для <input type="date"> это невалидное значение: браузер молча очищает
         // поле — дата на форме пропадала после первого же события, а следующая
         // запись затирала её в базе.
-        if (inp.type === 'date' && val.indexOf('T') > 0) val = val.slice(0, val.indexOf('T'));
+        if (inp.type === 'date' || inp.getAttribute('data-ob-editing-date') === 'date') {
+          var russianDate = /^(\d{2})\.(\d{2})\.(\d{4})(?:$| )/.exec(val);
+          val = russianDate ? russianDate[3] + '-' + russianDate[2] + '-' + russianDate[1] : val.split(/[T ]/)[0];
+        }
         if (newerInput && sent.has(k) && sent.get(k) === val) {
           val = newerInput.value;
           if (inp.value === val) return; // Keep the active editor/caret intact.

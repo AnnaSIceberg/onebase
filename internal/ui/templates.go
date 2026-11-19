@@ -872,8 +872,10 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"formDateOnly":         formDateOnly,
 		"dateOnlyValue": func(value string) string {
 			if len(value) >= len(time.DateOnly) {
-				if date, err := time.Parse(time.DateOnly, value[:len(time.DateOnly)]); err == nil {
-					return date.Format(time.DateOnly)
+				for _, layout := range []string{time.DateOnly, "02.01.2006"} {
+					if date, err := time.Parse(layout, value[:len(time.DateOnly)]); err == nil {
+						return date.Format(time.DateOnly)
+					}
 				}
 			}
 			return ""

@@ -272,7 +272,7 @@ const tplManagedForm = `
           {{end}}
         </select>
         {{if or $ro $el.ReadOnlyWhen}}<input type="hidden" name="{{$fn}}" value="{{index $ctx.Values $fn}}" id="ro-mirror-{{$fn}}" data-ob-ro-mirror="1"{{if not $ro}} disabled{{end}}>{{end}}
-      {{else if eq (str $f.Type) "date"}}
+      {{else if or (eq (str $f.Type) "date") (and (eq (str $f.Type) "string") (formDateOnly $el $ctx.LegacyEntityUI))}}
         {{$dateOnly := formDateOnly $el $ctx.LegacyEntityUI}}
         <input {{if $dateOnly}}type="date"{{else}}type="datetime-local" step="1"{{end}} name="{{$fn}}"{{elHintAttrs $ctx $el ""}} value="{{if $dateOnly}}{{dateOnlyValue (index $ctx.Values $fn)}}{{else}}{{index $ctx.Values $fn}}{{end}}"{{if gt $el.DeadlineWarn 0}} data-ob-deadline="{{$el.DeadlineWarn}}"{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{else if eq (str $f.Type) "bool"}}
