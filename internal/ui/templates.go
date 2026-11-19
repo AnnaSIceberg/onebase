@@ -3915,6 +3915,7 @@ const tplReport = `
   {{if or (not .CompactReport) .Report.FormActions}}{{if .Report.FormActions}}<div class="report-form-actions" style="display:flex;flex-basis:100%;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap">{{end}}
   <button class="btn btn-primary" type="submit"{{with reportPrimaryStyle .Report.FormActions}} style="{{.}}"{{end}}>{{t $.Lang "Сформировать"}}</button>
   {{with .Report.FormActions}}{{if or .Cancel (not $.LegacyEntityUI)}}<a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">{{if $.LegacyEntityUI}}{{t $.Lang "Отмена"}}{{else}}{{t $.Lang "Закрыть"}}{{end}}</a>{{end}}</div>{{end}}{{end}}
+  {{if and (not .Report.FormActions) (not .LegacyEntityUI)}}<div style="display:flex;justify-content:flex-end;flex-basis:100%;margin-top:4px"><a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel">{{t $.Lang "Закрыть"}}</a></div>{{end}}
 </form>
 {{if .ReportParams}}<script src="/static/report_params.js" defer></script>{{end}}
 </details>

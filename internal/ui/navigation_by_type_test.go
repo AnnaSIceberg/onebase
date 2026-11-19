@@ -21,6 +21,7 @@ func TestTypedMenuKeepsReportFoldersAndSortsEntries(t *testing.T) {
 		{TargetKind: "inforeg", Label: "Остатки", URL: "/inforeg/example"},
 		{Label: "KPI", Nodes: []navTreeNode{
 			{TargetKind: "report", Label: "KPI краткий", URL: "/report/kpi"},
+			{TargetKind: "processor", Label: "KPI сводный", URL: "/processor/kpi"},
 			{TargetKind: "document", Label: "Аптеки", URL: "/document/2"},
 		}},
 	}}}
@@ -44,7 +45,7 @@ func TestTypedMenuKeepsReportFoldersAndSortsEntries(t *testing.T) {
 		t.Fatalf("документы: %v", labels)
 	}
 	report := out[2].Nodes
-	if len(report) != 1 || report[0].Label != "KPI" || len(report[0].Nodes) != 1 || report[0].Nodes[0].URL != "/report/kpi" {
+	if len(report) != 1 || report[0].Label != "KPI" || len(report[0].Nodes) != 2 || report[0].Nodes[0].URL != "/report/kpi" || report[0].Nodes[1].URL != "/processor/kpi" {
 		t.Fatalf("исходная папка KPI: %#v", report)
 	}
 }
