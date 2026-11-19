@@ -2089,6 +2089,7 @@ td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 /* Оформление меню привязано к #ob-nav, а не к голому aside: детальная панель —
    тоже <aside> с белым фоном, и унаследованный color:#fff делал её значения
    белыми на белом (#1670). */
+#ob-nav[hidden],body:has(#ob-nav[hidden]) [data-ob-nav-toggle]{display:none!important}
 #ob-nav{width:210px;background:#1e293b;color:#fff;padding:16px 0;flex-shrink:0;overflow-y:auto;min-height:0}
 aside .sec{font-size:11px;text-transform:uppercase;color:#94a3b8;margin:14px 12px 4px;letter-spacing:.05em}
 aside a{display:block;padding:6px 14px;color:#cbd5e1;text-decoration:none;font-size:14px;margin:1px 6px;border-radius:5px;line-height:1.3;overflow-wrap:break-word}
@@ -2119,6 +2120,8 @@ aside .navfolder-items>a,aside .navfolder-items>.nav-list-row>a:first-child{padd
 #ob-nav .nav-list-row>a:first-child{flex:1;min-width:0;margin-right:0}
 #ob-nav .nav-list-row>a.nav-list-create{display:grid;place-items:center;flex:none;width:18px;height:18px;padding:0;margin:0;border-radius:50%;background:#15803d;color:#fff;font-size:14px;font-weight:700;line-height:1}
 #ob-nav .nav-list-row>a.nav-list-create:hover{background:#166534}
+#ob-nav .nav-list-row .nav-list-create-disabled{display:grid;place-items:center;flex:none;width:18px;height:18px}
+#ob-nav .nav-list-row .nav-list-create-disabled button{border:0;border-radius:50%;width:18px;height:18px;padding:0;background:#475569;color:#e2e8f0;pointer-events:none;font-weight:700}
 #ob-nav .nav-list-row>a.nav-list-create:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
 main{flex:1;padding:28px;overflow-y:auto;min-height:0;min-width:0}
 h2{font-size:22px;font-weight:600;margin-bottom:20px;color:#1e293b}
@@ -2522,8 +2525,8 @@ const tplNav = `
 {{end}}
 <div class="app-body">
 <script src="/static/navigation-tree.js" defer></script>
-<aside id="ob-nav"{{if .PlainMenuSections}} class="nav-plain"{{end}}>
-  {{if not .Subsystems}}<a href="/ui/" style="display:block;padding:12px 14px 8px;color:#7dd3fc;font-weight:700;font-size:15px;text-decoration:none">{{t $.Lang "Главная"}}</a>{{end}}
+<aside id="ob-nav"{{if .HideHomeObjectNavigation}} hidden{{end}}{{if .PlainMenuSections}} class="nav-plain"{{end}}>
+  {{if and (not .HideHomeObjectNavigation) (not .Subsystems)}}<a href="/ui/" style="display:block;padding:12px 14px 8px;color:#7dd3fc;font-weight:700;font-size:15px;text-decoration:none">{{t $.Lang "Главная"}}</a>{{end}}
   {{if .CollapsibleNav}}
   {{range .Nav}}
   {{if .Recursive}}{{template "nav-recursive-section" .}}{{else}}
@@ -2568,7 +2571,7 @@ const tplNav = `
 {{define "nav-items"}}{{range .}}{{template "nav-item-link" .}}
 {{end}}{{end}}
 {{define "nav-item-link"}}
-{{if .CreateURL}}<div class="nav-list-row">{{end}}<a href="{{.URL}}" title="{{.Label}}" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{navLabel .Label}}</a>{{if .CreateURL}}<a class="nav-list-create" data-nav-list-create="1" href="{{.CreateURL}}" title="{{.CreateTitle}}" aria-label="{{.CreateTitle}}">+</a></div>{{end}}
+{{if .CreateURL}}<div class="nav-list-row">{{end}}<a href="{{.URL}}" title="{{.Label}}" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{navLabel .Label}}</a>{{if .CreateURL}}{{if .CreateDenied}}<span class="nav-list-create-disabled" title="{{.CreateTitle}}"><button type="button" data-nav-list-create="1" aria-label="{{.CreateTitle}}" disabled>+</button></span>{{else}}<a class="nav-list-create" data-nav-list-create="1" href="{{.CreateURL}}" title="{{.CreateTitle}}" aria-label="{{.CreateTitle}}">+</a>{{end}}</div>{{end}}
 {{end}}
 `
 

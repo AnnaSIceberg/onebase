@@ -21,6 +21,8 @@ import (
 type navItem struct {
 	ID, DOMID, Icon, Label, URL string
 	CreateURL, CreateTitle      string
+	CreateDenied                bool
+	TargetKind, TargetAction    string
 }
 
 type navFolder struct {
@@ -56,6 +58,21 @@ func navListCreate(item navigation.ResolvedItem, subsystem, createLabel string) 
 	return u.String(), createLabel + ": " + item.Label
 }
 
+func (s *Server) navigationCreateAction(r *http.Request, item navigation.ResolvedItem, sub, lang string) (string, string, bool) {
+	if s.reg == nil || s.legacyEntityUI(r) {
+		return "", "", false
+	}
+	link, title := navListCreate(item, sub, s.tr(lang, "Создать"))
+	if link == "" || !s.cfg.NavigationByType {
+		return link, title, false
+	}
+	entity := s.reg.GetEntity(item.Name)
+	if !s.can(r, item.Kind, item.Name, "create") || !s.canInteractiveCreate(r, entity) {
+		return link, s.tr(lang, "Недостаточно прав"), true
+	}
+	return link, title, false
+}
+
 func sortNavItems(items []navItem) {
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Label != items[j].Label {
@@ -80,6 +97,14 @@ func navDOMID(context, id string) string {
 }
 
 func (s *Server) buildNav(r *http.Request, sub string) []navGroup {
+	groups := s.buildConfiguredNav(r, sub)
+	if s.cfg.NavigationByType && !s.legacyEntityUI(r) {
+		return s.navigationByType(r, sub, groups)
+	}
+	return groups
+}
+
+func (s *Server) buildConfiguredNav(r *http.Request, sub string) []navGroup {
 	if sub == "" {
 		base, configured, flat := s.homeNavigationLayerBase(r)
 		return s.buildNavigationFromBase(r, base, configured, flat, "")
@@ -451,8 +476,9 @@ func (s *Server) navigationGroups(r *http.Request, tree, base navigation.Tree, c
 			if !s.navigationItemVisible(r, item.Object, resolved, semantic, flat) {
 				continue
 			}
-			createURL, createTitle := navListCreate(resolved, sub, translate("Создать"))
-			output = append(output, navItem{ID: item.ID, DOMID: navDOMID(context, item.ID), Icon: item.Icon, Label: resolved.Label, URL: resolved.URL, CreateURL: createURL, CreateTitle: createTitle})
+			createURL, createTitle, denied := s.navigationCreateAction(r, resolved, sub, lang)
+			output = append(output, navItem{ID: item.ID, DOMID: navDOMID(context, item.ID), Icon: item.Icon, Label: resolved.Label, URL: resolved.URL,
+				CreateURL: createURL, CreateTitle: createTitle, CreateDenied: denied, TargetKind: resolved.Kind, TargetAction: resolved.Action})
 		}
 		if !semantic && flat {
 			sortNavItems(output)

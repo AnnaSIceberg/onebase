@@ -974,7 +974,12 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		// Нейтральный старт: подсистему не подставляем — на /ui/ ничего не
 		// подсвечено, активна «Главная», сайдбар плоский (см. buildNav).
 		sub := r.URL.Query().Get("subsystem")
-		data["Nav"] = s.buildNav(r, sub)
+		if (name == "page-index" || name == "page-app-shell") && sub == "" && s.cfg.HideHomeNavigation && !legacyEntityUI {
+			data["HideHomeObjectNavigation"] = true
+			data["Nav"] = nil
+		} else {
+			data["Nav"] = s.buildNav(r, sub)
+		}
 		data["Subsystems"] = s.visibleSubsystems(r)
 		data["CurrentSubsystem"] = sub
 		// Скрытая глобальная «Главная» (issue #304): убрать ведущую ссылку из

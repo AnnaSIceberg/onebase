@@ -20,6 +20,8 @@ func applyAppUIPresentation(dst *ui.Config, app *project.AppConfig) {
 	if settings == nil {
 		settings = &project.UIConfig{}
 	}
+	dst.NavigationByType = settings.NavigationByType
+	dst.HideHomeNavigation = settings.HideHomeNavigation
 	dst.UIRoles = settings.Roles
 	dst.UIExceptRoles = settings.ExceptRoles
 	dst.UIFormRoles = settings.FormRoles

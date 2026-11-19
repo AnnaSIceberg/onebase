@@ -62,6 +62,8 @@ type Config struct {
 	HideAttachments     bool
 	UIEnhancements      bool
 	UIRoles             []string
+	HideHomeNavigation  bool
+	NavigationByType    bool
 	UIExceptRoles       []string
 	DefaultFormDensity  string
 	Mailer              *mailer.Mailer

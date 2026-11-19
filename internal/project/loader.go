@@ -207,18 +207,20 @@ type QueueConfig struct {
 // AppConfig holds the optional config/app.yaml metadata.
 // UIConfig — оформление интерфейса базы.
 type UIConfig struct {
-	ReportRoles       []string `yaml:"report_roles,omitempty"`
-	ReportExceptRoles []string `yaml:"report_except_roles,omitempty"`
-	ReportDensity     string   `yaml:"report_density,omitempty"`
-	ShortDateInput    bool     `yaml:"short_date_input,omitempty"`
-	FormRoles         []string `yaml:"form_roles,omitempty"`
-	FormExceptRoles   []string `yaml:"form_except_roles,omitempty"`
-	Roles             []string `yaml:"roles,omitempty"`
-	ExceptRoles       []string `yaml:"except_roles,omitempty"`
-	FormDensity       string   `yaml:"form_density,omitempty"`
-	ListDetailPanel   *bool    `yaml:"list_detail_panel,omitempty"`
-	ListRowActions    *bool    `yaml:"list_row_actions,omitempty"`
-	Attachments       *bool    `yaml:"attachments,omitempty"`
+	HideHomeNavigation bool     `yaml:"hide_home_navigation,omitempty"`
+	NavigationByType   bool     `yaml:"navigation_by_type,omitempty"`
+	ReportRoles        []string `yaml:"report_roles,omitempty"`
+	ReportExceptRoles  []string `yaml:"report_except_roles,omitempty"`
+	ReportDensity      string   `yaml:"report_density,omitempty"`
+	ShortDateInput     bool     `yaml:"short_date_input,omitempty"`
+	FormRoles          []string `yaml:"form_roles,omitempty"`
+	FormExceptRoles    []string `yaml:"form_except_roles,omitempty"`
+	Roles              []string `yaml:"roles,omitempty"`
+	ExceptRoles        []string `yaml:"except_roles,omitempty"`
+	FormDensity        string   `yaml:"form_density,omitempty"`
+	ListDetailPanel    *bool    `yaml:"list_detail_panel,omitempty"`
+	ListRowActions     *bool    `yaml:"list_row_actions,omitempty"`
+	Attachments        *bool    `yaml:"attachments,omitempty"`
 	// ListDensity: "" — прежний вид; "compact" — плотные списки, журналы,
 	// регистры и виджеты-списки: шрифт 12px, строка ≈ 22px, видимые границы
 	// строк и столбцов (как списки 1С).
