@@ -2198,7 +2198,7 @@ tr.ob-row-styled:hover td{background:inherit;filter:brightness(.95)}
 .ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *){font-size:12px}
 .ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *) th,
 .ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *) td{padding:2px 6px;font-size:12px;line-height:17px;border:1px solid #cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
-.ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *) th{background:#e8edf3;border-bottom:1px solid #94a3b8;font-weight:600}
+.ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *,.ob-widget-stream *) th{background:#e8edf3;border-bottom:1px solid #94a3b8;font-weight:600}
 .ob-compact-lists main table:not(.tp-table,.tbl-plain,.report-composed):not(#main-form *) tr:last-child td{border-bottom:1px solid #cbd5e1}
 
 td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
@@ -2707,6 +2707,10 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 .ob-widget-fill>[data-ob-widget-body]{flex:1;min-height:0;display:flex;flex-direction:column}
 .ob-widget-fill .w-list{flex:1;min-height:0;overflow:auto}
 .ob-widget-fill .w-list th{position:sticky;top:0;z-index:1}
+.ob-widget-stream .w-list table{margin-top:0;border-collapse:separate;border-spacing:0}
+.ob-widget-stream .w-list thead{position:sticky;top:0;z-index:2;background:#dbeafe}
+.ob-widget-stream .w-list th{position:relative;z-index:auto}
+.ob-compact-lists main .ob-widget-stream .w-list table:not(#main-form *) :is(th,td){border-top-width:0;border-left-width:0}
 .ob-widget-fill .w-refresh-status:empty{display:none}
 /* END widget-list-controls */
 {{end}}
