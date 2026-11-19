@@ -2156,7 +2156,6 @@ h3{font-size:16px;font-weight:600;margin:24px 0 10px;color:#1e293b}
 .ob-list-disclosures-ready>details:is(#ob-list-filter-panel,#ob-list-settings-panel){margin-bottom:4px!important}
 .ob-list-disclosures-ready>details:is(#ob-list-filter-panel,#ob-list-settings-panel):not([open]){display:none}
 .ob-list-disclosures-ready>details:is(#ob-list-filter-panel,#ob-list-settings-panel)>summary{display:none}
-.ob-list-header .btn.btn-command{width:26px;height:26px;padding:0}
 .ob-compact-list-header .ob-list-pages{gap:4px;margin-bottom:4px;font-size:12px}
 .ob-compact-list-header .ob-list-pages .btn{height:22px;box-sizing:border-box;padding:2px 8px;line-height:18px;font-size:12px}
 
@@ -2188,8 +2187,8 @@ td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .btn-secondary{background:#e2e8f0;color:#374151}.btn-secondary:hover{background:#cbd5e1}
 .entity-command-group{display:inline-flex;align-items:center;gap:3px}
 .entity-command{display:inline-flex;align-items:center}
-.btn.btn-command{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border-radius:5px;font-size:18px}
-.btn.btn-command .ob-icon{width:20px;height:20px;flex:none}
+.btn.btn-command{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;padding:0;border-radius:4px;font-size:18px}
+.btn.btn-command .ob-icon{width:14px;height:14px;flex:none}
 .btn-command.btn-command-create{border-radius:50%;background:#15803d;color:#fff}
 .btn-command.btn-command-create:hover{background:#166534}
 .btn-document-post{background:#dcfce7;color:#166534}.btn-document-post:hover{background:#bbf7d0}
@@ -2237,7 +2236,7 @@ details[open] > summary::before{content:"▼ "}
 .ob-list-panels>form>div{min-width:0;max-width:240px}
 .ob-list-panels>details>form{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:flex-end;padding:0 8px 4px}
 .ob-list-panels>.card,.ob-list-panels .ob-list-wrap>.card{padding:4px 8px}
-.ob-list-panels>.row-top .btn{height:26px;box-sizing:border-box;padding:2px 8px;font-size:12px;line-height:20px}
+.ob-list-panels>.row-top .btn:not(.btn-command){height:26px;box-sizing:border-box;padding:2px 8px;font-size:12px;line-height:20px}
 .ob-list-panels>.row-top{margin-bottom:4px}
 .ob-list-panels>.row-top h2{margin:0}
 .ob-list-panels>.ob-list-search{margin-bottom:4px!important}
