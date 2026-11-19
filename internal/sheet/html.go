@@ -238,7 +238,9 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 					if end > col {
 						flow = fmt.Sprintf(` data-sheet-flow-end="%d"`, end)
 					}
-					if width > 0 || end > col {
+					if end > col {
+						attrs += ` class="sheet-flow-cell sheet-flow-spill"`
+					} else if width > 0 {
 						attrs += ` class="sheet-flow-cell"`
 					}
 					text = `<div class="sheet-flow"` + flow + `><span>` + text + `</span></div>`

@@ -17,11 +17,12 @@ func (d *Document) textFlowEnd(row, col, last int, covered map[CellKey]bool) int
 }
 
 const cellTextFlowCSS = `
+.doc-content>table{width:max-content}
 .sheet-wrap-text{white-space:pre-wrap;overflow-wrap:anywhere}
 .sheet-flow-cell>.sheet-flow{contain:inline-size}
 .sheet-flow{position:relative;max-width:100%}
 .sheet-flow>span{display:block;width:var(--sheet-flow-width,100%);overflow:hidden;white-space:pre;word-break:normal;overflow-wrap:normal}
-.sheet-flow[data-sheet-flow-end]{z-index:1}
+.sheet-flow-spill{position:relative;z-index:1}
 `
 
 // The span may overpaint empty cells without turning them into a colspan. Its

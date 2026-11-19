@@ -2141,6 +2141,7 @@ h3{font-size:16px;font-weight:600;margin:24px 0 10px;color:#1e293b}
 .ob-entity-list>details>summary{padding:8px 12px}
 .ob-entity-list .ob-list-content>.card{padding:12px}
 .ob-list-scroll{max-height:54vh;overflow:auto}
+.ob-list-scroll thead th{position:sticky;top:0;z-index:2;background:#eef2f7}
 .ob-list-pages{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .ob-list-pages .btn[aria-disabled="true"]{opacity:.5;cursor:default}
 
