@@ -25,6 +25,38 @@ assert.strictEqual(formURL({'вид': 'report', 'сущность': 'Штраф�
 assert.strictEqual(formURL({'вид': 'report', 'сущность': 'Штрафы'}), '/ui/report/' + encodeURIComponent('Штрафы'));
 assert.strictEqual(formURL({'вид': 'processor', 'сущность': 'Обр', 'параметры': {'А': 1, 'Б': false}, 'сформировать': true}),
   '/ui/processor/' + encodeURIComponent('Обр') + '?' + encodeURIComponent('А') + '=1&' + encodeURIComponent('Б') + '=false');
+
+const location = {origin: 'http://onebase.local'};
+let legacy = false;
+const document = {body:{hasAttribute: () => legacy}};
+const normal = [];
+const result = new Map();
+const window = {
+  obOpenTab: url => normal.push(url),
+  obOpenReportResultFromTab: (source,key,url) => {
+    result.set(source + key, new URL(url, location.origin));
+    return 'result-frame';
+  },
+};
+function generate(period, slot) {
+  openFormTab({'вид':'report', 'сущность':'Штрафы', 'параметры':{'начало':period}, 'сформировать':true, 'ключрезультата':slot}, 'обработка');
+}
+generate('2026-09-01');
+generate('2026-10-01');
+assert.strictEqual(normal.length, 2);
+assert.notStrictEqual(normal[0], normal[1]);
+assert(!normal.some(url => url.includes('__result')));
+assert.strictEqual(result.size, 0);
+generate('2026-09-01', 'основной');
+generate('2026-09-01', 'дополнительный');
+generate('2026-10-01', 'основной');
+assert.strictEqual(result.size, 2);
+assert.strictEqual(result.get('обработкаreport:/ui/report/Штрафы:основной').searchParams.get('начало'), '2026-10-01');
+assert.strictEqual(result.get('обработкаreport:/ui/report/Штрафы:дополнительный').searchParams.get('начало'), '2026-09-01');
+legacy = true;
+generate('2026-11-01', 'основной');
+assert.strictEqual(normal.length, 3);
+assert(!normal[2].includes('__result'));
 console.log('ok');
 `)
 }
@@ -40,11 +72,15 @@ func runFormURLNode(t *testing.T, script string) string {
 	if start < 0 {
 		t.Fatal("в ui.js нет formURL")
 	}
-	end := strings.Index(src[start:], "\n  }\n")
-	if end < 0 {
-		t.Fatal("не найден конец formURL")
+	open := strings.Index(src[start:], "  function openFormTab(")
+	if open < 0 {
+		t.Fatal("в ui.js нет openFormTab")
 	}
-	fn := src[start : start+end+4]
+	end := strings.Index(src[start+open:], "\n  }\n")
+	if end < 0 {
+		t.Fatal("не найден конец openFormTab")
+	}
+	fn := src[start : start+open+end+4]
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "t.js"), []byte(fn+"\n"+script), 0o600); err != nil {
 		t.Fatal(err)

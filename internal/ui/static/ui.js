@@ -7176,12 +7176,12 @@ window.onebaseDevice = {
     try {
       // Вкладочная оболочка в этом окне.
       if (typeof window.obOpenTab === 'function') {
-        if (sourceTab && !document.body.hasAttribute('data-ob-legacy-entity-ui') && typeof window.obOpenReportResultFromTab === 'function') {
+        var slot = link['ключрезультата'] || link.resultKey;
+        if (sourceTab && typeof slot === 'string' && slot && !document.body.hasAttribute('data-ob-legacy-entity-ui') && typeof window.obOpenReportResultFromTab === 'function') {
           var target = new URL(url, location.origin);
           if (/^\/ui\/report\/[^/]+$/.test(target.pathname) && target.searchParams.get('__run') === '1') {
             target.searchParams.set('__result', '1');
-            var slot = link['ключрезультата'] || link.resultKey || target.searchParams.get('__variant') || '';
-            var resultKey = 'report:' + decodeURIComponent(target.pathname) + ':' + String(slot);
+            var resultKey = 'report:' + decodeURIComponent(target.pathname) + ':' + slot;
             if (window.obOpenReportResultFromTab(sourceTab,resultKey,target.pathname + target.search,title)) return;
           }
         }
