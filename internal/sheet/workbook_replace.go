@@ -54,6 +54,10 @@ func (b *Workbook) ReplaceXLSX(src io.Reader) (data []byte, err error) {
 	if len(names) == 0 {
 		return nil, fmt.Errorf("в исходной книге XLSX нет листов")
 	}
+	workbookXML, ok := f.Pkg.Load(workbookPart)
+	if !ok {
+		return nil, fmt.Errorf("в исходной книге отсутствует XML книги")
+	}
 	before, err := workbookWorksheetParts(f)
 	if err != nil {
 		return nil, err
@@ -117,10 +121,8 @@ func (b *Workbook) ReplaceXLSX(src io.Reader) (data []byte, err error) {
 			outlines[p] = xlsxSheetOutline{collapsed: collapsed, level: level}
 		}
 	}
-	// Re-read references on open, including formulas on unchanged tabs that
-	// depend on a value replaced by this operation.
-	full := true
-	if err := f.SetCalcProps(&excelize.CalcPropsOptions{FullCalcOnLoad: &full}); err != nil {
+	updatedMetadata, err := preserveWorkbookMetadata(workbookXML.([]byte), f, names, b)
+	if err != nil {
 		return nil, err
 	}
 	if err := discardCalculationChain(f); err != nil {
@@ -136,10 +138,14 @@ func (b *Workbook) ReplaceXLSX(src io.Reader) (data []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(outlines) > 0 {
-		return xlsxWorkbookOutlineXML(buf.Bytes(), outlines)
+	data, err = restoreWorkbookPart(buf.Bytes(), updatedMetadata)
+	if err != nil {
+		return nil, err
 	}
-	return buf.Bytes(), nil
+	if len(outlines) > 0 {
+		return xlsxWorkbookOutlineXML(data, outlines)
+	}
+	return data, nil
 }
 
 type workbookRelationship struct {
