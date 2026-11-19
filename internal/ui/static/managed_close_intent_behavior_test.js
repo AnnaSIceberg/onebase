@@ -2655,6 +2655,31 @@ test('BeforeClose question: answer repeats close with the answer, dismiss keeps 
   assert.equal(bodies.length, 3, 'dismissing the question must not repeat the close');
 });
 
+for (const reason of ['close', 'cross', 'escape']) {
+  test('pending edits go straight to the opted-in BeforeClose handler: ' + reason, async () => {
+    const calls = [];
+    const app = runtime(async (url, options) => {
+      const body = capturedCloseBody(options);
+      calls.push(body);
+      const answer = body.get('_question_answer');
+      return response({ok: true, close: {intentId: closeIntent(options), allowed: answer === 'Да'},
+        question: answer ? null : {text: 'Выйти без сохранения?', variants: ['Да', 'Нет']}});
+    }, {handlerCloseConfirmation: true});
+    mountQuestionModal(app);
+    app.context.obSetManagedFormDirty(true);
+    for (const answer of ['Нет', 'Да']) {
+      const pending = app.context.obRequestFormClose({reason});
+      const modal = await closeQuestion(app);
+      const button = questionNodes(modal).find((node) => node.tagName === 'BUTTON' && node.textContent === answer);
+      button.dispatch('click', {target: button});
+      assert.equal((await pending).allowed, answer === 'Да');
+    }
+    assert.deepEqual(calls.map((call) => call.closeMode), ['discard', 'discard', 'discard', 'discard']);
+    assert.deepEqual(calls.map((call) => call.get('_question_answer')), [null, 'Нет', null, 'Да']);
+    assert.ok(calls.every((call) => call.closeReason === reason));
+  });
+}
+
 function mountQuestionModal(app) {
   const ui = fs.readFileSync('static/ui.js', 'utf8');
   const begin = ui.indexOf('// BEGIN onebase-question-modal');

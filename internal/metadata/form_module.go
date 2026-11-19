@@ -864,6 +864,10 @@ type FormModule struct {
 	// проверки они не ослабляют.
 	Actions map[string]*FormAction `yaml:"actions,omitempty"`
 
+	// CloseConfirmation "handler" lets ПередЗакрытием decide whether
+	// a plain close needs a confirmation.
+	CloseConfirmation string `yaml:"close_confirmation,omitempty"`
+
 	// Conditional — декларативное условное оформление табличных частей формы.
 	// YAML-загрузчик принимает ключи conditional и conditional_formatting.
 	Conditional []FormCondRule `yaml:"conditional,omitempty"`

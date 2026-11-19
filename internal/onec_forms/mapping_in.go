@@ -179,6 +179,7 @@ func ToFormModule(form *IRForm) *metadata.FormModule {
 		Density:                form.Density,
 		GroupTitles:            form.GroupTitles,
 		HeaderInline:           form.HeaderInline,
+		CloseConfirmation:      form.CloseConfirmation,
 		Handlers:               irEventsToFormEvents(form.Events),
 		Procedures:             map[string]*metadata.FormProcedure{},
 	}

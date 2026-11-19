@@ -45,6 +45,7 @@ func parseFormYAMLBytes(data []byte) (*IRForm, error) {
 		Density:                doc.Form.Density,
 		GroupTitles:            doc.Form.GroupTitles,
 		HeaderInline:           doc.Form.HeaderInline,
+		CloseConfirmation:      doc.Form.CloseConfirmation,
 		Events:                 doc.Events,
 	}
 	for _, a := range doc.Attributes {

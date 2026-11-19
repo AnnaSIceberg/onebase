@@ -48,6 +48,7 @@ type formYAMLOut struct {
 		Density                string            `yaml:"density,omitempty"`
 		GroupTitles            string            `yaml:"group_titles,omitempty"`
 		HeaderInline           bool              `yaml:"header_inline,omitempty"`
+		CloseConfirmation      string            `yaml:"close_confirmation,omitempty"`
 	} `yaml:"form"`
 
 	Attributes []yamlAttribute   `yaml:"attributes,omitempty"`
@@ -154,6 +155,7 @@ func buildYAMLDoc(form *IRForm) formYAMLOut {
 	doc.Form.Density = form.Density
 	doc.Form.GroupTitles = form.GroupTitles
 	doc.Form.HeaderInline = form.HeaderInline
+	doc.Form.CloseConfirmation = form.CloseConfirmation
 	doc.Form.VerticalScroll = form.VerticalScroll
 
 	for _, a := range form.Attributes {

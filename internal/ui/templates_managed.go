@@ -1264,6 +1264,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   "closeSchema" .FormCloseSchema
   "closeServerNowMs" .FormCloseServerNowMS
   "closeMessages" $closeMessages
+  "handlerCloseConfirmation" (eq .Form.CloseConfirmation "handler")
   "initialDirty" .InitialDirty
   "docId" ""
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")
@@ -1284,6 +1285,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   "closeSchema" .FormCloseSchema
   "closeServerNowMs" .FormCloseServerNowMS
   "closeMessages" $closeMessages
+  "handlerCloseConfirmation" (eq .Form.CloseConfirmation "handler")
   "initialDirty" .InitialDirty
   "docId" .ID
   "autoOpen" (hasFormHandler .Form "ПриОткрытии")

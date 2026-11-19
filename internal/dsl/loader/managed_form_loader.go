@@ -161,6 +161,19 @@ func (mfl *ManagedFormLoader) LoadFormFile(yamlPath, entityName string) (*metada
 		}
 	}
 
+	if form.CloseConfirmation == "handler" {
+		handler := strings.TrimSpace(form.Handlers[metadata.FormEventBeforeClose])
+		found := false
+		for name := range form.Procedures {
+			if strings.EqualFold(name, handler) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, i18nerr.New("form.close_confirmation: handler требует процедуру ПередЗакрытием в модуле формы")
+		}
+	}
 	return form, nil
 }
 
@@ -173,6 +186,7 @@ type formYAMLDoc struct {
 		Kind                   string            `yaml:"kind"`
 		Entity                 string            `yaml:"entity"`
 		TitleProc              string            `yaml:"title_proc"`
+		CloseConfirmation      string            `yaml:"close_confirmation"`
 		Title                  map[string]string `yaml:"title"`
 		OriginalID             string            `yaml:"original_id"`
 		AutoSaveDataInSettings bool              `yaml:"auto_save_settings"`
@@ -246,6 +260,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		Kind:                   doc.Form.Kind,
 		LayoutKind:             metadata.FormLayoutManaged,
 		TitleProc:              doc.Form.TitleProc,
+		CloseConfirmation:      doc.Form.CloseConfirmation,
 		Title:                  doc.Form.Title,
 		OriginalID:             doc.Form.OriginalID,
 		AutoSaveDataInSettings: doc.Form.AutoSaveDataInSettings,
@@ -273,6 +288,10 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		Conditional:            rawFormConditional(doc),
 		Procedures:             make(map[string]*metadata.FormProcedure),
 		OneCMeta:               doc.OneCMeta,
+	}
+
+	if form.CloseConfirmation != "" && form.CloseConfirmation != "handler" {
+		return nil, i18nerr.Errorf("неизвестное form.close_confirmation %q: допустимо handler", form.CloseConfirmation)
 	}
 
 	if form.Name == "" {

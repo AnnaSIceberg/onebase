@@ -2593,9 +2593,11 @@ window.obManagedApplyHints = obManagedApplyHints;
         sourceSnapshot.token === options.closeSource;
       if (ownSource) programmaticCloseSource = null;
       var automaticDiscard = !options.mode && ownSource && sourceSnapshot.revision === formEditState.revision;
+      // With an explicit form opt-in the server handler owns confirmation.
+      // The ordinary discard intent still runs ПередЗакрытием and its question.
       var mode = options.mode
         ? String(options.mode)
-        : (automaticDiscard ? 'discard' : await closeChoice());
+        : (automaticDiscard || cfg.handlerCloseConfirmation === true ? 'discard' : await closeChoice());
       if (mode === 'cancel') return {allowed: false, intentId: '', error: 'user-cancelled'};
       var body = await closeSnapshotBody(reason, mode);
       if (!body) return {allowed: false, intentId: '', error: 'form-state'};
