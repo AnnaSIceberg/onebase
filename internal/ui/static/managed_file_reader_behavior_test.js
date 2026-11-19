@@ -268,6 +268,9 @@ const addTpStart = uiSource.indexOf('function obTPRefOpts');
 const addTpEnd = uiSource.indexOf('function recalcTpRow', addTpStart);
 if (addTpStart < 0 || addTpEnd < 0) throw new Error('ui.js addTpRow slice not found');
 vm.runInThisContext(uiSource.slice(addTpStart, addTpEnd), {filename: 'ui-add-tp-row.js'});
+const popupStart = uiSource.indexOf('// BEGIN onebase-messages-popup');
+const popupEnd = uiSource.indexOf('// END onebase-messages-popup');
+vm.runInThisContext(uiSource.slice(popupStart, popupEnd), {filename: 'ui-messages-popup.js'});
 // DOMContentLoaded is intentionally not dispatched: initialise the real
 // delegated handlers directly, without running unrelated UI widgets.
 obManagedInitDelegates();

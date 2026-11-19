@@ -3928,32 +3928,83 @@ window.obClaimMessage = obClaimMessage;
 // obToast — всплывающая плашка вверху справа, общий контейнер с плашками
 // событий формы. Не больше пяти: новая вытесняет самую старую. Ошибка висит до
 // крестика, обычная — message_seconds секунд.
-function obToast(text, kind) {
+function obToast(text, kind, options) {
   var b = document.getElementById('ob-fmevt-banner');
   if (!b) {
     b = document.createElement('div');
     b.id = 'ob-fmevt-banner';
-    b.style.cssText = 'position:fixed;top:14px;right:14px;max-width:380px;z-index:9999;display:flex;flex-direction:column;gap:6px;pointer-events:none';
+    b.style.cssText = 'position:fixed;top:14px;right:14px;width:max-content;max-width:min(380px,calc(100vw - 28px));z-index:11000;display:flex;flex-direction:column;gap:6px;pointer-events:none;-webkit-app-region:no-drag';
     document.body.appendChild(b);
   }
   var d = document.createElement('div');
   d.style.cssText = (kind === 'err'
     ? 'background:#fee2e2;color:#991b1b;border:1px solid #fecaca'
     : 'background:#d1fae5;color:#065f46;border:1px solid #a7f3d0') +
-    ';padding:8px 28px 8px 12px;border-radius:6px;font-size:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);pointer-events:auto;position:relative;white-space:pre-wrap;word-break:break-word';
+    ';box-sizing:border-box;display:flex;align-items:flex-start;gap:4px;padding:4px 6px 4px 12px;border-radius:6px;font-size:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);pointer-events:auto;white-space:pre-wrap;overflow-wrap:anywhere';
   var msg = document.createElement('span');
+  msg.style.cssText = 'flex:1;min-width:0;padding-block:4px';
   msg.textContent = text;
   d.appendChild(msg);
-  var x = document.createElement('span');
+  if (options && options.copy) {
+    msg.title = 'Клик — скопировать текст';
+    msg.style.cursor = 'copy';
+    msg.onclick = function () {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).catch(function () {}); }
+        else {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+        var prev = d.style.boxShadow;
+        d.style.boxShadow = '0 0 0 2px #16a34a';
+        setTimeout(function () { d.style.boxShadow = prev; }, 600);
+      } catch (e) {}
+    };
+  }
+  var x = document.createElement('button');
+  x.type = 'button';
   x.textContent = '×';
-  x.style.cssText = 'position:absolute;top:4px;right:8px;cursor:pointer;font-weight:700;opacity:.55;font-size:14px;line-height:1';
+  var label = window.obUIMessage ? window.obUIMessage('closeNotification', 'Закрыть сообщение') : 'Закрыть сообщение';
+  x.setAttribute('aria-label', label);
+  x.style.cssText = 'box-sizing:border-box;flex:0 0 26px;width:26px;height:26px;padding:0;border:0;border-radius:4px;background:none;color:inherit;cursor:pointer;font-size:18px;line-height:1;pointer-events:auto';
   x.onclick = function (ev) { ev.stopPropagation(); d.remove(); };
   d.appendChild(x);
   b.appendChild(d);
   while (b.children.length > 5) b.removeChild(b.firstChild);
-  if (kind !== 'err') setTimeout(function () { d.remove(); }, obMessagesConfig().seconds * 1000);
+  if (kind !== 'err') {
+    var seconds = options && options.seconds || obMessagesConfig().seconds;
+    setTimeout(function () { d.remove(); }, seconds * 1000);
+  }
 }
 window.obToast = obToast;
+
+function obDismissToast() {
+  var b = document.getElementById('ob-fmevt-banner');
+  if (!b || !b.lastElementChild) return false;
+  b.lastElementChild.remove();
+  return true;
+}
+window.obDismissToast = obDismissToast;
+if (window.addEventListener) window.addEventListener('keydown', function (e) {
+  if (e.defaultPrevented || e.key !== 'Escape' || e.altKey || e.ctrlKey || e.metaKey ||
+      (window.obHasBlockingModal && window.obHasBlockingModal())) return;
+  var dismissed = obDismissToast();
+  if (!dismissed) {
+    try {
+      var host = window.top;
+      if (host && host !== window && host.obDismissToast &&
+          !(host.obHasBlockingModal && host.obHasBlockingModal())) dismissed = host.obDismissToast();
+    } catch (ignored) {}
+  }
+  if (dismissed) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+}, true);
 // END onebase-messages-popup
 
 (function () {

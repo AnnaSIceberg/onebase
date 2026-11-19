@@ -391,58 +391,17 @@ window.obManagedApplyHints = obManagedApplyHints;
   window._tpEnumLabels = obManagedReadJSON('ob-managed-tp-enum-labels', window._tpEnumLabels || {}) || {};
   window._tpEnumOrder = obManagedReadJSON('ob-managed-tp-enum-order', window._tpEnumOrder || {}) || {};
 
-  function ensureBanner(doc){
-    let b = doc.getElementById('ob-fmevt-banner');
-    if (b) return b;
-    b = doc.createElement('div');
-    b.id = 'ob-fmevt-banner';
-    b.style.cssText = 'position:fixed;top:14px;right:14px;max-width:380px;z-index:9999;display:flex;flex-direction:column;gap:6px;pointer-events:none';
-    doc.body.appendChild(b);
-    return b;
-  }
   function flash(text, kind, messageID){
     let host = window;
     try {
       const top = window.top || window;
-      if (top.obMessagesConfig && top.obMessagesConfig().popup) {
+      if (top.obToast && top.obMessagesConfig && top.obMessagesConfig().popup) {
         if (messageID && top.obClaimMessage && !top.obClaimMessage(messageID)) return;
-        // A form response can arrive after its tab was hidden.
-        // Keep both the toast and its lifetime in the visible shell.
+        // Responses from a hidden tab belong in the visible shell.
         host = top;
       }
     } catch (e) {}
-    const doc = host.document;
-    const b = ensureBanner(doc);
-    const d = doc.createElement('div');
-    const palette = kind === 'err'
-      ? 'background:#fee2e2;color:#991b1b;border:1px solid #fecaca'
-      : 'background:#d1fae5;color:#065f46;border:1px solid #a7f3d0';
-    d.style.cssText = palette + ';padding:8px 28px 8px 12px;border-radius:6px;font-size:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);pointer-events:auto;cursor:copy;position:relative;white-space:pre-wrap;word-break:break-word';
-    const msg = doc.createElement('span');
-    msg.textContent = text;
-    d.appendChild(msg);
-    // Клик по тосту — скопировать текст в буфер (удобно для ошибок). Тост не
-    // закрывается по клику; для закрытия — крестик.
-    d.title = 'Клик — скопировать текст';
-    d.onclick = function(){
-      try {
-        if (host.navigator.clipboard && host.navigator.clipboard.writeText) { host.navigator.clipboard.writeText(text); }
-        else { const ta=doc.createElement('textarea'); ta.value=text; doc.body.appendChild(ta); ta.select(); doc.execCommand('copy'); ta.remove(); }
-        const prev = d.style.boxShadow; d.style.boxShadow='0 0 0 2px #16a34a';
-        host.setTimeout(function(){ d.style.boxShadow=prev; }, 600);
-      } catch(e){}
-    };
-    const x = doc.createElement('span');
-    x.textContent = '×';
-    x.style.cssText = 'position:absolute;top:4px;right:8px;cursor:pointer;font-weight:700;opacity:.55;font-size:14px;line-height:1';
-    x.onclick = function(ev){ ev.stopPropagation(); d.remove(); };
-    d.appendChild(x);
-    b.appendChild(d);
-    // Не больше пяти плашек: новая вытесняет самую старую.
-    while (b.children.length > 5) b.removeChild(b.firstChild);
-    // Ошибки держим до закрытия крестиком (чтобы успеть прочитать/скопировать);
-    // info-сообщения сами исчезают через message_seconds (по умолчанию 5 c).
-    if (kind !== 'err') host.setTimeout(() => d.remove(), flashSeconds() * 1000);
+    if (host.obToast) host.obToast(text, kind, {copy: true, seconds: flashSeconds()});
   }
   function flashSeconds(){
     const m = document.querySelector ? document.querySelector('meta[name="ob-messages"]') : null;

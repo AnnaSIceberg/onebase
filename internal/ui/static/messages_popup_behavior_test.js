@@ -11,6 +11,7 @@ assert.ok(start >= 0 && end > start, 'блок onebase-messages-popup не на�
 
 function node(tag) {
   const n = { tag, children: [], style: {}, textContent: '', id: '',
+    setAttribute(name, value) { this[name] = value; },
     appendChild(c) { this.children.push(c); c.parent = this; return c; },
     removeChild(c) { this.children = this.children.filter((x) => x !== c); c.parent = null; },
     remove() { if (this.parent) this.parent.removeChild(this); },
