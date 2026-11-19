@@ -5,11 +5,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/runtime"
@@ -20,10 +22,21 @@ func TestManagedFormInstanceThroughHTTP(t *testing.T) {
 Процедура ЗапомнитьЭкземпляр()
 	Объект.Наименование = ИдЭкземпляраФормы();
 КонецПроцедуры
-`, map[metadata.FormEventType]string{metadata.FormEventOnOpen: "ЗапомнитьЭкземпляр"}, []*metadata.FormElement{{
-		Kind: metadata.FormElementGroupBox, Name: "История",
-		Handlers: map[metadata.FormEventType]string{metadata.FormEventAfterOpen: "ЗапомнитьЭкземпляр"},
-	}})
+
+Процедура ЗаписатьДокумент()
+	Объект.Записать();
+КонецПроцедуры
+
+Процедура ОтменитьЗакрытие(Отказ)
+	Сообщить("instance:" + ИдЭкземпляраФормы());
+	Отказ = Истина;
+КонецПроцедуры
+`, map[metadata.FormEventType]string{
+		metadata.FormEventOnOpen: "ЗапомнитьЭкземпляр", metadata.FormEventBeforeClose: "ОтменитьЗакрытие",
+	}, []*metadata.FormElement{
+		{Kind: metadata.FormElementGroupBox, Name: "История", Handlers: map[metadata.FormEventType]string{metadata.FormEventAfterOpen: "ЗапомнитьЭкземпляр"}},
+		{Kind: metadata.FormElementButton, Name: "Запись", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "ЗаписатьДокумент"}},
+	})
 	form := fixture.Forms[0]
 	form.InstanceContext = true
 	ent := &metadata.Entity{Name: "CallInstance", Kind: metadata.KindDocument, Fields: fixture.Fields, Forms: fixture.Forms}
@@ -56,17 +69,25 @@ func TestManagedFormInstanceThroughHTTP(t *testing.T) {
 		}
 		return match[1]
 	}
-	event := func(kind metadata.FormEventType, target, session, token string) string {
+	postEvent := func(kind metadata.FormEventType, target, session, token, id string, version int64) formEventResponse {
 		t.Helper()
 		values := url.Values{"_event": {string(kind)}, "_element": {target}, "_kind": {"object"},
 			"Наименование": {"initial"}, "ИдЭкземпляраФормы": {"client-value"}}
+		if id != "" {
+			values.Set("_id", id)
+			values.Set("_version", strconv.FormatInt(version, 10))
+		}
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, request("POST", "/form-event", session, token, values))
 		response := decodeFormEventResponse(t, rec.Body.Bytes())
 		if rec.Code != http.StatusOK || !response.OK {
 			t.Fatalf("event %s: HTTP %d: %s", kind, rec.Code, response.Error)
 		}
-		return anyString(response.Values["Наименование"])
+		return response
+	}
+	event := func(kind metadata.FormEventType, target, session, token string) string {
+		t.Helper()
+		return anyString(postEvent(kind, target, session, token, "", 0).Values["Наименование"])
 	}
 
 	first, second := open(), open()
@@ -96,4 +117,53 @@ func TestManagedFormInstanceThroughHTTP(t *testing.T) {
 			}
 		})
 	}
+
+	save := postEvent(metadata.FormEventOnClick, "Запись", "session-1", first, "", 0)
+	if save.SavedID == "" || save.FormInstance == "" || save.FormInstance == first {
+		t.Fatal("confirmed insert did not return its newly scoped form context")
+	}
+	checkSaved := func(saved formEventResponse, expectedID, previousToken string) {
+		t.Helper()
+		after := postEvent(metadata.FormEventAfterOpen, "История", "session-1", saved.FormInstance, saved.SavedID, saved.Version)
+		if got := anyString(after.Values["Наименование"]); got != expectedID {
+			t.Fatalf("saved form lost its original identity: %q, want %q", got, expectedID)
+		}
+		old := postEvent(metadata.FormEventAfterOpen, "История", "session-1", previousToken, saved.SavedID, saved.Version)
+		if anyString(old.Values["Наименование"]) != "" {
+			t.Fatal("new-record context was accepted for a saved document")
+		}
+	}
+	checkSaved(save, id1, first)
+
+	// A close request can save and keep the card open when BeforeClose cancels.
+	// Exact transport replay still returns the existing reload-only tombstone.
+	body := closeIntentBody(uuid.NewString(), "close", "before-close")
+	body.Set("_close_mode", "save")
+	body.Set("_close_first_attempt", "1")
+	ensureEntityCloseIntentSchema(ent, body)
+	closeForm := func(firstAttempt bool) formEventResponse {
+		t.Helper()
+		req := request("POST", "/form-close-intent", "session-1", second, body)
+		setEntityCloseIntentHeaders(req, body)
+		if !firstAttempt {
+			req.Header.Del("X-OneBase-Close-First-Attempt")
+		}
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		response := decodeCloseIntentResponse(t, rec)
+		if rec.Code != http.StatusOK || response.Close == nil || response.Close.Allowed ||
+			!response.Close.Saved || response.SavedID == "" {
+			t.Fatalf("expected a saved card kept open by BeforeClose: HTTP %d, close=%+v, error=%q", rec.Code, response.Close, response.Error)
+		}
+		if firstAttempt && (response.FormInstance == "" || !strings.Contains(strings.Join(response.Messages, "\n"), "instance:"+id2)) {
+			t.Fatal("BeforeClose did not receive and preserve its instance identity")
+		}
+		return response
+	}
+	closed := closeForm(true)
+	replayed := closeForm(false)
+	if replayed.SavedID != closed.SavedID || !replayed.Close.Reload || replayed.FormInstance != "" {
+		t.Fatal("exact close retry must recover the confirmed record without cached form state")
+	}
+	checkSaved(closed, id2, second)
 }

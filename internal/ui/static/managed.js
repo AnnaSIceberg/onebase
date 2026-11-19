@@ -587,7 +587,7 @@ window.obManagedApplyHints = obManagedApplyHints;
         // Для <input type="date"> это невалидное значение: браузер молча очищает
         // поле — дата на форме пропадала после первого же события, а следующая
         // запись затирала её в базе.
-        if (inp.type === 'date' || inp.getAttribute('data-ob-editing-date') === 'date') {
+        if (inp.type === 'date' || (inp.getAttribute && inp.getAttribute('data-ob-editing-date') === 'date')) {
           var russianDate = /^(\d{2})\.(\d{2})\.(\d{4})(?:$| )/.exec(val);
           val = russianDate ? russianDate[3] + '-' + russianDate[2] + '-' + russianDate[1] : val.split(/[T ]/)[0];
         }
@@ -2382,6 +2382,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 	var savedURL = '';
     if (data.savedId && !DOC_ID) {
       DOC_ID = String(data.savedId);
+      if (form && data.formInstance) form.setAttribute('data-ob-form-instance', data.formInstance);
 	  var idName = serviceField('_id');
 	  var idInput = form && form.querySelector('[name="' + idName + '"]');
       if (idInput) idInput.value = DOC_ID;
@@ -2606,6 +2607,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 		// (reconcile), как и раньше (#1685).
 		envelope.first = '';
       } else {
+        var closeForm = document.getElementById('main-form');
 		envelope = {
 		  intentId: freshCloseIntentID(),
 		  epoch: CLOSE_EPOCH,
@@ -2616,6 +2618,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 		  formKind: closeFormKind(),
 		  recordId: DOC_ID == null ? '' : String(DOC_ID),
 		  clientId: cfg.closeClientId == null ? '' : String(cfg.closeClientId),
+		  formInstance: closeForm && closeForm.getAttribute ? closeForm.getAttribute('data-ob-form-instance') || '' : '',
 		  schema: cfg.closeSchema == null ? '' : String(cfg.closeSchema)
 		};
       }
@@ -2657,6 +2660,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 			'X-OneBase-Close-Reason': reason,
 			'X-OneBase-Close-Mode': mode,
 			'X-OneBase-Form-Kind': String(envelope.formKind || ''),
+			'X-OneBase-Form-Instance': String(envelope.formInstance || ''),
 			'X-OneBase-Record-ID': String(envelope.recordId || ''),
 			'X-OneBase-Close-Client': String(envelope.clientId || ''),
 			'X-OneBase-Close-Schema': String(envelope.schema || '')
