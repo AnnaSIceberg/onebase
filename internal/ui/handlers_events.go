@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -32,6 +33,7 @@ type hubNotifier struct {
 	ctxSource   interpreter.CtxSource
 	commands    *uiResponseCommands
 	closeSource string
+	sourceTab   string
 }
 
 func (n hubNotifier) Publish(target, name string, data any) {
@@ -47,11 +49,14 @@ func (n hubNotifier) Publish(target, name string, data any) {
 	}
 	if n.shell != "" && n.login != "" && target == n.login && shellScopedEvent(name) {
 		ev.Shell = n.shell
+		if name == "ui.открытьФорму" {
+			ev.SourceTab = n.sourceTab
+		}
 	}
 	publish := func() {
 		n.hub.Publish(target, ev)
 		if n.login != "" && target == n.login && shellScopedEvent(name) {
-			n.commands.add(uiResponseCommand{Name: name, Data: data, CommandID: ev.CommandID, CloseSource: ev.CloseSource})
+			n.commands.add(uiResponseCommand{Name: name, Data: data, CommandID: ev.CommandID, CloseSource: ev.CloseSource, SourceTab: ev.SourceTab})
 		}
 	}
 	if n.ctxSource != nil && storage.DeferUntilTxCommit(n.ctxSource.Ctx(), publish) {
@@ -61,13 +66,21 @@ func (n hubNotifier) Publish(target, name string, data any) {
 }
 
 type formCloseSourceKey struct{}
+type formSourceTabKey struct{}
 
-func withFormCloseSource(r *http.Request) *http.Request {
-	source := r.Header.Get("X-OneBase-Form-Close-Source")
-	if _, err := uuid.Parse(source); err == nil {
-		return r.WithContext(context.WithValue(r.Context(), formCloseSourceKey{}, source))
+var formSourceTabName = regexp.MustCompile(`^ob-tab-[A-Za-z0-9:_-]{1,96}$`)
+
+func withManagedFormSource(r *http.Request) *http.Request {
+	ctx := r.Context()
+	if source := r.Header.Get("X-OneBase-Form-Close-Source"); source != "" {
+		if _, err := uuid.Parse(source); err == nil {
+			ctx = context.WithValue(ctx, formCloseSourceKey{}, source)
+		}
 	}
-	return r
+	if tab := r.Header.Get("X-OneBase-Source-Tab"); formSourceTabName.MatchString(tab) {
+		ctx = context.WithValue(ctx, formSourceTabKey{}, tab)
+	}
+	return r.WithContext(ctx)
 }
 
 func formCloseSourceFrom(ctx context.Context) string {
@@ -87,7 +100,8 @@ func shellScopedEvent(name string) bool {
 // нет, и уведомление уходит всем сеансам, как раньше.
 func (s *Server) notifier(ctxSource interpreter.CtxSource) interpreter.Notifier {
 	ctx := ctxSource.Ctx()
-	n := hubNotifier{hub: s.hub, shell: shellIDFrom(ctx), ctxSource: ctxSource, commands: responseCommandsFrom(ctx), closeSource: formCloseSourceFrom(ctx)}
+	sourceTab, _ := ctx.Value(formSourceTabKey{}).(string)
+	n := hubNotifier{hub: s.hub, shell: shellIDFrom(ctx), ctxSource: ctxSource, commands: responseCommandsFrom(ctx), closeSource: formCloseSourceFrom(ctx), sourceTab: sourceTab}
 	if s.hub != nil {
 		n.forms = s.formNotifies()
 	}
@@ -239,6 +253,9 @@ func (s *Server) eventsStream(w http.ResponseWriter, r *http.Request) {
 			}
 			if ev.CommandID != "" {
 				payload["commandId"] = ev.CommandID
+			}
+			if ev.SourceTab != "" {
+				payload["sourceTab"] = ev.SourceTab
 			}
 			frame, err := json.Marshal(payload)
 			if err != nil {

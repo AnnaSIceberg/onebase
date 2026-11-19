@@ -169,6 +169,13 @@ func reportParamRequestValue(r *http.Request, p reportpkg.Param) (string, bool) 
 	if val, ok := requestFormValue(r, p.Name); ok {
 		return val, true
 	}
+	// DSL structures sent by ui.открытьФорму serialize their keys in lowercase.
+	name := strings.ToLower(p.Name)
+	if name != p.Name {
+		if val, ok := requestFormValue(r, name); ok {
+			return val, true
+		}
+	}
 	if _, ok := requestFormValue(r, reportParamPresenceKey(p.Name)); ok {
 		return "", true
 	}

@@ -414,6 +414,10 @@ body.ob-side-dragging iframe{pointer-events:none}
     }
     return result.frame.name;
   };
+  window.obOpenReportResultFromTab=function(sourceTab,key,url,title){
+    var owner=tabs.find(function(t){return t.frame.name===sourceTab;});
+    return owner?window.obOpenReportResult(owner.frame.contentWindow,key,url,title):'';
+  };
   window.obClearReportResult=function(source,key){
     var owner=tabByWindow(source);
     if(!owner)return;

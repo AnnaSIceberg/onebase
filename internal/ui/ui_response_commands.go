@@ -14,6 +14,7 @@ type uiResponseCommand struct {
 	Data        any    `json:"data"`
 	CommandID   string `json:"commandId"`
 	CloseSource string `json:"closeSource,omitempty"`
+	SourceTab   string `json:"sourceTab,omitempty"`
 }
 
 type uiResponseCommands struct {

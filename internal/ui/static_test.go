@@ -197,7 +197,7 @@ func TestTabShellSingleSSEAndEventForwarding(t *testing.T) {
 	// must still dispatch the same public event name and unchanged detail.
 	for _, call := range []string{
 		"emitOnebaseEvent('onebase:' + msg.name, msg.data);",
-		"emitOnebaseEvent('onebase:' + msg.name, msg.data, msg.closeSource);",
+		"emitOnebaseEvent('onebase:' + msg.name, msg.data, msg.closeSource, msg.sourceTab);",
 	} {
 		if got := strings.Count(src, call); got != 1 {
 			t.Errorf("ui.js должен поднимать onebase-событие в оболочке и во фрейме: %q, найдено %d", call, got)

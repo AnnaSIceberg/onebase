@@ -7023,17 +7023,19 @@ window.onebaseDevice = {
     var raf = window.requestAnimationFrame || function (cb) { return setTimeout(cb, 0); };
     raf(fn);
   }
-  function emitOnebaseEvent(name, data, closeSource) {
+  function emitOnebaseEvent(name, data, closeSource, sourceTab) {
     try {
       if (typeof window.CustomEvent === 'function') {
         var event = new CustomEvent(name, { detail: data });
         event.obCloseSource = closeSource || '';
+        event.obSourceTab = sourceTab || '';
         window.dispatchEvent(event);
         return;
       }
       var ev = document.createEvent('CustomEvent');
       ev.initCustomEvent(name, false, false, data);
       ev.obCloseSource = closeSource || '';
+      ev.obSourceTab = sourceTab || '';
       window.dispatchEvent(ev);
     } catch (_) {}
   }
@@ -7167,22 +7169,27 @@ window.onebaseDevice = {
     var f = pairs(link['отбор'] || link.filter, 'f.');
     return f.length ? base + '?' + f.join('&') : base;
   }
-  function openFormTab(link) {
+  function openFormTab(link,sourceTab) {
     var url = formURL(link);
     if (!url) return;
     var title = (link && (link['сущность'] || link.entity)) || '';
     try {
       // Вкладочная оболочка в этом окне.
-      if (typeof window.obOpenTab === 'function') { window.obOpenTab(url, title); return; }
-      // Мы во фрейме оболочки — просим родителя открыть вкладку.
-      if (window.parent && window.parent !== window && typeof window.parent.obOpenTab === 'function') {
-        if (!document.body.hasAttribute('data-ob-legacy-entity-ui') && typeof window.parent.obOpenReportResult === 'function') {
+      if (typeof window.obOpenTab === 'function') {
+        if (sourceTab && !document.body.hasAttribute('data-ob-legacy-entity-ui') && typeof window.obOpenReportResultFromTab === 'function') {
           var target = new URL(url, location.origin);
           if (/^\/ui\/report\/[^/]+$/.test(target.pathname) && target.searchParams.get('__run') === '1') {
             target.searchParams.set('__result', '1');
-            if (window.parent.obOpenReportResult(window, 'report:' + target.pathname, target.pathname + target.search, title)) return;
+            var slot = link['ключрезультата'] || link.resultKey || target.searchParams.get('__variant') || '';
+            var resultKey = 'report:' + decodeURIComponent(target.pathname) + ':' + String(slot);
+            if (window.obOpenReportResultFromTab(sourceTab,resultKey,target.pathname + target.search,title)) return;
           }
         }
+        window.obOpenTab(url, title);
+        return;
+      }
+      // Мы во фрейме оболочки — просим родителя открыть вкладку.
+      if (window.parent && window.parent !== window && typeof window.parent.obOpenTab === 'function') {
         window.parent.postMessage({ source: 'obOpenTab', url: url, title: title }, window.location.origin);
         return;
       }
@@ -7254,7 +7261,7 @@ window.onebaseDevice = {
   }
   if (!window.__obEmbedded) {
     window.addEventListener('onebase:ui.оповещение', function (ev) { richToast(ev.detail); });
-    window.addEventListener('onebase:ui.открытьФорму', function (ev) { openFormTab(ev.detail); });
+    window.addEventListener('onebase:ui.открытьФорму', function (ev) { openFormTab(ev.detail, ev.obSourceTab); });
     window.addEventListener('onebase:ui.закрытьФорму', function (ev) { closeFormTab(ev.detail, ev.obCloseSource); });
   }
   // BEGIN onebase-dev-system-handler (executed directly by the Node regression test)
@@ -7281,7 +7288,7 @@ window.onebaseDevice = {
       uiCommandIDs.add(msg.commandId);
       if (uiCommandIDs.size > 128) uiCommandIDs.delete(uiCommandIDs.values().next().value);
     }
-    emitOnebaseEvent('onebase:' + msg.name, msg.data, msg.closeSource);
+    emitOnebaseEvent('onebase:' + msg.name, msg.data, msg.closeSource, msg.sourceTab);
     forwardOnebaseEvent(msg);
     if (msg.name === 'уведомление' || msg.name === 'notify') {
       toast(typeof msg.data === 'string' ? msg.data : JSON.stringify(msg.data));

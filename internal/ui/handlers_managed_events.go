@@ -355,7 +355,7 @@ func (s *Server) installFormCloseAccessRecheck(
 }
 
 func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Request, closeInv *formCloseInvocation) {
-	r = withMessageReceipts(withFormCloseSource(r))
+	r = withMessageReceipts(withManagedFormSource(r))
 	if closeInv == nil {
 		r = withUIResponseCommands(r)
 	}
@@ -2790,7 +2790,7 @@ func (s *Server) handleProcessorFormEvent(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Request, closeInv *formCloseInvocation) {
-	r = withMessageReceipts(withFormCloseSource(r))
+	r = withMessageReceipts(withManagedFormSource(r))
 	if closeInv == nil {
 		r = withUIResponseCommands(r)
 	}
