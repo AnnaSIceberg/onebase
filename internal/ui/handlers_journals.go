@@ -45,16 +45,28 @@ func (s *Server) journalList(w http.ResponseWriter, r *http.Request) {
 		params.Filters[jf.Field] = fv
 	}
 
-	const pageSize = 50
+	stream := s.continuousLists(r)
+	params.ChronologicalDocuments = stream
+	pageSize := 50
+	if stream {
+		pageSize = s.store.GetListPageSizeDefault(r.Context(), pageSize)
+	}
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	if offset < 0 {
 		offset = 0
 	}
 
+	if stream && r.URL.Query().Get(listChunkParam) != "1" {
+		offset = -1
+	}
 	rows, total, colRefMap, err := s.store.JournalQuery(r.Context(), j, docs, params, pageSize, offset)
 	if err != nil {
 		s.serverError(w, r, err)
 		return
+	}
+
+	if offset < 0 {
+		offset = journalTailOffset(total, pageSize)
 	}
 
 	// Field masking belongs at the handler boundary, before reference UUIDs are
@@ -97,7 +109,17 @@ func (s *Server) journalList(w http.ResponseWriter, r *http.Request) {
 		prevOffset = 0
 	}
 
+	direction, streamURL := "", ""
+	if stream {
+		direction = "up"
+		if hasPrev {
+			streamURL = listChunkURL(r, "offset", prevOffset)
+		}
+	}
 	s.render(w, r, "page-journal", map[string]any{
+		"StreamDir":              direction,
+		"StreamURL":              streamURL,
+		"SelectLast":             stream && r.URL.Query().Get(listChunkParam) != "1",
 		"Journal":                j,
 		"JournalColumns":         visibleColumns,
 		"JournalSettingsColumns": journalSettingsColumns(j, settings),
@@ -118,6 +140,13 @@ func (s *Server) journalList(w http.ResponseWriter, r *http.Request) {
 		"NextOffset":             offset + pageSize,
 		"RequestURI":             r.URL.RequestURI(),
 	})
+}
+
+func journalTailOffset(total, size int) int {
+	if total == 0 {
+		return 0
+	}
+	return (total - 1) / size * size
 }
 
 func (s *Server) getJournal(w http.ResponseWriter, r *http.Request) *metadata.Journal {

@@ -2137,6 +2137,12 @@ h3{font-size:16px;font-weight:600;margin:24px 0 10px;color:#1e293b}
 .ob-entity-list>details>summary{padding:8px 12px}
 .ob-entity-list .ob-list-content>.card{padding:12px}
 .ob-list-scroll{max-height:54vh;overflow:auto}
+.ob-stream-main{display:flex;flex-direction:column;overflow:hidden}
+.ob-stream-main .ob-list-content,.ob-stream-main .ob-list-wrap>.card,.ob-stream-main>.card:has([data-ob-stream]),.ob-stream-main .ob-list-content>.card{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0}
+.ob-stream-main .ob-list-wrap{display:flex;flex:1;min-height:0}
+.ob-stream-main [data-ob-stream]{flex:1;min-height:0;max-height:none;overflow:auto;overflow-anchor:none}
+.ob-stream-main [data-ob-stream] thead th{position:sticky;top:0;z-index:2;background:#eef2f7}
+.w-list[data-ob-stream]{overflow-anchor:none}
 .ob-list-scroll thead th{position:sticky;top:0;z-index:2;background:#eef2f7}
 .ob-list-pages{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .ob-list-pages .btn[aria-disabled="true"]{opacity:.5;cursor:default}
@@ -2896,6 +2902,8 @@ const tplList = `
 {{end}}
 {{end}}
 
+{{define "list-stream-attrs"}}data-ob-stream="{{.StreamDir}}" data-stream-next="{{.StreamURL}}" tabindex="0"{{if .SelectLast}} data-stream-select-last{{end}}{{end}}
+
 {{define "document-list-pager"}}
 <div class="ob-list-pages" role="navigation" aria-label="{{t .Lang "Страницы"}}">
   {{if .HasPrev}}
@@ -2920,7 +2928,7 @@ const tplList = `
 {{template "head" .}}{{template "nav" .}}
 {{/* Колонки списка с «Настройкой списка» пользователя; без неё — как в конфигурации. */}}
 {{$listCols := .ListColumns}}{{if not $listCols}}{{$listCols = defaultListColumns .Entity}}{{end}}
-<main class="main-list ob-entity-list{{if not .LegacyEntityUI}} ob-compact-list-header{{end}}{{if .Cfg.UIEnhancements}} ob-list-panels{{end}}"{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
+<main class="main-list ob-entity-list{{if not .LegacyEntityUI}} ob-compact-list-header{{end}}{{if .StreamDir}} ob-stream-main{{end}}{{if .Cfg.UIEnhancements}} ob-list-panels{{end}}"{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 {{if not .LegacyEntityUI}}<h2>{{.Entity.DisplayName $.Lang}}</h2>{{end}}
 <div class="row-top{{if not .LegacyEntityUI}} ob-list-header{{end}}">
   {{if .LegacyEntityUI}}<h2>{{.Entity.DisplayName $.Lang}}</h2>{{else}}
@@ -2969,7 +2977,7 @@ const tplList = `
       {{range .ListFormToggles}}<a class="view-btn{{if .On}} active{{end}}" href="{{listURL $.Query "lf_off" .Off}}" aria-pressed="{{if .On}}true{{else}}false{{end}}">{{if .On}}☑{{else}}☐{{end}} {{.Label}}</a>{{end}}
     </div>
     {{end}}
-    {{if not .TreeView}}
+    {{if and (not .TreeView) (not .StreamDir)}}
       {{if .Feed}}<a class="btn btn-secondary btn-sm" href="{{listURL $.Query "lm" "pages"}}" title="{{t $.Lang "Показывать постранично"}}">▤ {{t $.Lang "Страницы"}}</a>
       {{else}}<a class="btn btn-secondary btn-sm" href="{{listURL $.Query "lm" "feed"}}" title="{{t $.Lang "Лента с догрузкой по скроллу"}}">≣ {{t $.Lang "Лента"}}</a>{{end}}
     {{end}}
@@ -3114,7 +3122,9 @@ const tplList = `
 <div class="ob-list-wrap">
 <div class="ob-list-content" data-ob-live="{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}" data-ob-refresh-src="{{.RequestURI}}"{{if $obRefresh}} data-ob-refresh-on="{{$obRefresh}}"{{end}}>
 <div class="card">
-{{if .Chronological}}
+{{if .StreamDir}}
+<div class="ob-list-scroll" {{template "list-stream-attrs" .}}>
+{{else if .Chronological}}
 {{template "document-list-pager" .}}
 <div class="ob-list-scroll"{{if .SelectLast}} data-ob-select-last{{end}}>
 {{end}}
@@ -3183,7 +3193,7 @@ const tplList = `
 {{/* ===== TILES VIEW (плитка) ===== */}}
 {{if .Rows}}
 {{$tile := tileView .Entity}}
-<div class="tile-grid" role="listbox"
+<div class="tile-grid" role="listbox"{{if .StreamDir}} data-stream-rows{{end}}
   data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
   data-ob-row-subsystem="{{$.CurrentSubsystem}}"
   data-ob-row-list-url="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" ""}}"
@@ -3233,7 +3243,7 @@ const tplList = `
 </div>
 {{if .Rows}}
 {{$fixed := listColumnsFixed $listCols}}
-<div style="overflow-x:auto">
+<div{{if not .StreamDir}} style="overflow-x:auto"{{end}}>
 <table data-ob-list-table data-ob-ls-save="{{.ListSettingsURL}}/save" data-ob-ls-state="{{.ListSettingsJSON}}"{{if $fixed}} class="ob-list-fixed" style="width:{{listTableWidth $listCols (eq (str .Entity.Kind) "document") $.SearchAll}}px"{{end}}>
 {{if $fixed}}<colgroup>{{if eq (str .Entity.Kind) "document"}}<col style="width:36px">{{end}}{{range $listCols}}<col data-ob-ls-col="{{.Field.Name}}" style="width:{{listColumnWidth .}}px">{{end}}{{if $.SearchAll}}<col style="width:160px">{{end}}<col style="width:90px"></colgroup>{{end}}
 <thead><tr>
@@ -3296,8 +3306,9 @@ const tplList = `
 {{end}}
 {{end}}
 </div>
-{{if .Chronological}}</div>{{end}}
-{{if and .Feed (not .TreeView)}}
+{{if or .Chronological .StreamDir}}</div>{{end}}
+{{if .StreamDir}}
+{{else if and .Feed (not .TreeView)}}
 {{/* Лента: догрузка по скроллу. Без JS «Показать ещё» = переход на след. страницу. */}}
 {{if .HasNext}}
 <div id="feed-more" data-next="{{.NextPage}}" data-pages="{{.TotalPages}}" data-container="{{if .TilesView}}.tile-grid{{else}}#list-body{{end}}" data-item="{{if .TilesView}}.tile-card{{else}}tr{{end}}" style="margin-top:14px;text-align:center">
@@ -4131,7 +4142,7 @@ const tplRegister = `
 
 {{define "page-register-movements"}}
 {{template "head" .}}{{template "nav" .}}
-<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
+<main{{if or .StreamDir .Cfg.UIEnhancements}} class="{{if .StreamDir}}ob-stream-main {{end}}{{if .Cfg.UIEnhancements}}ob-list-panels{{end}}"{{end}}{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Register.DisplayName $.Lang}} — {{t $.Lang "движения"}}</h2>
   {{if .CanViewBalances}}<a class="btn btn-sm" href="/ui/register/{{lower .Register.Name}}/balances" style="background:#e2e8f0;color:#475569">{{t $.Lang "Остатки →"}}</a>{{end}}
@@ -4140,6 +4151,7 @@ const tplRegister = `
 <div class="card">
 {{if .Rows}}
 <div style="overflow-x:auto">
+{{if .StreamDir}}<div {{template "list-stream-attrs" .}}>{{end}}
 <table><thead><tr>
   {{if .ShowMovementKind}}<th>{{t $.Lang "Вид движения"}}</th>{{end}}
   {{if .ShowRecorder}}<th>{{t $.Lang "Регистратор"}}</th>{{end}}
@@ -4155,6 +4167,7 @@ const tplRegister = `
   {{range $.VisibleAttributes}}<td>{{index $row .Name}}</td>{{end}}
 </tr>{{end}}
 </tbody></table>
+{{if .StreamDir}}</div>{{end}}
 </div>
 {{else}}<p class="empty">{{t $.Lang "Движений нет"}}</p>{{end}}
 </div></main></div></body></html>
@@ -4162,7 +4175,7 @@ const tplRegister = `
 
 {{define "page-register-balances"}}
 {{template "head" .}}{{template "nav" .}}
-<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
+<main{{if or .StreamDir .Cfg.UIEnhancements}} class="{{if .StreamDir}}ob-stream-main {{end}}{{if .Cfg.UIEnhancements}}ob-list-panels{{end}}"{{end}}{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Register.DisplayName $.Lang}} — {{t $.Lang "остатки"}}</h2>
   <a class="btn btn-sm" href="/ui/register/{{lower .Register.Name}}" style="background:#e2e8f0;color:#475569">{{t $.Lang "← Движения"}}</a>
@@ -4171,6 +4184,7 @@ const tplRegister = `
 <div class="card">
 {{if .Rows}}
 <div style="overflow-x:auto">
+{{if .StreamDir}}<div {{template "list-stream-attrs" .}}>{{end}}
 <table><thead><tr>
   {{range .VisibleDimensions}}<th>{{.DisplayName $.Lang}}</th>{{end}}
   {{range .VisibleResources}}<th>{{.DisplayName $.Lang}}</th>{{end}}
@@ -4180,6 +4194,7 @@ const tplRegister = `
   {{range $.VisibleResources}}<td style="font-weight:600">{{index $row .Name}}</td>{{end}}
 </tr>{{end}}
 </tbody></table>
+{{if .StreamDir}}</div>{{end}}
 </div>
 {{else}}<p class="empty">{{t $.Lang "Остатков нет"}}</p>{{end}}
 </div></main></div></body></html>
@@ -4614,7 +4629,7 @@ const tplAbout = `
 const tplInfoReg = `
 {{define "page-inforeg-list"}}
 {{template "head" .}}{{template "nav" .}}
-<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
+<main{{if or .StreamDir .Cfg.UIEnhancements}} class="{{if .StreamDir}}ob-stream-main {{end}}{{if .Cfg.UIEnhancements}}ob-list-panels{{end}}"{{end}}{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.InfoReg.DisplayName $.Lang}}{{if .InfoReg.Periodic}} <span style="font-size:13px;color:#64748b;font-weight:400">({{t $.Lang "периодический"}})</span>{{end}}</h2>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -4627,7 +4642,7 @@ const tplInfoReg = `
 <div class="ob-list-wrap">
 <div class="card">
 {{if .Rows}}
-<div style="overflow-x:auto">
+<div style="overflow-x:auto"{{if .StreamDir}} {{template "list-stream-attrs" .}}{{end}}>
 <table><thead><tr>
   {{if .InfoReg.Periodic}}<th>{{t $.Lang "Период"}}</th>{{end}}
   {{range .InfoReg.Dimensions}}<th>{{.DisplayName $.Lang}}</th>{{end}}
@@ -4654,12 +4669,13 @@ const tplInfoReg = `
 </div>
 {{template "detail-panel" .}}
 </div>
-<div data-ob-inforeg-pagination style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">
+{{if not .StreamDir}}<div data-ob-inforeg-pagination style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">
   <span>{{t $.Lang "Всего:"}} {{.Total}}</span>
   {{if .HasPrev}}<a class="btn btn-secondary btn-sm" rel="prev" href="{{.PrevURL}}">{{t $.Lang "← Назад"}}</a>{{end}}
   <span style="color:#64748b;font-size:13px">{{t $.Lang "Стр."}} {{.Page}} {{t $.Lang "из"}} {{.TotalPages}}</span>
   {{if .HasNext}}<a class="btn btn-secondary btn-sm" rel="next" href="{{.NextURL}}">{{t $.Lang "Вперёд →"}}</a>{{end}}
 </div>
+{{end}}
 </main></div></body></html>
 {{end}}
 
@@ -4784,7 +4800,7 @@ const tplConstants = `
 const tplJournal = `
 {{define "page-journal"}}
 {{template "head" .}}{{template "nav" .}}
-<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
+<main{{if or .StreamDir .Cfg.UIEnhancements}} class="{{if .StreamDir}}ob-stream-main {{end}}{{if .Cfg.UIEnhancements}}ob-list-panels{{end}}"{{end}}{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Journal.DisplayName $.Lang}}</h2>
   <div style="display:flex;align-items:center;gap:12px">
@@ -4875,7 +4891,7 @@ const tplJournal = `
 <div class="ob-list-wrap">
 <div class="card">
 {{if .Rows}}
-<div style="overflow-x:auto">
+<div style="overflow-x:auto"{{if .StreamDir}} {{template "list-stream-attrs" .}}{{end}}>
 <table><thead><tr>
   <th>{{t $.Lang "Документ"}}</th>
   {{range .JournalColumns}}<th>{{.DisplayLabel $.Lang}}</th>{{end}}
@@ -4904,7 +4920,7 @@ const tplJournal = `
 {{template "detail-panel" .}}
 </div>
 
-{{if or .HasPrev .HasNext}}
+{{if and (not .StreamDir) (or .HasPrev .HasNext)}}
 <div style="display:flex;gap:8px;margin-top:12px">
   {{if .HasPrev}}<a class="btn btn-secondary" href="?offset={{.PrevOffset}}{{filterQuery $params}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}">{{t $.Lang "← Назад"}}</a>{{end}}
   {{if .HasNext}}<a class="btn btn-secondary" href="?offset={{.NextOffset}}{{filterQuery $params}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}">{{t $.Lang "Вперёд →"}}</a>{{end}}
@@ -5290,13 +5306,14 @@ const tplScheduled = `
 const tplAccountReg = `
 {{define "page-accounts"}}
 {{template "head" .}}{{template "nav" .}}
-<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
+<main{{if or .StreamDir .Cfg.UIEnhancements}} class="{{if .StreamDir}}ob-stream-main {{end}}{{if .Cfg.UIEnhancements}}ob-list-panels{{end}}"{{end}}{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Chart.DisplayName $.Lang}}</h2>
   <span style="color:#94a3b8;font-size:13px">{{len .Rows}} {{t $.Lang "счетов"}}</span>
 </div>
 <div class="card">
 {{if .Rows}}
+{{if .StreamDir}}<div {{template "list-stream-attrs" .}}>{{end}}
 <table><thead><tr>
   <th style="width:120px">{{t $.Lang "Код"}}</th>
   <th>{{t $.Lang "Наименование"}}</th>
@@ -5317,6 +5334,7 @@ const tplAccountReg = `
 </tr>
 {{end}}
 </tbody></table>
+{{if .StreamDir}}</div>{{end}}
 {{else}}
 <p class="empty">{{t $.Lang "Счетов нет"}}</p>
 {{end}}
@@ -5326,13 +5344,14 @@ const tplAccountReg = `
 
 {{define "page-accountreg-movements"}}
 {{template "head" .}}{{template "nav" .}}
-<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
+<main{{if or .StreamDir .Cfg.UIEnhancements}} class="{{if .StreamDir}}ob-stream-main {{end}}{{if .Cfg.UIEnhancements}}ob-list-panels{{end}}"{{end}}{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Register.DisplayName $.Lang}} — {{t $.Lang "Проводки"}}</h2>
   <a class="btn btn-secondary" href="/ui/accountreg/{{lower .Register.Name}}/balances">{{t $.Lang "Остатки"}}</a>
 </div>
 <div class="card">
 {{if .Rows}}
+{{if .StreamDir}}<div {{template "list-stream-attrs" .}}>{{end}}
 <table><thead><tr>
   <th>{{t $.Lang "Период"}}</th>
   <th>{{t $.Lang "Дт"}}</th>
@@ -5354,6 +5373,7 @@ const tplAccountReg = `
 </tr>
 {{end}}
 </tbody></table>
+{{if .StreamDir}}</div>{{end}}
 {{else}}
 <p class="empty">{{t $.Lang "Проводок нет"}}</p>
 {{end}}
@@ -5363,7 +5383,7 @@ const tplAccountReg = `
 
 {{define "page-accountreg-balances"}}
 {{template "head" .}}{{template "nav" .}}
-<main{{if .Cfg.UIEnhancements}} class="ob-list-panels" data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
+<main{{if or .StreamDir .Cfg.UIEnhancements}} class="{{if .StreamDir}}ob-stream-main {{end}}{{if .Cfg.UIEnhancements}}ob-list-panels{{end}}"{{end}}{{if .Cfg.UIEnhancements}} data-ob-list-panel-scope="{{.ListPanelScope}}"{{end}}>
 <div class="row-top">
   <h2>{{.Register.DisplayName $.Lang}} — {{t $.Lang "Остатки по счетам"}}</h2>
   <div style="display:flex;gap:8px;align-items:center">
@@ -5377,6 +5397,7 @@ const tplAccountReg = `
 </div>
 <div class="card">
 {{if .Rows}}
+{{if .StreamDir}}<div {{template "list-stream-attrs" .}}>{{end}}
 <table><thead><tr>
   <th style="width:100px">{{t $.Lang "Счёт"}}</th>
   <th>{{t $.Lang "Наименование"}}</th>
@@ -5403,6 +5424,7 @@ const tplAccountReg = `
 </tr>
 {{end}}
 </tbody></table>
+{{if .StreamDir}}</div>{{end}}
 {{else}}
 <p class="empty">{{t $.Lang "Нет движений на выбранную дату"}}</p>
 {{end}}

@@ -492,6 +492,10 @@ func (db *DB) GetMovements(ctx context.Context, regName string, reg *metadata.Re
 		query += " WHERE " + strings.Join(whereParts, " AND ")
 	}
 	query += " ORDER BY period, recorder, line_number"
+	if f.Limit > 0 {
+		query += ", recorder_type"
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", f.Limit, max(0, f.Offset))
+	}
 	rows, err := db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get movements %s: %w", regName, err)
@@ -618,6 +622,9 @@ func (db *DB) GetBalances(ctx context.Context, regName string, reg *metadata.Reg
 		query += " ORDER BY " + strings.Join(groupBy, ", ")
 	}
 
+	if f.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", f.Limit, max(0, f.Offset))
+	}
 	rows, err := db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get balances %s: %w", regName, err)

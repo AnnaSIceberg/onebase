@@ -208,13 +208,20 @@ func (db *DB) JournalQuery(
 	if d.Name() == "postgres" {
 		nullsClause = " NULLS LAST"
 	}
+	orderDir := "DESC"
+	tie := ""
+	if params.ChronologicalDocuments {
+		orderDir, nullsClause, tie = "ASC", " NULLS FIRST", ", id ASC, _doc_kind ASC"
+		if offset < 0 {
+			offset = max(total-1, 0) / limit * limit
+		}
+	}
 	dataSQL := fmt.Sprintf(
-		"WITH j AS (%s)\nSELECT _doc_kind, id, %s FROM j%s ORDER BY %s DESC%s LIMIT %s OFFSET %s",
+		"WITH j AS (%s)\nSELECT _doc_kind, id, %s FROM j%s ORDER BY %s %s%s%s LIMIT %s OFFSET %s",
 		union,
 		strings.Join(outCols, ", "),
 		whereClause,
-		orderCol,
-		nullsClause,
+		orderCol, orderDir, nullsClause, tie,
 		d.Placeholder(argIdx), d.Placeholder(argIdx+1),
 	)
 	dataArgs := append(args, limit, offset)

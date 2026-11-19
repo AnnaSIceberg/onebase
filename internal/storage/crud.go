@@ -36,6 +36,7 @@ type ListParams struct {
 	// first document date DESC, flat catalog name/first string ASC, or id (using Dir).
 	// ChronologicalDocuments gives the paginated document UI a stable date-first order.
 	ChronologicalDocuments bool
+	StableListOrder        bool
 	Sort                   string
 	Dir                    string     // "asc" or "desc"
 	ParentStr              string     // "" = no filter; "root" = parent IS NULL; "<uuid>" = parent = uuid
@@ -1066,6 +1067,9 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 		} else {
 			query += fmt.Sprintf(" ORDER BY %s ASC", firstStrCol)
 		}
+		if params.StableListOrder && firstStrCol != "id" {
+			query += ", id ASC"
+		}
 	} else {
 		orderCol := "id"
 		orderDir := "ASC"
@@ -1128,7 +1132,7 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 			}
 		} else {
 			query += fmt.Sprintf(" ORDER BY %s %s", orderCol, orderDir)
-			if params.ChronologicalDocuments && orderCol != "id" {
+			if (params.ChronologicalDocuments || params.StableListOrder) && orderCol != "id" {
 				query += ", id ASC"
 			}
 		}

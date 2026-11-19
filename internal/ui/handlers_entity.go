@@ -103,11 +103,21 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	}
 	treeView := entity.Hierarchical && view == "tree"
 	tilesView := view == "tiles"
-	feed := !treeView && s.resolveListMode(w, r, entity)
+	stream := !treeView && s.continuousLists(r)
+	feed := !stream && !treeView && s.resolveListMode(w, r, entity)
 	chronological = chronological && !feed && !treeView
 	params.ChronologicalDocuments = chronological
+	params.StableListOrder = stream
 	requestedPage := r.URL.Query().Get("page")
 	openLast := chronological && (requestedPage == "last" || requestedPage == "" && params.Sort == "")
+	backwards := chronological && params.Sort == ""
+	chunk := r.URL.Query().Get(listChunkParam) == "1"
+	if stream {
+		openLast = backwards && !chunk
+		if !chunk {
+			params.Offset = 0
+		}
+	}
 
 	var breadcrumbs []map[string]string
 	var parentStr string
@@ -251,6 +261,14 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.legacyEntityUI(r) {
 		data["CanCreate"] = s.canCreateFromList(r, entity)
+	}
+	if stream {
+		direction := "down"
+		if backwards {
+			direction = "up"
+		}
+		data["StreamDir"] = direction
+		data["StreamURL"] = listChunkURL(r, "page", listChunkNext(page, totalPages, backwards))
 	}
 	s.listSettingsData(r, entity, data)
 	s.render(w, r, "page-list", data)

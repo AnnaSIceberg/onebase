@@ -47,9 +47,9 @@ func (db *DB) SyncAccounts(ctx context.Context, charts []*metadata.ChartOfAccoun
 }
 
 // GetAccounts returns all accounts for a given plan, ordered by code.
-func (db *DB) GetAccounts(ctx context.Context, plan string) ([]map[string]any, error) {
+func (db *DB) GetAccounts(ctx context.Context, plan string, page ...AccountListWindow) ([]map[string]any, error) {
 	rows, err := db.Query(ctx,
-		`SELECT code, name, kind, parent FROM _accounts WHERE plan=$1 ORDER BY code`,
+		accountListQuery(`SELECT code, name, kind, parent FROM _accounts WHERE plan=$1 ORDER BY code`, page),
 		plan,
 	)
 	if err != nil {
@@ -302,7 +302,7 @@ func (db *DB) ClearAccountMovements(ctx context.Context, regName string, docID u
 }
 
 // GetAccountMovements returns all movements for a register, ordered by period desc.
-func (db *DB) GetAccountMovements(ctx context.Context, regName string, ar *metadata.AccountRegister) ([]map[string]any, error) {
+func (db *DB) GetAccountMovements(ctx context.Context, regName string, ar *metadata.AccountRegister, page ...AccountListWindow) ([]map[string]any, error) {
 	table := metadata.AccountRegTableName(regName)
 
 	var cols []string
@@ -314,8 +314,13 @@ func (db *DB) GetAccountMovements(ctx context.Context, regName string, ar *metad
 		cols = append(cols, metadata.SubcontoColumn(i+1))
 	}
 
-	sql := fmt.Sprintf("SELECT %s FROM %s ORDER BY period DESC LIMIT 500",
+	sql := fmt.Sprintf("SELECT %s FROM %s ORDER BY period DESC",
 		strings.Join(cols, ", "), table)
+	if len(page) != 0 {
+		sql = accountListQuery(sql+", id DESC", page)
+	} else {
+		sql += " LIMIT 500"
+	}
 	rows, err := db.Query(ctx, sql)
 	if err != nil {
 		return nil, err
@@ -346,7 +351,7 @@ func (db *DB) GetAccountMovements(ctx context.Context, regName string, ar *metad
 // Если у регистра объявлены субконто, остатки разворачиваются по ним: строка =
 // счёт × комбинация субконто, а каждый субконто попадает в row под ключом субконто<N>
 // (UUID для reference — резолвится в наименование на уровне UI).
-func (db *DB) AccountBalances(ctx context.Context, regName, planName string, asOf time.Time, resources, subconto []metadata.Field) ([]map[string]any, error) {
+func (db *DB) AccountBalances(ctx context.Context, regName, planName string, asOf time.Time, resources, subconto []metadata.Field, page ...AccountListWindow) ([]map[string]any, error) {
 	table := metadata.AccountRegTableName(regName)
 
 	var resourceCols []string
@@ -380,6 +385,12 @@ WHERE a.plan = %s
 GROUP BY %s
 ORDER BY a.code`, selectCols, table, d.Placeholder(1), d.Placeholder(2), groupBy)
 
+	if len(page) != 0 {
+		for i := range subconto {
+			query += ", r." + metadata.SubcontoColumn(i+1)
+		}
+		query = accountListQuery(query, page)
+	}
 	rows, err := db.Query(ctx, query, asOf, planName)
 	if err != nil {
 		return nil, fmt.Errorf("account balances: %w", err)
@@ -634,4 +645,17 @@ func max0Dec(v decimal.Decimal) decimal.Decimal {
 		return decimal.Zero
 	}
 	return v
+}
+
+// AccountListWindow applies only to lists. Other callers retain the existing query.
+type AccountListWindow struct {
+	Limit  int
+	Offset int
+}
+
+func accountListQuery(query string, page []AccountListWindow) string {
+	if len(page) == 0 || page[0].Limit <= 0 {
+		return query
+	}
+	return query + fmt.Sprintf(" LIMIT %d OFFSET %d", page[0].Limit, max(0, page[0].Offset))
 }

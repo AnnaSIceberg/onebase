@@ -51,6 +51,10 @@ func (s *Server) registerMovements(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	size, offset := s.listBatch(r)
+	if size > 0 {
+		flt.Limit, flt.Offset = size+1, offset
+	}
 	rows, err := s.store.GetMovements(r.Context(), name, reg, flt)
 	if err != nil {
 		s.serverError(w, r, err)
@@ -62,9 +66,8 @@ func (s *Server) registerMovements(w http.ResponseWriter, r *http.Request) {
 	s.resolveRegisterRows(r.Context(), rows, reg)
 	filterValues := filterFormValues(r, filterFields)
 	columns := registerMovementColumnsFor(decisions)
-	s.render(w, r, "page-register-movements", map[string]any{
+	s.render(w, r, "page-register-movements", listBatchData(r, size, offset, rows, map[string]any{
 		"Register":          reg,
-		"Rows":              rows,
 		"CanViewBalances":   !registerBalancesProtected(decisions, reg),
 		"VisibleDimensions": visibleRegisterFields(decisions, reg.Dimensions),
 		"VisibleResources":  visibleRegisterFields(decisions, reg.Resources),
@@ -76,7 +79,7 @@ func (s *Server) registerMovements(w http.ResponseWriter, r *http.Request) {
 		"Filter":            filterValues,
 		"RefOpts":           s.loadRefOpts(r.Context(), filterFields, filterValues),
 		"HasFilters":        !flt.IsEmpty(),
-	})
+	}))
 }
 
 func (s *Server) registerBalances(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +112,10 @@ func (s *Server) registerBalances(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	size, offset := s.listBatch(r)
+	if size > 0 {
+		flt.Limit, flt.Offset = size+1, offset
+	}
 	rows, err := s.store.GetBalances(r.Context(), name, reg, flt)
 	if err != nil {
 		s.serverError(w, r, err)
@@ -117,9 +124,8 @@ func (s *Server) registerBalances(w http.ResponseWriter, r *http.Request) {
 	s.maskRegisterRecords(r.Context(), reg, rows)
 	s.resolveRegisterRows(r.Context(), rows, reg)
 	filterValues := filterFormValues(r, filterFields)
-	s.render(w, r, "page-register-balances", map[string]any{
+	s.render(w, r, "page-register-balances", listBatchData(r, size, offset, rows, map[string]any{
 		"Register":          reg,
-		"Rows":              rows,
 		"VisibleDimensions": visibleRegisterFields(decisions, reg.Dimensions),
 		"VisibleResources":  visibleRegisterFields(decisions, reg.Resources),
 		"FilterFields":      filterFields,
@@ -127,7 +133,7 @@ func (s *Server) registerBalances(w http.ResponseWriter, r *http.Request) {
 		"Filter":            filterValues,
 		"RefOpts":           s.loadRefOpts(r.Context(), filterFields, filterValues),
 		"HasFilters":        !flt.IsEmpty(),
-	})
+	}))
 }
 
 type documentMovementRead struct {
@@ -425,7 +431,8 @@ func (s *Server) infoRegList(w http.ResponseWriter, r *http.Request) {
 		totalPages = 1 + (total-1)/limit
 	}
 	page := 1
-	if p, err := strconv.Atoi(query.Get("page")); err == nil && p > 1 {
+	stream := s.continuousLists(r)
+	if p, err := strconv.Atoi(query.Get("page")); err == nil && p > 1 && (!stream || query.Get(listChunkParam) == "1") {
 		page = min(p, totalPages)
 	}
 	// Clamp before multiplying: offset is bounded by total, even for a request
@@ -451,6 +458,7 @@ func (s *Server) infoRegList(w http.ResponseWriter, r *http.Request) {
 	s.resolveInfoRegRows(r.Context(), rows, ir)
 	filterContext := cloneQuery(query)
 	filterContext.Del("page")
+	filterContext.Del(listChunkParam)
 	filterContext.Del("from")
 	filterContext.Del("to")
 	for _, dim := range ir.Dimensions {
@@ -460,6 +468,7 @@ func (s *Server) infoRegList(w http.ResponseWriter, r *http.Request) {
 	if encoded := filterContext.Encode(); encoded != "" {
 		resetURL += "?" + encoded
 	}
+	query.Del(listChunkParam)
 	deleteURL := "/ui/inforeg/" + strings.ToLower(ir.Name) + "/delete"
 	if len(query) > 0 {
 		query.Set("page", strconv.Itoa(page))
@@ -469,7 +478,14 @@ func (s *Server) infoRegList(w http.ResponseWriter, r *http.Request) {
 	prevURL := "?" + query.Encode()
 	query.Set("page", strconv.Itoa(page+1))
 	nextURL := "?" + query.Encode()
+	direction, streamURL := "", ""
+	if stream {
+		direction = "down"
+		streamURL = listChunkURL(r, "page", listChunkNext(page, totalPages, false))
+	}
 	s.render(w, r, "page-inforeg-list", map[string]any{
+		"StreamDir":     direction,
+		"StreamURL":     streamURL,
 		"InfoReg":       ir,
 		"Rows":          rows,
 		"FilterFields":  filterFields,

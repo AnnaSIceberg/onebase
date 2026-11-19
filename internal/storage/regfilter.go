@@ -19,6 +19,8 @@ type RegFilter struct {
 	From      *time.Time
 	To        *time.Time
 	RowFilter *Predicate // additional SQL-side row-level access predicate
+	Limit     int        // optional limit for movement and balance lists
+	Offset    int
 }
 
 // IsEmpty сообщает, задан ли хоть один критерий отбора.
