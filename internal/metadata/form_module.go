@@ -335,9 +335,6 @@ type FormElement struct {
 	// единственное действие объявлено своей кнопкой — без акцента она теряется
 	// среди вспомогательных.
 	Primary bool `yaml:"primary,omitempty"`
-	// ButtonKind styles an application button: primary, secondary, or danger.
-	ButtonKind string `yaml:"button_kind,omitempty"`
-
 	// ComparePhoneField enables request-local phone comparison for this
 	// built-in processor button. It names one document string PII field.
 	ComparePhoneField string `yaml:"compare_phone_field,omitempty"`
