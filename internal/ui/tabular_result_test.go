@@ -96,6 +96,10 @@ func TestTabularLayoutReportHTTPMatrix(t *testing.T) {
 		if view.Code != 200 || !strings.Contains(view.Body.String(), "150006,00") || !strings.Contains(view.Body.String(), "Заявка 2") {
 			t.Fatalf("module total/detail missing: HTTP%d", view.Code)
 		}
+		if !strings.Contains(view.Body.String(), `<meta name="ob-tab-title" content="КПИ по макету">`) ||
+			!strings.Contains(view.Body.String(), `class="sheet-flow"`) {
+			t.Fatal("вкладка вывода должна получить синоним отчёта и правила размещения текста")
+		}
 		v, ok := s.tabularResults.items[strings.TrimPrefix(path, "/ui/tabular/")]
 		if !ok || len(v.doc.Groups) != 20 || v.doc.HeaderArea == nil {
 			t.Fatal("native macro grouping/header lost")

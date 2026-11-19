@@ -677,6 +677,8 @@ type SpreadsheetDocumentCellWrapper struct {
 
 func (w *SpreadsheetDocumentCellWrapper) Get(field string) any {
 	switch strings.ToLower(field) {
+	case "переносить", "wraptext":
+		return w.cell.WrapText
 	case "расшифровка", "drilldown":
 		return w.cell.DrilldownSource
 	case "подчеркивание", "подчёркивание", "underline":
@@ -711,6 +713,8 @@ func (w *SpreadsheetDocumentCellWrapper) Get(field string) any {
 
 func (w *SpreadsheetDocumentCellWrapper) Set(field string, v any) {
 	switch strings.ToLower(field) {
+	case "переносить", "wraptext":
+		w.cell.WrapText = truthy(v)
 	case "формат", "format":
 		w.cell.Format = strArg([]any{v}, 0)
 	case "расшифровка", "drilldown":

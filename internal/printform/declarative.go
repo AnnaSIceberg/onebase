@@ -231,6 +231,7 @@ func layoutCellToSheet(ld LayoutCell) *sheet.Cell {
 	cell.Bold = ld.Bold
 	cell.Italic = ld.Italic
 	cell.Underline = ld.Underline
+	cell.WrapText = ld.WrapText
 	if ld.Align != "" {
 		cell.Align = strings.ToLower(ld.Align)
 	}

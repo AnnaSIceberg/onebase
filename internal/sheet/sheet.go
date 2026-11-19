@@ -38,6 +38,7 @@ type Cell struct {
 	Bold             bool
 	Italic           bool
 	Underline        bool
+	WrapText         bool
 	FontSize         int
 	FontFamily       string
 	BackColor        string

@@ -341,7 +341,22 @@ func (s *Server) tabularView(w http.ResponseWriter, r *http.Request) {
 		if v.doc.AutoScale {
 			printURL = base + "/print"
 		}
-		_, _ = w.Write([]byte(v.doc.HTML(sheet.HTMLOptions{PDFURL: base + "/pdf", PrintURL: printURL, XLSXURL: base + "/xlsx", Embedded: v.scope.Form != "", PlainRows: v.scope.PlainRows, Compact: v.scope.Compact, ParentDrilldown: v.scope.CustomDrilldown, DrilldownURL: func(row, col int) string {
+		title := ""
+		flow := !s.legacyEntityUI(r)
+		if flow {
+			lang := s.resolveLang(r)
+			switch v.scope.Kind {
+			case "report":
+				if rep := s.reg.GetReport(v.scope.Name); rep != nil {
+					title = rep.DisplayName(lang)
+				}
+			case "processor":
+				if proc := s.reg.GetProcessor(v.scope.Name); proc != nil {
+					title = proc.DisplayName(lang)
+				}
+			}
+		}
+		_, _ = w.Write([]byte(v.doc.HTML(sheet.HTMLOptions{Title: title, CellTextFlow: flow, PDFURL: base + "/pdf", PrintURL: printURL, XLSXURL: base + "/xlsx", Embedded: v.scope.Form != "", PlainRows: v.scope.PlainRows, Compact: v.scope.Compact, ParentDrilldown: v.scope.CustomDrilldown, DrilldownURL: func(row, col int) string {
 			return base + "/cell?row=" + strconv.Itoa(row) + "&col=" + strconv.Itoa(col)
 		}})))
 	}

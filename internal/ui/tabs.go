@@ -364,7 +364,16 @@ body.ob-side-dragging iframe{pointer-events:none}
     // (изоляция отметки фокуса поиска, #1599). id сохраняется оболочкой и
     // переживает навигацию внутри фрейма и перезапуск оболочки.
     frame.name='ob-tab-'+t.id;
-    frame.addEventListener('load',function(){ syncFrameURL(t); });
+    frame.addEventListener('load',function(){
+      syncFrameURL(t);
+      try {
+        var child=t.frame.contentWindow;
+        if(child.location.origin!==location.origin || !/^\/ui\/tabular\/[0-9a-f-]+$/.test(child.location.pathname))return;
+        var meta=child.document.querySelector('meta[name="ob-tab-title"]');
+        var resultTitle=meta&&meta.getAttribute('content');
+        if(resultTitle){t.title=resultTitle;t.label.textContent=resultTitle;t.btn.title=resultTitle;persist();}
+      } catch(e) {}
+    });
     btn.addEventListener('click',function(e){ if(e.target===cl||e.target===dup)return; setActive(t); });
     btn.addEventListener('mousedown',function(e){ if(e.button===1){ e.preventDefault(); closeTab(t,'cross'); } });
     cl.addEventListener('click',function(e){ e.stopPropagation(); closeTab(t,'cross'); });

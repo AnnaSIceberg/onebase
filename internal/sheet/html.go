@@ -20,6 +20,8 @@ var tabularCellOpenJS string
 // при пустом PDFURL вывод бит-в-бит совпадает с прежним (кнопка → window.print()).
 // Точная семантика повторяет прежний toHTML из interpreter.
 type HTMLOptions struct {
+	Title           string
+	CellTextFlow    bool
 	BackURL         string
 	PDFURL          string
 	PrintURL        string // native PDF print preview for uniformly scaled documents
@@ -45,8 +47,16 @@ func (d *Document) HTML(opts HTMLOptions) string {
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Табличный документ</title>
-<style>
+`)
+	title := opts.Title
+	if title == "" {
+		title = "Табличный документ"
+	}
+	fmt.Fprintf(&sb, "<title>%s</title>\n", escapeHTML(title))
+	if opts.Title != "" {
+		fmt.Fprintf(&sb, `<meta name="ob-tab-title" content="%s">`+"\n", escapeHTML(title))
+	}
+	sb.WriteString(`<style>
 *{box-sizing:border-box;margin:0;padding:0}
 @page{margin:1cm}
 body{font-family:'Times New Roman',Times,serif;font-size:10pt;color:#000;padding:0}
@@ -60,6 +70,9 @@ body{font-family:'Times New Roman',Times,serif;font-size:10pt;color:#000;padding
 table{border-collapse:collapse;width:auto}
 td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 `)
+	if opts.CellTextFlow {
+		sb.WriteString(cellTextFlowCSS)
+	}
 	if !opts.PlainRows {
 		sb.WriteString("tr:nth-child(even) td{background:#f8fafc}\n")
 	}
@@ -157,7 +170,7 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 			}
 
 			var attrs, style string
-			if resizeColumns {
+			if resizeColumns || opts.CellTextFlow {
 				attrs = fmt.Sprintf(` data-sheet-col="%d"`, col)
 			}
 
@@ -167,6 +180,13 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 					attrs += fmt.Sprintf(` colspan="%d"`, cell.ColSpan)
 					for c := col + 1; c < col+cell.ColSpan; c++ {
 						covered[CellKey{row, c}] = true
+					}
+				}
+				if opts.CellTextFlow && cell.RowSpan > 1 && cell.ColSpan > 1 {
+					for r := row + 1; r < row+cell.RowSpan; r++ {
+						for c := col + 1; c < col+cell.ColSpan; c++ {
+							covered[CellKey{r, c}] = true
+						}
 					}
 				}
 				if cell.RowSpan > 1 {
@@ -206,6 +226,24 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 				}
 			}
 
+			if opts.CellTextFlow && cell != nil && text != "" && cell.RichHTML == "" && cell.Picture == "" {
+				if cell.WrapText || cell.ColSpan > 1 || cell.RowSpan > 1 {
+					attrs += ` class="sheet-wrap-text"`
+				} else {
+					end := col
+					if cell.Align == "" || cell.Align == "left" {
+						end = d.textFlowEnd(row, col, maxCol, covered)
+					}
+					flow := ""
+					if end > col {
+						flow = fmt.Sprintf(` data-sheet-flow-end="%d"`, end)
+					}
+					if width > 0 || end > col {
+						attrs += ` class="sheet-flow-cell"`
+					}
+					text = `<div class="sheet-flow"` + flow + `><span>` + text + `</span></div>`
+				}
+			}
 			if attrs != "" || style != "" {
 				fmt.Fprintf(&sb, "<td%s style=\"%s\">%s</td>", attrs, style, text)
 			} else {
@@ -222,6 +260,9 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 		sb.WriteString(`<style>.sheet-column-widths-set td{overflow-wrap:anywhere}</style><script>`)
 		sb.WriteString(tabularColumnResizeJS)
 		sb.WriteString("</script>")
+	}
+	if opts.CellTextFlow {
+		sb.WriteString(cellTextFlowScript)
 	}
 	if hasDrilldown {
 		sb.WriteString("<script>")
