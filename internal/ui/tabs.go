@@ -346,11 +346,20 @@ body.ob-side-dragging iframe{pointer-events:none}
     if(active===t)persistActive(t);
   }
   function openTab(url,title,opts){
+    opts=opts||{};
+    if(!opts.reportOwner){
+      try{
+        var reportURL=new URL(url,location.origin);
+        if(!document.body.hasAttribute('data-ob-legacy-entity-ui')&&reportURL.origin===location.origin&&/^\/ui\/report\/[^/]+$/.test(reportURL.pathname)&&reportURL.searchParams.get('__run')!=='1'){
+          reportURL.searchParams.set('__ob_report_form','1');
+          url=reportURL.pathname+reportURL.search+reportURL.hash;
+        }
+      }catch(_){}
+    }
     // Never paint a link's raw record label while a display-title form loads.
     try { var path=decodeURIComponent(new URL(url,location.origin).pathname).toLowerCase();
       Object.keys(DISPLAY_TITLE_ENTITIES).some(function(prefix){if(path.indexOf(prefix)===0 && path.slice(prefix.length).indexOf('/')<0 && path.slice(prefix.length)){title=DISPLAY_TITLE_ENTITIES[prefix];return true;}return false;});
     } catch(_) {}
-    opts=opts||{};
     if(!opts.allowDup){ for(var i=0;i<tabs.length;i++){ if(sameTabURL(tabs[i].url,url)){ if(!opts.restoring)setActive(tabs[i]); return tabs[i]; } } }
     var btn=document.createElement('div'); btn.className='ob-tab'; btn.setAttribute('role','tab'); btn.title=title||'Форма'; // фаза 4: тултип полного заголовка
     var lab=document.createElement('span'); lab.className='ob-tab-label'; lab.textContent=title||'Форма'; btn.appendChild(lab);

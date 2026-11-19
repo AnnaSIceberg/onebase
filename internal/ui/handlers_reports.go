@@ -61,7 +61,8 @@ func (s *Server) reportForm(w http.ResponseWriter, r *http.Request) {
 	activePreset := activeReportPreset(presets, activePresetID)
 	// Если у отчёта нет ни параметров, ни вариантов компоновки, ни пользовательских
 	// пресетов — строим сразу. Варианты/пресеты требуют формы с выбором.
-	if len(rep.InputParams()) == 0 && len(rep.Variants) == 0 && len(presets) == 0 {
+	autoReport := len(rep.InputParams()) == 0 && len(rep.Variants) == 0 && len(presets) == 0
+	if autoReport && (s.legacyEntityUI(r) || r.URL.Query().Get("__ob_report_form") != "1") {
 		s.runReport(w, r, rep, map[string]any{})
 		return
 	}
@@ -77,13 +78,14 @@ func (s *Server) reportForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "page-report", map[string]any{
-		"Report":         rep,
-		"ParamValues":    defaults,
-		"ReportParams":   s.buildReportParams(r.Context(), s.resolveLang(r), rep.Params, defaults, rep),
-		"ActiveVariant":  r.FormValue("__variant"),
-		"ReportPresets":  presets,
-		"ActivePresetID": activePresetID,
-		"ActivePreset":   activePreset,
+		"Report":           rep,
+		"ReportAutoResult": autoReport,
+		"ParamValues":      defaults,
+		"ReportParams":     s.buildReportParams(r.Context(), s.resolveLang(r), rep.Params, defaults, rep),
+		"ActiveVariant":    r.FormValue("__variant"),
+		"ReportPresets":    presets,
+		"ActivePresetID":   activePresetID,
+		"ActivePreset":     activePreset,
 	})
 }
 
@@ -897,7 +899,7 @@ func (s *Server) reportExcel(w http.ResponseWriter, r *http.Request) {
 		s.writeReportExportError(w, r, err)
 		return
 	}
-	data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles, stats.measureAlignment(len(headers)))
+	data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles, excel.ListPresentation{ColumnAlignment: stats.measureAlignment(len(headers)), WrapText: stats.composition != nil})
 	if err != nil {
 		http.Error(w, "Excel error: "+s.errText(r, err), 500)
 		return

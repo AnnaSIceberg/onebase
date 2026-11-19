@@ -890,6 +890,10 @@ if (window.__obEmbedded) {
       }, 0);
     } catch (_) {}
   });
+  document.addEventListener('DOMContentLoaded', function () {
+    var auto = document.querySelector('form[data-ob-report-auto-result]');
+    if (auto && window.parent !== window) auto.requestSubmit();
+  });
   // Фаза 3: сообщаем оболочке о несохранённых правках, чтобы она предупредила при
   // закрытии вкладки/окна (защита от потери ввода).
   (function () {

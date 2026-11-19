@@ -83,10 +83,17 @@ type RowStyle struct {
 
 var rowColorRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
-func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle, columnAlignments ...map[int]string) ([]byte, error) {
-	var alignments map[int]string
-	if len(columnAlignments) > 0 {
-		alignments = columnAlignments[0]
+// ListPresentation optionally keeps report text in its cell and applies
+// column alignment to formatted values, including numbers stored as text.
+type ListPresentation struct {
+	ColumnAlignment map[int]string
+	WrapText        bool
+}
+
+func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle, presentation ...ListPresentation) ([]byte, error) {
+	var layout ListPresentation
+	if len(presentation) > 0 {
+		layout = presentation[0]
 	}
 	f := excelize.NewFile()
 	defer closeBook(f)
@@ -114,12 +121,15 @@ func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle, 
 		if err != nil {
 			return 0, err
 		}
-		if align != "" {
+		if align != "" || layout.WrapText {
 			alignment := excelize.Alignment{Vertical: "top"}
 			if style.Alignment != nil {
 				alignment = *style.Alignment
 			}
-			alignment.Horizontal = align
+			if align != "" {
+				alignment.Horizontal = align
+			}
+			alignment.WrapText = layout.WrapText || alignment.WrapText
 			style.Alignment = &alignment
 		}
 		if row.Background != "" {
@@ -182,7 +192,7 @@ func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle, 
 			if ri < len(rowStyles) {
 				rowStyle = rowStyles[ri]
 			}
-			if align := alignments[ci]; align != "" || rowStyle.Background != "" || rowStyle.Bold {
+			if align := layout.ColumnAlignment[ci]; align != "" || rowStyle.Background != "" || rowStyle.Bold || layout.WrapText {
 				id, err := rowStyleID(baseStyle, rowStyle, align)
 				if err != nil {
 					return nil, err
@@ -190,7 +200,9 @@ func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle, 
 				sh.setStyle(cell, id)
 			}
 		}
-		sh.setRowHeight(rowIdx, 18)
+		if !layout.WrapText {
+			sh.setRowHeight(rowIdx, 18)
+		}
 	}
 
 	// Auto column width (approximate: max 40 chars)

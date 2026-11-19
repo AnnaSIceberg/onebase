@@ -2158,7 +2158,7 @@ h3{font-size:16px;font-weight:600;margin:24px 0 10px;color:#1e293b}
 .ob-list-scroll{max-height:54vh;overflow:auto}
 .ob-stream-main{display:flex;flex-direction:column;overflow:hidden}
 .ob-stream-main .ob-list-content,.ob-stream-main .ob-list-wrap>.card,.ob-stream-main>.card:has([data-ob-stream]),.ob-stream-main .ob-list-content>.card{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0}
-.ob-stream-main .ob-list-wrap{display:flex;flex:1;min-height:0}
+.ob-stream-main .ob-list-wrap{display:flex;align-items:stretch;flex:1;min-height:0;overflow:hidden}
 .ob-stream-main [data-ob-stream]{flex:1;min-height:0;max-height:none;overflow:auto;overflow-anchor:none}
 .ob-stream-main [data-ob-stream] thead th{position:sticky;top:0;z-index:2;background:#eef2f7}
 .w-list[data-ob-stream]{overflow-anchor:none}
@@ -3900,7 +3900,7 @@ const tplReport = `
 {{if $reportTitlebar}}<div class="ob-report-titlebar">
 <h2>{{.Report.DisplayName $.Lang}}</h2>
 <div class="ob-report-commandbar">
-  {{if not (or .ReportParams .Report.Variants .ReportPresets .Report.FormActions)}}<form id="ob-report-params" method="POST"{{if $headerActions}} data-ob-report-result-form{{end}} hidden>{{if .UserSettings}}<input type="hidden" name="__settings" value="{{if .ReportSettingsJSON}}{{.ReportSettingsJSON}}{{else}}{{.UserSettings.JSON}}{{end}}">{{end}}</form>{{end}}
+  {{if not (or .ReportParams .Report.Variants .ReportPresets .Report.FormActions)}}<form id="ob-report-params" method="POST"{{if $headerActions}} data-ob-report-result-form{{end}}{{if .ReportAutoResult}} data-ob-report-auto-result{{end}} hidden>{{if .UserSettings}}<input type="hidden" name="__settings" value="{{if .ReportSettingsJSON}}{{.ReportSettingsJSON}}{{else}}{{.UserSettings.JSON}}{{end}}">{{end}}</form>{{end}}
   {{if or $headerActions (not .Report.FormActions)}}<button class="btn btn-primary" type="submit" form="ob-report-params"{{with reportPrimaryStyle .Report.FormActions}} style="{{.}}"{{end}}>{{t $.Lang "Сформировать"}}</button>{{end}}
   {{if or .Cols .ComposedHTML}}{{template "report-export-buttons" .}}{{end}}
   <a class="btn btn-sm" href="/ui/export-jobs">{{t $.Lang "Мои выгрузки"}}</a>

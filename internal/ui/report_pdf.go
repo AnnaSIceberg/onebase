@@ -55,6 +55,7 @@ func buildReportSheet(title string, headers []string, rows [][]any, presentation
 		}
 		switch output.composition.Appearance.Lines {
 		case "none":
+			c.Border = "none"
 		case "horizontal":
 			c.BorderBottom = "thin"
 		case "vertical":
