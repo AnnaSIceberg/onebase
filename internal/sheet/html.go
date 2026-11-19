@@ -125,11 +125,16 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 	sb.WriteString(`
 </div>
 <div class="doc-content">
-<table>`)
+<table`)
+	frozen := (opts.XLSXURL != "" || len(d.Groups) > 0) && (d.FreezeRows > 0 || d.FreezeCols > 0)
+	if frozen {
+		sb.WriteString(` class="sheet-frozen"`)
+	}
+	sb.WriteByte('>')
 
 	maxRow, maxCol := d.ContentBounds()
 	resizeColumns := opts.XLSXURL != ""
-	if resizeColumns {
+	if resizeColumns || frozen {
 		sb.WriteString("<colgroup data-sheet-columns>")
 		for col := 0; col <= maxCol; col++ {
 			sb.WriteString("<col>")
@@ -170,7 +175,7 @@ td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 			}
 
 			var attrs, style string
-			if resizeColumns || opts.CellTextFlow {
+			if resizeColumns || opts.CellTextFlow || frozen {
 				attrs = fmt.Sprintf(` data-sheet-col="%d"`, col)
 			}
 
