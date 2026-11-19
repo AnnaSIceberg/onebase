@@ -68,13 +68,30 @@ func TestReportFormActionsThroughHTTP(t *testing.T) {
 	if group := semanticFind(proc, "data-ob-el", "Commands"); group == nil || semanticFind(group, "data-ob-fire-click", "Generate") != nil {
 		t.Fatal("processor button must be moved out of its body group")
 	}
-	rep := get("/ui/report/WithActions")
-	actions := semanticFind(rep, "class", "report-form-actions")
-	if actions == nil {
-		t.Fatal("missing report action row")
-	}
-	checkActionRow(semanticFind(actions, "type", "submit"))
-	if semanticFind(get("/ui/report/DefaultActions"), "class", "report-form-actions") != nil {
-		t.Fatal("report without form_actions changed its action row")
+	for _, name := range []string{"WithActions", "DefaultActions"} {
+		rep := get("/ui/report/" + name)
+		actions := semanticFind(rep, "class", "ob-report-commandbar")
+		if actions == nil {
+			t.Fatal("missing report header commands")
+		}
+		submit := semanticFind(actions, "type", "submit")
+		if submit == nil || semanticAttr(submit, "form") != "ob-report-params" {
+			t.Fatal("header submit must target the parameters form")
+		}
+		if name == "WithActions" && semanticAttr(submit, "style") != "background:#1a4a80;" {
+			t.Fatal("missing configured action style")
+		}
+		exports := semanticFind(actions, "href", "/ui/export-jobs")
+		close := semanticFind(actions, "data-ob-close-reason", "close")
+		if exports == nil || close == nil {
+			t.Fatal("the header must contain export jobs and close")
+		}
+		next := exports.NextSibling
+		for next != nil && next.Type != html.ElementNode {
+			next = next.NextSibling
+		}
+		if next != close || semanticFind(semanticFind(rep, "id", "ob-report-params"), "data-ob-close-reason", "close") != nil {
+			t.Fatal("close must follow the export jobs link and be outside parameters")
+		}
 	}
 }
