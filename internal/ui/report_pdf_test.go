@@ -47,6 +47,28 @@ func TestBuildReportSheet_StructureAndPDF(t *testing.T) {
 	}
 }
 
+func TestComposedReportPDFGridFollowsAppearance(t *testing.T) {
+	for _, tc := range []struct{ lines, border, bottom, right string }{
+		{"", "thin", "", ""},
+		{"none", "none", "", ""},
+		{"horizontal", "all", "thin", ""},
+		{"vertical", "all", "", "thin"},
+	} {
+		t.Run(tc.lines, func(t *testing.T) {
+			stats := reportExportStats{composition: &reportpkg.Composition{Appearance: reportpkg.Appearance{Lines: tc.lines}}}
+			doc := buildReportSheet("", []string{"Мастер", "Оплата"}, [][]any{{"Тест", 5}}, stats)
+			for row := 0; row < 2; row++ {
+				for column := 0; column < 2; column++ {
+					c := doc.GetCell(row, column)
+					if c.Border != tc.border || c.BorderBottom != tc.bottom || c.BorderRight != tc.right {
+						t.Fatalf("row %d col %d: unexpected border %q / %q / %q", row, column, c.Border, c.BorderBottom, c.BorderRight)
+					}
+				}
+			}
+		})
+	}
+}
+
 func newReportExportTestServer(t *testing.T, rep *reportpkg.Report) *Server {
 	t.Helper()
 	ctx := context.Background()

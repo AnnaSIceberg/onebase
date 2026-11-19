@@ -406,12 +406,24 @@ body.ob-side-dragging iframe{pointer-events:none}
     }
     var result=tabs.find(function(t){return t.reportOwner===owner&&t.reportField===key;});
     if(result){
-      if(url){result.frame.src=url;result.url=url;}
+      result.url=url||'about:blank';
+      result.frame.src=result.url;
       setActive(result);
     } else {
       result=openTab(url||'about:blank',title,{allowDup:true,reportOwner:owner,reportField:key});
     }
     return result.frame.name;
+  };
+  window.obClearReportResult=function(source,key){
+    var owner=tabByWindow(source);
+    if(!owner)return;
+    var result=tabs.find(function(t){return t.reportOwner===owner&&t.reportField===key;});
+    if(!result)return;
+    result.url='about:blank';
+    result.frame.src=result.url;
+    result.title=owner.title+' — результат';
+    result.label.textContent=result.title;
+    result.btn.title=result.title;
   };
   // The widget, saved form and notification may spell the same record path
   // differently (entity case, raw Unicode, percent-escape case). Reuse its

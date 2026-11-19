@@ -12,6 +12,13 @@
   return true;
  };
  var activeProgress=new WeakMap(), resultPaths=new WeakMap();
+ function clearResultTab(frame,key){
+  resultPaths.delete(frame);
+  if(!frame.hasAttribute('data-ob-tabular-result-tab'))return;
+  try {
+   if(window.parent!==window&&typeof window.parent.obClearReportResult==='function')window.parent.obClearReportResult(window,key);
+  }catch(_){}
+ }
  function openResultTab(frame, key, path) {
   if(!frame.hasAttribute('data-ob-tabular-result-tab'))return false;
   try {
@@ -46,6 +53,7 @@
    }
   };
   activeProgress.set(frame,progress);
+  clearResultTab(frame,field);
   frame.hidden=true;
   frame.removeAttribute('src');
   progress.update(0);
@@ -79,7 +87,7 @@
    var key=frame.getAttribute('data-ob-tabular-field').toLowerCase();
    if(!Object.prototype.hasOwnProperty.call(results,key))return;
    var path=results[key];
-   if(!path){resultPaths.delete(frame);frame.removeAttribute('src');frame.hidden=true;return;}
+   if(!path){clearResultTab(frame,key);frame.removeAttribute('src');frame.hidden=true;return;}
    if(!/^\/ui\/tabular\/[0-9a-f-]{36}$/.test(path))return;
    if(openResultTab(frame,key,path)){frame.hidden=true;return;}
    frame.src=path;frame.hidden=false;
