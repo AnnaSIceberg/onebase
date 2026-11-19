@@ -385,6 +385,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"hasOwnFormCloseButton":          hasOwnFormCloseButton,
 		"ownFormCloseButton":             ownFormCloseButton,
 		"appFormButtonClass":             appFormButtonClass,
+		"formButtonPrimary":              formButtonPrimary,
+		"enhancedTableLayout":            enhancedTableLayout,
 		"effectiveFormElementReadOnly":   effectiveFormElementReadOnly,
 		"effectiveFormElementRequired":   effectiveFormElementRequired,
 		"managedCommandBarElement":       managedCommandBarElement,

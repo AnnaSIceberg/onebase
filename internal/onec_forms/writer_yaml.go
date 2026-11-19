@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ivantit66/onebase/internal/fsmode"
+	"github.com/ivantit66/onebase/internal/metadata"
 	"gopkg.in/yaml.v3"
 )
 
@@ -109,18 +110,19 @@ type yamlCommandBarButton struct {
 }
 
 type yamlElement struct {
-	Kind          string            `yaml:"kind"`
-	Name          string            `yaml:"name,omitempty"`
-	Title         map[string]string `yaml:"title,omitempty"`
-	DataPath      string            `yaml:"data_path,omitempty"`
-	OriginalID    string            `yaml:"original_id,omitempty"`
-	Picture       string            `yaml:"picture,omitempty"`
-	ValuesPicture string            `yaml:"values_picture,omitempty"`
-	ReadOnly      bool              `yaml:"readonly,omitempty"`
-	Required      bool              `yaml:"required,omitempty"`
-	Choice        bool              `yaml:"choice,omitempty"`
-	Width         int               `yaml:"width,omitempty"`
-	Height        int               `yaml:"height,omitempty"`
+	Kind          string                     `yaml:"kind"`
+	Name          string                     `yaml:"name,omitempty"`
+	Title         map[string]string          `yaml:"title,omitempty"`
+	DataPath      string                     `yaml:"data_path,omitempty"`
+	OriginalID    string                     `yaml:"original_id,omitempty"`
+	Picture       string                     `yaml:"picture,omitempty"`
+	ValuesPicture string                     `yaml:"values_picture,omitempty"`
+	ReadOnly      bool                       `yaml:"readonly,omitempty"`
+	Required      bool                       `yaml:"required,omitempty"`
+	Choice        bool                       `yaml:"choice,omitempty"`
+	Width         int                        `yaml:"width,omitempty"`
+	Height        int                        `yaml:"height,omitempty"`
+	Enhanced      *metadata.FormPresentation `yaml:"enhanced,omitempty"`
 
 	TabularProgress  string `yaml:"tabular_progress,omitempty"`
 	TabularPlainRows bool   `yaml:"tabular_plain_rows,omitempty"`
@@ -278,6 +280,7 @@ func elementToYAML(el *IRElement) yamlElement {
 		Choice:        el.Choice,
 		Width:         el.Width,
 		Height:        el.Height,
+		Enhanced:      el.Enhanced,
 
 		TabularProgress:  el.TabularProgress,
 		TabularPlainRows: el.TabularPlainRows,
