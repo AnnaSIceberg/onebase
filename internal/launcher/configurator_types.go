@@ -189,6 +189,7 @@ type saveEntity struct {
 	AudioPlayer bool `yaml:"audio_player,omitempty"`
 	// InteractiveCreate — указатель: явное `false` обязано пережить round-trip.
 	InteractiveCreate *bool `yaml:"interactive_create,omitempty"`
+	AllowCopy         *bool `yaml:"allow_copy,omitempty"`
 	// ChoiceShowDeleted — choice_show_deleted справочника; редактор его не
 	// показывает, ключ переносится как есть.
 	ChoiceShowDeleted *bool `yaml:"choice_show_deleted,omitempty"`

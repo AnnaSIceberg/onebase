@@ -417,7 +417,7 @@ func entityYAMLSchema() *yamlLintSchema {
 		// owner — справочник-владелец (подчинённый справочник, 1С «Владелец»).
 		"owner",
 		"presentation", "order_by", "choice_preview", "choice_preview_proc", "choice_search_proc",
-		"list_form", "item_form", "based_on", "list_mode", "list_filters", "interactive_create", "notify_changes", "list_refresh_on",
+		"list_form", "item_form", "based_on", "list_mode", "list_filters", "interactive_create", "allow_copy", "notify_changes", "list_refresh_on",
 		"fulltext", "search_fields", "detail_panel", "choice_show_deleted",
 	), map[string]*yamlLintSchema{
 		"titles": freeMap(),
@@ -663,7 +663,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		"original_id", "data_path", "picture", "values_picture", "width", "height",
 		"halign", "valign", "readonly", "readonly_when", "hidden_when", "use_grid", "no_grid", "auto_sum", "hint", "mask",
 		"accesskey", "hotkey", "multiline", "format", "display_format", "type", "choice", "unknown_xml", "view",
-		"scroll_x", "primary", "editable_admin_only", "choice_folders", "choice_dropdown", "choice_show_deleted", "choice_style_params", "choice_style_value", "hint_from",
+		"scroll_x", "primary", "button_kind", "editable_admin_only", "choice_folders", "choice_dropdown", "choice_show_deleted", "choice_style_params", "choice_style_value", "hint_from",
 		// Явная видимость кнопки «Открыть карточку» у поля — сильнее ключей
 		// формы (#1876).
 		"ref_card_button",

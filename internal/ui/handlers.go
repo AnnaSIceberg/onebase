@@ -914,6 +914,10 @@ func (s *Server) requirePerm(w http.ResponseWriter, r *http.Request, kind, entit
 	return false
 }
 
+func (s *Server) legacyEntityUI(r *http.Request) bool {
+	return !auth.RoleScopeMatches(auth.UserFromContext(r.Context()), nil, s.cfg.UIExceptRoles, false)
+}
+
 func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data map[string]any) {
 	defer serverTimingSpan(r.Context(), "render")()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -946,6 +950,8 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		}
 		data["ListPanelScope"] = scope
 	}
+	legacyEntityUI := s.legacyEntityUI(r)
+	data["LegacyEntityUI"] = legacyEntityUI
 	s.addHelpContext(r, data)
 	if name == "page-report" {
 		s.addReportResultFilterData(r, data)
@@ -1028,6 +1034,8 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		if _, ok := data["CanDelete"]; !ok {
 			data["CanDelete"] = s.can(r, kind, ent.Name, "delete")
 		}
+		data["CanCopy"] = s.copyCommandAllowed(r, ent)
+		data["CanMark"] = s.can(r, kind, ent.Name, "delete") || (!legacyEntityUI && s.can(r, kind, ent.Name, "mark"))
 		if _, ok := data["CanPost"]; !ok {
 			data["CanPost"] = s.can(r, kind, ent.Name, "post")
 		}

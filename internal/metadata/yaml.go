@@ -156,6 +156,7 @@ type rawEntity struct {
 	ListRefreshOn  []string           `yaml:"list_refresh_on"`
 	ListFilters    []string           `yaml:"list_filters"`
 	NotifyChanges  bool               `yaml:"notify_changes"`
+	AllowCopy      *bool              `yaml:"allow_copy"`
 	// InteractiveCreate — указатель: отсутствие ключа значит «можно».
 	InteractiveCreate *bool           `yaml:"interactive_create"`
 	TileView          *rawTileView    `yaml:"tile_view"`
@@ -274,6 +275,7 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 	}
 	e.NotifyChanges = raw.NotifyChanges
 	e.NoInteractiveCreate = raw.InteractiveCreate != nil && !*raw.InteractiveCreate
+	e.NoCopy = raw.AllowCopy != nil && !*raw.AllowCopy
 	e.ListFilters = trimStringList(raw.ListFilters)
 	e.AudioPlayer = raw.AudioPlayer
 	if raw.TileView != nil {
