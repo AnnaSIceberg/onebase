@@ -881,6 +881,9 @@ type FormModule struct {
 	// a plain close needs a confirmation.
 	CloseConfirmation string `yaml:"close_confirmation,omitempty"`
 
+	// InstanceContext provides a verified identity for each rendered managed form.
+	InstanceContext bool `yaml:"instance_context,omitempty"`
+
 	// Conditional — декларативное условное оформление табличных частей формы.
 	// YAML-загрузчик принимает ключи conditional и conditional_formatting.
 	Conditional []FormCondRule `yaml:"conditional,omitempty"`

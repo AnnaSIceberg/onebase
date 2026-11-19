@@ -1724,6 +1724,8 @@ window.obManagedApplyHints = obManagedApplyHints;
       var closeSource = freshCloseIntentID();
       programmaticCloseSource = {token: closeSource, revision: snapshot.editRevision};
       var headers = { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'X-OneBase-Conceal-Context': form && form.getAttribute ? form.getAttribute('data-ob-conceal-context') || '' : '', 'X-OneBase-UI-Commands': '1', 'X-OneBase-Shell': (typeof window.obShellId === 'function' ? window.obShellId() : ''), 'X-OneBase-Form-Close-Source': closeSource, 'X-OneBase-Source-Tab': window.__obEmbedded ? window.name : '' };
+      var instance = form && form.getAttribute && form.getAttribute('data-ob-form-instance');
+      if (instance) headers['X-OneBase-Form-Instance'] = instance;
       if (snapshot.tabularProgress) headers.Accept = 'application/x-ndjson';
       var request = obFormEventRequest(body, snapshot.files, headers);
       const res = await fetch(URL, {
