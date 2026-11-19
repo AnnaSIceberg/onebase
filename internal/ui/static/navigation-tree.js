@@ -26,7 +26,7 @@
    var s=summary(folder);
    s.addEventListener('click',function(){setTimeout(function(){persist(folder);},0);});
    s.addEventListener('keydown',function(e){
-    if(e.key==='ArrowRight'){e.preventDefault();if(!folder.open){folder.open=true;persist(folder);}else{var child=folder.querySelector(':scope > a, :scope > details > summary');if(child)child.focus();}}
+    if(e.key==='ArrowRight'){e.preventDefault();if(!folder.open){folder.open=true;persist(folder);}else{var child=folder.querySelector(':scope > a, :scope > .nav-list-row > a:first-child, :scope > details > summary');if(child)child.focus();}}
     if(e.key==='ArrowLeft'){e.preventDefault();if(folder.open){folder.open=false;persist(folder);}else{var parent=folder.parentElement.closest('details.navtree');if(parent)summary(parent).focus();}}
    });
   });
@@ -34,5 +34,5 @@
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
  new MutationObserver(function(records){if(records.some(function(r){return Array.from(r.addedNodes).some(function(n){return n.nodeType===1&&(n.matches('#ob-nav, details.navtree')||n.querySelector('#ob-nav, details.navtree'));});}))init();}).observe(document.documentElement,{childList:true,subtree:true});
- var style=document.createElement('style');style.textContent='#ob-nav .navtree{margin:0;padding:0;max-width:none;background:transparent;border-radius:0;box-shadow:none;color:#cbd5e1}#ob-nav .navtree>summary{cursor:pointer;padding:8px 10px;font-size:13px;font-weight:600;color:#cbd5e1;overflow-wrap:anywhere}#ob-nav .navtree>summary:hover{color:#fff;background:#334155}#ob-nav .navtree .navtree{margin-left:12px}#ob-nav .navtree>a{padding-left:18px}#ob-nav .navtree>summary:focus-visible{outline:2px solid #7dd3fc;outline-offset:-2px}';document.head.appendChild(style);
+ var style=document.createElement('style');style.textContent='#ob-nav .navtree{margin:0;padding:0;max-width:none;background:transparent;border-radius:0;box-shadow:none;color:#cbd5e1}#ob-nav .navtree>summary{cursor:pointer;padding:8px 10px;font-size:13px;font-weight:600;color:#cbd5e1;overflow-wrap:anywhere}#ob-nav .navtree>summary:hover{color:#fff;background:#334155}#ob-nav .navtree .navtree{margin-left:12px}#ob-nav .navtree>a,#ob-nav .navtree>.nav-list-row>a:first-child{padding-left:18px}#ob-nav .navtree>summary:focus-visible{outline:2px solid #7dd3fc;outline-offset:-2px}';document.head.appendChild(style);
 })();

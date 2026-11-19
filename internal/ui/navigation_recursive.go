@@ -11,6 +11,7 @@ import (
 
 type navTreeNode struct {
 	ID, DOMID, Icon, Label, URL, CollapseKey string
+	CreateURL, CreateTitle                   string
 	Nodes                                    []navTreeNode
 }
 
@@ -96,6 +97,7 @@ func (s *Server) recursiveNavigationGroups(r *http.Request, tree navigation.Tree
 			if n.Target != "" {
 				resolved := navigation.ResolveItem(n.Item, lang, sub, func(key string) string { return s.tr(lang, key) }, false)
 				next.Label, next.URL = resolved.Label, resolved.URL
+				next.CreateURL, next.CreateTitle = navListCreate(resolved, sub, s.tr(lang, "Создать"))
 			} else {
 				next.Nodes = nodes(n.Nodes)
 			}
