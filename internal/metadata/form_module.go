@@ -852,6 +852,8 @@ type FormModule struct {
 	// InstanceContext provides a verified identity for each rendered managed form.
 	InstanceContext bool `yaml:"instance_context,omitempty"`
 
+	SavedPhoneMatch *SavedPhoneMatchSpec `yaml:"saved_phone_match,omitempty"`
+
 	// Conditional — декларативное условное оформление табличных частей формы.
 	// YAML-загрузчик принимает ключи conditional и conditional_formatting.
 	Conditional []FormCondRule `yaml:"conditional,omitempty"`

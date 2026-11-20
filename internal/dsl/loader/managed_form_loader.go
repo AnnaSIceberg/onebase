@@ -169,15 +169,16 @@ func (mfl *ManagedFormLoader) LoadFormFile(yamlPath, entityName string) (*metada
 type formYAMLDoc struct {
 	Schema string `yaml:"schema"`
 	Form   struct {
-		Name                   string            `yaml:"name"`
-		Kind                   string            `yaml:"kind"`
-		Entity                 string            `yaml:"entity"`
-		TitleProc              string            `yaml:"title_proc"`
-		InstanceContext        bool              `yaml:"instance_context"`
-		Title                  map[string]string `yaml:"title"`
-		OriginalID             string            `yaml:"original_id"`
-		AutoSaveDataInSettings bool              `yaml:"auto_save_settings"`
-		VerticalScroll         string            `yaml:"vertical_scroll"`
+		Name                   string                        `yaml:"name"`
+		Kind                   string                        `yaml:"kind"`
+		Entity                 string                        `yaml:"entity"`
+		TitleProc              string                        `yaml:"title_proc"`
+		InstanceContext        bool                          `yaml:"instance_context"`
+		SavedPhoneMatch        *metadata.SavedPhoneMatchSpec `yaml:"saved_phone_match"`
+		Title                  map[string]string             `yaml:"title"`
+		OriginalID             string                        `yaml:"original_id"`
+		AutoSaveDataInSettings bool                          `yaml:"auto_save_settings"`
+		VerticalScroll         string                        `yaml:"vertical_scroll"`
 		// Указатель: отсутствие ключа (nil) значит «показывать», и от явного
 		// true его отличать не нужно, а от явного false — нужно.
 		RefCardButton *bool `yaml:"ref_card_button"`
@@ -247,6 +248,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		LayoutKind:             metadata.FormLayoutManaged,
 		TitleProc:              doc.Form.TitleProc,
 		InstanceContext:        doc.Form.InstanceContext,
+		SavedPhoneMatch:        doc.Form.SavedPhoneMatch,
 		Title:                  doc.Form.Title,
 		OriginalID:             doc.Form.OriginalID,
 		AutoSaveDataInSettings: doc.Form.AutoSaveDataInSettings,
@@ -275,6 +277,13 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		OneCMeta:               doc.OneCMeta,
 	}
 
+	if match := form.SavedPhoneMatch; match != nil {
+		if !strings.EqualFold(form.Kind, "object") || strings.TrimSpace(match.TargetDocument) == "" ||
+			len(match.SourceFields) < 1 || len(match.SourceFields) > 2 ||
+			len(match.TargetFields) < 1 || len(match.TargetFields) > 3 {
+			return nil, i18nerr.New("form.saved_phone_match требует форму объекта, документ назначения, 1–2 поля источника и 1–3 поля назначения")
+		}
+	}
 	if form.Name == "" {
 		return nil, i18nerr.New("form.name пустой")
 	}

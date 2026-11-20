@@ -1235,9 +1235,15 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	if eventName == string(metadata.FormEventOnSearch) || deferredFormEvent(eventName) {
 		dslCtx = storage.ReadOnlyContext(dslCtx)
 	}
+	isNewForHandler := strings.TrimSpace(r.FormValue("_id")) == "" && (closeInv == nil || !closeInv.saved)
+	if !isNewForHandler && form.SavedPhoneMatch != nil &&
+		(eventName == string(metadata.FormEventOnOpen) || eventName == string(metadata.FormEventAfterOpen)) {
+		if nonce, _ := s.validManagedFormInstance(r, rawID, entityFormCloseSchema(entity, form)); nonce != "" {
+			dslCtx = withSavedPhoneMatch(dslCtx, entity, form, obj.ID)
+		}
+	}
 	vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
 	defer rollbackDSLExecution(txState)
-	isNewForHandler := strings.TrimSpace(r.FormValue("_id")) == "" && (closeInv == nil || !closeInv.saved)
 	thisObj := s.newFormObjectThisLive(dslCtx, txState, obj, entity, form, isNewForHandler)
 	thisObj.layouts = &tabularLayouts{s: s, owner: entity.Name}
 	installTabularLayouts(vars, thisObj.layouts)
