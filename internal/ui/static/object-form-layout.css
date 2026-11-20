@@ -1,0 +1,37 @@
+main.ob-object-form {
+  display: flex;
+  flex-direction: column;
+}
+.ob-object-form > .ob-object-form-card {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+.ob-object-form-card > #main-form {
+  display: contents;
+}
+.ob-object-form-card .ob-object-form-footer {
+  order: 1;
+  margin-top: auto !important;
+  padding-top: 16px;
+  text-align: right;
+}
+.ob-object-form-measuring > .ob-object-form-card,
+.ob-object-form-native-fit > .ob-object-form-card {
+  flex-grow: 0;
+}
+.ob-object-form-measuring .ob-object-form-footer {
+  margin-top: 0 !important;
+}
+.ob-object-table-scroll {
+  min-height: 120px;
+  overflow: auto;
+}
+.ob-object-table-scroll > .tp-table {
+  overflow: visible;
+}
+.ob-object-table-scroll > .tp-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}

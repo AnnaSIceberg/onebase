@@ -122,7 +122,15 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 	// #481: заголовок вкладки/карточки = представление записи (Наименование…),
 	// а не имя сущности. Для существующей записи кладём TabTitle (его читает
 	// ui.js и шлёт оболочке obSetTitle) и RecordTitle (для заголовка h1).
-	if isNew, _ := data["IsNew"].(bool); !isNew {
+	isNew, _ := data["IsNew"].(bool)
+	if entity != nil && kind == "object" && !s.legacyEntityUI(r) &&
+		(entity.Kind == metadata.KindDocument || entity.Kind == metadata.KindCatalog) {
+		title := s.objectFormHeading(r, entity, data["Values"], isNew)
+		data["ObjectFormTitle"] = title
+		data["TabTitle"] = title
+		popup, _ := data["IsPopup"].(bool)
+		data["ObjectFormLayout"] = !popup
+	} else if !isNew {
 		if title := recordCardTitle(entity, data["Values"]); title != "" {
 			data["TabTitle"] = title
 			data["RecordTitle"] = title
@@ -139,7 +147,6 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 	// рисует их полями, managed-форма — нет, поэтому переносим их в data, чтобы
 	// шаблон отрисовал скрытые поля (#618). Только для новой записи: у
 	// существующей is_folder/parent_id восстанавливает restoreUnsubmittedFields.
-	isNew, _ := data["IsNew"].(bool)
 	isFolder, parentID := hierarchyCreateHints(r, entity, isNew)
 	// Создание копированием (?copy=): признак группы и родитель приходят не
 	// query-параметром, а значениями, снятыми с оригинала (issue #762). Без

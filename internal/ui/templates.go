@@ -3407,12 +3407,19 @@ const tplList = `
 `
 
 const tplForm = `
+{{define "object-form-layout"}}
+{{if .ObjectFormLayout}}
+<link rel="stylesheet" href="/static/object-form-layout.css">
+<script defer src="/static/object-form-layout.js"></script>
+{{end}}
+{{end}}
 {{define "page-form"}}
 {{template "head" .}}{{if not .IsPopup}}{{template "nav" .}}{{end}}
 {{if .TabTitle}}<meta name="ob-tab-title" content="{{.TabTitle}}">{{end}}
-<main>
+{{template "object-form-layout" .}}
+<main{{if .ObjectFormLayout}} class="ob-object-form"{{end}}>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;max-width:1400px">
-  <h2 style="margin-bottom:0">{{if .IsNew}}{{t $.Lang "Создать"}} — {{.Entity.DisplayName $.Lang}}{{else}}{{if .RecordTitle}}{{.RecordTitle}}{{else}}{{t $.Lang "Редактировать"}} — {{.Entity.DisplayName $.Lang}}{{end}}{{end}}</h2>
+  <h2 style="margin-bottom:0">{{if .ObjectFormTitle}}{{.ObjectFormTitle}}{{else if .IsNew}}{{t $.Lang "Создать"}} — {{.Entity.DisplayName $.Lang}}{{else}}{{if .RecordTitle}}{{.RecordTitle}}{{else}}{{t $.Lang "Редактировать"}} — {{.Entity.DisplayName $.Lang}}{{end}}{{end}}</h2>
   {{template "context-help" .}}
   {{if .IsPopup}}
   <a href="#" data-ob-popup-cancel title="{{t $.Lang "Закрыть"}}" style="font-size:22px;line-height:1;color:#94a3b8;text-decoration:none;padding:2px 8px;border-radius:5px;background:#f1f5f9;font-weight:300">×</a>
@@ -3547,7 +3554,7 @@ const tplForm = `
 {{end}}
 {{end}}{{/* end if not .IsPopup */}}
 
-<div class="card">
+<div class="card{{if .ObjectFormLayout}} ob-object-form-card{{end}}">
 <form id="main-form" method="POST" autocomplete="off" data-ob-dirty-watch="1"{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}>
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{if .IsPopup}}<input type="hidden" name="_popup" value="1">{{end}}
@@ -3640,6 +3647,7 @@ const tplForm = `
 
 {{range .Entity.TableParts}}{{$tp := .}}{{$tpName := .Name}}{{$tpRef := index (tpNewRefOptions $) $tpName}}{{$tpReadOnly := not $.CanWrite}}
 <h3>{{$tp.DisplayName $.Lang}}</h3>
+{{if $.ObjectFormLayout}}<div class="ob-object-table-scroll">{{end}}
 <table class="tp-table" data-ob-dom-table="{{$tpName}}" data-ob-readonly="{{if $tpReadOnly}}1{{else}}0{{end}}"
   {{if not $tpReadOnly}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}>
   <thead><tr>
@@ -3702,6 +3710,7 @@ const tplForm = `
     {{range .Fields}}{{if eq (str .Type) "number"}}<td class="tp-total" data-tp-total="{{$tpName}}.{{.Name}}" style="text-align:right;font-variant-numeric:tabular-nums">0</td>{{else}}<td></td>{{end}}{{end}}<td></td>
   </tr></tfoot>
 </table>
+{{if $.ObjectFormLayout}}</div>{{end}}
 <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569;margin-bottom:8px"
   data-ob-add-tp-row data-tp-name="{{$tpName}}" data-tp-fields="{{fieldNamesCSV .Fields}}" data-tp-num-fields="{{numberFieldNamesCSV .Fields}}" data-tp-bool-fields="{{boolFieldNamesCSV .Fields}}" data-tp-date-fields="{{dateFieldNamesCSV .Fields}}"
   {{if $tpReadOnly}}disabled{{else}}title="Insert" aria-keyshortcuts="Insert"{{end}}>
@@ -3709,7 +3718,7 @@ const tplForm = `
 </button>
 {{end}}
 
-<div style="margin-top:16px">
+<div{{if .ObjectFormLayout}} class="ob-object-form-footer"{{end}} style="margin-top:16px">
   {{if .IsPopup}}
   {{if .CanWrite}}<button class="btn btn-primary" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать и выбрать"}}</button>{{end}}
   <a href="#" data-ob-popup-cancel class="btn btn-cancel">{{t $.Lang "Отмена"}}</a>
