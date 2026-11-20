@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
 	processorpkg "github.com/ivantit66/onebase/internal/processor"
 	"github.com/ivantit66/onebase/internal/report/compose"
@@ -162,13 +163,26 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 	}
 	managed := pickManagedFormCtx(r.Context(), entity, kind)
 	if managed != nil {
+		data["Form"] = managed
+		var openingContext interpreter.BuiltinFunc
+		if r.Method == http.MethodGet && !isNew && managed.InstanceContext && entity.Kind == metadata.KindDocument &&
+			r.URL.Query().Has(formOpenContextQuery) {
+			id, _ := data["ID"].(string)
+			schema := entityFormCloseSchema(entity, managed)
+			data["FormCloseSchema"] = schema
+			s.issueManagedFormInstance(r, data)
+			if token, _ := data["FormInstance"].(string); token != "" {
+				instanceRequest := r.Clone(r.Context())
+				instanceRequest.Header.Set(managedFormInstanceHeader, token)
+				openingContext = s.formOpenContextBuiltin(instanceRequest, entity, managed, id, func() string { return schema })
+			}
+		}
 		// ПриСозданииНаСервере — до всего, что читает значения: варианты
 		// ссылок, условия и разметка видят заполненные им реквизиты формы.
-		if err := s.runFormCreateHook(r.Context(), entity, managed, data); err != nil {
+		if err := s.runFormCreateHook(r.Context(), entity, managed, data, openingContext); err != nil {
 			s.renderReadHookDenied(w, r, err)
 			return
 		}
-		data["Form"] = managed
 		s.issueConcealInstance(w, r, entity, managed, data)
 		// Фикс A: команды формы, не размещённые вручную элементом kind: Кнопка,
 		// рисуются автоматической командной панелью (иначе объявленная в commands:

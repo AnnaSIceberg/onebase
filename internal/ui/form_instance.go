@@ -20,6 +20,9 @@ const managedFormInstanceHeader = "X-OneBase-Form-Instance"
 const managedFormInstanceTTL = 2 * time.Hour
 
 func (s *Server) issueManagedFormInstance(r *http.Request, data map[string]any) {
+	if _, issued := data["FormInstance"]; issued {
+		return
+	}
 	form, _ := data["Form"].(*metadata.FormModule)
 	if form == nil || !form.InstanceContext {
 		return

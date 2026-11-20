@@ -70,7 +70,7 @@ func formCreateHook(form *metadata.FormModule) (*ast.Program, *ast.ProcedureDecl
 // Ошибка обработчика возвращается вызывающему: форма не отрисовывается
 // (fail-closed), иначе содержимое, которое обработчик должен был скрыть, ушло
 // бы в браузер.
-func (s *Server) runFormCreateHook(ctx context.Context, entity *metadata.Entity, form *metadata.FormModule, data map[string]any) error {
+func (s *Server) runFormCreateHook(ctx context.Context, entity *metadata.Entity, form *metadata.FormModule, data map[string]any, openingContext interpreter.BuiltinFunc) error {
 	if form == nil || entity == nil || s.interp == nil {
 		return nil
 	}
@@ -109,6 +109,9 @@ func (s *Server) runFormCreateHook(ctx context.Context, entity *metadata.Entity,
 	thisObj := s.newFormObjectThisLive(ctx, txState, obj, entity, form, isNew)
 	vars["Объект"] = thisObj
 	vars["ЭтотОбъект"] = thisObj
+	if openingContext != nil {
+		vars["КонтекстОткрытияФормы"], vars["FormOpeningContext"] = openingContext, openingContext
+	}
 	addFormAttrVars(form, entity, thisObj, vars)
 	formProcs := make(map[string]*ast.ProcedureDecl, len(program.Procedures))
 	for _, p := range program.Procedures {
