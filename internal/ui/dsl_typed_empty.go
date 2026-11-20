@@ -158,6 +158,9 @@ func (s *Server) declaredEntityFieldValue(
 }
 
 func (s *Server) dslFieldMasked(ctx context.Context, entity *metadata.Entity, field string) bool {
+	if savedPhoneOpeningMasks(ctx, entity, field) {
+		return true
+	}
 	decision, ok := s.fieldDecisions(ctx, entity)[canonicalDSLField(entity, field)]
 	if !ok || !decision.Masked() {
 		return false

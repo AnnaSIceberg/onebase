@@ -61,7 +61,28 @@ func sourceMeta(kind, name, tablePart string, lookup func(kind, name string) *me
 // QueryMaskPlanFor строит план маскирования результата скомпилированного
 // запроса для пользователя u. lookup разрешает метаданные объекта-источника.
 func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity) QueryMaskPlan {
-	masked, columns, fieldColumns := maskedSourceFields(u, res.Sources, lookup)
+	return queryMaskPlanFor(u, res, lookup, requiredQueryFields{})
+}
+
+// QueryMaskPlanWithRequiredFields preserves mandatory masking within a protected
+// form instance even for a principal with ordinary disclosure permission.
+func QueryMaskPlanWithRequiredFields(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity,
+	source query.SourceRef, fields []string) QueryMaskPlan {
+	return queryMaskPlanFor(u, res, lookup, requiredQueryFields{source: source, names: fields})
+}
+
+type requiredQueryFields struct {
+	source query.SourceRef
+	names  []string
+}
+
+func (r requiredQueryFields) matches(src query.SourceRef) bool {
+	return len(r.names) != 0 && src.Kind == r.source.Kind &&
+		strings.EqualFold(src.Name, r.source.Name) && strings.EqualFold(src.TablePart, r.source.TablePart)
+}
+
+func queryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity, required requiredQueryFields) QueryMaskPlan {
+	masked, columns, fieldColumns := maskedSourceFields(u, res.Sources, lookup, required)
 	if len(masked) == 0 {
 		return QueryMaskPlan{}
 	}
@@ -76,6 +97,16 @@ func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 				return QueryMaskPlan{Denied: field}
 			}
 		}
+		for _, source := range res.Sources {
+			if required.matches(source) {
+				for _, field := range res.ProjectionFields {
+					if _, protected := masked[fieldKey(field)]; protected {
+						return QueryMaskPlan{Denied: field}
+					}
+				}
+				break
+			}
+		}
 		return QueryMaskPlan{Denied: DeniedMaskedColumn(u, res.Sources, res.ProjectionFields, lookup)}
 	}
 	// Поле под маской в отборе/группировке/сортировке/агрегате: маска на выходе
@@ -83,6 +114,14 @@ func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 	// Хвост запроса ссылается на колонку и по выходному алиасу, и по номеру —
 	// оба варианта дают тот же оракул, что и ссылка по имени поля.
 	searchable := searchableMaskedFields(u, res.Sources, lookup)
+	for _, source := range res.Sources {
+		if required.matches(source) {
+			for _, field := range required.names {
+				delete(searchable, fieldKey(field))
+			}
+			break
+		}
+	}
 	aliasFields := map[string][]string{}
 	for _, col := range res.Projection.Columns {
 		if col.Output != "" && len(col.Fields) > 0 {
@@ -229,8 +268,8 @@ func applyDecision(row map[string]any, key string, dec FieldDecision) {
 // имени поля и, отдельно, по имени колонки таблицы (для проекции «*»). Третья
 // карта — обратная: логическое имя поля → его физические колонки, чтобы явную
 // проекцию ссылки сопоставлять с той же колонкой, которую покрывает «*».
-func maskedSourceFields(u *auth.User, sources []query.SourceRef, lookup func(kind, name string) *metadata.Entity) (byField, byColumn map[string]FieldDecision, fieldColumns map[string][]string) {
-	if u == nil || (u.IsAdmin && !MaskAdmin()) {
+func maskedSourceFields(u *auth.User, sources []query.SourceRef, lookup func(kind, name string) *metadata.Entity, required requiredQueryFields) (byField, byColumn map[string]FieldDecision, fieldColumns map[string][]string) {
+	if len(required.names) == 0 && (u == nil || (u.IsAdmin && !MaskAdmin())) {
 		return nil, nil, nil
 	}
 	byField = map[string]FieldDecision{}
@@ -248,7 +287,18 @@ func maskedSourceFields(u *auth.User, sources []query.SourceRef, lookup func(kin
 		if lookup != nil {
 			meta = sourceMeta(src.Kind, src.Name, src.TablePart, lookup)
 		}
-		for field, dec := range FieldDecisions(u, src.Kind, src.Name, meta) {
+		decisions := FieldDecisions(u, src.Kind, src.Name, meta)
+		if required.matches(src) {
+			if decisions == nil {
+				decisions = make(map[string]FieldDecision, len(required.names))
+			}
+			for _, field := range required.names {
+				if !decisions[field].Masked() {
+					decisions[field] = FieldDecision{Strategy: FieldMaskAll}
+				}
+			}
+		}
+		for field, dec := range decisions {
 			put(byField, field, dec)
 			if f, ok := concreteMetaField(meta, field); ok {
 				col := metadata.ColumnName(f)
