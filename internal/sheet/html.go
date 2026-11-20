@@ -71,7 +71,7 @@ body{font-family:'Times New Roman',Times,serif;font-size:10pt;color:#000;padding
 table{border-collapse:collapse;width:auto}
 td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 `)
-	if d.HideGrid {
+	if d.HideGrid && opts.CellTextFlow {
 		sb.WriteString("td,th{border:none}\n")
 	}
 	if opts.CellTextFlow {

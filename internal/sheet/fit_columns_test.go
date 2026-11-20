@@ -39,6 +39,9 @@ func TestFittedReportColumnsAndGridAcrossExports(t *testing.T) {
 			t.Fatalf("period column %d differs in width", column)
 		}
 	}
+	if legacy := doc.HTML(HTMLOptions{}); strings.Contains(legacy, "td,th{border:none}") {
+		t.Fatal("the legacy appearance must keep its default empty-cell borders")
+	}
 	view := doc.HTML(HTMLOptions{CellTextFlow: true})
 	for _, fragment := range []string{"td,th{border:none}", "<colgroup data-sheet-columns>", ">Дата закрытия</td>", "data-sheet-flow-end=\"3\""} {
 		if !strings.Contains(view, fragment) {
