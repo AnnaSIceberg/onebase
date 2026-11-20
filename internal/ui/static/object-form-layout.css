@@ -1,6 +1,7 @@
 main.ob-object-form {
   display: flex;
   flex-direction: column;
+  scroll-padding-bottom: 48px;
 }
 .ob-object-form > .ob-object-form-card {
   display: flex;
@@ -9,9 +10,14 @@ main.ob-object-form {
 }
 .ob-object-form-card > #main-form {
   display: contents;
+  background: inherit;
 }
 .ob-object-form-card .ob-object-form-footer {
   order: 1;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: inherit;
   margin-top: auto !important;
   padding-top: 8px;
   text-align: right;
