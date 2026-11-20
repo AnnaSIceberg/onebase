@@ -143,7 +143,7 @@ const tplManagedForm = `
 {{/* Кнопка, скрытая hidden_when при отрисовке, рисуется с display:none, а не пропускается: иначе после события формы, снявшего условие, показать её нечем — «Утвердить» после «ОК» появлялась только при повторном открытии. Остальные виды пока пропускаются (поля — #1914). Защитой hidden_when не служит: событие кнопки сервер принимает и без неё в разметке. */}}
 {{if eq $el.View "hidden"}}
   {{if and $ctx.IsProcessor (not $.HeaderPass) (not $.FooterPass) (not $.TableName) (not $ro) (not (elHidden $ctx $el))}}
-    {{with processorHiddenParamName $ctx.Processor $el}}<input type="hidden" name="{{.}}" value="{{index $ctx.Values .}}">{{end}}
+    {{with processorHiddenParamName $ctx.Processor $ctx.Form $el}}<input type="hidden" name="{{.}}" value="{{index $ctx.Values .}}">{{end}}
   {{end}}
 {{else if and $ctx.IsProcessor (not $ctx.LegacyEntityUI) (eq (str $el.Kind) "Кнопка") (ownFormCloseButton $el.Name (fieldTitleRU $el.TitleMap $el.Name))}}
 {{else if and $ctx.IsProcessor $el.FooterButton (not $.FooterPass)}}

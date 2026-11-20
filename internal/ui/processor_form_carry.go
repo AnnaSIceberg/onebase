@@ -207,7 +207,7 @@ func processorUnplaced(proc *processorpkg.Processor, form *metadata.FormModule) 
 			return
 		}
 		if el.View == "hidden" {
-			if name := processorHiddenParamName(proc, el); name != "" && !visit.effectiveReadOnly {
+			if name := processorHiddenParamName(proc, form, el); name != "" && !visit.effectiveReadOnly {
 				placed[strings.ToLower(name)] = true
 			}
 			return

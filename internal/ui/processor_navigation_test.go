@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/processor"
 	"github.com/ivantit66/onebase/internal/realtime"
@@ -41,6 +42,8 @@ func TestProcessorNavigationPrefillsFormHTTP(t *testing.T) {
 		&metadata.FormElement{Kind: metadata.FormElementField, Name: "Отбор", DataPath: "Объект.Отбор"},
 		&metadata.FormElement{Kind: metadata.FormElementField, Name: "СкрытыйОтбор", DataPath: "Объект.исходный", View: "hidden"},
 		&metadata.FormElement{Kind: metadata.FormElementField, Name: "СкрытоеЧисло", DataPath: "Объект.Число", View: "hidden"},
+		&metadata.FormElement{Kind: metadata.FormElementField, Name: "СлужебныйОтбор", DataPath: "Объект.Служебный", View: "hidden", EditableAdminOnly: true},
+		&metadata.FormElement{Kind: metadata.FormElementField, Name: "УсловныйОтбор", DataPath: "Объект.Условие", View: "hidden", ReadOnlyWhen: "Включен"},
 		&metadata.FormElement{Kind: metadata.FormElementField, Name: "НезаявленноеПоле", DataPath: "Форма.БезПараметра", View: "hidden"},
 		&metadata.FormElement{Kind: metadata.FormElementCheckbox, Name: "Включен", DataPath: "Объект.Включен",
 			Handlers: map[metadata.FormEventType]string{metadata.FormEventOnChange: "ПроверитьОтбор"}},
@@ -53,9 +56,12 @@ func TestProcessorNavigationPrefillsFormHTTP(t *testing.T) {
 	targetForm.Attributes = []*metadata.FormAttribute{{Name: "БезПараметра", TypeRef: "string"}}
 	targetForm.ProgramAST = mustParse(t, `
 Процедура ПроверитьОтбор()
-	Если ЗначениеЗаполнено(Объект.БезПараметра) ИЛИ Объект.Число = 17 Тогда
+	Если ЗначениеЗаполнено(Объект.БезПараметра) ИЛИ Объект.Число = 17
+		ИЛИ Объект.Служебный = "подмена" ИЛИ Объект.Условие = "подмена" Тогда
 		ВызватьИсключение("недопустимый скрытый ввод");
 	КонецЕсли;
+	Объект.Служебный = "закрытое значение из события";
+	Объект.Условие = "условное значение из события";
 	Если Объект.Направления.Количество() = 0 Тогда
 		Сообщить("строк нет");
 	КонецЕсли;
@@ -71,6 +77,8 @@ func TestProcessorNavigationPrefillsFormHTTP(t *testing.T) {
 		{Name: "Отбор", Type: "string", Default: "все"},
 		{Name: "Исходный", Type: "string", Default: "старый отбор"},
 		{Name: "Число", Type: "number", Default: 4},
+		{Name: "Служебный", Type: "string", Default: "закрытое начальное значение"},
+		{Name: "Условие", Type: "string", Default: "условное начальное значение"},
 		{Name: "Включен", Type: "bool", Default: true},
 		{Name: "Защищён", Type: "string", Default: "из настроек"},
 	}
@@ -83,6 +91,16 @@ func TestProcessorNavigationPrefillsFormHTTP(t *testing.T) {
 	s.reg.LoadProcessors([]*processor.Processor{src, dst, legacy})
 	s.hub = realtime.NewHub()
 	mux := chi.NewRouter()
+	user := &auth.User{ID: "finance-test", Login: "finance-test", Roles: []*auth.Role{{
+		Name: "Финансы", Permissions: auth.Permission{Processors: map[string][]string{
+			src.Name: {"run"}, dst.Name: {"run"}, legacy.Name: {"run"},
+		}},
+	}}}
+	mux.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(auth.ContextWithUser(r.Context(), user)))
+		})
+	})
 	s.Mount(mux)
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -128,6 +146,10 @@ func TestProcessorNavigationPrefillsFormHTTP(t *testing.T) {
 	require.NotContains(t, form, `data-ob-el="СкрытыйОтбор"`)
 	require.NotContains(t, form, `name="Число"`)
 	require.NotContains(t, form, `name="БезПараметра"`)
+	require.NotContains(t, form, `name="Служебный"`)
+	require.NotContains(t, form, "закрытое начальное значение")
+	require.NotContains(t, form, `name="Условие"`)
+	require.NotContains(t, form, "условное начальное значение")
 	eventURL := server.URL + "/ui/processor/" + url.PathEscape(dst.Name) + "/form-event?" + url.Values{"Исходный": {"из query"}}.Encode()
 	for _, tc := range []struct{ selection, message string }{
 		{"РКЦ & <стройка>", "исходный отбор сохранён"},
@@ -136,7 +158,7 @@ func TestProcessorNavigationPrefillsFormHTTP(t *testing.T) {
 		body := url.Values{
 			"_kind": {"object"}, "_element": {"Включен"}, "_event": {string(metadata.FormEventOnChange)},
 			"Включен": {"true"}, "Исходный": {tc.selection}, "tp_json.Направления": {"[]"},
-			"Число": {"17"}, "БезПараметра": {"подмена"},
+			"Число": {"17"}, "БезПараметра": {"подмена"}, "Служебный": {"подмена"}, "Условие": {"подмена"},
 		}
 		response, err := server.Client().PostForm(eventURL, body)
 		require.NoError(t, err)
@@ -148,6 +170,9 @@ func TestProcessorNavigationPrefillsFormHTTP(t *testing.T) {
 		require.True(t, event.OK, event.Error)
 		require.Equal(t, []string{"строк нет", tc.message}, event.Messages)
 		require.NotContains(t, event.Values, "БезПараметра")
+		require.NotContains(t, event.Values, "Служебный")
+		require.NotContains(t, event.Values, "Условие")
+		require.NotContains(t, string(payload), "закрытое значение из события")
 	}
 
 	form = processorNavigationGET(t, server, "/ui/processor/"+url.PathEscape(legacy.Name)+"?"+uri.RawQuery)

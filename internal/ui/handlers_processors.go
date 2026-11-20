@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -933,7 +934,7 @@ func processorRequestControlsForForm(proc *processorpkg.Processor, form *metadat
 			return
 		}
 		if el.View == "hidden" {
-			if name := processorHiddenParamName(proc, el); name != "" {
+			if name := processorHiddenParamName(proc, form, el); name != "" {
 				key := strings.ToLower(name)
 				controls.paramFields[key] = appendUniqueProcessorControl(controls.paramFields[key], name)
 			}
@@ -974,10 +975,12 @@ func processorRequestControlsForForm(proc *processorpkg.Processor, form *metadat
 	return controls
 }
 
-// processorHiddenParamName resolves a hidden input to its declared processor
-// parameter. Local form attributes and other parameter types cannot opt in.
-func processorHiddenParamName(proc *processorpkg.Processor, el *metadata.FormElement) string {
-	if proc == nil || el.Kind != metadata.FormElementField || el.View != "hidden" || el.Conceal {
+// processorHiddenParamName resolves an explicit, always editable root control.
+// Restricted values use the processor's sealed state.
+func processorHiddenParamName(proc *processorpkg.Processor, form *metadata.FormModule, el *metadata.FormElement) string {
+	if proc == nil || form == nil || el == nil || el.Kind != metadata.FormElementField || el.View != "hidden" ||
+		el.ReadOnly || el.EditableAdminOnly || el.Conceal || el.ReadOnlyWhen != "" || el.HiddenWhen != "" ||
+		!slices.Contains(form.Elements, el) {
 		return ""
 	}
 	name := strings.TrimSpace(el.DataPath)
