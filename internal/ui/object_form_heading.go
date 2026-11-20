@@ -7,11 +7,15 @@ import (
 	"time"
 
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/navigation"
 )
 
-func (s *Server) objectFormHeading(r *http.Request, entity *metadata.Entity, values any, isNew bool) string {
+func (s *Server) objectFormHeading(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, values any, isNew bool) string {
 	lang := s.resolveLang(r)
 	name := entity.DisplayName(lang)
+	if entity.Kind == metadata.KindDocument && form != nil {
+		name = navigation.DisplayTitle(name, form.Title, lang)
+	}
 	if isNew {
 		return fmt.Sprintf(s.tr(lang, "%s (создание)"), name)
 	}

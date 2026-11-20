@@ -119,13 +119,14 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 	// formData — сборка данных управляемой формы до отрисовки шаблона.
 	endFormData := serverTimingSpan(r.Context(), "formData")
 	entity, _ := data["Entity"].(*metadata.Entity)
+	managed := pickManagedFormCtx(r.Context(), entity, kind)
 	// #481: заголовок вкладки/карточки = представление записи (Наименование…),
 	// а не имя сущности. Для существующей записи кладём TabTitle (его читает
 	// ui.js и шлёт оболочке obSetTitle) и RecordTitle (для заголовка h1).
 	isNew, _ := data["IsNew"].(bool)
 	if entity != nil && kind == "object" && !s.legacyEntityUI(r) &&
 		(entity.Kind == metadata.KindDocument || entity.Kind == metadata.KindCatalog) {
-		title := s.objectFormHeading(r, entity, data["Values"], isNew)
+		title := s.objectFormHeading(r, entity, managed, data["Values"], isNew)
 		data["ObjectFormTitle"] = title
 		data["TabTitle"] = title
 		popup, _ := data["IsPopup"].(bool)
@@ -168,7 +169,6 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 			data["NewParentID"] = parentID
 		}
 	}
-	managed := pickManagedFormCtx(r.Context(), entity, kind)
 	if managed != nil {
 		// ПриСозданииНаСервере — до всего, что читает значения: варианты
 		// ссылок, условия и разметка видят заполненные им реквизиты формы.

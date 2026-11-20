@@ -76,6 +76,7 @@ const tplAppShell = `{{define "page-app-shell"}}
 .ob-shell-main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;padding:0}
 .ob-tabstrip{display:flex;gap:2px;background:#e2e8f0;padding:4px 6px 0;overflow-x:auto;flex-shrink:0;min-height:34px}
 .ob-tab{display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;border:1px solid #cbd5e1;border-bottom:none;border-radius:6px 6px 0 0;padding:5px 8px 5px 12px;font-size:12px;color:#334155;cursor:pointer;white-space:nowrap;max-width:230px}
+.ob-tab.ob-tab-object{flex-shrink:0;max-width:min(420px,80vw)}
 .ob-tab.active{background:#1a4a80;color:#fff;font-weight:700;border-color:#1a4a80}
 .ob-tab.active .ob-tab-dup,.ob-tab.active .ob-tab-close{color:#fff}
 .ob-tab.active .ob-tab-dup:hover{color:#fff;background:#315d8e}
@@ -314,6 +315,8 @@ body.ob-side-dragging iframe{pointer-events:none}
     if(!t.reportOwner&&canDuplicateTab(t.url))openTab(t.url,t.title,{allowDup:true});
   }
   function syncDuplicateControl(t){
+    var path=new URL(t.url,location.origin).pathname;
+    t.btn.classList.toggle('ob-tab-object',!document.body.hasAttribute('data-ob-legacy-entity-ui')&&/^\/ui\/(catalog|document)\/[^/]+\/[^/]+\/?$/.test(path));
     if(!t.reportOwner&&canDuplicateTab(t.url)){
       if(!t.duplicate.parentNode)t.btn.insertBefore(t.duplicate,t.close);
     }else{

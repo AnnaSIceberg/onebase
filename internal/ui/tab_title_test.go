@@ -66,8 +66,10 @@ func TestManagedForm_TabTitleMetaFromRecord(t *testing.T) {
 	srv, ent, id := setupDeleteActionServer(t) // запись с Наименование="X"
 	body := renderObjectFormGET(t, srv, ent, id)
 
-	if !strings.Contains(body, `<meta name="ob-tab-title" content="X">`) {
-		t.Errorf("нет <meta ob-tab-title content=\"X\"> на карточке записи")
+	want := "X (" + ent.DisplayName("ru") + ")"
+	if !strings.Contains(body, `<meta name="ob-tab-title" content="`+want+`">`) ||
+		!strings.Contains(body, `<span data-ob-form-title>`+want+`</span>`) {
+		t.Errorf("нет заголовка справочника %q в форме и во вкладке", want)
 	}
 	if strings.Contains(body, "Редактировать —") {
 		t.Errorf("h1 карточки всё ещё «Редактировать — <Сущность>», а не представление записи")

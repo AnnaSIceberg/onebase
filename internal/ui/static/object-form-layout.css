@@ -13,7 +13,7 @@ main.ob-object-form {
 .ob-object-form-card .ob-object-form-footer {
   order: 1;
   margin-top: auto !important;
-  padding-top: 16px;
+  padding-top: 8px;
   text-align: right;
 }
 .ob-object-form-measuring > .ob-object-form-card,

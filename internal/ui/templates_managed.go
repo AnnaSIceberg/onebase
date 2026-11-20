@@ -597,6 +597,7 @@ const tplManagedForm = `
      и удалив их все, браузер шлёт то же самое, что и форма, где таблицы вовсе
      не было (скрыта hidden_when). Различает эти случаи только маркер. */}}
 {{if not $tpReadOnly}}<input type="hidden" name="tp_present.{{$tpName}}" value="1">{{end}}
+{{if $ctx.ObjectFormLayout}}<div class="ob-object-table-scroll">{{end}}
 <table class="tp-table{{tableHeaderClass $el}}" data-tp="{{$tpName}}" data-ob-dom-table="{{$tpName}}" data-ob-readonly="{{if $tpReadOnly}}1{{else}}0{{end}}"{{$thLay := elLayout $el}}{{$thVars := tableHeaderVars $el}}{{if or $thLay $thVars}} style="{{$thLay}}{{$thVars}}"{{end}}
   data-ob-element="{{$el.Name}}"{{if and (not $tpReadOnly) (hasHandler $el "ПриДобавленииСтроки")}} data-ob-rowadd="1"{{end}}{{if and (not $tpReadOnly) (hasHandler $el "ПриУдаленииСтроки")}} data-ob-rowdel="1"{{end}}
   {{if not $tpReadOnly}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}>
@@ -666,6 +667,7 @@ const tplManagedForm = `
       {{range $c := $tpPlan}}{{$f := $c.Field}}{{if $c.Hidden}}<td style="display:none"></td>{{else if eq (str $f.Type) "number"}}<td class="tp-total" data-tp-total="{{$tpName}}.{{$f.Name}}" style="text-align:right;font-variant-numeric:tabular-nums">0</td>{{else}}<td></td>{{end}}{{end}}{{range $tpVirtualCols}}<td></td>{{end}}<td></td>
     </tr></tfoot>
   </table>
+{{if $ctx.ObjectFormLayout}}</div>{{end}}
   <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569;margin:0 0 12px"{{if $tpReadOnly}} disabled{{else}}
     data-ob-add-tp="{{$tpName}}" data-ob-element="{{$el.Name}}" title="Insert" aria-keyshortcuts="Insert"{{end}}>
     + Добавить строку
@@ -1046,12 +1048,13 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
 </style>
 {{end}}
 {{if .FormConditionalCSS}}<style>{{.FormConditionalCSS}}</style>{{end}}
-<main>
+{{template "object-form-layout" .}}
+<main{{if .ObjectFormLayout}} class="ob-object-form"{{end}}>
 {{/* В окне формы результата заголовок и крестик рисует оболочка (tabs.go):
      собственная шапка формы дала бы второй заголовок и второй ×. */}}
 <div class="ob-form-head" style="display:{{if .IsResultForm}}none{{else}}flex{{end}};justify-content:space-between;align-items:center;margin-bottom:20px;max-width:1400px">
   <h2 style="margin-bottom:0">
-    <span data-ob-form-title>{{if .DisplayTitleConfigured}}{{.RecordTitle}}{{else}}{{if .IsProcessor}}{{.Processor.DisplayName $.Lang}}{{else}}{{if .IsNew}}{{t $.Lang "Создать"}} — {{.Entity.DisplayName $.Lang}}{{else}}{{if .RecordTitle}}{{.RecordTitle}}{{else}}{{t $.Lang "Редактировать"}} — {{.Entity.DisplayName $.Lang}}{{end}}{{end}}{{end}}{{end}}</span>
+    <span data-ob-form-title>{{if .DisplayTitleConfigured}}{{.RecordTitle}}{{else if .ObjectFormTitle}}{{.ObjectFormTitle}}{{else}}{{if .IsProcessor}}{{.Processor.DisplayName $.Lang}}{{else}}{{if .IsNew}}{{t $.Lang "Создать"}} — {{.Entity.DisplayName $.Lang}}{{else}}{{if .RecordTitle}}{{.RecordTitle}}{{else}}{{t $.Lang "Редактировать"}} — {{.Entity.DisplayName $.Lang}}{{end}}{{end}}{{end}}{{end}}</span>
     <span style="font-size:11px;color:#10b981;background:#d1fae5;padding:2px 8px;border-radius:10px;vertical-align:middle;font-weight:500" title="Управляемая форма из forms/{{if .IsProcessor}}{{lower .Processor.Name}}{{else}}{{lower .Entity.Name}}{{end}}/">◇ managed</span>
   </h2>
   {{/* «? Справка» у формы в строке команд рядом с «История»; у всплывающей
@@ -1204,7 +1207,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
 </div>
 {{end}}
 
-<div class="card">
+<div class="card{{if .ObjectFormLayout}} ob-object-form-card{{end}}">
 <form id="main-form"{{if not .LegacyEntityUI}} class="ob-form-action-spacing"{{end}} method="POST" autocomplete="off"{{with .FormInstance}} data-ob-form-instance="{{.}}"{{end}}{{if .ConcealContext}} data-ob-conceal-context="{{.ConcealContext}}" action="{{.ConcealAction}}"{{end}} data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}{{formKeyboardAttrs (index . "Form")}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{if .IsPopup}}<input type="hidden" name="_popup" value="1">{{end}}
@@ -1234,7 +1237,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   {{template "managed-element" (dict "El" . "Ctx" $ctx)}}
 {{end}}
 
-<div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
+<div{{if .ObjectFormLayout}} class="ob-object-form-footer"{{end}} style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
   {{if .IsPopup}}
   {{if .CanWrite}}<button class="btn btn-primary" type="button" data-ob-form-close="save_and_select" data-ob-close-reason="ok" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать и выбрать"}}</button>{{end}}
   <a href="#" data-ob-ref-cancel class="btn btn-cancel">Отмена</a>
@@ -1251,6 +1254,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   {{end}}
 </div>
 </form>
+{{if and .ObjectFormLayout (formActionVisible .Form "attachments")}}{{template "ob-attachments" .}}{{end}}
 </div>
 
 {{/* ── Рантайм событий managed-формы (план 37, этап 8) ──────────────────
@@ -1362,7 +1366,7 @@ window.MonacoEnvironment = window.MonacoEnvironment || { getWorkerUrl: function 
 {{/* Вложения к записи (issue #152) — тот же UI, что и в авто-форме.
      actions.attachments.visible:false (план 181C, #1621) скрывает блок только
      этой managed-формы; attachment endpoint не меняется. */}}
-{{if formActionVisible .Form "attachments"}}{{template "ob-attachments" .}}{{end}}
+{{if and (not .ObjectFormLayout) (formActionVisible .Form "attachments")}}{{template "ob-attachments" .}}{{end}}
 
 {{template "form-shared-js" .}}
 

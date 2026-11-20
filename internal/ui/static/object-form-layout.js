@@ -15,7 +15,8 @@
   function fit() {
     const visible = Array.from(form.querySelectorAll('[data-sg-tp], .ob-object-table-scroll'))
       .filter(element => element.getClientRects().length);
-    const nativeFit = form.querySelector('[data-ob-fit-window="1"], [data-ob-fit-group="1"], [data-ob-fit-grid="1"]');
+    const nativeFit = Array.from(form.querySelectorAll('[data-ob-fit-window="1"], [data-ob-fit-group="1"], [data-ob-fit-grid="1"]'))
+      .some(element => element.getClientRects().length);
     main.classList.toggle('ob-object-form-native-fit', !!nativeFit);
     const next = nativeFit ? undefined : visible[0];
     if (next !== table) {
