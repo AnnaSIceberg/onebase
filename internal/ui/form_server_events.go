@@ -262,6 +262,10 @@ func (s *Server) runFormWriteHook(ctx context.Context, entity *metadata.Entity, 
 	vars["Объект"] = thisObj
 	vars["ЭтотОбъект"] = thisObj
 
+	if openingContext, _ := ctx.Value(formOpenWriteKey{}).(interpreter.BuiltinFunc); openingContext != nil {
+		vars["КонтекстОткрытияФормы"], vars["FormOpeningContext"] = openingContext, openingContext
+	}
+
 	formProcs := make(map[string]*ast.ProcedureDecl, len(program.Procedures))
 	for _, p := range program.Procedures {
 		formProcs[strings.ToLower(p.Name.Literal)] = p

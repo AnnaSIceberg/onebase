@@ -1078,6 +1078,7 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 
 <div class="card">
 <form id="main-form" method="POST" autocomplete="off"{{with .FormInstance}} data-ob-form-instance="{{.}}"{{end}}{{if .ConcealContext}} data-ob-conceal-context="{{.ConcealContext}}" action="{{.ConcealAction}}"{{end}} data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}{{formKeyboardAttrs (index . "Form")}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
+{{with .FormOpeningInstanceField}}<input type="hidden" name="{{.}}" value="{{$.FormInstance}}">{{end}}
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{if .IsPopup}}<input type="hidden" name="_popup" value="1">{{end}}
 {{if .CopySourceID}}<input type="hidden" name="_copy_source_id" value="{{.CopySourceID}}">{{end}}

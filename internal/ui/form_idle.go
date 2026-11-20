@@ -73,7 +73,7 @@ func entityFormServiceFieldNames(entity *metadata.Entity, form *metadata.FormMod
 		}
 	}
 	names := map[string]string{"_question_fields": entityQuestionFieldsName(entity, form)}
-	for _, name := range []string{"_idle_proc", "_idle_token"} {
+	for _, name := range []string{"_idle_proc", "_idle_token", formOpenInstanceField} {
 		transport := name
 		if declared[strings.ToLower(transport)] {
 			transport = "_ob_service" + name

@@ -35,6 +35,7 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 		Handlers: map[metadata.FormEventType]string{
 			metadata.FormEventOnOpen:           "Контекст",
 			metadata.FormEventOnCreateAtServer: "Контекст",
+			metadata.FormEventBeforeWrite:      "ПроверитьЗапись",
 		},
 		Attributes: []*metadata.FormAttribute{{Name: "ПоказатьКолонки", TypeRef: "bool"}},
 		Elements: []*metadata.FormElement{
@@ -47,6 +48,11 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 	ИдЗадачи = КонтекстОткрытияФормы("Задача2К");
 	Объект.ПоказатьКолонки = ИдЗадачи <> "";
 	Сообщить("context:" + ИдЗадачи);
+КонецПроцедуры
+Процедура ПроверитьЗапись()
+	Если КонтекстОткрытияФормы("Задача2К") <> "" Тогда
+		ВызватьИсключение("readonly-from-task");
+	КонецЕсли;
 КонецПроцедуры
 `),
 	}
@@ -68,7 +74,7 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 	server.concealClock = func() time.Time { return now }
 	operator := &auth.User{ID: "operator", Login: "operator", Roles: []*auth.Role{{
 		Name: "ОператорКЦ", Permissions: auth.Permission{Documents: map[string][]string{
-			source.Name: {"read", "write"}, target.Name: {"read"},
+			source.Name: {"read", "write"}, target.Name: {"read", "write"},
 		}},
 	}}}
 	otherOperator := &auth.User{ID: "other", Login: "other", Roles: operator.Roles}
@@ -121,6 +127,11 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 		if gotColumns != wantColumns {
 			t.Fatalf("conditional layout on the first GET = %t, want %t", gotColumns, wantColumns)
 		}
+		field := entityFormServiceFieldNames(target, targetForm)[formOpenInstanceField]
+		gotNativeTransport := strings.Contains(rec.Body.String(), `name="`+field+`" value="`+match[1]+`"`)
+		if gotNativeTransport != wantColumns {
+			t.Fatalf("native proof input exists = %t, want %t", gotNativeTransport, wantColumns)
+		}
 		return match[1]
 	}
 	assertContext := func(id uuid.UUID, session, instance string, user *auth.User, want string, afterOpen bool) {
@@ -159,8 +170,48 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 	assertContext(orderID, "session-1", open(transfer, "session-1", operator, false), operator, "", false)
 	assertContext(orderID, "session-2", token, operator, "", false)
 	assertContext(otherID, "session-1", token, operator, "", false)
+
+	field := entityFormServiceFieldNames(target, targetForm)[formOpenInstanceField]
+	blocked := send(http.MethodPost, path, "session-1", "", operator, url.Values{
+		"Наименование": {"attempted native write"}, "_action": {"save"}, field: {token},
+	})
+	if blocked.Code == http.StatusSeeOther || !strings.Contains(blocked.Body.String(), "readonly-from-task") ||
+		!strings.Contains(blocked.Body.String(), `name="`+field+`" value="`+token+`"`) {
+		t.Fatalf("native save must fail and preserve the verified instance, HTTP %d", blocked.Code)
+	}
+
+	closeBody := closeIntentBody(uuid.NewString(), "close", "attempted close write")
+	closeBody.Set("_id", orderID.String())
+	closeBody.Set("_version", "1")
+	closeBody.Set("_close_mode", "save")
+	closeBody.Set("_close_first_attempt", "1")
+	ensureEntityCloseIntentSchema(target, closeBody)
+	closeRequest := httptest.NewRequest(http.MethodPost, "/ui/document/"+target.Name+"/form-close-intent", strings.NewReader(closeBody.Encode()))
+	closeRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	closeRequest.Header.Set(managedFormInstanceHeader, token)
+	closeRequest.AddCookie(&http.Cookie{Name: "onebase_session", Value: "session-1"})
+	setEntityCloseIntentHeaders(closeRequest, closeBody)
+	closeRecorder := httptest.NewRecorder()
+	router.ServeHTTP(closeRecorder, closeRequest.WithContext(auth.ContextWithUser(closeRequest.Context(), operator)))
+	closed := decodeCloseIntentResponse(t, closeRecorder)
+	if closed.OK || !strings.Contains(closed.Error, "readonly-from-task") || (closed.Close != nil && closed.Close.Saved) {
+		t.Fatalf("save on close must fail in the contextual instance: HTTP %d %s", closeRecorder.Code, closed.Error)
+	}
+
 	expiredTicket := launch()
 	now = now.Add(managedFormInstanceTTL + formOpenTicketTTL)
 	assertContext(orderID, "session-1", open(expiredTicket, "session-1", operator, false), operator, "", false)
 	assertContext(orderID, "session-1", token, operator, "", true)
+
+	normalToken := open(path, "session-1", operator, false)
+	for _, attempt := range []struct{ name, proof string }{
+		{"ordinary instance", normalToken}, {"native without proof", ""},
+	} {
+		rec := send(http.MethodPost, path, "session-1", attempt.proof, operator,
+			url.Values{"Наименование": {attempt.name}, "_action": {"save"}})
+		row, err := server.store.GetByID(t.Context(), target.Name, orderID, target)
+		if rec.Code != http.StatusSeeOther || err != nil || row["Наименование"] != attempt.name {
+			t.Fatalf("ordinary save %q: HTTP %d, err=%v", attempt.name, rec.Code, err)
+		}
+	}
 }

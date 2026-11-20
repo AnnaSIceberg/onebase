@@ -38,7 +38,9 @@ func (s *Server) issueManagedFormInstance(r *http.Request, data map[string]any) 
 		data["FormInstance"] = token
 		entity, _ := data["Entity"].(*metadata.Entity)
 		nonce, _, _ := strings.Cut(token, ".")
-		s.bindFormOpenContext(r, entity, scope, nonce, s.concealNow())
+		if s.bindFormOpenContext(r, entity, scope, nonce, s.concealNow()) {
+			data["FormOpeningInstanceField"] = entityFormServiceFieldNames(entity, form)[formOpenInstanceField]
+		}
 	}
 }
 

@@ -201,7 +201,8 @@ func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, for
 				expectedVersion = &parsed
 			}
 		}
-		if hookErr = s.runPreSaveFormHooks(r.Context(), entity, obj, false, &hookMessages); hookErr != nil {
+		hookContext := s.formOpenWriteContext(r, entity, form, obj.ID)
+		if hookErr = s.runPreSaveFormHooks(hookContext, entity, obj, false, &hookMessages); hookErr != nil {
 			return hookMessages, 0, &managedCloseSaveError{status: http.StatusBadRequest, kind: managedSaveHook, message: hookErr.Error(), messages: hookMessages}
 		}
 	}
