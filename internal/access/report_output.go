@@ -102,5 +102,5 @@ func ReportOutputFilterAllowed(meta *metadata.Entity, field string) bool {
 // role masking. Use only at report boundaries; cards and ordinary queries keep
 // their existing permissions. Filters/grouping on protected data fail closed.
 func ReportOutputQueryMaskPlan(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity) QueryMaskPlan {
-	return queryMaskPlanFor(u, res, lookup, true)
+	return queryMaskPlanFor(u, res, lookup, true, requiredQueryFields{})
 }

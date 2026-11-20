@@ -1797,11 +1797,8 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid id", 400)
 		return
 	}
-	row := s.readObjectFormRow(w, r, entity, id)
-	if row == nil {
-		return
-	}
 	var formInstance, instanceField string
+	var protectedVersion int64
 	if protectedOpening {
 		form := pickManagedFormCtx(r.Context(), entity, "object")
 		if form == nil || !form.InstanceContext {
@@ -1816,11 +1813,20 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 		instance := r.Clone(r.Context())
 		instance.Header.Set(managedFormInstanceHeader, formInstance)
 		entry, valid := s.formOpeningEntry(instance, entity, form, id.String(), schema)
-		if !valid || entry.recordVersion != persistedEntityVersion(row) || len(entry.maskedFields) == 0 {
+		if !valid || len(entry.maskedFields) == 0 {
 			http.Error(w, "Заявка изменилась или контекст открытия истёк. Откройте задачу заново", http.StatusForbidden)
 			return
 		}
 		r = withSavedPhoneOpening(r, entry)
+		protectedVersion = entry.recordVersion
+	}
+	row := s.readObjectFormRow(w, r, entity, id)
+	if row == nil {
+		return
+	}
+	if protectedOpening && protectedVersion != persistedEntityVersion(row) {
+		http.Error(w, "Заявка изменилась. Откройте задачу заново", http.StatusForbidden)
+		return
 	}
 	// Маскирование ПДн (план 88): значения строятся из row ниже, поэтому
 	// маскируем строку до сборки vals — на форме поле показывается замаскированным,

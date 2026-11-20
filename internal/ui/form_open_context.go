@@ -291,11 +291,25 @@ func (s *Server) issueSavedPhoneOpening(r *http.Request, entity *metadata.Entity
 	return "/ui/document/" + entity.Name + "/" + id + "?" + formOpenSavedPhoneQuery + "=" + ticket
 }
 
-func withSavedPhoneOpening(r *http.Request, entry formOpeningContext) *http.Request {
+func withSavedPhoneOpeningContext(ctx context.Context, entry formOpeningContext) context.Context {
 	if len(entry.maskedFields) == 0 {
-		return r
+		return ctx
 	}
-	return r.WithContext(context.WithValue(r.Context(), savedPhoneOpeningKey{}, entry))
+	return context.WithValue(ctx, savedPhoneOpeningKey{}, entry)
+}
+
+func withSavedPhoneOpening(r *http.Request, entry formOpeningContext) *http.Request {
+	return r.WithContext(withSavedPhoneOpeningContext(r.Context(), entry))
+}
+
+func savedPhoneOpeningMasks(ctx context.Context, entity *metadata.Entity, field string) bool {
+	entry, _ := ctx.Value(savedPhoneOpeningKey{}).(formOpeningContext)
+	if entity == nil || entity.Kind != metadata.KindDocument || entry.entity != entity.Name {
+		return false
+	}
+	return slices.ContainsFunc(entry.maskedFields, func(name string) bool {
+		return strings.EqualFold(name, field)
+	})
 }
 
 // A protected instance must not fall back to normal disclosure after expiry.

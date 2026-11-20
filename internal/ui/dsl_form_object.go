@@ -446,6 +446,9 @@ func (f *formObjectThis) Get(name string) any {
 	// Дальше — обычные поля (через Object.Get который ищет в Fields).
 	v := f.obj.Get(name)
 	if fd := entityField(f.entity, name); fd != nil {
+		if f.srv != nil && savedPhoneOpeningMasks(f.liveCtx(), f.entity, fd.Name) {
+			v = f.srv.maskDSLValue(f.liveCtx(), f.entity, fd.Name, v)
+		}
 		return declaredDSLValue(v, mustFieldDescriptor(fd), f.refResolver)
 	}
 	if attr := findScalarFormAttribute(f.form, name); attr != nil {

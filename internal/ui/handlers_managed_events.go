@@ -591,8 +591,6 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		}
 		finish(opStatus, 0, false)
 	}()
-	dslCtx, cancelDSL := context.WithCancel(opCtx)
-	defer cancelDSL()
 	finishTerminalClose := func() {
 		if closeInv == nil {
 			return
@@ -623,6 +621,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
+	opening, _ := r.Context().Value(savedPhoneOpeningKey{}).(formOpeningContext)
+	dslCtx, cancelDSL := context.WithCancel(withSavedPhoneOpeningContext(opCtx, opening))
+	defer cancelDSL()
 	if closeInv != nil && closeInv.mode != "discard" &&
 		!strings.EqualFold(form.Kind, "object") && (form.Kind != "" || formKind != "object") {
 		w.WriteHeader(http.StatusBadRequest)

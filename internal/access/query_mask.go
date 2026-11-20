@@ -61,10 +61,27 @@ func sourceMeta(kind, name, tablePart string, lookup func(kind, name string) *me
 // QueryMaskPlanFor строит план маскирования результата скомпилированного
 // запроса для пользователя u. lookup разрешает метаданные объекта-источника.
 func QueryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity) QueryMaskPlan {
-	return queryMaskPlanFor(u, res, lookup, false)
+	return queryMaskPlanFor(u, res, lookup, false, requiredQueryFields{})
 }
 
-func queryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity, reportOutput bool) QueryMaskPlan {
+// QueryMaskPlanWithRequiredFields preserves mandatory masking within a protected
+// form instance even for a principal with ordinary disclosure permission.
+func QueryMaskPlanWithRequiredFields(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity,
+	source query.SourceRef, fields []string) QueryMaskPlan {
+	return queryMaskPlanFor(u, res, lookup, false, requiredQueryFields{source: source, names: fields})
+}
+
+type requiredQueryFields struct {
+	source query.SourceRef
+	names  []string
+}
+
+func (r requiredQueryFields) matches(src query.SourceRef) bool {
+	return len(r.names) != 0 && src.Kind == r.source.Kind &&
+		strings.EqualFold(src.Name, r.source.Name) && strings.EqualFold(src.TablePart, r.source.TablePart)
+}
+
+func queryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name string) *metadata.Entity, reportOutput bool, required requiredQueryFields) QueryMaskPlan {
 	// Unknown/ambiguous metadata must not erase default PII, including outside
 	// reports. Known ordinary sources keep their existing policy below.
 	for _, src := range res.Sources {
@@ -76,7 +93,7 @@ func queryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 			return QueryMaskPlan{Denied: name}
 		}
 	}
-	masked, columns, fieldColumns := maskedSourceFieldsWithOutput(u, res.Sources, lookup, reportOutput)
+	masked, columns, fieldColumns := maskedSourceFieldsWithOutput(u, res.Sources, lookup, reportOutput, required)
 	if len(masked) == 0 {
 		return QueryMaskPlan{}
 	}
@@ -94,7 +111,7 @@ func queryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 	var roleMasked map[string]FieldDecision
 	if reportOutput {
 		blocking = reportBlockingFields(u, res.Sources, lookup, masked)
-		roleMasked, _, _ = maskedSourceFieldsWithOutput(u, res.Sources, lookup, false)
+		roleMasked, _, _ = maskedSourceFieldsWithOutput(u, res.Sources, lookup, false, requiredQueryFields{})
 		if denied := deniedReportOutput(res, blocking); denied != "" {
 			return QueryMaskPlan{Denied: denied}
 		}
@@ -120,6 +137,16 @@ func queryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 				return QueryMaskPlan{Denied: field}
 			}
 		}
+		for _, source := range res.Sources {
+			if required.matches(source) {
+				for _, field := range res.ProjectionFields {
+					if _, protected := masked[fieldKey(field)]; protected {
+						return QueryMaskPlan{Denied: field}
+					}
+				}
+				break
+			}
+		}
 		return QueryMaskPlan{Denied: DeniedMaskedColumn(u, res.Sources, res.ProjectionFields, lookup)}
 	}
 	// Поле под маской в отборе/группировке/сортировке/агрегате: маска на выходе
@@ -127,6 +154,14 @@ func queryMaskPlanFor(u *auth.User, res query.Result, lookup func(kind, name str
 	// Хвост запроса ссылается на колонку и по выходному алиасу, и по номеру —
 	// оба варианта дают тот же оракул, что и ссылка по имени поля.
 	searchable := searchableMaskedFields(u, res.Sources, lookup)
+	for _, source := range res.Sources {
+		if required.matches(source) {
+			for _, field := range required.names {
+				delete(searchable, fieldKey(field))
+			}
+			break
+		}
+	}
 	if reportOutput {
 		// Disclosure rights apply to ordinary queries, never to mandatory
 		// report restrictions or predicates over protected report inputs.
@@ -286,8 +321,8 @@ func applyDecision(row map[string]any, key string, dec FieldDecision) {
 // имени поля и, отдельно, по имени колонки таблицы (для проекции «*»). Третья
 // карта — обратная: логическое имя поля → его физические колонки, чтобы явную
 // проекцию ссылки сопоставлять с той же колонкой, которую покрывает «*».
-func maskedSourceFieldsWithOutput(u *auth.User, sources []query.SourceRef, lookup func(kind, name string) *metadata.Entity, reportOutput bool) (byField, byColumn map[string]FieldDecision, fieldColumns map[string][]string) {
-	if !reportOutput && (u == nil || (u.IsAdmin && !MaskAdmin())) {
+func maskedSourceFieldsWithOutput(u *auth.User, sources []query.SourceRef, lookup func(kind, name string) *metadata.Entity, reportOutput bool, required requiredQueryFields) (byField, byColumn map[string]FieldDecision, fieldColumns map[string][]string) {
+	if !reportOutput && len(required.names) == 0 && (u == nil || (u.IsAdmin && !MaskAdmin())) {
 		return nil, nil, nil
 	}
 	byField = map[string]FieldDecision{}
@@ -308,6 +343,16 @@ func maskedSourceFieldsWithOutput(u *auth.User, sources []query.SourceRef, looku
 		decisions := FieldDecisions(u, src.Kind, src.Name, meta)
 		if reportOutput {
 			decisions = ReportOutputFieldDecisions(u, src.Kind, src.Name, meta)
+		}
+		if required.matches(src) {
+			if decisions == nil {
+				decisions = make(map[string]FieldDecision, len(required.names))
+			}
+			for _, field := range required.names {
+				if !decisions[field].Masked() {
+					decisions[field] = FieldDecision{Strategy: FieldMaskAll}
+				}
+			}
 		}
 		for field, dec := range decisions {
 			put(byField, field, dec)
