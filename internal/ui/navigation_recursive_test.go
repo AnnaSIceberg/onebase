@@ -132,6 +132,53 @@ func TestRecursiveNavigationHTTPOrderAccessAndRoles(t *testing.T) {
 		t.Fatal("role union lost explicitly allowed branch")
 	}
 }
+func TestRecursiveNavigationHTTPFolderRolesPreserveCommands(t *testing.T) {
+	f := newRecursiveHTTPFixture(t)
+	sub := f.server.reg.GetSubsystem("School")
+	sub.Menu.Sections[0].Nodes[1].FolderRoles = []string{"Chief"}
+	f.server.cfg.UIExceptRoles = []string{"Operator"}
+	ctx := context.Background()
+	chief, operator := &auth.Role{Name: "Chief"}, &auth.Role{Name: "Operator"}
+	if err := f.server.authRepo.SyncRoles(ctx, []*auth.Role{semanticTeacher().Roles[0], chief, operator}); err != nil {
+		t.Fatal(err)
+	}
+	user, err := f.server.authRepo.GetByLogin(ctx, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertMenu := func(wantFolder bool) {
+		t.Helper()
+		nav := recursiveNavDocument(t, f, "alice")
+		folder := semanticFind(nav, "data-nav-id", "cfg:masters")
+		held := semanticFind(nav, "data-nav-id", "cfg:held")
+		if (folder != nil) != wantFolder || held == nil {
+			t.Fatalf("folder visible = %t, child visible = %t", folder != nil, held != nil)
+		}
+		if semanticFind(held, "data-nav-id", "cfg:full") == nil || semanticFind(nav, "data-nav-id", "cfg:forbidden") != nil {
+			t.Fatal("grouping changed access to commands")
+		}
+		href := "/ui/document/Orders?subsystem=School"
+		matches := 0
+		for _, link := range semanticLinks(nav) {
+			if link == href {
+				matches++
+			}
+		}
+		if matches != 1 {
+			t.Fatalf("order link appears %d times", matches)
+		}
+	}
+	assertMenu(false)
+	if err = f.server.authRepo.AssignRole(ctx, user.ID, chief.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertMenu(true)
+	if err = f.server.authRepo.AssignRole(ctx, user.ID, operator.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertMenu(false)
+}
+
 func TestRecursiveNavigationHTTPAdminAndPersonalLayers(t *testing.T) {
 	f := newRecursiveHTTPFixture(t)
 	state := f.editor(t, "School")

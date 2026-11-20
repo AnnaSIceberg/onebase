@@ -67,6 +67,9 @@ type MenuNode struct {
 	Action string     `yaml:"action,omitempty" json:"action,omitempty"`
 	Nodes  []MenuNode `yaml:"nodes,omitempty" json:"nodes,omitempty"`
 	Roles  []string   `yaml:"roles,omitempty" json:"roles,omitempty"`
+	// FolderRoles controls grouping only. Other roles see the allowed
+	// children in the parent, in their configured order.
+	FolderRoles []string `yaml:"folder_roles,omitempty" json:"folder_roles,omitempty"`
 }
 
 func menuYAMLField(node *yaml.Node, key string) (*yaml.Node, bool) {
@@ -104,6 +107,9 @@ func checkMenuNodeShape(root *yaml.Node) error {
 			target, hasTarget := menuYAMLField(child, "target")
 			nested, hasNodes := menuYAMLField(child, "nodes")
 			if hasTarget {
+				if _, exists := menuYAMLField(child, "folder_roles"); exists {
+					return fmt.Errorf("menu folder_roles requires a folder")
+				}
 				if hasNodes || strings.TrimSpace(target.Value) == "" {
 					return fmt.Errorf("menu command requires a nonempty target and no nodes")
 				}

@@ -136,8 +136,16 @@ func normalizeRecursive(context string, menu *metadata.Menu, scope Scope) (Tree,
 					add("navigation.roles", raw.ID, "empty menu role", false)
 				}
 			}
+			for _, role := range raw.FolderRoles {
+				if strings.TrimSpace(role) == "" {
+					add("navigation.roles", raw.ID, "empty folder role", false)
+				}
+			}
 			if raw.Target != "" {
 				commands++
+				if len(raw.FolderRoles) > 0 {
+					add("navigation.shape", raw.ID, "folder_roles requires a folder", false)
+				}
 				if raw.Nodes != nil {
 					add("navigation.shape", raw.ID, "command cannot have nodes", false)
 				}
@@ -183,6 +191,7 @@ func normalizeRecursive(context string, menu *metadata.Menu, scope Scope) (Tree,
 				if strings.TrimSpace(raw.Title) == "" {
 					add("navigation.title", raw.ID, "folder requires title", false)
 				}
+				n.FolderRoles = slices.Clone(raw.FolderRoles)
 				n.Nodes = children(raw.Nodes, depth+1, n.RoleClauses)
 			}
 			result = append(result, n)

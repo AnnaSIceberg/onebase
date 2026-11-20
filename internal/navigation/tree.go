@@ -145,6 +145,7 @@ type Item struct {
 	Icon        string            `json:"icon,omitempty"`
 	Object      Object            `json:"object"`
 	RoleClauses [][]string        `json:"role_clauses,omitempty"`
+	FolderRoles []string          `json:"folder_roles,omitempty"`
 }
 
 type Diagnostic struct {
@@ -292,6 +293,7 @@ func cloneObject(o Object) Object {
 func cloneItem(i Item) Item {
 	i.Titles = copyTitles(i.Titles)
 	i.RoleClauses = cloneClauses(i.RoleClauses)
+	i.FolderRoles = slices.Clone(i.FolderRoles)
 	i.Object = cloneObject(i.Object)
 	return i
 }

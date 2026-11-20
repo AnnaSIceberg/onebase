@@ -88,11 +88,16 @@ func (s *Server) projectRecursiveNavigation(r *http.Request, tree navigation.Tre
 func (s *Server) recursiveNavigationGroups(r *http.Request, tree navigation.Tree, sub string) []navGroup {
 	tree = s.projectRecursiveNavigation(r, tree, nil, true, nil)
 	lang := s.resolveLang(r)
+	user, legacy := auth.UserFromContext(r.Context()), s.legacyEntityUI(r)
 	key := func(id string) string { return "navtree:" + navDOMID(currentUserLogin(r)+"\x00"+tree.Context, id) }
 	var nodes func([]navigation.Node) []navTreeNode
 	nodes = func(input []navigation.Node) []navTreeNode {
 		var out []navTreeNode
 		for _, n := range input {
+			if len(n.FolderRoles) > 0 && (legacy || !auth.RoleScopeMatches(user, n.FolderRoles, nil, false)) {
+				out = append(out, nodes(n.Nodes)...)
+				continue
+			}
 			next := navTreeNode{ID: n.ID, DOMID: navDOMID(tree.Context, n.ID), Icon: n.Icon, Label: navigation.DisplayTitle(n.Title, n.Titles, lang), CollapseKey: key(n.ID)}
 			if n.Target != "" {
 				resolved := navigation.ResolveItem(n.Item, lang, sub, func(key string) string { return s.tr(lang, key) }, false)
