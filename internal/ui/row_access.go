@@ -610,19 +610,24 @@ func (s *Server) compileQueryWithRowAccess(ctx context.Context, text string, par
 	if err != nil {
 		return query.Result{}, err
 	}
+	match, err := s.savedPhoneMatchForQuery(ctx, text)
+	if err != nil {
+		return query.Result{}, err
+	}
 	return query.Compile(text, query.CompileOpts{
-		Entities:    s.reg.Entities(),
-		Params:      params,
-		Registers:   s.reg.Registers(),
-		InfoRegs:    s.reg.InfoRegisters(),
-		AccountRegs: s.reg.AccountRegisters(),
-		RowFilters:  rowFilters,
-		Dialect:     s.store.Dialect(),
+		Entities:        s.reg.Entities(),
+		Params:          params,
+		Registers:       s.reg.Registers(),
+		InfoRegs:        s.reg.InfoRegisters(),
+		AccountRegs:     s.reg.AccountRegisters(),
+		RowFilters:      rowFilters,
+		Dialect:         s.store.Dialect(),
+		SavedPhoneMatch: match,
 	})
 }
 
 func (s *Server) compileDSLQueryWithRowAccess(ctx context.Context, text string, params map[string]any) (query.Result, error) {
-	if isTrustedDSLContext(ctx) {
+	if isTrustedDSLContext(ctx) && !savedPhoneMatchRequested(ctx, text) {
 		return query.Compile(text, query.CompileOpts{
 			Entities:    s.reg.Entities(),
 			Params:      params,

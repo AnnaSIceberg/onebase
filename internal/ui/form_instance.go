@@ -24,7 +24,7 @@ func (s *Server) issueManagedFormInstance(r *http.Request, data map[string]any) 
 		return
 	}
 	form, _ := data["Form"].(*metadata.FormModule)
-	if form == nil || !form.InstanceContext {
+	if form == nil || (!form.InstanceContext && form.SavedPhoneMatch == nil) {
 		return
 	}
 	schema, _ := data["FormCloseSchema"].(string)
