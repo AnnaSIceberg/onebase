@@ -958,8 +958,27 @@ func mergeSubmittedEntityServiceFields(r *http.Request, entity *metadata.Entity,
 // серверный хук формы (ПередЗаписью/ПриЗаписи) отклонил запись через
 // ВызватьИсключение. Контекст совпадает с веткой DSLError в submit/submitEdit.
 func (s *Server) renderObjectFormError(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, isNew bool, errMsg string, msgs []string, tpRows map[string][]map[string]any) {
-	values := formValues(r, entity)
+	s.renderObjectFormFailure(w, r, entity, isNew, http.StatusOK, errMsg, msgs, tpRows)
+}
+
+func (s *Server) renderObjectFormFailure(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, isNew bool, status int, errMsg string, msgs []string, tpRows map[string][]map[string]any) {
 	managedForm := pickManagedFormCtx(r.Context(), entity, "object")
+	if !isNew && entity.Kind == metadata.KindDocument && managedForm != nil && managedForm.InstanceContext {
+		// A failed POST can repopulate an existing form. Its signed instance
+		// alone cannot authorize reading the saved record again.
+		if !s.requirePerm(w, r, string(entity.Kind), entity.Name, "read") {
+			return
+		}
+		id, err := uuid.Parse(chi.URLParam(r, "id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		if s.readObjectFormRow(w, r, entity, id) == nil {
+			return
+		}
+	}
+	values := formValues(r, entity)
 	// Form attributes are not entity fields, so formValues deliberately omits
 	// them. On a validation error keep every posted scalar attribute for the
 	// retry instead of clearing unrelated user input from the rendered form.
@@ -1013,23 +1032,21 @@ func (s *Server) renderObjectFormError(w http.ResponseWriter, r *http.Request, e
 	} else {
 		data["ID"] = chi.URLParam(r, "id")
 	}
+	if status != http.StatusOK {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(status)
+	}
 	s.renderEntityForm(w, r, "object", data)
 }
 
 func (s *Server) renderObjectFormBadRequest(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, isNew bool, errMsg string, tpRows map[string][]map[string]any) {
-	// render() выставляет тот же заголовок, но после WriteHeader менять его уже
-	// поздно. Ответ остаётся настоящим 400 и при этом является HTML-формой.
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusBadRequest)
-	s.renderObjectFormError(w, r, entity, isNew, errMsg, nil, tpRows)
+	s.renderObjectFormFailure(w, r, entity, isNew, http.StatusBadRequest, errMsg, nil, tpRows)
 }
 
 // An ownership refusal concerns the submitted data, so keep the current attempt
 // for retry instead of reloading the persisted object like a version conflict.
 func (s *Server) renderObjectFormConflict(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, isNew bool, message string, messages []string, tpRows map[string][]map[string]any) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusConflict)
-	s.renderObjectFormError(w, r, entity, isNew, message, messages, tpRows)
+	s.renderObjectFormFailure(w, r, entity, isNew, http.StatusConflict, message, messages, tpRows)
 }
 
 func (s *Server) renderManagedObjectSaveFailure(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, isNew bool, obj *runtime.Object, messages []string, saveErr error) {
@@ -1639,6 +1656,35 @@ func pickObjectFormWithHook(entity *metadata.Entity, evt string) *metadata.FormM
 	return nil
 }
 
+// readObjectFormRow loads the saved record and checks its row policy and read
+// hook. The caller must check the user's entity-level read permission first.
+func (s *Server) readObjectFormRow(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, id uuid.UUID) map[string]any {
+	row, err := s.store.GetByID(r.Context(), entity.Name, id, entity)
+	if err != nil {
+		http.Error(w, s.errText(r, err), 404)
+		return nil
+	}
+	if !s.rowAllowed(w, r, entity, "read", row) {
+		return nil
+	}
+	// Issue #148: серверный обработчик ПриЧтенииНаСервере исполняется ДО рендера
+	// HTML. Если он бросает исключение — отдаём 403 и не раскрываем данные записи
+	// (row-level security на чтение). Без этого ПриОткрытии срабатывал лишь на
+	// клиенте, уже после отдачи формы со всеми полями.
+	//
+	// Замечание #13: хук выполняется для формы объекта НЕЗАВИСИМО от её типа —
+	// managed (forms/<entity>/*.form.yaml) ИЛИ autogen (src/<entity>.form.os).
+	// runFormReadHook не требует managed-формы (нужны лишь Handlers + ProgramAST),
+	// поэтому RLS на чтение, объявленный в autogen-форме, тоже срабатывает.
+	if objForm := pickObjectFormWithReadHook(entity); objForm != nil {
+		if denied := s.runFormReadHook(r.Context(), entity, objForm, id); denied != nil {
+			s.renderReadHookDenied(w, r, denied)
+			return nil
+		}
+	}
+	return row
+}
+
 func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Has(formOpenContextQuery) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -1656,28 +1702,9 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid id", 400)
 		return
 	}
-	row, err := s.store.GetByID(r.Context(), entity.Name, id, entity)
-	if err != nil {
-		http.Error(w, s.errText(r, err), 404)
+	row := s.readObjectFormRow(w, r, entity, id)
+	if row == nil {
 		return
-	}
-	if !s.rowAllowed(w, r, entity, "read", row) {
-		return
-	}
-	// Issue #148: серверный обработчик ПриЧтенииНаСервере исполняется ДО рендера
-	// HTML. Если он бросает исключение — отдаём 403 и не раскрываем данные записи
-	// (row-level security на чтение). Без этого ПриОткрытии срабатывал лишь на
-	// клиенте, уже после отдачи формы со всеми полями.
-	//
-	// Замечание #13: хук выполняется для формы объекта НЕЗАВИСИМО от её типа —
-	// managed (forms/<entity>/*.form.yaml) ИЛИ autogen (src/<entity>.form.os).
-	// runFormReadHook не требует managed-формы (нужны лишь Handlers + ProgramAST),
-	// поэтому RLS на чтение, объявленный в autogen-форме, тоже срабатывает.
-	if objForm := pickObjectFormWithReadHook(entity); objForm != nil {
-		if denied := s.runFormReadHook(r.Context(), entity, objForm, id); denied != nil {
-			s.renderReadHookDenied(w, r, denied)
-			return
-		}
 	}
 	// Маскирование ПДн (план 88): значения строятся из row ниже, поэтому
 	// маскируем строку до сборки vals — на форме поле показывается замаскированным,
