@@ -611,6 +611,8 @@ func TestManagedLayout_FixedRowsKeepEditableColumns(t *testing.T) {
 	values := map[string]any{
 		"Entity": ent, "Form": form, "CanWrite": true,
 		"TablePartRows": map[string][]map[string]any{part.Name: {{"Включена": true}}},
+		"TPRefOptions":  map[string]any{},
+		"TPEnumLabels":  map[string]any{},
 	}
 
 	for _, grid := range []bool{true, false} {
