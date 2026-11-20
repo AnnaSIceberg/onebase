@@ -361,6 +361,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return nil
 		},
+		"processorHiddenParamName": processorHiddenParamName,
 		"processorParamPresenceName": func(proc *processorpkg.Processor, name string) string {
 			if proc == nil {
 				return processorParamPresencePrefix + name

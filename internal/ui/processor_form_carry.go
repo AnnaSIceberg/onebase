@@ -206,6 +206,12 @@ func processorUnplaced(proc *processorpkg.Processor, form *metadata.FormModule) 
 		if visit.parentTablePart != nil || el.Kind == metadata.FormElementTablePart {
 			return
 		}
+		if el.View == "hidden" {
+			if name := processorHiddenParamName(proc, el); name != "" && !visit.effectiveReadOnly {
+				placed[strings.ToLower(name)] = true
+			}
+			return
+		}
 		path := strings.TrimSpace(el.DataPath)
 		scope, name, qualified := strings.Cut(path, ".")
 		if qualified {

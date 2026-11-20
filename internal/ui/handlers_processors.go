@@ -932,6 +932,13 @@ func processorRequestControlsForForm(proc *processorpkg.Processor, form *metadat
 		if visit.effectiveReadOnly || el.DataPath == "" || strings.Count(el.DataPath, ".") > 1 || !processorElementPostsParam(el.Kind) {
 			return
 		}
+		if el.View == "hidden" {
+			if name := processorHiddenParamName(proc, el); name != "" {
+				key := strings.ToLower(name)
+				controls.paramFields[key] = appendUniqueProcessorControl(controls.paramFields[key], name)
+			}
+			return
+		}
 		fieldName := dpFieldName(el.DataPath)
 		p, ok := paramsByName[strings.ToLower(fieldName)]
 		if !ok {
@@ -965,6 +972,33 @@ func processorRequestControlsForForm(proc *processorpkg.Processor, form *metadat
 		}
 	})
 	return controls
+}
+
+// processorHiddenParamName resolves a hidden input to its declared processor
+// parameter. Local form attributes and other parameter types cannot opt in.
+func processorHiddenParamName(proc *processorpkg.Processor, el *metadata.FormElement) string {
+	if proc == nil || el.Kind != metadata.FormElementField || el.View != "hidden" || el.Conceal {
+		return ""
+	}
+	name := strings.TrimSpace(el.DataPath)
+	if strings.Contains(name, ".") {
+		root, field, ok := formChoicePath(name)
+		switch strings.ToLower(root) {
+		case "объект", "object", "форма", "form":
+			if !ok {
+				return ""
+			}
+			name = field
+		default:
+			return ""
+		}
+	}
+	for _, param := range proc.Params {
+		if param.Type == "string" && strings.EqualFold(param.Name, name) {
+			return param.Name
+		}
+	}
+	return ""
 }
 
 func processorElementPostsParam(kind metadata.FormElementType) bool {

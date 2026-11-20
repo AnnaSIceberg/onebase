@@ -27,6 +27,8 @@ func TestProcessorNavigationPrefillsFormHTTP(t *testing.T) {
 	П = Новый Соответствие;
 	П.Вставить("Начало", "2026-09-01");
 	П.Вставить("Отбор", "ОТК & партнёры");
+	П.Вставить("Исходный", "РКЦ & <стройка>");
+	П.Вставить("БезПараметра", "подмена");
 	П.Вставить("Включен", Ложь);
 	П.Вставить("Защищён", "другое значение из URL");
 	П.Вставить("tp_json.Направления", "[{""Имя"":""Север""}]");
@@ -37,16 +39,38 @@ func TestProcessorNavigationPrefillsFormHTTP(t *testing.T) {
 	targetForm := processorExecutionForm(
 		&metadata.FormElement{Kind: metadata.FormElementField, Name: "Дата", Type: "date", DataPath: "Объект.Начало"},
 		&metadata.FormElement{Kind: metadata.FormElementField, Name: "Отбор", DataPath: "Объект.Отбор"},
-		&metadata.FormElement{Kind: metadata.FormElementCheckbox, Name: "Включен", DataPath: "Объект.Включен"},
+		&metadata.FormElement{Kind: metadata.FormElementField, Name: "СкрытыйОтбор", DataPath: "Объект.исходный", View: "hidden"},
+		&metadata.FormElement{Kind: metadata.FormElementField, Name: "СкрытоеЧисло", DataPath: "Объект.Число", View: "hidden"},
+		&metadata.FormElement{Kind: metadata.FormElementField, Name: "НезаявленноеПоле", DataPath: "Форма.БезПараметра", View: "hidden"},
+		&metadata.FormElement{Kind: metadata.FormElementCheckbox, Name: "Включен", DataPath: "Объект.Включен",
+			Handlers: map[metadata.FormEventType]string{metadata.FormEventOnChange: "ПроверитьОтбор"}},
 		&metadata.FormElement{Kind: metadata.FormElementField, Name: "Защищён", DataPath: "Объект.Защищён", ReadOnly: true},
 		&metadata.FormElement{
 			Kind: metadata.FormElementTablePart, Name: "Направления", DataPath: "Объект.Направления",
 			Children: []*metadata.FormElement{{Kind: metadata.FormElementField, Name: "Имя", DataPath: "Имя"}},
 		},
 	)
+	targetForm.Attributes = []*metadata.FormAttribute{{Name: "БезПараметра", TypeRef: "string"}}
+	targetForm.ProgramAST = mustParse(t, `
+Процедура ПроверитьОтбор()
+	Если ЗначениеЗаполнено(Объект.БезПараметра) ИЛИ Объект.Число = 17 Тогда
+		ВызватьИсключение("недопустимый скрытый ввод");
+	КонецЕсли;
+	Если Объект.Направления.Количество() = 0 Тогда
+		Сообщить("строк нет");
+	КонецЕсли;
+	Если Объект.Исходный = "РКЦ & <стройка>" Тогда
+		Сообщить("исходный отбор сохранён");
+	ИначеЕсли НЕ ЗначениеЗаполнено(Объект.Исходный) Тогда
+		Сообщить("отбор по умолчанию");
+	КонецЕсли;
+КонецПроцедуры`)
+
 	params := []processor.Param{
 		{Name: "Начало", Type: "date", Default: "2001-01-01"},
 		{Name: "Отбор", Type: "string", Default: "все"},
+		{Name: "Исходный", Type: "string", Default: "старый отбор"},
+		{Name: "Число", Type: "number", Default: 4},
 		{Name: "Включен", Type: "bool", Default: true},
 		{Name: "Защищён", Type: "string", Default: "из настроек"},
 	}
@@ -99,6 +123,32 @@ func TestProcessorNavigationPrefillsFormHTTP(t *testing.T) {
 	require.Contains(t, form, "из настроек")
 	require.NotContains(t, form, "другое значение из URL")
 	require.Contains(t, form, "Север")
+
+	require.Contains(t, form, `<input type="hidden" name="Исходный" value="РКЦ &amp; &lt;стройка&gt;">`)
+	require.NotContains(t, form, `data-ob-el="СкрытыйОтбор"`)
+	require.NotContains(t, form, `name="Число"`)
+	require.NotContains(t, form, `name="БезПараметра"`)
+	eventURL := server.URL + "/ui/processor/" + url.PathEscape(dst.Name) + "/form-event?" + url.Values{"Исходный": {"из query"}}.Encode()
+	for _, tc := range []struct{ selection, message string }{
+		{"РКЦ & <стройка>", "исходный отбор сохранён"},
+		{"", "отбор по умолчанию"},
+	} {
+		body := url.Values{
+			"_kind": {"object"}, "_element": {"Включен"}, "_event": {string(metadata.FormEventOnChange)},
+			"Включен": {"true"}, "Исходный": {tc.selection}, "tp_json.Направления": {"[]"},
+			"Число": {"17"}, "БезПараметра": {"подмена"},
+		}
+		response, err := server.Client().PostForm(eventURL, body)
+		require.NoError(t, err)
+		payload, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode)
+		event := decodeFormEventResponse(t, payload)
+		require.True(t, event.OK, event.Error)
+		require.Equal(t, []string{"строк нет", tc.message}, event.Messages)
+		require.NotContains(t, event.Values, "БезПараметра")
+	}
 
 	form = processorNavigationGET(t, server, "/ui/processor/"+url.PathEscape(legacy.Name)+"?"+uri.RawQuery)
 	require.Regexp(t, `name="Начало"[^>]+value="2026-09-01"`, form)
