@@ -31,6 +31,12 @@ var reportControlsJS []byte
 //go:embed static/tabular.js
 var tabularJS []byte
 
+//go:embed static/object-form-layout.js
+var objectFormLayoutJS []byte
+
+//go:embed static/object-form-layout.css
+var objectFormLayoutCSS []byte
+
 //go:embed static/query-builder.js
 var queryBuilderJS []byte
 
@@ -50,6 +56,8 @@ var (
 	dateInputJSETag          = assetETag(dateInputJS)
 	reportControlsJSETag     = assetETag(reportControlsJS)
 	tabularJSETag            = assetETag(tabularJS)
+	objectFormLayoutJSETag   = assetETag(objectFormLayoutJS)
+	objectFormLayoutCSSETag  = assetETag(objectFormLayoutCSS)
 	queryBuilderJSETag       = assetETag(queryBuilderJS)
 	settingsNavigationJSETag = assetETag(settingsNavigationJS)
 	reportParamsJSETag       = assetETag(reportParamsJS)
@@ -97,6 +105,19 @@ func mountStatic(r chi.Router) {
 	})
 	r.Get("/static/tabular.js", func(w http.ResponseWriter, r *http.Request) { serveAppJS(w, r, tabularJS, tabularJSETag) })
 	mountNavigationTree(r)
+	r.Get("/static/object-form-layout.js", func(w http.ResponseWriter, req *http.Request) {
+		serveAppJS(w, req, objectFormLayoutJS, objectFormLayoutJSETag)
+	})
+	r.Get("/static/object-form-layout.css", func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("ETag", objectFormLayoutCSSETag)
+		w.Header().Set("Cache-Control", "no-cache")
+		if req.Header.Get("If-None-Match") == objectFormLayoutCSSETag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		_, _ = w.Write(objectFormLayoutCSS)
+	})
 	r.Get("/static/report_params.js", func(w http.ResponseWriter, req *http.Request) {
 		serveAppJS(w, req, reportParamsJS, reportParamsJSETag)
 	})
