@@ -1377,10 +1377,38 @@ function obInitReportChart() {
   }
 }
 
+function obFillDashboardLists() {
+  document.querySelectorAll('.dash').forEach(function (dash) {
+    var rows = dash.querySelectorAll('.dash-row');
+    if (!rows.length) return;
+    var row = rows[rows.length - 1];
+    var selector = dash.hasAttribute('data-ob-fill-list-cards') ? '.w-card-list' : '.ob-widget-stream';
+    var cards = row.querySelectorAll(selector);
+    if (!cards.length) return;
+    if (window.ResizeObserver && !dash._obFillObserver) {
+      dash._obFillObserver = new ResizeObserver(function () { requestAnimationFrame(obFillDashboardLists); });
+      dash._obFillObserver.observe(dash);
+    }
+    cards.forEach(function (card) {
+      if (!card.getClientRects().length) return;
+      // Its natural top also works when the home container has been scrolled.
+      var container = card.closest('#ob-tabhome') || card.closest('main');
+      var bottom = container && container.id === "ob-tabhome" ? Math.min(innerHeight, container.getBoundingClientRect().bottom) : innerHeight;
+      var top = card.getBoundingClientRect().top + (container ? container.scrollTop : 0);
+      card.classList.add('ob-widget-fill');
+      var height = Math.max(180, Math.floor(bottom - top - 8)) + 'px';
+      if (card.style.height !== height) card.style.height = height;
+    });
+  });
+}
+
+window.addEventListener('resize', obFillDashboardLists);
+
 // Виджеты рабочего стола: диаграммы и контроллеры обновления. Оболочка зовёт
 // повторно после смены раздела без перезагрузки — уже инициализированные
 // узлы пропускаются (data-ob-init, card._obWidgetController).
 window.obInitDashboard = function () {
+  obFillDashboardLists();
   obInitMappedCharts('ob-widget-charts', '.w-chart-canvas[data-widget]', 'data-widget', 'chart init failed', true);
   obInitWidgetControllers();
   if (window.obInitLiveList) window.obInitLiveList();

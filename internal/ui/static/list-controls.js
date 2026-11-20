@@ -37,27 +37,6 @@ function obInitListPanels() {
 }
 
   obReady(obInitListPanels);
-function obFillDashboardLists() {
-  document.querySelectorAll('.dash').forEach(function (dash) {
-    if (window.ResizeObserver && !dash._obFillObserver) {
-      dash._obFillObserver = new ResizeObserver(function () { requestAnimationFrame(obFillDashboardLists); });
-      dash._obFillObserver.observe(dash);
-    }
-    var rows = dash.querySelectorAll('.dash-row');
-    if (!rows.length) return;
-    var row = rows[rows.length - 1];
-    row.querySelectorAll('.w-card-list').forEach(function (card) {
-      if (!card.getClientRects().length) return;
-      // Its natural top also works when the home container has been scrolled.
-      var container = card.closest('#ob-tabhome') || card.closest('main');
-      var bottom = container && container.id === "ob-tabhome" ? Math.min(innerHeight, container.getBoundingClientRect().bottom) : innerHeight;
-      var top = card.getBoundingClientRect().top + (container ? container.scrollTop : 0);
-      card.classList.add('ob-widget-fill');
-      var height = Math.max(180, Math.floor(bottom - top - 8)) + 'px';
-      if (card.style.height !== height) card.style.height = height;
-    });
-  });
-}
 document.addEventListener('dblclick', function (ev) {
   var cell = ev.target.closest && ev.target.closest('[data-ob-widget-cell]');
   var row = cell && cell.closest('[data-ob-row-url]');
@@ -118,13 +97,6 @@ document.addEventListener('dblclick', function (ev) {
 })();
 
 
-  window.addEventListener('resize', obFillDashboardLists);
-  var baseDashboard = window.obInitDashboard;
-  window.obInitDashboard = function () {
-    if (typeof baseDashboard === 'function') baseDashboard();
-    obFillDashboardLists();
-  };
-  obReady(obFillDashboardLists);
 
   // Enter completes a filter/settings field. Search keeps its existing submit.
   document.addEventListener('keydown', function (ev) {

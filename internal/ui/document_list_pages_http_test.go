@@ -163,6 +163,7 @@ FROM seq`)
 	assertRows(get(journal, ""), 25, "Номер-10051", "Номер-10075")
 	assertRows(get(journal+"?_list_chunk=1&offset=10000", ""), 50, "Номер-10001", "Номер-10050")
 
+	s.cfg.UIRoles = []string{"ОТКРуководитель"}
 	reg.LoadWidgets([]*metadata.Widget{{
 		Name: "Calls", Title: "Заявки", Type: metadata.WidgetTypeList, ScrollFromEnd: true, Limit: 50,
 		Query:   "ВЫБРАТЬ Ссылка, Номер, Дата ИЗ Документ.Звонок ГДЕ (&Номер ЕСТЬ ПУСТО ИЛИ Номер = &Номер) УПОРЯДОЧИТЬ ПО Дата УБЫВ, Ссылка УБЫВ",
@@ -171,10 +172,13 @@ FROM seq`)
 	widgetBody := func(q string) string {
 		t.Helper()
 		var result widgetPartialResponse
-		if err := json.Unmarshal([]byte(get("/ui/_widget/Calls"+q, "")), &result); err != nil {
+		if err := json.Unmarshal([]byte(get("/ui/_widget/Calls"+q, "Кассир")), &result); err != nil {
 			t.Fatal(err)
 		}
 		return result.HTML
+	}
+	if legacy := get("/ui/_widget/Calls", "ОператорМессенджера"); strings.Contains(legacy, "data-stream-widget") {
+		t.Fatal("the operator must keep the existing widget behavior")
 	}
 	body = widgetBody("")
 	if !strings.Contains(body, "__older=50") || strings.Index(body, "Номер-10026") >= strings.Index(body, "Номер-10075") ||

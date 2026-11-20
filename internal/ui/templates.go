@@ -2702,6 +2702,9 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 .w-card-list .w-cell-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
 .w-cell-filters .btn{box-sizing:border-box;min-height:0;height:24px;padding:1px 8px;font-size:12px;line-height:20px}
 .w-list td.ob-widget-cell-selected{outline:2px solid #2563eb;outline-offset:-2px}
+{{end}}
+.dash .w-card-list.ob-widget-stream{padding:6px 10px;min-height:0}
+.dash .w-card-list.ob-widget-stream .w-head{margin-bottom:4px}
 .w-card-list.ob-widget-stream .w-title{font-size:16px;font-weight:700;color:#0f172a;text-transform:none}
 .ob-widget-stream .w-list th{font-size:12px;font-weight:700;color:#0f172a;background:#dbeafe;border-bottom-color:#93c5fd}
 .w-card-list.ob-widget-fill{box-sizing:border-box;min-height:180px}
@@ -2714,7 +2717,6 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 .ob-compact-lists main .ob-widget-stream .w-list table:not(#main-form *) :is(th,td){border-top-width:0;border-left-width:0}
 .ob-widget-fill .w-refresh-status:empty{display:none}
 /* END widget-list-controls */
-{{end}}
 .w-default-hint{color:#64748b;font-size:13px;margin:6px 0 14px}
 </style>
 {{end}}
@@ -2722,7 +2724,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 {{define "dashboard-body"}}
   {{if .Cfg.UIEnhancements}}<h2 class="ob-dashboard-title">{{.HomeTitle}}</h2>{{else}}<h2 style="margin-bottom:14px">{{.HomeTitle}}</h2>{{end}}
   {{if .DefaultedHome}}<div class="w-default-hint">Стартовая страница не настроена — показаны последние документы из аудита. Создайте <code>config/home_page.yaml</code> и виджеты в <code>widgets/</code>, чтобы оформить дашборд.</div>{{end}}
-  <div class="dash">
+  <div class="dash"{{if .Cfg.UIEnhancements}} data-ob-fill-list-cards{{end}}>
     {{range .WidgetRows}}
     <div class="dash-row">
       {{range .}}{{template "widget-card" .}}{{end}}

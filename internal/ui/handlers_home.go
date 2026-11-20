@@ -341,7 +341,9 @@ func (s *Server) dashboardWidget(r *http.Request, name string) *metadata.Widget 
 const widgetOlderParam = "__older"
 
 func (s *Server) widgetStreams(r *http.Request, w *metadata.Widget) bool {
-	return w != nil && w.Type == metadata.WidgetTypeList && w.ScrollFromEnd && s.uiEnhancementsAllowed(r)
+	// A list widget opts in through its own metadata. The scope of the
+	// entity-list controls does not determine whether the widget can stream.
+	return w != nil && w.Type == metadata.WidgetTypeList && w.ScrollFromEnd && !s.legacyEntityUI(r)
 }
 
 func widgetStreamURL(base string, offset int) string {

@@ -42,10 +42,12 @@ test('list field Enter completes filters, preserves Search and real button submi
 });
 
 test('home list fills the viewport even when a standalone main is naturally short',()=>{
- const a=src.indexOf('function obFillDashboardLists()');const b=src.indexOf("document.addEventListener('dblclick'",a);const fn=src.slice(a,b);
+ const core=fs.readFileSync(require('node:path').join(__dirname,'ui.js'),'utf8');
+ const a=core.indexOf('function obFillDashboardLists()');const b=core.indexOf("window.addEventListener('resize', obFillDashboardLists)",a);
+ const fn=core.slice(a,b);
  function height(container){
   const card={style:{},getClientRects(){return [1];},closest(){return container;},getBoundingClientRect(){return {top:200};},classList:{add(){}}};
-  const row={querySelectorAll(){return [card];}},dash={querySelectorAll(){return [row];}};
+  const row={querySelectorAll(selector){assert.equal(selector,'.ob-widget-stream');return [card];}},dash={hasAttribute(){return false;},querySelectorAll(){return [row];}};
   vm.runInNewContext(fn+';obFillDashboardLists();',{document:{querySelectorAll(){return [dash];}},window:{},innerHeight:750});
   return card.style.height;
  }
