@@ -377,10 +377,11 @@ type FormElement struct {
 	// колонки, пока оно не пусто. Обновляется и после событий формы — аналог
 	// Колонка.ТекстШапки 1С: шапка «1 пн … 31 ср» под выбранный месяц.
 	TitleFrom string `yaml:"title_from,omitempty"`
-	UseGrid   bool   `yaml:"use_grid,omitempty"` // (устар.) SlickGrid теперь включён по умолчанию
-	NoGrid    bool   `yaml:"no_grid,omitempty"`  // отключить SlickGrid у ТЧ (вернуть простую таблицу)
-	AutoSum   bool   `yaml:"auto_sum,omitempty"` // ТЧ: авто Сумма = Количество × Цена по именам колонок — opt-in (#215.1)
-	Hint      string `yaml:"hint,omitempty"`     // всплывающая подсказка
+	UseGrid   bool   `yaml:"use_grid,omitempty"`   // (устар.) SlickGrid теперь включён по умолчанию
+	FixedRows bool   `yaml:"fixed_rows,omitempty"` // запрет изменения состава строк в интерфейсе ТЧ
+	NoGrid    bool   `yaml:"no_grid,omitempty"`    // отключить SlickGrid у ТЧ (вернуть простую таблицу)
+	AutoSum   bool   `yaml:"auto_sum,omitempty"`   // ТЧ: авто Сумма = Количество × Цена по именам колонок — opt-in (#215.1)
+	Hint      string `yaml:"hint,omitempty"`       // всплывающая подсказка
 	// HintFrom — всплывающая подсказка из реквизита формы (`hint_from`): текст
 	// берётся из значения реквизита при отрисовке и после каждого события
 	// формы. Пустое значение — статический hint. Как title_from у колонок ТЧ.

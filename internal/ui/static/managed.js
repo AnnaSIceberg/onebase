@@ -971,6 +971,7 @@ window.obManagedApplyHints = obManagedApplyHints;
       const readOnly = obManagedTableReadOnly(tbody);
       const domTable = tbody.closest && tbody.closest('table[data-ob-dom-table]');
       const domWritable = !!(domTable && domTable.getAttribute('data-ob-readonly') === '0');
+      const fixedRows = !!(domTable && domTable.getAttribute('data-ob-fixed-rows') === '1');
       const focused = domTable && document.activeElement && domTable.contains(document.activeElement);
       const focusedRow = focused && document.activeElement.closest ? document.activeElement.closest('tr') : null;
       const restoreRow = focusedRow || (domTable && domTable._obCurrentRow && domTable.contains(domTable._obCurrentRow) ? domTable._obCurrentRow : null);
@@ -1152,19 +1153,21 @@ window.obManagedApplyHints = obManagedApplyHints;
           td.textContent = value == null ? '' : String(value);
           tr.appendChild(td);
         });
-        const tdDel = document.createElement('td');
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'del-btn';
-        btn.textContent = '×';
-        btn.disabled = readOnly;
-        if (domWritable) {
-          btn.setAttribute('data-ob-remove-row', '');
-          btn.title = 'Delete';
-          btn.setAttribute('aria-keyshortcuts', 'Delete');
+        if (!fixedRows) {
+          const tdDel = document.createElement('td');
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'del-btn';
+          btn.textContent = '×';
+          btn.disabled = readOnly;
+          if (domWritable) {
+            btn.setAttribute('data-ob-remove-row', '');
+            btn.title = 'Delete';
+            btn.setAttribute('aria-keyshortcuts', 'Delete');
+          }
+          tdDel.appendChild(btn);
+          tr.appendChild(tdDel);
         }
-        tdDel.appendChild(btn);
-        tr.appendChild(tdDel);
         tbody.appendChild(tr);
         if (domTable && window.obDOMPrepareRow) window.obDOMPrepareRow(domTable, tr);
       });
@@ -3264,7 +3267,7 @@ function obManagedAddTpRow(btn) {
   var elementName = btn.getAttribute('data-ob-element') || '';
   var tbody = obManagedAdjacentTableBody(btn, tpName, 'data-tp-fields') ||
     obManagedWritableTableBody('tp-body-' + tpName, 'data-tp-fields', elementName);
-  if (!tpName || !tbody || typeof addTpRow !== 'function') return;
+  if (!tpName || !tbody || (tbody.closest && tbody.closest('table[data-ob-fixed-rows]')) || typeof addTpRow !== 'function') return;
   var meta = obManagedParseFieldMeta(tbody.getAttribute('data-tp-fields') || '');
   var fields = meta.map(function (f) { return f.name; });
   var nums = meta.filter(function (f) { return f.type === 'number'; }).map(function (f) { return f.name; });
@@ -3378,7 +3381,7 @@ function obManagedVtRowActivated(tr) {
 function obManagedAddVtRow(btn) {
   var vtName = btn.getAttribute('data-ob-add-vt') || '';
   var tbody = obManagedWritableTableBody('vt-body-' + vtName, 'data-vt-fields');
-  if (!vtName || !tbody || typeof addVtRow !== 'function') return;
+  if (!vtName || !tbody || (tbody.closest && tbody.closest('table[data-ob-fixed-rows]')) || typeof addVtRow !== 'function') return;
   var fields = obManagedParseFieldMeta(tbody.getAttribute('data-vt-fields') || '').map(function (f) { return f.name; });
   addVtRow(vtName, fields, tbody);
   if (window.obSetManagedFormDirty) window.obSetManagedFormDirty(true);
@@ -3386,7 +3389,7 @@ function obManagedAddVtRow(btn) {
 
 function obManagedRemoveRow(btn) {
   var tr = btn && btn.closest && btn.closest('tr');
-  if (!tr) return false;
+  if (!tr || (tr.closest && tr.closest('table[data-ob-fixed-rows]'))) return false;
   var table = tr.closest && tr.closest('table[data-ob-dom-table]');
   var body = tr.parentElement;
   var index = tr.sectionRowIndex;
@@ -5202,7 +5205,7 @@ function obGridColumnWidths(columns) {
 
   window.obGridAddRow = function(tpName) {
     var g = (window._obGrids || {})[tpName];
-    if (!g || g.readOnly || (g.div && g.div.getAttribute("data-sg-ro") === "1") || !commitGridEdit(g)) return;
+    if (!g || g.readOnly || g.fixedRows || (g.div && g.div.getAttribute("data-sg-ro") === "1") || !commitGridEdit(g)) return;
     rememberActiveGrid(tpName);
     var nextId = 0, nextOrd = 0;
     g.dataView.getItems().forEach(function(it) {
@@ -5262,7 +5265,7 @@ function obGridColumnWidths(columns) {
   // используем все реально выбранные строки и сохраняем multi-select семантику.
   window.obGridDelRow = function(tpName) {
     var g = (window._obGrids || {})[tpName];
-    if (!g || g.readOnly || (g.div && g.div.getAttribute("data-sg-ro") === "1") || !commitGridEdit(g)) return false;
+    if (!g || g.readOnly || g.fixedRows || (g.div && g.div.getAttribute("data-sg-ro") === "1") || !commitGridEdit(g)) return false;
     rememberActiveGrid(tpName);
     var rows = gridRowsForDelete(g);
     if (!rows.length) return false;
@@ -5314,7 +5317,7 @@ function obGridColumnWidths(columns) {
   // obGridCopyRow — копия текущей строки сразу под ней (F9, как в 1С).
   window.obGridCopyRow = function(tpName) {
     var g = (window._obGrids || {})[tpName];
-    if (!g || g.readOnly || !commitGridEdit(g)) return;
+    if (!g || g.readOnly || g.fixedRows || !commitGridEdit(g)) return;
     rememberActiveGrid(tpName);
     var ac = g.grid.getActiveCell();
     if (!ac) return;
@@ -5350,7 +5353,7 @@ function obGridColumnWidths(columns) {
   // перемещения список показывается в порядке документа.
   window.obGridMoveRow = function(tpName, delta) {
     var g = (window._obGrids || {})[tpName];
-    if (!g || g.readOnly || !commitGridEdit(g)) return;
+    if (!g || g.readOnly || g.fixedRows || !commitGridEdit(g)) return;
     rememberActiveGrid(tpName);
     var ac = g.grid.getActiveCell();
     if (!ac) return;
@@ -5544,7 +5547,7 @@ function obGridColumnWidths(columns) {
       var active = (window._obGrids || {})[tp];
       if (!active || active.readOnly) return;
       function take() { e.preventDefault(); e.stopPropagation(); }
-      if (e.key === "Insert" && !e.ctrlKey) {
+      if (!active.fixedRows && e.key === "Insert" && !e.ctrlKey) {
         take();
         if (window.obGridAddRow) window.obGridAddRow(tp);
         return;
@@ -5570,12 +5573,12 @@ function obGridColumnWidths(columns) {
         return;
       }
       // Явный hotkey кнопки формы важнее встроенного значения клавиши.
-      if (e.key === "F9" && !e.ctrlKey && !hasActionableFormHotkey("F9")) {
+      if (!active.fixedRows && e.key === "F9" && !e.ctrlKey && !hasActionableFormHotkey("F9")) {
         take();
         if (window.obGridCopyRow) window.obGridCopyRow(tp);
         return;
       }
-      if (e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      if (!active.fixedRows && e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         take();
         if (window.obGridMoveRow) window.obGridMoveRow(tp, e.key === "ArrowDown" ? 1 : -1);
       }
@@ -5789,6 +5792,7 @@ function obGridColumnWidths(columns) {
     var gridState = {
       grid: grid, dataView: dataView, columns: columns,
       columnsMeta: colsRaw, refOpts: refOpts, div: div, readOnly: readOnly,
+      fixedRows: div.getAttribute("data-sg-fixed-rows") === "1",
       tpName: tpName
     };
     var choiceRows={};try{choiceRows=JSON.parse(div.getAttribute('data-sg-choice-rows')||'{}')||{};}catch(e){}

@@ -596,6 +596,54 @@ func TestManagedLayout_TablePartHeightOverridesRowGuess(t *testing.T) {
 	}
 }
 
+func TestManagedLayout_FixedRowsKeepEditableColumns(t *testing.T) {
+	part := metadata.TablePart{Name: "Колонки", Fields: []metadata.Field{
+		{Name: "Включена", Type: metadata.FieldTypeBool},
+	}}
+	el := &metadata.FormElement{
+		Kind: metadata.FormElementTablePart, Name: part.Name, DataPath: "Объект.Колонки", FixedRows: true,
+		Handlers: map[metadata.FormEventType]string{
+			metadata.FormEventOnRowAdded: "Добавить", metadata.FormEventOnRowChanged: "Изменить",
+		},
+	}
+	ent := &metadata.Entity{Name: "Конструктор", Kind: metadata.KindDocument, TableParts: []metadata.TablePart{part}}
+	form := &metadata.FormModule{Kind: "object", Elements: []*metadata.FormElement{el}}
+	values := map[string]any{
+		"Entity": ent, "Form": form, "CanWrite": true,
+		"TablePartRows": map[string][]map[string]any{part.Name: {{"Включена": true}}},
+	}
+
+	for _, grid := range []bool{true, false} {
+		el.NoGrid = !grid
+		var buf bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&buf, "managed-element", map[string]any{"El": el, "Ctx": values}); err != nil {
+			t.Fatal(err)
+		}
+		out := buf.String()
+		if grid {
+			for _, marker := range []string{`data-sg-fixed-rows="1"`, `data-sg-rowchange="1"`, `name="tp_json.Колонки"`} {
+				if !strings.Contains(out, marker) {
+					t.Errorf("grid lacks %s", marker)
+				}
+			}
+		} else if !strings.Contains(out, `data-ob-fixed-rows="1"`) ||
+			!strings.Contains(out, `type="checkbox" name="tp.Колонки.0.Включена" value="true" checked>`) {
+			t.Errorf("DOM table lacks its editable checkbox or fixed row marker")
+		}
+		for _, forbidden := range []string{"data-ob-grid-add", "data-ob-grid-del", "data-ob-add-tp", "data-ob-remove-row", "data-sg-rowadd"} {
+			if strings.Contains(out, forbidden) {
+				t.Errorf("grid=%v fixed table uses %s", grid, forbidden)
+			}
+		}
+	}
+	if _, _, _, err := resolveBrowserFormEvent(form, el.Name, string(metadata.FormEventOnRowAdded), false); err == nil {
+		t.Error("fixed table accepted the add-row event")
+	}
+	if proc, _, _, err := resolveBrowserFormEvent(form, el.Name, string(metadata.FormEventOnRowChanged), false); err != nil || proc != "Изменить" {
+		t.Fatalf("fixed table rejected cell edit: proc=%q err=%v", proc, err)
+	}
+}
+
 // renderLayoutElement рендерит элемент production-шаблоном managed-формы.
 func renderLayoutElement(t *testing.T, el *metadata.FormElement) string {
 	t.Helper()

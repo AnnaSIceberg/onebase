@@ -533,6 +533,7 @@ const tplManagedForm = `
   {{$tpCmds := tpCommandButtons $el}}
   {{$tpHasCommands := hasTPCommands $el}}
   {{$tpReadOnly := or $ro (not $ctx.CanWrite)}}
+  {{$rowActions := not $el.FixedRows}}
   {{/* data-ob-tp — граница табличной части для клиентского пересчёта условий:
        её содержимое (грид, кнопки строк, командные кнопки) applyElementStates
        не трогает. Состояние тут складывается не только из условий, но и из
@@ -574,13 +575,14 @@ const tplManagedForm = `
        {{with gridOrderAttr $ctx $el.Name}}data-sg-order="{{.}}"{{end}}
        {{with gridWidthsAttr $ctx $el.Name}}data-sg-widths="{{.}}"{{end}}
        {{if $tpReadOnly}}data-sg-ro="1"{{end}}
+       {{if $el.FixedRows}}data-sg-fixed-rows="1"{{end}}
        {{if and (not $tpReadOnly) (hasHandler $el "ПриИзменении")}}data-sg-recalc="1"{{end}}
        {{if $el.AutoSum}}data-sg-autosum="1"{{end}}
-	   {{if and (not $tpReadOnly) (hasHandler $el "ПриДобавленииСтроки")}}data-sg-rowadd="1"{{end}}
-	   {{if and (not $tpReadOnly) (hasHandler $el "ПриУдаленииСтроки")}}data-sg-rowdel="1"{{end}}
+	   {{if and $rowActions (not $tpReadOnly) (hasHandler $el "ПриДобавленииСтроки")}}data-sg-rowadd="1"{{end}}
+	   {{if and $rowActions (not $tpReadOnly) (hasHandler $el "ПриУдаленииСтроки")}}data-sg-rowdel="1"{{end}}
 	   {{if and (not $tpReadOnly) (hasHandler $el "ПриАктивизацииСтроки")}}data-sg-rowactivate="1"{{end}}
 	   {{if and (not $tpReadOnly) (hasHandler $el "ПриИзмененииСтроки")}}data-sg-rowchange="1"{{end}}
-	   {{if and (not $tpReadOnly) (hasHandler $el "ПослеДобавленияСтроки")}}data-sg-rowafteradd="1"{{end}}
+	   {{if and $rowActions (not $tpReadOnly) (hasHandler $el "ПослеДобавленияСтроки")}}data-sg-rowafteradd="1"{{end}}
        {{/* id — имя реквизита (по нему идёт привязка данных и разбор tp.*),
             name — только подпись колонки: синоним реквизита, как в автоформе. */}}
        {{if $tpColEvents}}data-sg-colevents="{{$tpColEvents}}"{{end}}
@@ -592,7 +594,7 @@ const tplManagedForm = `
        data-sg-enum='{{jsJSON $tpEnum}}'
        data-sg-rows='{{managedTPRowsJSON $tpMeta.Fields $tpRows}}'
        {{if $tpHasCommands}}data-sg-cmd="1"{{end}}
-       {{if not $tpReadOnly}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}></div>
+       {{if and $rowActions (not $tpReadOnly)}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}></div>
   {{if not $tpReadOnly}}<input type="hidden" name="tp_json.{{$tpName}}" id="tp-json-{{$tpName}}" value="">{{end}}
   <div style="display:flex;gap:6px;margin-top:4px">
     {{/* У таблицы «только показать» (результаты поиска, итоги) кнопок правки
@@ -600,7 +602,7 @@ const tplManagedForm = `
          обещая действие, которого нет. Такая таблица — закрытая целиком или
          со всеми видимыми колонками readonly; второе важно там, где нужен
          щелчок по строке: саму таблицу закрывать нельзя. */}}
-    {{if and (not $tpReadOnly) (managedTPEditable $tpPlan)}}
+    {{if and $rowActions (not $tpReadOnly) (managedTPEditable $tpPlan)}}
     <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569"
       data-ob-grid-add="{{$tpName}}" title="Insert" aria-keyshortcuts="Insert">+ Добавить строку</button>
     <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#991b1b"
@@ -617,15 +619,15 @@ const tplManagedForm = `
      не было (скрыта hidden_when). Различает эти случаи только маркер. */}}
 {{if not $tpReadOnly}}<input type="hidden" name="tp_present.{{$tpName}}" value="1">{{end}}
 {{if $ctx.ObjectFormLayout}}<div class="ob-object-table-scroll">{{end}}
-<table class="tp-table{{tableHeaderClass $el}}" data-tp="{{$tpName}}" data-ob-dom-table="{{$tpName}}" data-ob-readonly="{{if $tpReadOnly}}1{{else}}0{{end}}"{{$thLay := elLayout $el}}{{$thVars := tableHeaderVars $el}}{{if or $thLay $thVars}} style="{{$thLay}}{{$thVars}}"{{end}}
-  data-ob-element="{{$el.Name}}"{{if and (not $tpReadOnly) (hasHandler $el "ПриДобавленииСтроки")}} data-ob-rowadd="1"{{end}}{{if and (not $tpReadOnly) (hasHandler $el "ПриУдаленииСтроки")}} data-ob-rowdel="1"{{end}}
-  {{if not $tpReadOnly}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}>
+<table class="tp-table{{tableHeaderClass $el}}" data-tp="{{$tpName}}" data-ob-dom-table="{{$tpName}}"{{if $el.FixedRows}} data-ob-fixed-rows="1"{{end}} data-ob-readonly="{{if $tpReadOnly}}1{{else}}0{{end}}"{{$thLay := elLayout $el}}{{$thVars := tableHeaderVars $el}}{{if or $thLay $thVars}} style="{{$thLay}}{{$thVars}}"{{end}}
+  data-ob-element="{{$el.Name}}"{{if and $rowActions (not $tpReadOnly) (hasHandler $el "ПриДобавленииСтроки")}} data-ob-rowadd="1"{{end}}{{if and $rowActions (not $tpReadOnly) (hasHandler $el "ПриУдаленииСтроки")}} data-ob-rowdel="1"{{end}}
+  {{if and $rowActions (not $tpReadOnly)}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}>
     <thead>
       <tr>
         {{if $tpHasCommands}}<th style="width:30px"></th>{{end}}
         {{range $c := $tpPlan}}<th{{if $c.Hidden}} style="display:none"{{else if $c.Width}} style="width:{{$c.Width}}px"{{end}}>{{$c.Field.DisplayName (str $ctx.Lang)}}</th>{{end}}
         {{range $tpVirtualCols}}<th>{{.ColumnTitle (str $ctx.Lang)}}</th>{{end}}
-        <th style="width:40px"></th>
+        {{if $rowActions}}<th style="width:40px"></th>{{end}}
       </tr>
     </thead>
     <tbody id="tp-body-{{$tpName}}" {{if $ctx.HideRefCard}}data-tp-hide-ref-card="1" {{end}}{{if $tpHasCommands}}data-tp-cmd="1" {{end}}{{if $tpReadOnly}}data-ob-table-readonly="1" {{end}}data-tp-choice="{{jsJSON (tpChoiceContexts $ctx $el)}}" data-tp-ref-options="{{jsJSON (tpChoiceRefOverrides $ctx $el)}}" data-tp-ref-marked="{{jsJSON (managedTPMarked $tpPlan)}}" data-tp-fields="{{managedTPFieldsAttr $tpPlan}}" data-tp-hidden-cols="{{managedTPHiddenColsJSON $tpPlan}}" data-tp-virtual-cols="{{managedTPVirtualNamesJSON $tpVirtualCols}}">
@@ -677,20 +679,22 @@ const tplManagedForm = `
         {{/* Виртуальная колонка — только текст: значение не хранится, и поля
              ввода у неё быть не должно, иначе правка выглядела бы сохраняемой. */}}
         {{range $vc := $tpVirtualCols}}<td data-ob-virtual-col="{{$vc.Name}}">{{index $row $vc.Name}}</td>{{end}}
-        <td><button type="button" class="del-btn"{{if $tpReadOnly}} disabled{{else}} data-ob-remove-row title="Delete" aria-keyshortcuts="Delete"{{end}}>×</button></td>
+        {{if $rowActions}}<td><button type="button" class="del-btn"{{if $tpReadOnly}} disabled{{else}} data-ob-remove-row title="Delete" aria-keyshortcuts="Delete"{{end}}>×</button></td>{{end}}
       </tr>
     {{end}}
     </tbody>
     <tfoot id="tp-foot-{{$tpName}}" class="tp-footer" style="display:none"><tr>
       {{if $tpHasCommands}}<td></td>{{end}}
-      {{range $c := $tpPlan}}{{$f := $c.Field}}{{if $c.Hidden}}<td style="display:none"></td>{{else if eq (str $f.Type) "number"}}<td class="tp-total" data-tp-total="{{$tpName}}.{{$f.Name}}" style="text-align:right;font-variant-numeric:tabular-nums">0</td>{{else}}<td></td>{{end}}{{end}}{{range $tpVirtualCols}}<td></td>{{end}}<td></td>
+      {{range $c := $tpPlan}}{{$f := $c.Field}}{{if $c.Hidden}}<td style="display:none"></td>{{else if eq (str $f.Type) "number"}}<td class="tp-total" data-tp-total="{{$tpName}}.{{$f.Name}}" style="text-align:right;font-variant-numeric:tabular-nums">0</td>{{else}}<td></td>{{end}}{{end}}{{range $tpVirtualCols}}<td></td>{{end}}{{if $rowActions}}<td></td>{{end}}
     </tr></tfoot>
   </table>
 {{if $ctx.ObjectFormLayout}}</div>{{end}}
+  {{if $rowActions}}
   <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569;margin:0 0 12px"{{if $tpReadOnly}} disabled{{else}}
     data-ob-add-tp="{{$tpName}}" data-ob-element="{{$el.Name}}" title="Insert" aria-keyshortcuts="Insert"{{end}}>
     + Добавить строку
   </button>
+  {{end}}
 {{end}}
   {{else}}
   {{/* ValueTable: формовый атрибут-таблица (не документная ТЧ). */}}
@@ -706,7 +710,7 @@ const tplManagedForm = `
        формы его обновляет перерисовка таблицы (applyFormTables). */}}
   {{if not $el.TitleHidden}}<h3 class="ob-table-title" style="font-size:14px;font-weight:600;margin:0 0 8px;{{tableTitleStyle $ctx.Form}}">{{fieldTitleRU $el.TitleMap $tpName}}{{if $el.ShowCount}} <span data-ob-vt-count="{{$tpName}}">({{len $vtRows}})</span>{{end}}</h3>{{end}}
   {{$vtPlan := managedVTColumnsHiddenWhen (managedVTColumnPlan $el $vtCols) $ctx}}
-  {{$vtEditable := managedVTEditable $vtPlan}}
+  {{$vtEditable := and $rowActions (managedVTEditable $vtPlan)}}
   {{$vtActivate := hasHandler $el "ПриАктивизацииСтроки"}}
   {{if $vtCmds}}
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
@@ -727,7 +731,7 @@ const tplManagedForm = `
        (obFitVtRows), здесь — оценка, чтобы форма не прыгала при загрузке. */}}
   {{$vtRowsN := managedVTVisibleRows $el}}
   {{if $vtRowsN}}<div class="managed-vt-rows" data-ob-vt-rows="{{$vtRowsN}}" style="height:{{managedVTRowsHeight $vtRowsN}}px">{{end}}
-  <table class="tp-table{{tableHeaderClass $el}}" data-vt="{{$tpName}}"{{with tableHeaderVars $el}} style="{{.}}"{{end}}>
+  <table class="tp-table{{tableHeaderClass $el}}" data-vt="{{$tpName}}"{{if $el.FixedRows}} data-ob-fixed-rows="1"{{end}}{{with tableHeaderVars $el}} style="{{.}}"{{end}}>
     <thead>
       <tr>
         {{range $vtPlan}}{{if not .Hidden}}<th{{with .ElPath}} data-ob-vt-col="{{.}}"{{end}}{{with .HeaderStyle}} style="{{.}}"{{end}}>{{.Title}}</th>{{end}}{{end}}

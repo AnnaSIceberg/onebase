@@ -93,6 +93,12 @@ func resolveBrowserFormEvent(form *metadata.FormModule, elementName, eventName s
 		el := visit.element
 		target.element = el
 		target.parentTablePart = visit.parentTablePart
+		if el.FixedRows {
+			switch event {
+			case metadata.FormEventOnRowAdded, metadata.FormEventAfterRowAdd, metadata.FormEventOnRowDeleted:
+				return "", target, false, fmt.Errorf("состав строк элемента %q фиксирован", el.Name)
+			}
+		}
 		// Загрузка данных после открытия не правит форму: нередактируемой группе
 		// (история клиента) она разрешена.
 		if visit.effectiveReadOnly && event != metadata.FormEventAfterOpen && (el.Kind != metadata.FormElementSpreadsheet || (event != metadata.FormEventDrilldown && event != metadata.FormEventOnAnswer)) {

@@ -2824,7 +2824,7 @@ function obHandleDOMTableShortcut(e) {
   if (!direct && (obSlickGridFromTarget(e.target) || obIsInteractiveTarget(e.target))) return false;
   if (direct && e.target && e.target.closest && e.target.closest('a[href],button,summary,[contenteditable]:not([contenteditable="false"])')) return false;
   var table = obDOMActiveTable(e.target);
-  if (!table || obDOMTableReadOnly(table)) return false;
+  if (!table || obDOMTableReadOnly(table) || table.getAttribute('data-ob-fixed-rows') === '1') return false;
   var action = null;
   if (!e.ctrlKey && e.key === 'Insert') action = function () { obDOMAddRow(table); };
   else if (!e.ctrlKey && e.key === 'F9' && !obHasActionableHotkey('F9')) action = function () { obDOMCopyRow(table); };
