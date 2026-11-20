@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/access"
@@ -21,19 +22,21 @@ import (
 // Только для формы объекта: списки, отчёты, печать, REST и запросы DSL
 // по-прежнему получают fieldDecisions без условия.
 func (s *Server) recordFieldDecisions(ctx context.Context, entity *metadata.Entity, stored map[string]any) map[string]access.FieldDecision {
-	return s.openPIIByRecord(entity, s.fieldDecisions(ctx, entity), stored)
+	return s.openPIIByRecord(ctx, entity, s.fieldDecisions(ctx, entity), stored)
 }
 
 // openPIIByRecord снимает с decisions поля, открытые условием pii_open_when на
 // записи stored. Исходная карта не меняется.
-func (s *Server) openPIIByRecord(entity *metadata.Entity, decisions map[string]access.FieldDecision, stored map[string]any) map[string]access.FieldDecision {
+func (s *Server) openPIIByRecord(ctx context.Context, entity *metadata.Entity, decisions map[string]access.FieldDecision, stored map[string]any) map[string]access.FieldDecision {
 	if len(decisions) == 0 || entity == nil || stored == nil || s.interp == nil {
 		return decisions
 	}
 	var row compose.Row
 	var opened map[string]bool
+	entry, _ := ctx.Value(savedPhoneOpeningKey{}).(formOpeningContext)
 	for _, f := range entity.Fields {
-		if !f.PII || f.PIIOpenWhen == "" {
+		if !f.PII || f.PIIOpenWhen == "" ||
+			(entry.entity == entity.Name && slices.Contains(entry.maskedFields, f.Name)) {
 			continue
 		}
 		for key, decision := range decisions {

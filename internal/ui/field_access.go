@@ -23,7 +23,21 @@ func (s *Server) fieldDecisions(ctx context.Context, entity *metadata.Entity) ma
 	if entity == nil {
 		return nil
 	}
-	return s.fieldDecisionsFor(ctx, string(entity.Kind), entity.Name, entity)
+	decisions := s.fieldDecisionsFor(ctx, string(entity.Kind), entity.Name, entity)
+	entry, _ := ctx.Value(savedPhoneOpeningKey{}).(formOpeningContext)
+	if entry.entity != entity.Name {
+		return decisions
+	}
+	protected := make(map[string]access.FieldDecision, len(decisions)+len(entry.maskedFields))
+	for field, decision := range decisions {
+		protected[field] = decision
+	}
+	for _, field := range entry.maskedFields {
+		if !protected[field].Masked() {
+			protected[field] = access.FieldDecision{Strategy: access.FieldMaskAll}
+		}
+	}
+	return protected
 }
 
 // fieldDecisionsFor is the shared field-policy adapter for objects that are not
@@ -469,7 +483,7 @@ func (s *Server) protectMaskedFieldsOnWrite(ctx context.Context, entity *metadat
 	}
 	// pii_open_when по СОХРАНЁННОЙ записи: открытое поле пользователь видел
 	// целиком, и его правка записывается.
-	dec = s.openPIIByRecord(entity, dec, row)
+	dec = s.openPIIByRecord(ctx, entity, dec, row)
 	var restored []string
 	for field, decision := range dec {
 		key, ok := maskCIKey(fields, field)

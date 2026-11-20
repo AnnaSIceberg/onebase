@@ -1760,6 +1760,10 @@ window.obManagedApplyHints = obManagedApplyHints;
       var headers = { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'X-OneBase-Conceal-Context': form && form.getAttribute ? form.getAttribute('data-ob-conceal-context') || '' : '', 'X-OneBase-UI-Commands': '1', 'X-OneBase-Shell': (typeof window.obShellId === 'function' ? window.obShellId() : '') };
       var instance = form && form.getAttribute && form.getAttribute('data-ob-form-instance');
       if (instance) headers['X-OneBase-Form-Instance'] = instance;
+      var phoneLink = document.getElementById('ob-saved-phone-link');
+      if (phoneLink && snapshot.eventName === 'Нажатие' && elementName === phoneLink.getAttribute('data-ob-fire-click')) {
+        headers['X-OneBase-Saved-Phone-Link'] = phoneLink.getAttribute('data-ob-saved-phone-proof') || '';
+      }
       var request = obFormEventRequest(body, snapshot.files, headers);
       const res = await fetch(URL, {
         method: 'POST',
@@ -1883,6 +1887,13 @@ window.obManagedApplyHints = obManagedApplyHints;
       // её прочитают как ответ на новый запрос.
       if (snapshot.eventName === 'Поиск' && !data.error && typeof window.obPickerSearchEmpty === 'function') {
         window.obPickerSearchEmpty(snapshot.pickerRequest);
+      }
+      if (phoneLink && res.ok && data.ok && !data.error && !data.cancel && data.savedPhoneLink) {
+        var label = data.savedPhoneLink.label || '';
+        phoneLink.textContent = label;
+        phoneLink.title = label;
+        phoneLink.setAttribute('data-ob-saved-phone-proof', data.savedPhoneLink.proof || '');
+        phoneLink.hidden = !label || !data.savedPhoneLink.proof;
       }
       // dirty=true is an authoritative safety signal and must survive a
       // partially failing renderer. Programmatic response application does

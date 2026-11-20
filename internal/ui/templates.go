@@ -346,7 +346,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 				return el.Kind == metadata.FormElementButton
 			})
 		},
-		"formHeaderPlaced": metadata.FormHeaderPlaced,
+		"formHeaderPlaced":      metadata.FormHeaderPlaced,
+		"savedPhoneLinkElement": (*metadata.FormModule).IsSavedPhoneLink,
 		// processorBinaryParam — параметр обработки type: binary с этим именем
 		// (nil — не обработка или параметр другого типа). Управляемая форма
 		// рисует для него настоящее поле файла: байты уходят multipart-ом.

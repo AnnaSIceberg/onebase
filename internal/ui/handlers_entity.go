@@ -1686,7 +1686,8 @@ func (s *Server) readObjectFormRow(w http.ResponseWriter, r *http.Request, entit
 }
 
 func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Has(formOpenContextQuery) {
+	protectedOpening := r.URL.Query().Has(formOpenSavedPhoneQuery)
+	if protectedOpening || r.URL.Query().Has(formOpenContextQuery) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "same-origin")
 	}
@@ -1705,6 +1706,27 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 	row := s.readObjectFormRow(w, r, entity, id)
 	if row == nil {
 		return
+	}
+	var formInstance, instanceField string
+	if protectedOpening {
+		form := pickManagedFormCtx(r.Context(), entity, "object")
+		if form == nil || !form.InstanceContext {
+			http.Error(w, "Контекст открытия заявки недоступен", http.StatusForbidden)
+			return
+		}
+		schema := entityFormCloseSchema(entity, form)
+		data := map[string]any{"Form": form, "FormCloseSchema": schema, "Entity": entity, "ID": id.String()}
+		s.issueManagedFormInstance(r, data)
+		formInstance, _ = data["FormInstance"].(string)
+		instanceField, _ = data["FormOpeningInstanceField"].(string)
+		instance := r.Clone(r.Context())
+		instance.Header.Set(managedFormInstanceHeader, formInstance)
+		entry, valid := s.formOpeningEntry(instance, entity, form, id.String(), schema)
+		if !valid || entry.recordVersion != persistedEntityVersion(row) || len(entry.maskedFields) == 0 {
+			http.Error(w, "Заявка изменилась или контекст открытия истёк. Откройте задачу заново", http.StatusForbidden)
+			return
+		}
+		r = withSavedPhoneOpening(r, entry)
 	}
 	// Маскирование ПДн (план 88): значения строятся из row ниже, поэтому
 	// маскируем строку до сборки vals — на форме поле показывается замаскированным,
@@ -1834,7 +1856,7 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 		docMovementColumns = movementRead.Columns
 	}
 
-	s.renderEntityForm(w, r, "object", map[string]any{
+	data := map[string]any{
 		"Entity":        entity,
 		"IsNew":         false,
 		"Values":        vals,
@@ -1864,7 +1886,12 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 		// BasedOnActions — только доступные по write сущности-приёмники.
 		// Тот же серверный фильтр используется списком источника.
 		"BasedOnActions": s.basedOnActions(r, entity, langEdit),
-	})
+	}
+	if formInstance != "" {
+		data["FormInstance"] = formInstance
+		data["FormOpeningInstanceField"] = instanceField
+	}
+	s.renderEntityForm(w, r, "object", data)
 }
 
 // buildEditError собирает сообщение об ошибке из query-параметров, пришедших
@@ -1914,6 +1941,12 @@ func (s *Server) submitEdit(w http.ResponseWriter, r *http.Request) {
 	// возможность перекрыть восстановленное значение.
 	managedForm := pickManagedFormCtx(r.Context(), entity, "object")
 	if managedForm != nil {
+		var openingValid bool
+		r, openingValid = s.applySavedPhoneOpening(r, entity, managedForm, id.String())
+		if !openingValid {
+			http.Error(w, "Срок открытия заявки истёк. Откройте задачу заново", http.StatusForbidden)
+			return
+		}
 		if err := s.restoreUnsubmittedFields(r.Context(), r, entity, managedForm, id, obj.Fields); err != nil {
 			s.serverError(w, r, err)
 			return
@@ -1924,13 +1957,22 @@ func (s *Server) submitEdit(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mergeFormAttrValues(r.Context(), r, managedForm, entity, obj)
 		s.restoreConcealControllers(r, entity, managedForm, obj)
-		hookMsgs, _, saveErr := s.saveManagedObject(r, entity, managedForm, obj, false, action, false, nil)
+		hookMsgs, version, saveErr := s.saveManagedObject(r, entity, managedForm, obj, false, action, false, nil)
 		if saveErr != nil {
 			s.renderManagedObjectSaveFailure(w, r, entity, false, obj, hookMsgs, saveErr)
 			return
 		}
 		if action == "post_and_close" {
 			http.Redirect(w, r, listURL(entity), http.StatusSeeOther)
+			return
+		}
+		entry, _ := r.Context().Value(savedPhoneOpeningKey{}).(formOpeningContext)
+		if len(entry.maskedFields) != 0 {
+			if next := s.issueSavedPhoneOpening(r, entity, id.String(), version, entry.maskedFields); next != "" {
+				http.Redirect(w, r, next, http.StatusSeeOther)
+				return
+			}
+			_, _ = fmt.Fprintln(w, "Заявка сохранена. Для просмотра откройте задачу заново")
 			return
 		}
 		http.Redirect(w, r, "/ui/"+strings.ToLower(string(entity.Kind))+"/"+entity.Name+"/"+id.String(), http.StatusSeeOther)
