@@ -1022,6 +1022,8 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 #main-form:has(.ob-equal-columns.ob-equal-columns-conditional)>:is(.form-group-box,.managed-tabs),
 .ob-equal-columns.ob-equal-columns-conditional>.managed-group-body :is(.form-group-box,.form-group,.managed-group-body){box-sizing:border-box;min-width:0;max-width:100%}
 @media (max-height:740px) {
+  .ob-header-inline main.ob-object-form:has(#main-form .ob-equal-columns.ob-equal-columns-conditional){flex-direction:row}
+  .ob-header-inline main.ob-object-form:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.ob-object-form-card{flex-basis:100%}
   .ob-density-compact main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional),
   .ob-density-compact main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card{padding:6px}
   .ob-density-compact #main-form:has(.ob-equal-columns.ob-equal-columns-conditional) .form-group-box:not(.ob-group-plain){padding-block:4px 5px!important;margin-bottom:5px!important}
