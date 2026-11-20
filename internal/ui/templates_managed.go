@@ -1026,6 +1026,10 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
   .ob-header-inline main.ob-object-form:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.ob-object-form-card{flex-basis:100%}
   .ob-density-compact main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional),
   .ob-density-compact main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card{padding:6px}
+  .ob-density-compact main.ob-object-form:has(#main-form .ob-equal-columns.ob-equal-columns-conditional),
+  .ob-density-compact main.ob-object-form:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card{padding:4px}
+  .ob-header-inline main.ob-object-form:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.ob-object-form-card{margin-top:4px}
+  .ob-object-form-card:has(.ob-equal-columns.ob-equal-columns-conditional)>#main-form>[data-ob-managed-footer]{padding-top:4px}
   .ob-density-compact #main-form:has(.ob-equal-columns.ob-equal-columns-conditional) .form-group-box:not(.ob-group-plain){padding-block:4px 5px!important;margin-bottom:5px!important}
   .ob-density-compact #main-form:has(.ob-equal-columns.ob-equal-columns-conditional)>[data-ob-managed-footer]{margin-top:8px!important}
 }
