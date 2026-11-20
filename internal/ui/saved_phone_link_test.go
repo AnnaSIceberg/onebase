@@ -76,7 +76,16 @@ func testSavedPhoneLinkThroughManagedForm(t *testing.T, db *storage.DB) {
 		},
 		ProgramAST: mustParse(t, `
 Процедура ПриОткрытии()
-	Возврат;
+	Сообщить("объект:" + Объект.Phone);
+	Сообщить("ссылка:" + Объект.Ссылка.Phone);
+	СохраненнаяЗаявка = Объект.Ссылка.ПолучитьОбъект();
+	Сообщить("сохранено:" + СохраненнаяЗаявка.Phone);
+	З = Новый Запрос;
+	З.Текст = "ВЫБРАТЬ З.Phone КАК Телефон ИЗ Документ.ClaimLink КАК З ГДЕ З.Ссылка = &Ид";
+	З.УстановитьПараметр("Ид", Объект.Ссылка);
+	Для Каждого Строка Из З.Выполнить() Цикл
+		Сообщить("запрос:" + Строка.Телефон);
+	КонецЦикла;
 КонецПроцедуры
 `),
 	}
@@ -109,9 +118,13 @@ func testSavedPhoneLinkThroughManagedForm(t *testing.T, db *storage.DB) {
 		t.Run(role, func(t *testing.T) {
 			saveClaim("own", label)
 			policy := auth.RowPolicy{Field: "Owner", Op: "eq", Value: auth.RowValue{Literal: "own"}}
+			claimRights := []string{"read", "write"}
+			if role == "ОператорКЦ" {
+				claimRights = append(claimRights, "disclose")
+			}
 			user := &auth.User{ID: role, Login: role, Roles: []*auth.Role{{
 				Name: role, Permissions: auth.Permission{
-					Documents: map[string][]string{task.Name: {"read"}, claim.Name: {"read", "write"}},
+					Documents: map[string][]string{task.Name: {"read"}, claim.Name: claimRights},
 					RowAccess: auth.RowAccess{Documents: map[string]auth.RowPolicies{claim.Name: {"read": policy}}},
 				},
 			}}}
@@ -128,10 +141,14 @@ func testSavedPhoneLinkThroughManagedForm(t *testing.T, db *storage.DB) {
 			}
 			run := func(entity *metadata.Entity, id uuid.UUID, event metadata.FormEventType, element, token, proof string) formEventResponse {
 				t.Helper()
-				res := send(http.MethodPost, "/ui/document/"+entity.Name+"/form-event", token, proof, url.Values{
+				fields := url.Values{
 					"_id": {id.String()}, "_kind": {"object"}, "_event": {string(event)}, "_element": {element},
-					"ИдНезакрытойЗаявки": {otherID.String()}, "Phone": {"79993334455"},
-				})
+					"ИдНезакрытойЗаявки": {otherID.String()},
+				}
+				if entity == task {
+					fields.Set("Phone", "79993334455")
+				}
+				res := send(http.MethodPost, "/ui/document/"+entity.Name+"/form-event", token, proof, fields)
 				require.NotContains(t, res.Body.String(), number)
 				return decodeFormEventResponse(t, res.Body.Bytes())
 			}
@@ -181,7 +198,12 @@ func testSavedPhoneLinkThroughManagedForm(t *testing.T, db *storage.DB) {
 			require.Len(t, protectedToken, 2)
 			result := run(claim, claimID, metadata.FormEventOnOpen, "", protectedToken[1], "")
 			require.True(t, result.OK, result.Error)
-			require.NotEqual(t, "79993334455", result.Values["Phone"])
+			require.NotEqual(t, number, result.Values["Phone"])
+			require.Len(t, result.Messages, 4, result.Messages)
+			for i, prefix := range []string{"объект:", "ссылка:", "сохранено:", "запрос:"} {
+				require.True(t, strings.HasPrefix(result.Messages[i], prefix), result.Messages[i])
+				require.NotEqual(t, prefix, result.Messages[i], "expected masked value")
+			}
 			require.Equal(t, http.StatusForbidden, send(http.MethodGet, navigate.Navigation.URL, "", "", nil).Code)
 			direct := send(http.MethodGet, plainURL, "", "", nil)
 			require.Equal(t, http.StatusOK, direct.Code)

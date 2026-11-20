@@ -386,7 +386,7 @@ func (s *Server) xdtoFieldMask(ctx context.Context, entity *metadata.Entity, loa
 		return nil
 	}
 	return func(field string, v any) any {
-		if assigned[strings.ToLower(strings.TrimSpace(field))] {
+		if assigned[strings.ToLower(strings.TrimSpace(field))] && !savedPhoneOpeningMasks(ctx, entity, field) {
 			return v
 		}
 		return s.maskDSLValue(ctx, entity, field, v)
@@ -428,7 +428,13 @@ func (s *Server) queryMaskPlan(ctx context.Context, res query.Result) access.Que
 	if access.IsReportOutput(ctx) {
 		return s.reportOutputMaskPlan(ctx, res)
 	}
-	return access.QueryMaskPlanFor(auth.UserFromContext(ctx), res, s.sourceMeta)
+	entry, _ := ctx.Value(savedPhoneOpeningKey{}).(formOpeningContext)
+	user := auth.UserFromContext(ctx)
+	if len(entry.maskedFields) != 0 {
+		src := query.SourceRef{Kind: string(metadata.KindDocument), Name: entry.entity}
+		return access.QueryMaskPlanWithRequiredFields(user, res, s.sourceMeta, src, entry.maskedFields)
+	}
+	return access.QueryMaskPlanFor(user, res, s.sourceMeta)
 }
 
 // dslQueryGuard applies the query field gate to `Новый Запрос` inside modules:
