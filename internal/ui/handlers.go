@@ -16,6 +16,7 @@ import (
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/i18n/i18nerr"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/processor"
 	"github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/richtext"
 	"github.com/ivantit66/onebase/internal/runtime"
@@ -958,6 +959,11 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	data["LegacyEntityUI"] = legacyEntityUI
 	if effectiveCfg.NavigationByType && !legacyEntityUI {
 		data["NavSession"] = uiBootID + ":" + browserSessionScope(r)
+	}
+	if name == "page-managed-form" && !legacyEntityUI {
+		proc, _ := data["Processor"].(*processor.Processor)
+		form, _ := data["Form"].(*metadata.FormModule)
+		data["WorkbookPickerID"] = workbookPickerID(r, proc, form)
 	}
 	if name == "page-report" && !legacyEntityUI && r.URL.Query().Get("__result") == "1" {
 		data["ReportResultOnly"] = true

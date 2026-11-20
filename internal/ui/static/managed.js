@@ -1779,12 +1779,23 @@ window.obManagedApplyHints = obManagedApplyHints;
       applySavedIdentity(data);
       if (res.ok && data.ok && !data.error && !data.cancel &&
           /^\/ui\/tabular\/[0-9a-f-]{36}\/xlsx$/.test(data.workbookDownloadUrl || '')) {
-        var download = document.createElement('a');
-        download.href = data.workbookDownloadUrl;
-        download.download = '';
-        document.body.appendChild(download);
-        download.click();
-        download.remove();
+        if (snapshot.workbookSave && snapshot.workbookSave.handle) {
+          try {
+            await window.obWriteWorkbook(snapshot.workbookSave.handle, data.workbookDownloadUrl);
+            flash('Файл сохранён: ' + snapshot.workbookSave.handle.name, 'ok');
+          } catch (error) {
+            flash('Не удалось сохранить файл: ' + error.message, 'err');
+          }
+        } else {
+          var download = document.createElement('a');
+          download.href = data.workbookDownloadUrl;
+          download.download = '';
+          document.body.appendChild(download);
+          download.click();
+          download.remove();
+        }
+      } else if (snapshot.workbookSave && res.ok && data.ok && !data.error && !data.cancel && !data.question) {
+        flash('Книга XLSX не сформирована.', 'err');
       }
       // Обработчики ожидания: подключение/отключение таймеров из ответа.
       if (data.idle && typeof window.obManagedApplyIdle === 'function') window.obManagedApplyIdle(data.idle);
@@ -1853,7 +1864,7 @@ window.obManagedApplyHints = obManagedApplyHints;
         // controlState — как в обычной ветке: ввод, сделанный пока шёл запрос,
         // эхо отправленного значения не затирает.
         if (data.values) applyValues(data.values, data.refOptions, snapshot.body, snapshot.controlState);
-        if (window.obApplyTabularDocuments && (!snapshot.tabularProgress || (res.ok && data.ok && !data.error && !data.cancel))) {
+        if (!snapshot.workbookSave && window.obApplyTabularDocuments && (!snapshot.tabularProgress || (res.ok && data.ok && !data.error && !data.cancel))) {
           window.obApplyTabularDocuments(data.tabularDocuments, snapshot.tabularProgress);
         }
         if (window.obApplyConcealed) window.obApplyConcealed(data.revealed, form, data.values || {});
@@ -1897,7 +1908,7 @@ window.obManagedApplyHints = obManagedApplyHints;
       window.obManagedApplyHints(data.values);
       // hint_from формы обработки: реквизита подсказки нет в values.
       window.obManagedApplyHints(data.elementStates && data.elementStates.hints);
-        if (window.obApplyTabularDocuments && (!snapshot.tabularProgress || (res.ok && data.ok && !data.error && !data.cancel))) {
+        if (!snapshot.workbookSave && window.obApplyTabularDocuments && (!snapshot.tabularProgress || (res.ok && data.ok && !data.error && !data.cancel))) {
           window.obApplyTabularDocuments(data.tabularDocuments, snapshot.tabularProgress);
         }
         applyChoiceList(elementName, data.choiceList);
@@ -1987,7 +1998,8 @@ window.obManagedApplyHints = obManagedApplyHints;
   }
 
   if(window.obBindTabularHost)window.obBindTabularHost(fireFormEvent);
-  function fireFormEvent(elementName, eventName, extraParams, pickerRequest, beforePostOwner){
+  if(window.obBindWorkbookPicker)window.obBindWorkbookPicker(document.getElementById('main-form'), flash);
+  function fireFormEvent(elementName, eventName, extraParams, pickerRequest, beforePostOwner, workbookSave){
 	pickerRequest = pickerRequest || (window.obPickerRequest ? window.obPickerRequest() : null);
 	if (formEventWriteUnknown || manualReconcileRequired) {
 	  flash(closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
@@ -2053,6 +2065,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 	  }
 	  if (!snapshot || reloadRequired || formEventWriteUnknown || manualReconcileRequired) return;
 	  snapshot.tabularProgress = tabularProgress;
+	  snapshot.workbookSave = workbookSave;
 	  return dispatchFormEvent(snapshot);
 	};
 	var queued;
@@ -2090,6 +2103,12 @@ window.obManagedApplyHints = obManagedApplyHints;
 
   window.obFire = function(elementName, eventName, extraParams, pickerRequest){
     if (window.obAudioBeforeEvent) extraParams = window.obAudioBeforeEvent(elementName, eventName, extraParams);
+    if (eventName === 'Нажатие' && window.obRunWorkbookSave) {
+      var saving = window.obRunWorkbookSave(document.getElementById('main-form'), elementName, flash, function (destination) {
+        return fireFormEvent(elementName, eventName, extraParams, pickerRequest, null, destination);
+      });
+      if (saving) return saving;
+    }
     return fireFormEvent(elementName, eventName, extraParams, pickerRequest);
   };
 

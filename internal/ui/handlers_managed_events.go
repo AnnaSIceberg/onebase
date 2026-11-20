@@ -3129,7 +3129,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		}
 		vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
 
-		if closeInv == nil && eventName == string(metadata.FormEventOnClick) && eventTarget.element != nil && eventTarget.element.TabularProgress != "" {
+		if closeInv == nil && eventName == string(metadata.FormEventOnClick) && eventTarget.element != nil && (eventTarget.element.TabularProgress != "" || (!proc.External && eventTarget.element.Kind == metadata.FormElementButton && eventTarget.element.WorkbookSave)) {
 			vars["СообщитьПрогрессФормирования"] = tabularProgressBuiltin(w, r, enc)
 		}
 		if !proc.External && eventName == string(metadata.FormEventOnClick) && eventTarget.element != nil &&

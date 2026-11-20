@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -26,7 +27,8 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 		s, user, _ := tabularFixture(t, db)
 		const filename = "Отчёт 400.xlsx"
 		form := processorExecutionForm(
-			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Build", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Build"}},
+			&metadata.FormElement{Kind: metadata.FormElementFormField, Name: "Destination", WorkbookSavePicker: filename},
+			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Build", WorkbookSave: true, Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Build"}},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Replace", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Replace"}},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "ReplaceAgain", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "ReplaceAgain"}},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "AddOther", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "AddOther"}},
@@ -39,6 +41,7 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
   Возврат Книга;
 КонецФункции
 Процедура Build()
+  СообщитьПрогрессФормирования(1, 2);
   СкачатьКнигуExcel("Отчёт 400.xlsx", MakeBook(41));
 КонецПроцедуры
 Процедура Replace()
@@ -55,7 +58,12 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 		s.reg.LoadProcessors([]*processor.Processor{proc})
 		user.Roles[0].Permissions.Processors = map[string][]string{proc.Name: {"run"}}
 		base := "/ui/processor/" + proc.Name
-		require.Equal(t, http.StatusOK, tabularHTTP(s, user, "own", "GET", base, nil).Code)
+		page := tabularHTTP(s, user, "own", "GET", base, nil)
+		require.Equal(t, http.StatusOK, page.Code)
+		for _, marker := range []string{"data-ob-workbook-picker=", "data-ob-workbook-save", "data-ob-workbook-progress", "/static/tabular.js"} {
+			require.Contains(t, page.Body.String(), marker)
+		}
+		require.NotContains(t, page.Body.String(), "data-ob-tabular-field=")
 		clickRequest := func(session, button string) *httptest.ResponseRecorder {
 			body := url.Values{"_form": {form.Name}, "_element": {button}, "_event": {"Нажатие"}}
 			return tabularHTTP(s, user, session, "POST", base+"/form-event", body)
@@ -92,7 +100,15 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 		require.False(t, missing.OK)
 		require.Empty(t, missing.WorkbookDownloadURL)
 		require.Zero(t, s.tabularResults.reservedBooks)
-		first := click("own", "Build")
+		request := url.Values{"_form": {form.Name}, "_element": {"Build"}, "_event": {"Нажатие"}}
+		stream := tabularHTTPAccept(s, user, "own", "POST", base+"/form-event", request, tabularProgressType)
+		require.Equal(t, http.StatusOK, stream.Code)
+		require.True(t, stream.Flushed)
+		require.Equal(t, tabularProgressType, stream.Header().Get("Content-Type"))
+		records := strings.Split(strings.TrimSpace(stream.Body.String()), "\n")
+		require.Len(t, records, 2)
+		require.JSONEq(t, `{"progress":50}`, records[0])
+		first := decodeFormEventResponse(t, []byte(records[1]))
 		newFile := read("own", first, "41")
 		path := filepath.Join(dir, filename)
 		require.NoFileExists(t, path)

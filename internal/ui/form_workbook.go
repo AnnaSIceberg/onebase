@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,8 +12,30 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
+	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/processor"
 	"github.com/ivantit66/onebase/internal/sheet"
 )
+
+// The browser remembers the directory by picker ID. It keeps a distinct ID
+// for each user and form, without receiving a login or filesystem path.
+func workbookPickerID(r *http.Request, proc *processor.Processor, form *metadata.FormModule) string {
+	if proc == nil || proc.External || form == nil {
+		return ""
+	}
+	hasPicker := false
+	form.Walk(func(el *metadata.FormElement) bool {
+		if el.Kind == metadata.FormElementFormField && el.WorkbookSavePicker != "" {
+			hasPicker = true
+		}
+		return !hasPicker
+	})
+	if !hasPicker {
+		return ""
+	}
+	id := sha256.Sum256([]byte(currentUserLogin(r) + "\x00" + proc.Name + "\x00" + form.Name))
+	return fmt.Sprintf("xlsx-%x", id[:12])
+}
 
 type workbookDownload struct {
 	name string

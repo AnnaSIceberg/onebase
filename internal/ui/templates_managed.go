@@ -150,6 +150,14 @@ const tplManagedForm = `
        и видимость (obRefreshHeaderFields). */}}
   {{if not (elHidden $ctx $el)}}<span class="ob-header-field" data-ob-header-field="{{$el.Name}}"><span class="ob-header-field-label">{{fieldTitleRU $el.TitleMap (dpField $el.DataPath)}}:</span> <span class="ob-header-field-value">{{index $ctx.Values (dpField $el.DataPath)}}</span></span>{{end}}
 {{else if and (elHidden $ctx $el) (ne (str $el.Kind) "Кнопка") (ne (str $el.Kind) "Аудиоплеер")}}
+{{else if and $ctx.WorkbookPickerID $el.WorkbookSavePicker (eq (str $el.Kind) "ПолеФормы")}}
+  <div class="form-group" data-ob-workbook-picker="{{$ctx.WorkbookPickerID}}" style="{{elLayout $el}}">
+    <label for="ob-workbook-name">{{fieldTitleRU $el.TitleMap $el.Name}}</label>
+    <div style="display:flex;align-items:center;gap:4px">
+      <input id="ob-workbook-name" type="text" data-ob-workbook-name value="{{$el.WorkbookSavePicker}}" readonly>
+      <button type="button" class="btn btn-secondary" data-ob-workbook-choose title="{{t $ctx.Lang "Выбрать файл"}}" aria-label="{{t $ctx.Lang "Выбрать файл"}}"{{if $ro}} disabled{{end}}>…</button>
+    </div>
+  </div>
 {{else if eq (str $el.Kind) "ГруппаФормы"}}
   <fieldset class="form-group-box{{if eq $el.Orientation "horizontal"}} managed-group-horizontal{{end}}{{if $el.ScrollX}} managed-group-scrollx{{end}}{{if $el.UsesEqualColumns}} ob-equal-columns{{end}}{{if $el.Frameless}} ob-group-plain{{end}}"{{if $el.FitWindow}} data-ob-fit-group="1"{{end}}{{if hasHandler $el "ПослеОткрытия"}} data-ob-after-open="{{$el.Name}}"{{end}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{if $el.HiddenWhen}} data-ob-hidden-group="1"{{if elHiddenStyle $ctx $el}} disabled{{end}}{{end}} style="{{elHiddenStyle $ctx $el}}{{if $el.Frameless}}border:0;padding:0;margin:0;min-width:0;{{else}}border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{end}}{{elBackground $el}}{{elLayout $el}}">
     {{/* frame: false — только раскладка: без рамки, отступов и заголовка. */}}
@@ -462,9 +470,10 @@ const tplManagedForm = `
   {{$buttonLayout := elLayout $el}}
   {{$buttonHidden := elHidden $ctx $el}}
   {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{if $buttonHidden}}display:none;{{end}}{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn {{appFormButtonClass $el.Name (fieldTitleRU $el.TitleMap $el.Name) (formButtonPrimary $el $ctx.LegacyEntityUI) $ctx.LegacyEntityUI}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}}"{{else}}{{with elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{with $el.TabularProgress}} data-ob-tabular-progress="{{.}}"{{end}}{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
+  <button type="button" class="btn {{appFormButtonClass $el.Name (fieldTitleRU $el.TitleMap $el.Name) (formButtonPrimary $el $ctx.LegacyEntityUI) $ctx.LegacyEntityUI}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}}"{{else}}{{with elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{if and $ctx.WorkbookPickerID $el.WorkbookSave}} data-ob-workbook-save{{end}}{{with $el.TabularProgress}} data-ob-tabular-progress="{{.}}"{{end}}{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
+  {{if and $ctx.WorkbookPickerID $el.WorkbookSave}}<span data-ob-workbook-progress role="status" hidden>⌛ <span data-ob-tabular-percent>0%</span></span>{{end}}
   {{if $buttonLayout}}</div>{{end}}
   {{end}}
 {{else if eq (str $el.Kind) "Аудиоплеер"}}
@@ -1332,6 +1341,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
 <script type="application/json" id="ob-managed-tp-ref-choices">{{jsJSON .TPRefChoices}}</script>
 <script type="application/json" id="ob-managed-tp-enum-labels">{{jsJSON .TPEnumLabels}}</script>
 <script type="application/json" id="ob-managed-tp-enum-order">{{jsJSON .TPEnumOrder}}</script>
+{{if .WorkbookPickerID}}<script src="/static/tabular.js"></script>{{end}}
 
 
 {{if hasGridTP .Form}}
