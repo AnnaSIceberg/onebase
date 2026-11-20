@@ -18,7 +18,7 @@ func (d *Document) textFlowEnd(row, col, last int, covered map[CellKey]bool) int
 
 const cellTextFlowCSS = `
 .doc-content>table{width:max-content}
-.sheet-wrap-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.sheet-wrap-text{white-space:pre-wrap;word-break:normal;overflow-wrap:normal}
 .sheet-flow-cell>.sheet-flow{contain:inline-size}
 .sheet-flow{position:relative;max-width:100%}
 .sheet-flow>span{display:block;width:var(--sheet-flow-width,100%);overflow:hidden;white-space:pre;word-break:normal;overflow-wrap:normal}

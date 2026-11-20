@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/xuri/excelize/v2"
 
@@ -88,6 +89,7 @@ var rowColorRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 type ListPresentation struct {
 	ColumnAlignment map[int]string
 	WrapText        bool
+	KeepWords       bool
 }
 
 func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle, presentation ...ListPresentation) ([]byte, error) {
@@ -150,13 +152,23 @@ func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle, 
 		return id, err
 	}
 
+	headerStyle := boldStyle
+	if layout.KeepWords {
+		var err error
+		headerStyle, err = rowStyleID(boldStyle, RowStyle{}, "")
+		if err != nil {
+			return nil, err
+		}
+	}
 	// Header row
 	for ci, col := range cols {
 		cell, _ := excelize.CoordinatesToCellName(ci+1, 1)
 		sh.setCell(cell, col)
-		sh.setStyle(cell, boldStyle)
+		sh.setStyle(cell, headerStyle)
 	}
-	sh.setRowHeight(1, 22)
+	if !layout.KeepWords {
+		sh.setRowHeight(1, 22)
+	}
 
 	// Freeze header row
 	sh.setPanes(&excelize.Panes{
@@ -205,9 +217,12 @@ func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle, 
 		}
 	}
 
-	// Auto column width (approximate: max 40 chars)
 	for ci, col := range cols {
 		colLetter, _ := excelize.ColumnNumberToName(ci + 1)
+		if layout.KeepWords {
+			sh.setColWidth(colLetter, reportListColumnWidth(col, rows, ci))
+			continue
+		}
 		maxLen := len(col)
 		for _, row := range rows {
 			if ci < len(row) {
@@ -236,6 +251,31 @@ func ExportListWithRowStyles(cols []string, rows [][]any, rowStyles []RowStyle, 
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// reportListColumnWidth keeps whole words visible while allowing long phrases to wrap.
+func reportListColumnWidth(header string, rows [][]any, column int) float64 {
+	maxLine, maxWord := 0, 0
+	measure := func(value string) {
+		for _, line := range strings.Split(value, "\n") {
+			maxLine = max(maxLine, utf8.RuneCountInString(line))
+		}
+		for _, word := range strings.Fields(value) {
+			maxWord = max(maxWord, utf8.RuneCountInString(word))
+		}
+	}
+	measure(header)
+	for _, row := range rows {
+		if column >= len(row) || row[column] == nil {
+			continue
+		}
+		if date, ok := row[column].(time.Time); ok {
+			measure(date.Format("02.01.2006"))
+		} else {
+			measure(fmt.Sprint(row[column]))
+		}
+	}
+	return min(255, max(8, float64(max(maxWord, min(maxLine, 40)))*1.3+2))
 }
 
 // listStyles registers the shared list-export cell styles on f and returns their

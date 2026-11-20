@@ -71,6 +71,9 @@ body{font-family:'Times New Roman',Times,serif;font-size:10pt;color:#000;padding
 table{border-collapse:collapse;width:auto}
 td,th{border:1px solid #cbd5e1;padding:3px 6px;empty-cells:show;font-size:13px}
 `)
+	if d.HideGrid {
+		sb.WriteString("td,th{border:none}\n")
+	}
 	if opts.CellTextFlow {
 		sb.WriteString(cellTextFlowCSS)
 	}
@@ -136,14 +139,25 @@ td:has(a[data-sheet-reference]):hover{cursor:pointer;box-shadow:inset 0 0 0 100v
 	if frozen {
 		sb.WriteString(` class="sheet-frozen"`)
 	}
-	sb.WriteByte('>')
-
 	maxRow, maxCol := d.ContentBounds()
+	fitted := d.FittedTableFirstRow > 0
+	if fitted {
+		width := 0.0
+		for col := 0; col <= maxCol; col++ {
+			width += d.fittedHTMLColumnWidth(col)
+		}
+		fmt.Fprintf(&sb, ` style="table-layout:fixed;width:%gpx"`, width)
+	}
+	sb.WriteByte('>')
 	resizeColumns := opts.XLSXURL != ""
-	if resizeColumns || frozen {
+	if resizeColumns || frozen || fitted {
 		sb.WriteString("<colgroup data-sheet-columns>")
 		for col := 0; col <= maxCol; col++ {
-			sb.WriteString("<col>")
+			if fitted {
+				fmt.Fprintf(&sb, `<col style="width:%gpx">`, d.fittedHTMLColumnWidth(col))
+			} else {
+				sb.WriteString("<col>")
+			}
 		}
 		sb.WriteString("</colgroup>")
 	}
@@ -174,6 +188,9 @@ td:has(a[data-sheet-reference]):hover{cursor:pointer;box-shadow:inset 0 0 0 100v
 			width := d.ColWidths[col+1]
 			if width == 0 && cell != nil {
 				width = cell.Width
+			}
+			if fitted && cell != nil && cell.ColSpan > 1 {
+				width = 0
 			}
 			height := d.RowHeights[row+1]
 			if height == 0 && cell != nil {
@@ -241,7 +258,7 @@ td:has(a[data-sheet-reference]):hover{cursor:pointer;box-shadow:inset 0 0 0 100v
 			}
 
 			if opts.CellTextFlow && cell != nil && text != "" && cell.RichHTML == "" && cell.Picture == "" {
-				if cell.WrapText || cell.ColSpan > 1 || cell.RowSpan > 1 {
+				if (fitted && row >= d.FittedTableFirstRow-1) || cell.WrapText || cell.ColSpan > 1 || cell.RowSpan > 1 {
 					attrs += ` class="sheet-wrap-text"`
 				} else {
 					end := col
@@ -273,7 +290,7 @@ td:has(a[data-sheet-reference]):hover{cursor:pointer;box-shadow:inset 0 0 0 100v
 		d.viewerScript(&sb, opts.ParentDrilldown)
 	}
 	if resizeColumns {
-		sb.WriteString(`<style>.sheet-column-widths-set td{overflow-wrap:anywhere}</style><script>`)
+		sb.WriteString(`<style>.sheet-column-widths-set td{word-break:normal;overflow-wrap:normal}</style><script>`)
 		sb.WriteString(tabularColumnResizeJS)
 		sb.WriteString("</script>")
 	}

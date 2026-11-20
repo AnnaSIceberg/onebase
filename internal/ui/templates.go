@@ -2075,6 +2075,7 @@ body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;height:
 td.ob-cell-current{outline:2px solid #2563eb;outline-offset:-2px}
 .report-composed{width:100%;table-layout:auto;border-collapse:collapse;font-size:13px}
 .report-composed :is(th,td){white-space:normal;overflow-wrap:anywhere;overflow:hidden}
+.ob-report-fit :is(th,td){white-space:normal;word-break:normal;overflow-wrap:normal;hyphens:none}
 .report-composed :is(th,td).num{white-space:normal;text-align:right}
 .report-composed thead th{position:sticky;top:38px;background:#eef2f7;z-index:5;text-align:left;padding:8px 10px;border-bottom:2px solid #cbd5e1;color:#334155;font-weight:600;font-size:12px}
 .report-composed td{padding:6px 10px;border-bottom:1px solid #f1f5f9;color:#334155}
@@ -4117,7 +4118,7 @@ const tplReport = `
 {{if .Capped}}<div class="card" style="background:#fffbeb;border-color:#fde68a;margin-bottom:8px;padding:8px 12px">{{t $.Lang "Показаны первые строки — данных больше потолка."}}</div>{{end}}
 {{if .ComposeWarnings}}<div class="card" style="background:#fef2f2;border-color:#fecaca;margin-bottom:8px;padding:8px 12px"><strong>{{t $.Lang "Предупреждения компоновки:"}}</strong><ul style="margin:4px 0 0;padding-left:20px">{{range .ComposeWarnings}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
 {{if not (or .CompactReport .ReportResultOnly)}}{{template "report-export-buttons" .}}{{end}}
-<details class="card report-block" data-block="data" open>
+<details class="card report-block{{if not .LegacyEntityUI}} ob-report-fit{{end}}" data-block="data" open>
 <summary>{{t $.Lang "Данные"}}</summary>
 <div class="rc-toolbar" role="group" aria-label="{{t $.Lang "Уровни группировки"}}" style="margin-bottom:8px;display:flex;gap:4px"></div>
 {{.ComposedHTML}}
@@ -4125,7 +4126,7 @@ const tplReport = `
 {{end}}
 {{if .Cols}}
 {{if not (or .CompactReport .ReportResultOnly)}}{{template "report-export-buttons" .}}{{end}}
-<div class="card">
+<div class="card{{if not .LegacyEntityUI}} ob-report-fit{{end}}">
 {{if .Rows}}
 <table><thead><tr>{{range .Cols}}<th>{{.}}</th>{{end}}{{if .Drilldowns}}{{if .Drilldowns.HasRows}}<th>{{.Drilldowns.RowTitle}}</th>{{end}}{{end}}</tr></thead>
 <tbody>

@@ -39,9 +39,8 @@ func (s *Server) reportPDF(w http.ResponseWriter, r *http.Request) {
 
 // buildReportSheet строит табличный документ из заголовков и строк отчёта:
 // необязательный заголовок сверху, затем жирная шапка по центру и строки данных.
-// Числовые ячейки выравниваются вправо, прочие — влево. Ширины колонок проставляет
-// PDF-движок автоматически (sheet.resolveColumnWidthsMM), специально задавать не
-// нужно.
+// Ширины рассчитываются по заголовкам колонок и данным. При печати
+// документ масштабируется вместе со шрифтом, сохраняя переносы.
 func buildReportSheet(title string, headers []string, rows [][]any, presentation ...reportExportStats) *sheet.Document {
 	doc := sheet.NewDocument()
 	headerRow := 0
@@ -105,6 +104,10 @@ func buildReportSheet(title string, headers []string, rows [][]any, presentation
 				c.Align = "left"
 			}
 		}
+	}
+	if output.keepWords {
+		doc.FitTableColumns(headerRow+1, 0, 0)
+		doc.AutoScale = true
 	}
 	return doc
 }

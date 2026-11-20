@@ -188,14 +188,15 @@ func DefaultPageSetup() PageSetup {
 // (HTML/PDF) и операции вывода — методы этого пакета; DSL-протокол поверх —
 // в interpreter.SpreadsheetDocument, делегирующем сюда.
 type Document struct {
-	Groups     []RowGroup
-	FreezeRows int
-	FreezeCols int
-	HideGrid   bool
-	AutoScale  bool              // print width fit: one uniform scale, without changing screen/data
-	Cells      map[CellKey]*Cell // (row,col) -> cell
-	RowCount   int
-	ColCount   int
+	Groups              []RowGroup
+	FreezeRows          int
+	FreezeCols          int
+	HideGrid            bool
+	FittedTableFirstRow int               // 1-based, zero for layouts without table fitting.
+	AutoScale           bool              // print width fit: one uniform scale, without changing screen/data
+	Cells               map[CellKey]*Cell // (row,col) -> cell
+	RowCount            int
+	ColCount            int
 	// ColWidths/RowHeights — размеры колонок/строк (1-based индекс → размер в px).
 	// ШиринаКолонки/ВысотаСтроки пишут сюда, НЕ материализуя ячейки; HTML-рендер
 	// накладывает их на колонку/строку целиком. PDF-рендер конвертирует px → мм.
@@ -324,6 +325,7 @@ func (d *Document) copyOutputArea(area *Area, top, left int) (int, int) {
 func (d *Document) Clear() {
 	d.Cells = make(map[CellKey]*Cell)
 	d.ColWidths = make(map[int]float64)
+	d.FittedTableFirstRow = 0
 	d.RowHeights = make(map[int]float64)
 	d.CurrentRow = 0
 	d.CurrentCol = 0

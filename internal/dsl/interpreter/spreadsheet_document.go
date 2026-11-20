@@ -416,6 +416,11 @@ func (d *SpreadsheetDocument) CallMethod(name string, args []any) any {
 		if len(args) >= 2 {
 			d.Doc.SetColumnWidth(int(floatArg(args, 0)), toFloatOr0(args[1]))
 		}
+	case "подобратьширинуколонок", "fittablecolumns":
+		if len(args) != 1 && len(args) != 3 {
+			RaiseUserError("ПодобратьШиринуКолонок: требуется номер первой строки и, при необходимости, границы группы колонок")
+		}
+		d.Doc.FitTableColumns(int(floatArg(args, 0)), int(floatArg(args, 1)), int(floatArg(args, 2)))
 	case "высотастроки", "rowheight":
 		if len(args) >= 2 {
 			d.Doc.SetRowHeight(int(floatArg(args, 0)), toFloatOr0(args[1]))

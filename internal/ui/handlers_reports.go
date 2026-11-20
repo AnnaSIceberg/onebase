@@ -723,6 +723,15 @@ type reportExportStats struct {
 	attrs       []slog.Attr
 	rowStyles   []excel.RowStyle
 	composition *reportpkg.Composition
+	keepWords   bool
+}
+
+func (stats reportExportStats) excelPresentation(columns int) excel.ListPresentation {
+	return excel.ListPresentation{
+		ColumnAlignment: stats.measureAlignment(columns),
+		WrapText:        stats.composition != nil || stats.keepWords,
+		KeepWords:       stats.keepWords,
+	}
 }
 
 func reportExportOpStatus(ctx context.Context, err error) string {
@@ -760,6 +769,7 @@ func (s *Server) reportExportTable(r *http.Request, rep *reportpkg.Report) (head
 func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Request, rep *reportpkg.Report, stats *reportExportStats) (headers []string, rows [][]any, err error) {
 	if stats != nil {
 		stats.rowStyles = nil
+		stats.keepWords = !s.legacyEntityUI(r)
 	}
 	ctx = access.WithReportOutput(ctx)
 	r = r.WithContext(ctx)
@@ -906,7 +916,7 @@ func (s *Server) reportExcel(w http.ResponseWriter, r *http.Request) {
 		s.writeReportExportError(w, r, err)
 		return
 	}
-	data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles, excel.ListPresentation{ColumnAlignment: stats.measureAlignment(len(headers)), WrapText: stats.composition != nil})
+	data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles, stats.excelPresentation(len(headers)))
 	if err != nil {
 		http.Error(w, "Excel error: "+s.errText(r, err), 500)
 		return

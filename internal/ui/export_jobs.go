@@ -395,7 +395,7 @@ func (s *Server) buildReportExportFile(ctx context.Context, r *http.Request, rep
 	}
 	switch format {
 	case "excel":
-		data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles, excel.ListPresentation{ColumnAlignment: stats.measureAlignment(len(headers)), WrapText: stats.composition != nil})
+		data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles, stats.excelPresentation(len(headers)))
 		if err != nil {
 			return reportExportFile{}, newReportExportError(http.StatusInternalServerError, "Excel error", err)
 		}
