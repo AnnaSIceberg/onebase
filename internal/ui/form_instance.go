@@ -45,7 +45,11 @@ func (s *Server) issueManagedFormInstance(r *http.Request, data map[string]any) 
 }
 
 func (s *Server) newManagedFormInstance(r *http.Request, schema, scope string, now time.Time) string {
-	payload := uuid.NewString() + "." + strconv.FormatInt(now.Add(managedFormInstanceTTL).Unix(), 10)
+	nonce := uuid.NewString()
+	if r.Method == http.MethodGet && r.URL.Query().Has(formOpenSavedPhoneQuery) {
+		nonce = savedPhoneOpeningInstancePrefix + nonce
+	}
+	payload := nonce + "." + strconv.FormatInt(now.Add(managedFormInstanceTTL).Unix(), 10)
 	signature := s.managedFormInstanceSignature(r, schema, scope, payload)
 	if signature == "" {
 		return ""

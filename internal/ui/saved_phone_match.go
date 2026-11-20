@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
@@ -19,6 +20,7 @@ type savedPhoneMatchBinding struct {
 	source *metadata.Entity
 	id     uuid.UUID
 	spec   *metadata.SavedPhoneMatchSpec
+	match  atomic.Pointer[query.SavedPhoneMatch]
 }
 
 func withSavedPhoneMatch(ctx context.Context, source *metadata.Entity, form *metadata.FormModule, id uuid.UUID) context.Context {
@@ -26,7 +28,7 @@ func withSavedPhoneMatch(ctx context.Context, source *metadata.Entity, form *met
 		!strings.EqualFold(form.Kind, "object") || id == uuid.Nil || auth.UserFromContext(ctx) == nil {
 		return ctx
 	}
-	return context.WithValue(ctx, savedPhoneMatchContextKey{}, &savedPhoneMatchBinding{source, id, form.SavedPhoneMatch})
+	return context.WithValue(ctx, savedPhoneMatchContextKey{}, &savedPhoneMatchBinding{source: source, id: id, spec: form.SavedPhoneMatch})
 }
 
 func savedPhoneMatchRequested(ctx context.Context, text string) bool {
@@ -87,6 +89,7 @@ func (s *Server) savedPhoneMatchForQuery(ctx context.Context, text string) (*que
 			match.Keys = append(match.Keys, key)
 		}
 	}
+	binding.match.Store(match)
 	return match, nil
 }
 

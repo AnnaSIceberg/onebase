@@ -469,6 +469,11 @@ const tplManagedForm = `
 {{else if eq (str $el.Kind) "Кнопка"}}
   {{/* placement: header — кнопка рисуется в строке команд формы (form-header-commands), а не в теле. */}}
   {{if and (formHeaderPlaced $el) (not $.HeaderPass)}}{{else}}
+  {{if savedPhoneLinkElement $ctx.Form $el}}
+  {{if and (not $ro) (not $ctx.IsNew) (not $ctx.IsPopup) (not (elHidden $ctx $el))}}
+  <button type="button" form="main-form" id="ob-saved-phone-link" class="ob-saved-phone-link" data-ob-saved-phone-link data-ob-fire-click="{{$el.Name}}" hidden></button>
+  {{end}}
+  {{else}}
   {{$clickAction := or (hasHandler $el "Нажатие") (and $ctx.IsProcessor (processorExecuteFallbackButton $ctx.Form $el))}}
   {{$hotKey := ""}}{{if and (not $ro) $clickAction}}{{$hotKey = normalizedFormHotkey $el.HotKey}}{{end}}
   {{$buttonLayout := elLayout $el}}
@@ -479,6 +484,7 @@ const tplManagedForm = `
   </button>
   {{if and $ctx.WorkbookPickerID $el.WorkbookSave}}<span data-ob-workbook-progress role="status" hidden>⌛ <span data-ob-tabular-percent>0%</span></span>{{end}}
   {{if $buttonLayout}}</div>{{end}}
+  {{end}}
   {{end}}
 {{else if eq (str $el.Kind) "Аудиоплеер"}}
 {{if and (formHeaderPlaced $el) (not $.HeaderPass)}}{{else}}
@@ -913,6 +919,8 @@ const tplManagedForm = `
 input.ob-deadline-soon,.form-group input.ob-deadline-soon[readonly]{background:#fef3c7 !important;border-color:#f59e0b !important;color:#92400e !important}
 input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#fee2e2 !important;border-color:#ef4444 !important;color:#991b1b !important;font-weight:600}
 .ob-header-commands{display:contents}
+.ob-saved-phone-link{flex:1 1 0;min-width:0;max-width:48rem;padding:0;border:0;background:none;color:inherit;cursor:pointer;text-align:left;text-decoration:underline;font:inherit;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ob-saved-phone-link[hidden]{display:none}
 .ob-header-field{display:inline-flex;align-items:baseline;gap:4px;min-width:0;max-width:420px;font-size:13px;color:#64748b;white-space:nowrap}
 .ob-header-field-value{color:#1f2937;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ob-header-commands .managed-btn,.ob-header-commands .managed-btn-layout{margin:0}

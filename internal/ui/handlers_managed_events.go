@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -46,6 +47,7 @@ import (
 
 // formEventResponse — структура ответа JSON.
 type formEventResponse struct {
+	SavedPhoneLink      *savedPhoneLinkPayload      `json:"savedPhoneLink,omitempty"`
 	WorkbookDownloadURL string                      `json:"workbookDownloadUrl,omitempty"`
 	TabularDocuments    map[string]string           `json:"tabularDocuments,omitempty"`
 	AudioStops          []string                    `json:"audioStops,omitempty"`
@@ -609,6 +611,15 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		}
 		if form == nil {
 			respondJSON(enc, formEventResponse{Error: "managed form not found for " + entityName})
+			return
+		}
+	}
+	if rawID != "" {
+		var openingValid bool
+		r, openingValid = s.applySavedPhoneOpening(r, entity, form, rawID)
+		if !openingValid {
+			w.WriteHeader(http.StatusForbidden)
+			respondJSON(enc, formEventResponse{Error: "Срок открытия заявки истёк. Откройте задачу заново"})
 			return
 		}
 	}
@@ -1240,11 +1251,14 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		dslCtx = storage.ReadOnlyContext(dslCtx)
 	}
 	isNewForHandler := strings.TrimSpace(r.FormValue("_id")) == "" && (closeInv == nil || !closeInv.saved)
-	if !isNewForHandler && form.SavedPhoneMatch != nil &&
-		(eventName == string(metadata.FormEventOnOpen) || eventName == string(metadata.FormEventAfterOpen)) {
-		if nonce, _ := s.validManagedFormInstance(r, rawID, entityFormCloseSchema(entity, form)); nonce != "" {
-			dslCtx = withSavedPhoneMatch(dslCtx, entity, form, obj.ID)
-		}
+	var phoneLink savedPhoneLinkEvent
+	if !isNewForHandler && closeInv == nil && form.SavedPhoneMatch != nil {
+		dslCtx, phoneLink = s.bindSavedPhoneLinkEvent(r, dslCtx, entity, form, obj.ID, eventName, eventTarget.element)
+	}
+	savedPhoneClick := eventName == string(metadata.FormEventOnClick) && form.IsSavedPhoneLink(eventTarget.element)
+	if savedPhoneClick && phoneLink.issuedID == "" {
+		respondJSON(enc, formEventResponse{Error: "Ссылка на заявку отсутствует или истекла. Откройте задачу заново"})
+		return
 	}
 	vars, txState := s.buildDSLVarsWithMessagesTx(dslCtx, mc, &msgs)
 	defer rollbackDSLExecution(txState)
@@ -1369,13 +1383,16 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	resultFn := newResultFormBuiltin(&requestedResult, closeInv == nil)
 	vars["ОткрытьФормуРезультата"], vars["OpenResultForm"] = resultFn, resultFn
 	var navigation *navigationPayload
-	navFn := newNavigationBuiltin(&navigation, s.reg, s.store, auth.UserFromContext(r.Context()))
-	vars["ОткрытьФорму"] = navFn
-	vars["OpenForm"] = navFn
-	if closeInv == nil && existingFormID != "" && entity.Kind == metadata.KindDocument &&
-		eventName == string(metadata.FormEventOnClick) {
-		openDocumentFn := s.openDocumentWithContext(r, &navigation)
-		vars["ОткрытьДокументСКонтекстом"], vars["OpenDocumentWithContext"] = openDocumentFn, openDocumentFn
+	var savedPhoneLink *savedPhoneLinkPayload
+	phoneLink.install(s, r, dslCtx, vars, &savedPhoneLink, &navigation)
+	if !savedPhoneClick {
+		navFn := newNavigationBuiltin(&navigation, s.reg, s.store, auth.UserFromContext(r.Context()))
+		vars["ОткрытьФорму"], vars["OpenForm"] = navFn, navFn
+		if closeInv == nil && existingFormID != "" && entity.Kind == metadata.KindDocument &&
+			eventName == string(metadata.FormEventOnClick) {
+			openDocumentFn := s.openDocumentWithContext(r, &navigation)
+			vars["ОткрытьДокументСКонтекстом"], vars["OpenDocumentWithContext"] = openDocumentFn, openDocumentFn
+		}
 	}
 
 	// Вопрос (#1528): билтин ПоказатьВопрос копит payload в sink — после Run
@@ -1690,6 +1707,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	}
 	resp.Idle = idle
 	resp.Cancel = postCancelled
+	resp.SavedPhoneLink = savedPhoneLink
 	if navigation != nil {
 		resp.Navigation = navigation
 	}
@@ -2432,7 +2450,7 @@ func (s *Server) serializeManagedFormEventValues(ctx context.Context, form *meta
 	// pii_open_when: условие — по сохранённой записи, не по присланной форме.
 	if len(decisions) > 0 && entityHasPIIOpenWhen(entity) && obj.ID != uuid.Nil {
 		if stored, err := s.store.GetByID(ctx, entity.Name, obj.ID, entity); err == nil {
-			decisions = s.openPIIByRecord(entity, decisions, stored)
+			decisions = s.openPIIByRecord(ctx, entity, decisions, stored)
 		}
 	}
 	echo := submittedFieldsToEcho(ctx, decisions, obj.Fields, fields)
@@ -3550,9 +3568,10 @@ func submittedFieldsToEcho(ctx context.Context, decisions map[string]access.Fiel
 	if len(submitted) == 0 || len(decisions) == 0 {
 		return nil
 	}
+	entry, _ := ctx.Value(savedPhoneOpeningKey{}).(formOpeningContext)
 	var echo map[string]any
 	for field, decision := range decisions {
-		if !decision.Masked() || decision.Hidden() {
+		if !decision.Masked() || decision.Hidden() || slices.Contains(entry.maskedFields, field) {
 			continue
 		}
 		sent, ok := maskCIKeyValue(submitted, field)

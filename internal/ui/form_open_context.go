@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -15,11 +16,13 @@ import (
 )
 
 const (
-	formOpenContextQuery  = "__ob_open"
-	formOpenInstanceField = "_opening_instance"
-	formOpenTicketTTL     = 2 * time.Minute
-	formOpenSessionLimit  = 32
-	formOpenServerLimit   = 2048
+	formOpenContextQuery            = "__ob_open"
+	formOpenSavedPhoneQuery         = "__ob_phone_link"
+	savedPhoneOpeningInstancePrefix = "p-"
+	formOpenInstanceField           = "_opening_instance"
+	formOpenTicketTTL               = 2 * time.Minute
+	formOpenSessionLimit            = 32
+	formOpenServerLimit             = 2048
 )
 
 type formOpenPrincipal struct {
@@ -29,12 +32,14 @@ type formOpenPrincipal struct {
 }
 
 type formOpeningContext struct {
-	principal formOpenPrincipal
-	entity    string
-	record    string
-	values    map[string]string
-	expires   time.Time
-	pending   bool
+	principal     formOpenPrincipal
+	entity        string
+	record        string
+	values        map[string]string
+	maskedFields  []string
+	recordVersion int64
+	expires       time.Time
+	pending       bool
 }
 
 type formOpeningContexts struct {
@@ -142,6 +147,10 @@ func (s *Server) bindFormOpenContext(r *http.Request, entity *metadata.Entity, i
 		return false
 	}
 	query := r.URL.Query()[formOpenContextQuery]
+	protected := r.URL.Query().Has(formOpenSavedPhoneQuery)
+	if protected {
+		query = r.URL.Query()[formOpenSavedPhoneQuery]
+	}
 	if len(query) != 1 || len(query[0]) != 36 {
 		return false
 	}
@@ -154,7 +163,7 @@ func (s *Server) bindFormOpenContext(r *http.Request, entity *metadata.Entity, i
 	defer store.mu.Unlock()
 	entry, found := store.entries[query[0]]
 	if !found || !entry.pending || entry.principal != principal || entry.entity != entity.Name || entry.record != id ||
-		!now.Before(entry.expires) {
+		protected != (len(entry.maskedFields) > 0) || !now.Before(entry.expires) {
 		return false
 	}
 	delete(store.entries, query[0])
@@ -179,23 +188,23 @@ func requestWithFormOpeningInstance(r *http.Request, entity *metadata.Entity, fo
 	return instanceRequest
 }
 
-// The returned values are immutable after the ticket is issued.
-func (s *Server) formOpeningValues(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, id, schema string) map[string]string {
+// The returned entry is immutable after the ticket is bound to the form.
+func (s *Server) formOpeningEntry(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, id, schema string) (formOpeningContext, bool) {
 	if form == nil || !form.InstanceContext || entity.Kind != metadata.KindDocument || id == "" {
-		return nil
+		return formOpeningContext{}, false
 	}
 	nonce, _ := s.validManagedFormInstance(r, id, schema)
 	if nonce == "" {
-		return nil
+		return formOpeningContext{}, false
 	}
 	store := &s.formOpenContexts
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	entry, found := store.entries[nonce]
 	if !found || entry.pending || entry.entity != entity.Name || entry.record != id || !s.concealNow().Before(entry.expires) {
-		return nil
+		return formOpeningContext{}, false
 	}
-	return entry.values
+	return entry, true
 }
 
 func (s *Server) formOpenContextBuiltin(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, id string, schema func() string) interpreter.BuiltinFunc {
@@ -207,7 +216,8 @@ func (s *Server) formOpenContextBuiltin(r *http.Request, entity *metadata.Entity
 		if form == nil || !form.InstanceContext || r.Header.Get(managedFormInstanceHeader) == "" {
 			return "", nil
 		}
-		return s.formOpeningValues(r, entity, form, id, schema())[strings.ToLower(name)], nil
+		entry, _ := s.formOpeningEntry(r, entity, form, id, schema())
+		return entry.values[strings.ToLower(name)], nil
 	}
 }
 
@@ -236,7 +246,7 @@ func (s *Server) prepareFormOpeningContext(r *http.Request, entity *metadata.Ent
 	}
 	switch r.Method {
 	case http.MethodGet:
-		if !r.URL.Query().Has(formOpenContextQuery) {
+		if !r.URL.Query().Has(formOpenContextQuery) && !r.URL.Query().Has(formOpenSavedPhoneQuery) {
 			return nil
 		}
 		schema := entityFormCloseSchema(entity, form)
@@ -253,11 +263,51 @@ func (s *Server) prepareFormOpeningContext(r *http.Request, entity *metadata.Ent
 			return nil
 		}
 		schema := entityFormCloseSchema(entity, form)
-		if len(s.formOpeningValues(instanceRequest, entity, form, id, schema)) != 0 {
+		if _, ok := s.formOpeningEntry(instanceRequest, entity, form, id, schema); ok {
 			data["FormInstance"] = instanceRequest.Header.Get(managedFormInstanceHeader)
 			data["FormOpeningInstanceField"] = entityFormServiceFieldNames(entity, form)[formOpenInstanceField]
 			return s.formOpenContextBuiltin(instanceRequest, entity, form, id, func() string { return schema })
 		}
 	}
 	return nil
+}
+
+type savedPhoneOpeningKey struct{}
+
+func (s *Server) issueSavedPhoneOpening(r *http.Request, entity *metadata.Entity, id string, version int64, fields []string) string {
+	principal, valid := s.formOpenPrincipal(r)
+	if !valid {
+		return ""
+	}
+	now := s.concealNow()
+	entry := formOpeningContext{
+		principal: principal, entity: entity.Name, record: id, recordVersion: version,
+		maskedFields: slices.Clone(fields), pending: true, expires: now.Add(formOpenTicketTTL),
+	}
+	ticket := s.formOpenContexts.issue(entry, now)
+	if ticket == "" {
+		return ""
+	}
+	return "/ui/document/" + entity.Name + "/" + id + "?" + formOpenSavedPhoneQuery + "=" + ticket
+}
+
+func withSavedPhoneOpening(r *http.Request, entry formOpeningContext) *http.Request {
+	if len(entry.maskedFields) == 0 {
+		return r
+	}
+	return r.WithContext(context.WithValue(r.Context(), savedPhoneOpeningKey{}, entry))
+}
+
+// A protected instance must not fall back to normal disclosure after expiry.
+func (s *Server) applySavedPhoneOpening(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, id string) (*http.Request, bool) {
+	instance := requestWithFormOpeningInstance(r, entity, form)
+	token := instance.Header.Get(managedFormInstanceHeader)
+	if !strings.HasPrefix(token, savedPhoneOpeningInstancePrefix) {
+		return r, true
+	}
+	entry, ok := s.formOpeningEntry(instance, entity, form, id, entityFormCloseSchema(entity, form))
+	if !ok || len(entry.maskedFields) == 0 {
+		return r, false
+	}
+	return withSavedPhoneOpening(r, entry), true
 }

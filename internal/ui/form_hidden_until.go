@@ -89,7 +89,9 @@ func (s *Server) runFormCreateHook(ctx context.Context, entity *metadata.Entity,
 		if obj, err = s.loadRuntimeObject(ctx, entity, id); err != nil {
 			return fmt.Errorf("ПриСозданииНаСервере: не удалось загрузить объект: %w", err)
 		}
-		ctx = withSavedPhoneMatch(ctx, entity, form, id)
+		if form.SavedPhoneMatch != nil && form.SavedPhoneMatch.LinkCommand == "" {
+			ctx = withSavedPhoneMatch(ctx, entity, form, id)
+		}
 		// Объект.Ссылка — ссылка открытой записи, как в событиях формы. У нового
 		// объекта ссылка пуста (как в 1С до записи).
 		setPersistedFormSelfRef(entity, obj)

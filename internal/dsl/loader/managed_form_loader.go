@@ -344,6 +344,12 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		el.Handlers = filtered
 		return true
 	})
+	if match := form.SavedPhoneMatch; match != nil {
+		match.LinkCommand = strings.TrimSpace(match.LinkCommand)
+		if match.LinkCommand != "" && !form.IsSavedPhoneLink(form.GetElementByName(match.LinkCommand)) {
+			return nil, i18nerr.Errorf("form.saved_phone_match.link_command %q требует кнопку header_end с событием Нажатие", match.LinkCommand)
+		}
+	}
 	// ValueTable attributes share one case-insensitive runtime namespace.
 	// Cross-collisions with entity/processor table parts are checked by the
 	// project loader once those declarations are available.
