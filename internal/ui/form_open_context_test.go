@@ -36,6 +36,7 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 			metadata.FormEventOnOpen:           "Контекст",
 			metadata.FormEventOnCreateAtServer: "Контекст",
 			metadata.FormEventBeforeWrite:      "ПроверитьЗапись",
+			metadata.FormEventOnReadAtServer:   "ПроверитьЧтение",
 		},
 		Attributes: []*metadata.FormAttribute{{Name: "ПоказатьКолонки", TypeRef: "bool"}},
 		Elements: []*metadata.FormElement{
@@ -48,6 +49,11 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 	ИдЗадачи = КонтекстОткрытияФормы("Задача2К");
 	Объект.ПоказатьКолонки = ИдЗадачи <> "";
 	Сообщить("context:" + ИдЗадачи);
+КонецПроцедуры
+Процедура ПроверитьЧтение()
+	Если Объект.Наименование = "Направление закрыто" Тогда
+		ВызватьИсключение("read-denied");
+	КонецЕсли;
 КонецПроцедуры
 Процедура ПроверитьЗапись()
 	Если КонтекстОткрытияФормы("Задача2К") <> "" Тогда
@@ -196,6 +202,25 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 	closed := decodeCloseIntentResponse(t, closeRecorder)
 	if closed.OK || !strings.Contains(closed.Error, "readonly-from-task") || (closed.Close != nil && closed.Close.Saved) {
 		t.Fatalf("save on close must fail in the contextual instance: HTTP %d %s", closeRecorder.Code, closed.Error)
+	}
+
+	if err := server.store.Upsert(t.Context(), target.Name, orderID, map[string]any{"Наименование": "Направление закрыто"}, target); err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		var fields url.Values
+		if method == http.MethodPost {
+			fields = url.Values{"Наименование": {"Контрольное значение"}, "_action": {"save"}, field: {token}}
+		}
+		rec := send(method, path, "session-1", "", operator, fields)
+		body := rec.Body.String()
+		if rec.Code != http.StatusForbidden || !strings.Contains(body, "read-denied") ||
+			tokenPattern.MatchString(body) || strings.Contains(body, "Контрольное значение") {
+			t.Fatalf("%s after revoking read access: want HTTP 403 without form data, got HTTP %d", method, rec.Code)
+		}
+	}
+	if err := server.store.Upsert(t.Context(), target.Name, orderID, map[string]any{"Наименование": "Объект"}, target); err != nil {
+		t.Fatal(err)
 	}
 
 	expiredTicket := launch()
