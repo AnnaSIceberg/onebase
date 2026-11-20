@@ -38,18 +38,7 @@ func (s *Server) appShell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := s.homeDashboardData(r)
-	// Separate browser state by user and login session without exposing the cookie.
-	// Domain separation keeps this digest distinct from the stored auth token hash.
-	scope := ""
-	if user := auth.UserFromContext(r.Context()); user != nil {
-		if cookie, err := r.Cookie("onebase_session"); err == nil && cookie.Value != "" {
-			digest := sha256.Sum256([]byte("onebase:tab-scope:v1\x00" + user.ID + "\x00" + cookie.Value))
-			scope = hex.EncodeToString(digest[:])
-		}
-	} else if auth.OpenAccessFromContext(r.Context()) {
-		scope = "open-access:v1"
-	}
-	data["TabStorageScope"] = scope
+	data["TabStorageScope"] = browserSessionScope(r)
 	displayTitles := map[string]string{}
 	for _, e := range s.reg.Entities() {
 		if f := pickManagedFormCtx(r.Context(), e, "object"); f != nil && f.TitleProc != "" {
@@ -63,6 +52,21 @@ func (s *Server) appShell(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	s.render(w, r, "page-app-shell", data)
+}
+
+func browserSessionScope(r *http.Request) string {
+	// Separate browser state by user and login session without exposing the cookie.
+	// Domain separation keeps this digest distinct from the stored auth token hash.
+	scope := ""
+	if user := auth.UserFromContext(r.Context()); user != nil {
+		if cookie, err := r.Cookie("onebase_session"); err == nil && cookie.Value != "" {
+			digest := sha256.Sum256([]byte("onebase:tab-scope:v1\x00" + user.ID + "\x00" + cookie.Value))
+			scope = hex.EncodeToString(digest[:])
+		}
+	} else if auth.OpenAccessFromContext(r.Context()) {
+		scope = "open-access:v1"
+	}
+	return scope
 }
 
 const tplAppShell = `{{define "page-app-shell"}}

@@ -4,7 +4,11 @@
  window.__obRecursiveNav = true;
  function summary(folder) { return folder.querySelector(':scope > summary'); }
  function reflect(folder) { var s=summary(folder); if(s)s.setAttribute('aria-expanded',String(folder.open)); }
- function persist(folder) { reflect(folder);try {localStorage.setItem(folder.dataset.navKey,folder.open?'1':'0');}catch(e){} }
+ function storage(root) { return root.dataset.navSession ? sessionStorage : localStorage; }
+ function key(root, folder) {
+  return root.dataset.navSession ? root.dataset.navSession + ':' + folder.dataset.navKey : folder.dataset.navKey;
+ }
+ function persist(root, folder) { reflect(folder);try {storage(root).setItem(key(root, folder),folder.open?'1':'0');}catch(e){} }
  function ancestors(link) { for(var p=link.parentElement;p;p=p.parentElement)if(p.matches('details.navtree')){p.open=true;reflect(p);} }
  function active(root) {
   var current=new URL(location.href);
@@ -20,17 +24,17 @@
   root.querySelectorAll('details.navtree').forEach(function(folder){
    if(folder.dataset.treeInitialized)return;
    folder.dataset.treeInitialized='1';
-   try{var saved=localStorage.getItem(folder.dataset.navKey);if(saved==='0'||saved==='1')folder.open=saved==='1';}catch(e){}
+   try{var saved=storage(root).getItem(key(root, folder));if(saved==='0'||saved==='1')folder.open=saved==='1';}catch(e){}
    reflect(folder);
    folder.addEventListener('toggle',function(){reflect(folder);});
    var s=summary(folder);
-   s.addEventListener('click',function(){setTimeout(function(){persist(folder);},0);});
+   s.addEventListener('click',function(){setTimeout(function(){persist(root, folder);},0);});
    s.addEventListener('keydown',function(e){
-    if(e.key==='ArrowRight'){e.preventDefault();if(!folder.open){folder.open=true;persist(folder);}else{var child=folder.querySelector(':scope > a, :scope > details > summary');if(child)child.focus();}}
-    if(e.key==='ArrowLeft'){e.preventDefault();if(folder.open){folder.open=false;persist(folder);}else{var parent=folder.parentElement.closest('details.navtree');if(parent)summary(parent).focus();}}
+    if(e.key==='ArrowRight'){e.preventDefault();if(!folder.open){folder.open=true;persist(root, folder);}else{var child=folder.querySelector(':scope > a, :scope > details > summary');if(child)child.focus();}}
+    if(e.key==='ArrowLeft'){e.preventDefault();if(folder.open){folder.open=false;persist(root, folder);}else{var parent=folder.parentElement.closest('details.navtree');if(parent)summary(parent).focus();}}
    });
   });
-  if(!root.dataset.treeActiveInitialized){root.dataset.treeActiveInitialized='1';active(root);root.addEventListener('click',function(e){var link=e.target.closest('a[href]');if(link)ancestors(link);});}
+  if(!root.dataset.treeActiveInitialized){root.dataset.treeActiveInitialized='1';if(!root.dataset.navSession)active(root);root.addEventListener('click',function(e){var link=e.target.closest('a[href]');if(link)ancestors(link);});}
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
  new MutationObserver(function(records){if(records.some(function(r){return Array.from(r.addedNodes).some(function(n){return n.nodeType===1&&(n.matches('#ob-nav, details.navtree')||n.querySelector('#ob-nav, details.navtree'));});}))init();}).observe(document.documentElement,{childList:true,subtree:true});

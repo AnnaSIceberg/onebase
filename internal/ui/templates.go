@@ -2579,11 +2579,11 @@ const tplNav = `
 {{end}}
 <div class="app-body">
 <script src="/static/navigation-tree.js" defer></script>
-<aside id="ob-nav"{{if .HideHomeObjectNavigation}} hidden{{end}}{{if .PlainMenuSections}} class="nav-plain"{{end}}>
+<aside id="ob-nav"{{if .HideHomeObjectNavigation}} hidden{{end}}{{with .NavSession}} data-nav-session="{{.}}"{{end}}{{if .PlainMenuSections}} class="nav-plain"{{end}}>
   {{if and (not .HideHomeObjectNavigation) (not .Subsystems)}}<a href="/ui/" style="display:block;padding:12px 14px 8px;color:#7dd3fc;font-weight:700;font-size:15px;text-decoration:none">{{t $.Lang "Главная"}}</a>{{end}}
   {{if .CollapsibleNav}}
   {{range .Nav}}
-  {{if .Recursive}}{{template "nav-recursive-section" .}}{{else}}
+  {{if .Recursive}}{{template "nav-recursive-section" (dict "Section" . "Open" (not $.NavSession))}}{{else}}
   <details class="navsec{{if .Gradient}} navsec-gradient{{end}}"{{with .Icon}} data-nav-icon="{{.}}"{{end}} id="{{.DOMID}}" data-nav-id="{{.ID}}" data-navsec="{{.DOMID}}"{{if .LegacyTitle}} data-navsec-legacy="{{.LegacyTitle}}"{{end}}{{if .Open}} open{{end}}>
     <summary>{{lucideIcon .Icon}}{{.Kind}}</summary>
     {{template "nav-items" .Items}}
@@ -2597,7 +2597,7 @@ const tplNav = `
   {{end}}{{end}}
   {{else}}
   {{range .Nav}}
-  {{if .Recursive}}{{template "nav-recursive-section" .}}{{else}}
+  {{if .Recursive}}{{template "nav-recursive-section" (dict "Section" . "Open" (not $.NavSession))}}{{else}}
   {{if .Gradient}}<section class="navsec-gradient"{{with .Icon}} data-nav-icon="{{.}}"{{end}}>{{end}}
   <div class="sec" id="{{.DOMID}}" data-nav-id="{{.ID}}">{{lucideIcon .Icon}}{{.Kind}}</div>
   {{template "nav-items" .Items}}
@@ -2610,16 +2610,17 @@ const tplNav = `
 </aside>
 {{end}}
 {{define "nav-recursive-section"}}
-<details class="navtree navtree-section{{if .Gradient}} navsec-gradient{{end}}"{{with .Icon}} data-nav-icon="{{.}}"{{end}} id="{{.DOMID}}" data-nav-id="{{.ID}}" data-nav-key="{{.CollapseKey}}" open>
-<summary aria-expanded="true">{{lucideIcon .Icon}}{{.Kind}}</summary>
-{{template "nav-recursive-nodes" .Nodes}}
+{{$open := .Open}}{{with .Section}}
+<details class="navtree navtree-section{{if .Gradient}} navsec-gradient{{end}}"{{with .Icon}} data-nav-icon="{{.}}"{{end}} id="{{.DOMID}}" data-nav-id="{{.ID}}" data-nav-key="{{.CollapseKey}}"{{if $open}} open{{end}}>
+<summary aria-expanded="{{$open}}">{{lucideIcon .Icon}}{{.Kind}}</summary>
+{{template "nav-recursive-nodes" (dict "Nodes" .Nodes "Open" $open)}}
 </details>
-{{end}}
-{{define "nav-recursive-nodes"}}{{range .}}
+{{end}}{{end}}
+{{define "nav-recursive-nodes"}}{{$open := .Open}}{{range .Nodes}}
 {{if .URL}}{{template "nav-item-link" .}}
-{{else}}<details class="navtree navtree-folder" id="{{.DOMID}}" data-nav-id="{{.ID}}" data-nav-key="{{.CollapseKey}}" open>
-<summary aria-expanded="true">{{lucideIcon .Icon}}{{.Label}}</summary>
-{{template "nav-recursive-nodes" .Nodes}}
+{{else}}<details class="navtree navtree-folder" id="{{.DOMID}}" data-nav-id="{{.ID}}" data-nav-key="{{.CollapseKey}}"{{if $open}} open{{end}}>
+<summary aria-expanded="{{$open}}">{{lucideIcon .Icon}}{{.Label}}</summary>
+{{template "nav-recursive-nodes" (dict "Nodes" .Nodes "Open" $open)}}
 </details>{{end}}
 {{end}}{{end}}
 {{define "nav-items"}}{{range .}}{{template "nav-item-link" .}}

@@ -956,6 +956,9 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	}
 	legacyEntityUI := s.legacyEntityUI(r)
 	data["LegacyEntityUI"] = legacyEntityUI
+	if effectiveCfg.NavigationByType && !legacyEntityUI {
+		data["NavSession"] = uiBootID + ":" + browserSessionScope(r)
+	}
 	if name == "page-report" && !legacyEntityUI && r.URL.Query().Get("__result") == "1" {
 		data["ReportResultOnly"] = true
 		if rep, ok := data["Report"].(*report.Report); ok {
