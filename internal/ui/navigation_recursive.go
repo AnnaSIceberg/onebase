@@ -13,6 +13,7 @@ type navTreeNode struct {
 	ID, DOMID, Icon, Label, URL, CollapseKey string
 	TargetKind, TargetAction                 string
 	Nodes                                    []navTreeNode
+	RoleFolder                               bool
 }
 
 type NavigationPreviewNode struct {
@@ -104,6 +105,7 @@ func (s *Server) recursiveNavigationGroups(r *http.Request, tree navigation.Tree
 				next.Label, next.URL = resolved.Label, resolved.URL
 				next.TargetKind, next.TargetAction = resolved.Kind, resolved.Action
 			} else {
+				next.RoleFolder = len(n.FolderRoles) > 0
 				next.Nodes = nodes(n.Nodes)
 			}
 			out = append(out, next)

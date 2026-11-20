@@ -18,6 +18,9 @@ func TestTypedMenuKeepsReportFoldersAndSortsEntries(t *testing.T) {
 		{TargetKind: "catalog", Label: "Мастера", URL: "/catalog/master"},
 		{TargetKind: "processor", Label: "Распределение", URL: "/processor/example"},
 		{TargetKind: "journal", Label: "Журнал", URL: "/journal/example"},
+		{Label: "Штрафы", RoleFolder: true, Nodes: []navTreeNode{
+			{TargetKind: "document", Label: "Штраф", URL: "/document/penalty"},
+		}},
 		{TargetKind: "inforeg", Label: "Остатки", URL: "/inforeg/example"},
 		{Label: "KPI", Nodes: []navTreeNode{
 			{TargetKind: "report", Label: "KPI краткий", URL: "/report/kpi"},
@@ -45,8 +48,12 @@ func TestTypedMenuKeepsReportFoldersAndSortsEntries(t *testing.T) {
 	for _, n := range out[0].Nodes {
 		labels = append(labels, n.Label)
 	}
-	if !reflect.DeepEqual(labels, []string{"Создать: накладная", "Аптеки", "Реклама", "Яблоки"}) {
+	if !reflect.DeepEqual(labels, []string{"Создать: накладная", "Аптеки", "Реклама", "Штрафы", "Яблоки"}) {
 		t.Fatalf("документы: %v", labels)
+	}
+	penalties := out[0].Nodes[3].Nodes
+	if len(penalties) != 1 || penalties[0].URL != "/document/penalty" {
+		t.Fatalf("папка документов кассы: %#v", penalties)
 	}
 	report := out[2].Nodes
 	if len(report) != 3 || report[0].Label != "KPI" || len(report[0].Nodes) != 2 || report[0].Nodes[0].URL != "/report/kpi" || report[0].Nodes[1].URL != "/processor/kpi" {

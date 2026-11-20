@@ -57,10 +57,11 @@ func sortTypedMenu(nodes []navTreeNode, documents bool) {
 }
 
 // navigationByType operates on already permission-filtered menu entries.
-// Report folders are retained. Some 1C reports open through processors
+// Report folders and explicitly role-scoped document folders are retained.
+// Some 1C reports open through processors
 // or pages and are explicitly placed in Reports or its KPI folder.
 func (s *Server) navigationByType(r *http.Request, sub string, groups []navGroup) []navGroup {
-	const reports = 2
+	const documents, reports = 0, 2
 	lang, context := s.resolveLang(r), navContext(sub)
 	buckets := make([][]navTreeNode, len(menuObjectTypes))
 	add := func(node navTreeNode, reportNodes *[]navTreeNode, inReports bool) {
@@ -77,6 +78,13 @@ func (s *Server) navigationByType(r *http.Request, sub string, groups []navGroup
 		for _, node := range nodes {
 			if node.URL != "" {
 				add(node, &out, inReports)
+				continue
+			}
+			if node.RoleFolder && len(node.Nodes) > 0 && !slices.ContainsFunc(node.Nodes, func(child navTreeNode) bool {
+				return child.URL == "" || child.TargetKind != "document"
+			}) {
+				sortTypedMenu(node.Nodes, true)
+				buckets[documents] = append(buckets[documents], node)
 				continue
 			}
 			node.Nodes = regroup(node.Nodes, inReports || strings.EqualFold(node.Label, "KPI"))
