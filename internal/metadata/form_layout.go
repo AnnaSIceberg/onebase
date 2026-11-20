@@ -215,7 +215,11 @@ func NormalizeFormLayoutSize(n int) int {
 // UsesEqualColumns включает режим только у горизонтальной группы без scroll_x.
 // В остальных случаях check сообщает, почему настройка не применяется.
 func (el *FormElement) UsesEqualColumns() bool {
-	return el != nil && el.Kind == FormElementGroupBox && el.Orientation == "horizontal" && el.EqualColumns && !el.ScrollX
+	return el.SupportsEqualColumns() && el.EqualColumns
+}
+
+func (el *FormElement) SupportsEqualColumns() bool {
+	return el != nil && el.Kind == FormElementGroupBox && el.Orientation == "horizontal" && !el.ScrollX
 }
 
 // FormEqualColumnsCSS — единый режим для runtime, preview и холста. Группа

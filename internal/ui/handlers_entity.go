@@ -1640,6 +1640,10 @@ func pickObjectFormWithHook(entity *metadata.Entity, evt string) *metadata.FormM
 }
 
 func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Has(formOpenContextQuery) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "same-origin")
+	}
 	entity := s.getEntity(w, r)
 	if entity == nil {
 		return

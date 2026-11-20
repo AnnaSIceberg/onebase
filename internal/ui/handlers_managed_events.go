@@ -1322,6 +1322,8 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	instanceSchema := func() string { return entityFormCloseSchema(entity, form) }
 	instanceFn := s.managedFormInstanceBuiltin(r, form, existingFormID, instanceSchema)
 	vars["ИдЭкземпляраФормы"], vars["ManagedFormInstanceID"] = instanceFn, instanceFn
+	openContextFn := s.formOpenContextBuiltin(r, entity, form, existingFormID, instanceSchema)
+	vars["КонтекстОткрытияФормы"], vars["FormOpeningContext"] = openContextFn, openContextFn
 	rebindInstance := func(savedID string) string {
 		return s.rebindManagedFormInstance(r, form, savedID, instanceSchema)
 	}
@@ -1354,6 +1356,11 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	navFn := newNavigationBuiltin(&navigation, s.reg, s.store, auth.UserFromContext(r.Context()))
 	vars["ОткрытьФорму"] = navFn
 	vars["OpenForm"] = navFn
+	if closeInv == nil && existingFormID != "" && entity.Kind == metadata.KindDocument &&
+		eventName == string(metadata.FormEventOnClick) {
+		openDocumentFn := s.openDocumentWithContext(r, &navigation)
+		vars["ОткрытьДокументСКонтекстом"], vars["OpenDocumentWithContext"] = openDocumentFn, openDocumentFn
+	}
 
 	// Вопрос (#1528): билтин ПоказатьВопрос копит payload в sink — после Run
 	// он уйдёт в ответ как question, и клиент откроет модал.
@@ -2240,8 +2247,9 @@ func (st formEventState) response(ok bool) formEventResponse {
 // изменит до перезагрузки страницы. Исключение — кнопка: она рисуется с
 // display:none и показывается сразу. Для readonly обе стороны рабочие.
 type elementStates struct {
-	ReadOnly map[string]bool `json:"readonly,omitempty"`
-	Hidden   map[string]bool `json:"hidden,omitempty"`
+	ReadOnly     map[string]bool `json:"readonly,omitempty"`
+	Hidden       map[string]bool `json:"hidden,omitempty"`
+	EqualColumns map[string]bool `json:"equalColumns,omitempty"`
 	// Hints — значения реквизитов, на которые ссылается hint_from, ПОСЛЕ
 	// обработчика: «реквизит → текст». Отдельно от values: у формы обработки
 	// в values едут только реквизиты с элементами на форме, а реквизит
@@ -2281,9 +2289,9 @@ func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.E
 	if form == nil {
 		return nil
 	}
-	var ro, hidden map[string]bool
+	var ro, hidden, equalColumns map[string]bool
 	if s.interp != nil {
-		ro, hidden, _, _ = managedFormElementStates(form, managedFormHeaderValues(entity, values), newInterpEvaluator(s.interp))
+		ro, hidden, equalColumns, _, _ = managedFormElementStates(form, managedFormHeaderValues(entity, values), newInterpEvaluator(s.interp))
 	}
 	// editable_admin_only не зависит от данных записи, поэтому его нет в
 	// readonly_when-состояниях. Добавляем здесь: ответ события применяется
@@ -2298,10 +2306,10 @@ func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.E
 		}
 	}
 	hints := formHintFromValues(form, entity, values)
-	if len(ro) == 0 && len(hidden) == 0 && len(hints) == 0 {
+	if len(ro) == 0 && len(hidden) == 0 && len(equalColumns) == 0 && len(hints) == 0 {
 		return nil
 	}
-	return &elementStates{ReadOnly: ro, Hidden: hidden, Hints: hints}
+	return &elementStates{ReadOnly: ro, Hidden: hidden, EqualColumns: equalColumns, Hints: hints}
 }
 
 // adminOnlyElementPaths — размещения формы, запертые для неадминистратора.

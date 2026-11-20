@@ -72,7 +72,7 @@ type layoutDiagnostic struct{ code, msg, fix string }
 
 func layoutDiagnostics(el *metadata.FormElement) []layoutDiagnostic {
 	var out []layoutDiagnostic
-	if el.EqualColumns && !el.UsesEqualColumns() {
+	if (el.EqualColumns || el.EqualColumnsWhen != "") && !el.SupportsEqualColumns() {
 		out = append(out, layoutDiagnostic{
 			code: "form.equal-columns",
 			msg:  "equal_columns применяется только к горизонтальной ГруппаФормы без scroll_x",

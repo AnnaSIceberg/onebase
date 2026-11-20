@@ -129,6 +129,7 @@ type Server struct {
 	concealMu            sync.Mutex
 	concealInstances     map[string]*concealInstance
 	concealClock         func() time.Time
+	formOpenContexts     formOpeningContexts
 	closeIntentMu        sync.Mutex
 	closeIntents         *formCloseReplayLedger
 	resultFormMu         sync.Mutex

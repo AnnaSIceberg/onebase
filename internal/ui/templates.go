@@ -1019,6 +1019,14 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// elHiddenStyle возвращает "display:none;" для элемента, который
 		// скрыт условием hidden_when при первичном рендере. Элемент
 		// остаётся в DOM, и applyElementStates переключает видимость.
+		"elEqualColumns": func(ctx map[string]any, el *metadata.FormElement) bool {
+			if states, ok := ctx["ElEqualColumns"].(map[string]bool); ok {
+				if enabled, resolved := states[elementStatePath(ctx, el)]; resolved {
+					return enabled
+				}
+			}
+			return el.UsesEqualColumns() && strings.TrimSpace(el.EqualColumnsWhen) == ""
+		},
 		"elHiddenStyle": func(ctx map[string]any, el *metadata.FormElement) template.CSS {
 			if el == nil || el.HiddenWhen == "" {
 				return ""
