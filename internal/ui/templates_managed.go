@@ -1017,7 +1017,16 @@ main>.card{max-width:none}
 select[data-ref-choice-context][data-ob-choice-loading="1"]{cursor:progress}
 select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;background:#fef2f2;box-shadow:0 0 0 1px #fecaca}
 ` + metadata.FormEqualColumnsCSS + `
+/* A flexible card inside header_inline must also shrink below min-content. */
+main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
+#main-form:has(.ob-equal-columns.ob-equal-columns-conditional)>:is(.form-group-box,.managed-tabs),
 .ob-equal-columns.ob-equal-columns-conditional>.managed-group-body :is(.form-group-box,.form-group,.managed-group-body){box-sizing:border-box;min-width:0;max-width:100%}
+@media (max-height:740px) {
+  .ob-density-compact main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional),
+  .ob-density-compact main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card{padding:6px}
+  .ob-density-compact #main-form:has(.ob-equal-columns.ob-equal-columns-conditional) .form-group-box:not(.ob-group-plain){padding-block:4px 5px!important;margin-bottom:5px!important}
+  .ob-density-compact #main-form:has(.ob-equal-columns.ob-equal-columns-conditional)>[data-ob-managed-footer]{margin-top:8px!important}
+}
 </style>
 {{if hasGridTP .Form}}
 <link rel="stylesheet" href="/vendor/slickgrid/slick.grid.css">
@@ -1247,7 +1256,7 @@ select[data-ref-choice-context][data-ob-choice-error="1"]{border-color:#dc2626;b
   {{template "managed-element" (dict "El" . "Ctx" $ctx)}}
 {{end}}
 
-<div{{if .ObjectFormLayout}} class="ob-object-form-footer"{{end}} style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
+<div{{if .ObjectFormLayout}} class="ob-object-form-footer"{{end}} data-ob-managed-footer style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
   {{if .IsPopup}}
   {{if .CanWrite}}<button class="btn btn-primary" type="button" data-ob-form-close="save_and_select" data-ob-close-reason="ok" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать и выбрать"}}</button>{{end}}
   <a href="#" data-ob-ref-cancel class="btn btn-cancel">Отмена</a>

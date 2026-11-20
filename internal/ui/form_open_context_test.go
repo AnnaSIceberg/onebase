@@ -32,7 +32,10 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 	targetForm := &metadata.FormModule{
 		Name: "OrderForm", Kind: "object", EntityName: "Order2K",
 		InstanceContext: true, LayoutKind: metadata.FormLayoutManaged,
-		Handlers:   map[metadata.FormEventType]string{metadata.FormEventOnOpen: "Контекст"},
+		Handlers: map[metadata.FormEventType]string{
+			metadata.FormEventOnOpen:           "Контекст",
+			metadata.FormEventOnCreateAtServer: "Контекст",
+		},
 		Attributes: []*metadata.FormAttribute{{Name: "ПоказатьКолонки", TypeRef: "bool"}},
 		Elements: []*metadata.FormElement{
 			{Kind: metadata.FormElementGroupBox, Name: "Колонки", Orientation: "horizontal", EqualColumnsWhen: "ПоказатьКолонки",
@@ -107,12 +110,16 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 		return resp.Navigation.URL
 	}
 	tokenPattern := regexp.MustCompile(`data-ob-form-instance="([^"]+)"`)
-	open := func(path, session string, user *auth.User) string {
+	open := func(path, session string, user *auth.User, wantColumns bool) string {
 		t.Helper()
 		rec := send(http.MethodGet, path, session, "", user, nil)
 		match := tokenPattern.FindStringSubmatch(rec.Body.String())
 		if rec.Code != http.StatusOK || len(match) != 2 || strings.Contains(rec.Body.String(), taskID.String()) {
 			t.Fatalf("GET: HTTP %d, found instance %t", rec.Code, len(match) == 2)
+		}
+		gotColumns := strings.Contains(rec.Body.String(), "managed-group-horizontal ob-equal-columns ob-equal-columns-conditional")
+		if gotColumns != wantColumns {
+			t.Fatalf("conditional layout on the first GET = %t, want %t", gotColumns, wantColumns)
 		}
 		return match[1]
 	}
@@ -142,18 +149,18 @@ func TestManagedFormOpeningContextThroughHTTP(t *testing.T) {
 	if deny.OK || deny.Navigation != nil {
 		t.Fatal("source access must not grant target navigation")
 	}
-	assertContext(orderID, "session-2", open(transfer, "session-2", operator), operator, "", false)
-	assertContext(orderID, "session-1", open(transfer, "session-1", otherOperator), otherOperator, "", false)
-	assertContext(otherID, "session-1", open(strings.Replace(transfer, orderID.String(), otherID.String(), 1), "session-1", operator), operator, "", false)
-	token := open(transfer, "session-1", operator)
+	assertContext(orderID, "session-2", open(transfer, "session-2", operator, false), operator, "", false)
+	assertContext(orderID, "session-1", open(transfer, "session-1", otherOperator, false), otherOperator, "", false)
+	assertContext(otherID, "session-1", open(strings.Replace(transfer, orderID.String(), otherID.String(), 1), "session-1", operator, false), operator, "", false)
+	token := open(transfer, "session-1", operator, true)
 	assertContext(orderID, "session-1", token, operator, taskID.String(), false)
 	assertContext(orderID, "session-1", token, operator, taskID.String(), true)
-	assertContext(orderID, "session-1", open(path, "session-1", operator), operator, "", false)
-	assertContext(orderID, "session-1", open(transfer, "session-1", operator), operator, "", false)
+	assertContext(orderID, "session-1", open(path, "session-1", operator, false), operator, "", false)
+	assertContext(orderID, "session-1", open(transfer, "session-1", operator, false), operator, "", false)
 	assertContext(orderID, "session-2", token, operator, "", false)
 	assertContext(otherID, "session-1", token, operator, "", false)
 	expiredTicket := launch()
 	now = now.Add(managedFormInstanceTTL + formOpenTicketTTL)
-	assertContext(orderID, "session-1", open(expiredTicket, "session-1", operator), operator, "", false)
+	assertContext(orderID, "session-1", open(expiredTicket, "session-1", operator, false), operator, "", false)
 	assertContext(orderID, "session-1", token, operator, "", true)
 }
