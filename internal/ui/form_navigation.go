@@ -21,7 +21,8 @@ import (
 
 // navigationPayload уходит клиенту в ответе form-event.
 type navigationPayload struct {
-	URL string `json:"url"`
+	URL     string `json:"url"`
+	OpenTab bool   `json:"openTab,omitempty"`
 }
 
 // newNavigationBuiltin строит билтин ОткрытьФорму(Ссылка). Перед постановкой

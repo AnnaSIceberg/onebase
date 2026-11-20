@@ -5,6 +5,16 @@ package langref
 // сверены с реализациями в internal/dsl/interpreter/*.
 var functionDescriptors = []Descriptor{
 	{
+		Name: "открытьдокументсконтекстом", Display: "ОткрытьДокументСКонтекстом", Aliases: []string{"OpenDocumentWithContext"}, Kind: KindFunc,
+		Signature: "ОткрытьДокументСКонтекстом(Документ, Ссылка, Контекст)", Returns: "неопределено",
+		Doc: "Из кнопки формы сохранённого документа открывает другую сохранённую запись с одноразовым контекстом. Цель проверяется по праву чтения. Контекст — структура идентификаторов.",
+	},
+	{
+		Name: "контекстоткрытияформы", Display: "КонтекстОткрытияФормы", Aliases: []string{"FormOpeningContext"}, Kind: KindFunc,
+		Signature: "КонтекстОткрытияФормы(Имя)", Returns: "строка",
+		Doc: "В событиях экземпляра формы документа с instance_context возвращает связанный с открытием идентификатор. В остальных случаях — пустая строка.",
+	},
+	{
 		Name: "поленазначеносервером", Display: "ПолеНазначеноСервером", Aliases: []string{"ServerAssignedField"}, Kind: KindFunc,
 		Signature: "ПолеНазначеноСервером(ИмяПоля)",
 		Params:    []Param{{Name: "ИмяПоля", Type: "строка"}}, Returns: "булево",

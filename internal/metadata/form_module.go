@@ -286,17 +286,18 @@ type FormElement struct {
 	// Поля, добавленные планом 37. Все опциональны; YAML-загрузчик
 	// заполняет их при чтении managed-формы, конвертер 1С использует
 	// для round-trip, рендерер — для отрисовки HTML.
-	OriginalID      string            `yaml:"original_id,omitempty"`    // id из Form.xml для round-trip
-	TitleMap        map[string]string `yaml:"title,omitempty"`          // локализованный заголовок (ru, en, ...) — основной источник в managed-YAML
-	DataPath        string            `yaml:"data_path,omitempty"`      // "Объект.Контрагент", "Список.Цена"
-	Picture         string            `yaml:"picture,omitempty"`        // "_resources/.../Picture.png" или "stdpic:Post"
-	ValuesPicture   string            `yaml:"values_picture,omitempty"` // палитра выбора (для PictureField/InputField)
-	Width           int               `yaml:"width,omitempty"`          // ширина в пикселях
-	Height          int               `yaml:"height,omitempty"`         // высота
-	HorizontalAlign string            `yaml:"halign,omitempty"`         // left|center|right|stretch
-	VerticalAlign   string            `yaml:"valign,omitempty"`         // top|center|bottom
-	Orientation     string            `yaml:"orientation,omitempty"`    // vertical|horizontal для контейнеров
-	EqualColumns    bool              `yaml:"equal_columns,omitempty"`  // равная ширина детей горизонтальной ГруппаФормы
+	OriginalID       string            `yaml:"original_id,omitempty"`    // id из Form.xml для round-trip
+	TitleMap         map[string]string `yaml:"title,omitempty"`          // локализованный заголовок (ru, en, ...) — основной источник в managed-YAML
+	DataPath         string            `yaml:"data_path,omitempty"`      // "Объект.Контрагент", "Список.Цена"
+	Picture          string            `yaml:"picture,omitempty"`        // "_resources/.../Picture.png" или "stdpic:Post"
+	ValuesPicture    string            `yaml:"values_picture,omitempty"` // палитра выбора (для PictureField/InputField)
+	Width            int               `yaml:"width,omitempty"`          // ширина в пикселях
+	Height           int               `yaml:"height,omitempty"`         // высота
+	HorizontalAlign  string            `yaml:"halign,omitempty"`         // left|center|right|stretch
+	VerticalAlign    string            `yaml:"valign,omitempty"`         // top|center|bottom
+	Orientation      string            `yaml:"orientation,omitempty"`    // vertical|horizontal для контейнеров
+	EqualColumns     bool              `yaml:"equal_columns,omitempty"`  // равная ширина детей горизонтальной ГруппаФормы
+	EqualColumnsWhen string            `yaml:"equal_columns_when,omitempty"`
 	// ScrollX — горизонтальная группа не переносит содержимое на вторую строку,
 	// а прокручивается. Нужна ряду кнопок: перенос рвёт панель действий пополам,
 	// и половина кнопок читается как отдельный блок. По умолчанию перенос, как

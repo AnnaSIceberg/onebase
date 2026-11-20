@@ -296,7 +296,10 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 	// ЗАПИСИ, поэтому считается здесь же, где известны Values, и заново после
 	// каждого события формы.
 	if s.interp != nil {
-		ro, hidden, _, warns := managedFormElementStates(form, header, newInterpEvaluator(s.interp))
+		ro, hidden, equalColumns, _, warns := managedFormElementStates(form, header, newInterpEvaluator(s.interp))
+		if len(equalColumns) > 0 {
+			data["ElEqualColumns"] = equalColumns
+		}
 		if len(ro) > 0 {
 			data["ElReadOnly"] = ro
 		}
@@ -359,10 +362,11 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 // ошибка конфигурации, и молча запертое поле объяснить пользователю нечем.
 // Вместо этого условие игнорируется, а конфигуратор получает предупреждение на
 // форме — тем же способом, что и у условного оформления.
-func managedFormElementStates(form *metadata.FormModule, header map[string]any, ev compose.Evaluator) (map[string]bool, map[string]bool, map[*metadata.FormElement]string, []string) {
+func managedFormElementStates(form *metadata.FormModule, header map[string]any, ev compose.Evaluator) (map[string]bool, map[string]bool, map[string]bool, map[*metadata.FormElement]string, []string) {
 	if form == nil || ev == nil {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
+	var equalColumns map[string]bool
 	ro := map[string]bool{}
 	hidden := map[string]bool{}
 	paths := map[*metadata.FormElement]string{}
@@ -391,6 +395,12 @@ func managedFormElementStates(form *metadata.FormModule, header map[string]any, 
 			return
 		}
 		paths[el] = visit.path
+		if el.SupportsEqualColumns() && strings.TrimSpace(el.EqualColumnsWhen) != "" {
+			if equalColumns == nil {
+				equalColumns = make(map[string]bool)
+			}
+			equalColumns[visit.path] = eval(el.EqualColumnsWhen, "условие equal_columns_when", el.Name)
+		}
 		own := strings.TrimSpace(el.ReadOnlyWhen) != ""
 		if own {
 			// Условие считается всегда, даже под постоянным запретом: иначе
@@ -430,7 +440,7 @@ func managedFormElementStates(form *metadata.FormModule, header map[string]any, 
 			hidden[visit.path] = hiddenState
 		}
 	})
-	return ro, hidden, paths, wc.msgs
+	return ro, hidden, equalColumns, paths, wc.msgs
 }
 
 // elementStatePath — ключ элемента в картах состояний: путь его размещения в

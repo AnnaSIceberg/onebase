@@ -776,6 +776,11 @@ window.obManagedApplyHints = obManagedApplyHints;
     var byPath = function (path) {
       return document.querySelector('[data-ob-el-path="' + (window.CSS && CSS.escape ? CSS.escape(path) : path) + '"]');
     };
+    var equalColumns = st.equalColumns || {};
+    Object.keys(equalColumns).forEach(function (path) {
+      var group = byPath(path);
+      if (group && group.classList) group.classList.toggle('ob-equal-columns', !!equalColumns[path]);
+    });
     var hidden = st.hidden || {};
     Object.keys(hidden).forEach(function (path) {
       // Колонка табличной части якоря в DOM не имеет: её видимость — свойство
@@ -1846,6 +1851,14 @@ window.obManagedApplyHints = obManagedApplyHints;
         if (data.dirty !== true && (!window._obFormDirty || savedByResponse || serverOnlyClean)) {
           if (!cfg.resultForm) {
             if (savedByResponse || serverOnlyClean) setManagedFormDirty(false);
+            if (data.navigation.openTab) {
+              try {
+                if (window.parent !== window && typeof window.parent.obOpenTab === 'function') {
+                  window.parent.postMessage({source: 'obOpenTab', url: data.navigation.url}, window.location.origin);
+                  return;
+                }
+              } catch (_) {}
+            }
             window.location.assign(data.navigation.url);
             return;
           }
