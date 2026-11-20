@@ -173,17 +173,8 @@ func (s *Server) renderEntityForm(w http.ResponseWriter, r *http.Request, kind s
 	if managed != nil {
 		data["Form"] = managed
 		var openingContext interpreter.BuiltinFunc
-		if r.Method == http.MethodGet && !isNew && managed.InstanceContext && entity.Kind == metadata.KindDocument &&
-			r.URL.Query().Has(formOpenContextQuery) {
-			id, _ := data["ID"].(string)
-			schema := entityFormCloseSchema(entity, managed)
-			data["FormCloseSchema"] = schema
-			s.issueManagedFormInstance(r, data)
-			if token, _ := data["FormInstance"].(string); token != "" {
-				instanceRequest := r.Clone(r.Context())
-				instanceRequest.Header.Set(managedFormInstanceHeader, token)
-				openingContext = s.formOpenContextBuiltin(instanceRequest, entity, managed, id, func() string { return schema })
-			}
+		if !isNew && managed.InstanceContext && entity.Kind == metadata.KindDocument {
+			openingContext = s.prepareFormOpeningContext(r, entity, managed, data)
 		}
 		// ПриСозданииНаСервере — до всего, что читает значения: варианты
 		// ссылок, условия и разметка видят заполненные им реквизиты формы.

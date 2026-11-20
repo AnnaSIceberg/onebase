@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,10 +15,11 @@ import (
 )
 
 const (
-	formOpenContextQuery = "__ob_open"
-	formOpenTicketTTL    = 2 * time.Minute
-	formOpenSessionLimit = 32
-	formOpenServerLimit  = 2048
+	formOpenContextQuery  = "__ob_open"
+	formOpenInstanceField = "_opening_instance"
+	formOpenTicketTTL     = 2 * time.Minute
+	formOpenSessionLimit  = 32
+	formOpenServerLimit   = 2048
 )
 
 type formOpenPrincipal struct {
@@ -135,17 +137,17 @@ func (store *formOpeningContexts) issue(entry formOpeningContext, now time.Time)
 	return key
 }
 
-func (s *Server) bindFormOpenContext(r *http.Request, entity *metadata.Entity, id, nonce string, now time.Time) {
+func (s *Server) bindFormOpenContext(r *http.Request, entity *metadata.Entity, id, nonce string, now time.Time) bool {
 	if r.Method != http.MethodGet || entity == nil || entity.Kind != metadata.KindDocument || id == "" {
-		return
+		return false
 	}
 	query := r.URL.Query()[formOpenContextQuery]
 	if len(query) != 1 || len(query[0]) != 36 {
-		return
+		return false
 	}
 	principal, valid := s.formOpenPrincipal(r)
 	if !valid {
-		return
+		return false
 	}
 	store := &s.formOpenContexts
 	store.mu.Lock()
@@ -153,12 +155,47 @@ func (s *Server) bindFormOpenContext(r *http.Request, entity *metadata.Entity, i
 	entry, found := store.entries[query[0]]
 	if !found || !entry.pending || entry.principal != principal || entry.entity != entity.Name || entry.record != id ||
 		!now.Before(entry.expires) {
-		return
+		return false
 	}
 	delete(store.entries, query[0])
 	entry.pending = false
 	entry.expires = now.Add(managedFormInstanceTTL)
 	store.entries[nonce] = entry
+	return true
+}
+
+// Native HTML submits cannot set a request header. The reserved POST field
+// uses the same signed instance proof, and the query string is ignored.
+func requestWithFormOpeningInstance(r *http.Request, entity *metadata.Entity, form *metadata.FormModule) *http.Request {
+	if len(r.Header.Values(managedFormInstanceHeader)) != 0 || r.Method != http.MethodPost || len(r.PostForm) == 0 {
+		return r
+	}
+	tokens := r.PostForm[entityFormServiceFieldNames(entity, form)[formOpenInstanceField]]
+	if len(tokens) != 1 || tokens[0] == "" || len(tokens[0]) > 128 {
+		return r
+	}
+	instanceRequest := r.Clone(r.Context())
+	instanceRequest.Header.Set(managedFormInstanceHeader, tokens[0])
+	return instanceRequest
+}
+
+// The returned values are immutable after the ticket is issued.
+func (s *Server) formOpeningValues(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, id, schema string) map[string]string {
+	if form == nil || !form.InstanceContext || entity.Kind != metadata.KindDocument || id == "" {
+		return nil
+	}
+	nonce, _ := s.validManagedFormInstance(r, id, schema)
+	if nonce == "" {
+		return nil
+	}
+	store := &s.formOpenContexts
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	entry, found := store.entries[nonce]
+	if !found || entry.pending || entry.entity != entity.Name || entry.record != id || !s.concealNow().Before(entry.expires) {
+		return nil
+	}
+	return entry.values
 }
 
 func (s *Server) formOpenContextBuiltin(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, id string, schema func() string) interpreter.BuiltinFunc {
@@ -166,21 +203,61 @@ func (s *Server) formOpenContextBuiltin(r *http.Request, entity *metadata.Entity
 		if len(args) != 1 {
 			return nil, fmt.Errorf("КонтекстОткрытияФормы: ожидается имя параметра")
 		}
-		if form == nil || !form.InstanceContext || entity.Kind != metadata.KindDocument || id == "" {
-			return "", nil
-		}
-		nonce, _ := s.validManagedFormInstance(r, id, schema())
-		if nonce == "" {
-			return "", nil
-		}
-		store := &s.formOpenContexts
-		store.mu.Lock()
-		defer store.mu.Unlock()
-		entry, found := store.entries[nonce]
-		if !found || entry.pending || entry.entity != entity.Name || entry.record != id || !s.concealNow().Before(entry.expires) {
-			return "", nil
-		}
 		name, _ := args[0].(string)
-		return entry.values[strings.ToLower(name)], nil
+		if form == nil || !form.InstanceContext || r.Header.Get(managedFormInstanceHeader) == "" {
+			return "", nil
+		}
+		return s.formOpeningValues(r, entity, form, id, schema())[strings.ToLower(name)], nil
 	}
+}
+
+type formOpenWriteKey struct{}
+
+func (s *Server) formOpenWriteContext(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, id uuid.UUID) context.Context {
+	if form == nil || !form.InstanceContext || entity.Kind != metadata.KindDocument || id == uuid.Nil {
+		return r.Context()
+	}
+	instanceRequest := requestWithFormOpeningInstance(r, entity, form)
+	if instanceRequest.Header.Get(managedFormInstanceHeader) == "" {
+		return r.Context()
+	}
+	reader := s.formOpenContextBuiltin(instanceRequest, entity, form, id.String(), func() string {
+		return entityFormCloseSchema(entity, form)
+	})
+	return context.WithValue(r.Context(), formOpenWriteKey{}, reader)
+}
+
+// Bind the GET ticket before form initialization. A rejected native save can
+// render the same instance again when the proof still validates.
+func (s *Server) prepareFormOpeningContext(r *http.Request, entity *metadata.Entity, form *metadata.FormModule, data map[string]any) interpreter.BuiltinFunc {
+	id, _ := data["ID"].(string)
+	if id == "" {
+		return nil
+	}
+	switch r.Method {
+	case http.MethodGet:
+		if !r.URL.Query().Has(formOpenContextQuery) {
+			return nil
+		}
+		schema := entityFormCloseSchema(entity, form)
+		data["FormCloseSchema"] = schema
+		s.issueManagedFormInstance(r, data)
+		if token, _ := data["FormInstance"].(string); token != "" {
+			instanceRequest := r.Clone(r.Context())
+			instanceRequest.Header.Set(managedFormInstanceHeader, token)
+			return s.formOpenContextBuiltin(instanceRequest, entity, form, id, func() string { return schema })
+		}
+	case http.MethodPost:
+		instanceRequest := requestWithFormOpeningInstance(r, entity, form)
+		if instanceRequest.Header.Get(managedFormInstanceHeader) == "" {
+			return nil
+		}
+		schema := entityFormCloseSchema(entity, form)
+		if len(s.formOpeningValues(instanceRequest, entity, form, id, schema)) != 0 {
+			data["FormInstance"] = instanceRequest.Header.Get(managedFormInstanceHeader)
+			data["FormOpeningInstanceField"] = entityFormServiceFieldNames(entity, form)[formOpenInstanceField]
+			return s.formOpenContextBuiltin(instanceRequest, entity, form, id, func() string { return schema })
+		}
+	}
+	return nil
 }
