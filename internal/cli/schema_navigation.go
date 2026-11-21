@@ -42,6 +42,7 @@ func navigationContainerSchema(home bool) map[string]any {
 		map[string]any{"type": "object", "additionalProperties": false, "required": []string{"id", "title", "nodes"}, "properties": folder},
 	}}
 	section["nodes"], section["roles"] = arrayOf(nodeRef), roles
+	section["legacy_order"] = arrayOf(stringSchema("IDs команд в прежнем интерфейсе"))
 	sectionSchema := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"id", "title"}, "properties": section}
 	sectionSchema["not"] = map[string]any{"allOf": []any{map[string]any{"required": []string{"nodes"}}, map[string]any{"anyOf": []any{map[string]any{"required": []string{"items"}}, map[string]any{"required": []string{"groups"}}}}}}
 	menu := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"sections": arrayOf(sectionSchema)}}

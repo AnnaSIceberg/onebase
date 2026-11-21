@@ -136,6 +136,7 @@ func TestRecursiveNavigationHTTPFolderRolesPreserveCommands(t *testing.T) {
 	f := newRecursiveHTTPFixture(t)
 	sub := f.server.reg.GetSubsystem("School")
 	sub.Menu.Sections[0].Nodes[1].FolderRoles = []string{"Chief"}
+	sub.Menu.Sections[0].LegacyOrder = []string{"last", "forbidden", "direct"}
 	f.server.cfg.UIExceptRoles = []string{"Operator"}
 	ctx := context.Background()
 	chief, operator := &auth.Role{Name: "Chief"}, &auth.Role{Name: "Operator"}
@@ -146,7 +147,7 @@ func TestRecursiveNavigationHTTPFolderRolesPreserveCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertMenu := func(wantFolder bool) {
+	assertMenu := func(wantFolder, legacy bool) {
 		t.Helper()
 		nav := recursiveNavDocument(t, f, "alice")
 		folder := semanticFind(nav, "data-nav-id", "cfg:masters")
@@ -167,16 +168,25 @@ func TestRecursiveNavigationHTTPFolderRolesPreserveCommands(t *testing.T) {
 		if matches != 1 {
 			t.Fatalf("order link appears %d times", matches)
 		}
+		var rendered strings.Builder
+		if err := html.Render(&rendered, nav); err != nil {
+			t.Fatal(err)
+		}
+		last := strings.Index(rendered.String(), `data-nav-id="cfg:last"`)
+		first := strings.Index(rendered.String(), `data-nav-id="cfg:direct"`)
+		if last < 0 || first < 0 || (last < first) != legacy {
+			t.Fatalf("document command order incorrect for legacy=%t", legacy)
+		}
 	}
-	assertMenu(false)
+	assertMenu(false, false)
 	if err = f.server.authRepo.AssignRole(ctx, user.ID, chief.ID); err != nil {
 		t.Fatal(err)
 	}
-	assertMenu(true)
+	assertMenu(true, false)
 	if err = f.server.authRepo.AssignRole(ctx, user.ID, operator.ID); err != nil {
 		t.Fatal(err)
 	}
-	assertMenu(false)
+	assertMenu(false, true)
 }
 
 func TestRecursiveNavigationHTTPAdminAndPersonalLayers(t *testing.T) {

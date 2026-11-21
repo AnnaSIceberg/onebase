@@ -420,7 +420,7 @@ func (s *Server) personalNavigationLayer(r *http.Request, base navigation.Tree) 
 
 func (s *Server) navigationGroups(r *http.Request, tree, base navigation.Tree, configured, flat bool, sub string) []navGroup {
 	if tree.Version == 2 {
-		return s.recursiveNavigationGroups(r, tree, sub)
+		return s.recursiveNavigationGroups(r, tree, base, sub)
 	}
 	context := base.Context
 	baseHash, _ := base.Hash()

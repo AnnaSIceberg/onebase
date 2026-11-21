@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/auth"
@@ -86,7 +87,7 @@ func (s *Server) projectRecursiveNavigation(r *http.Request, tree navigation.Tre
 	return result
 }
 
-func (s *Server) recursiveNavigationGroups(r *http.Request, tree navigation.Tree, sub string) []navGroup {
+func (s *Server) recursiveNavigationGroups(r *http.Request, tree, base navigation.Tree, sub string) []navGroup {
 	tree = s.projectRecursiveNavigation(r, tree, nil, true, nil)
 	lang := s.resolveLang(r)
 	user, legacy := auth.UserFromContext(r.Context()), s.legacyEntityUI(r)
@@ -112,11 +113,45 @@ func (s *Server) recursiveNavigationGroups(r *http.Request, tree navigation.Tree
 		}
 		return out
 	}
+	legacyOrders := make(map[string][]string)
+	if legacy {
+		for _, section := range base.Sections {
+			if len(section.LegacyOrder) > 0 {
+				legacyOrders[section.ID] = section.LegacyOrder
+			}
+		}
+	}
 	var out []navGroup
 	for _, section := range tree.Sections {
-		out = append(out, navGroup{ID: section.ID, DOMID: navDOMID(tree.Context, section.ID), Icon: section.Icon, Gradient: section.Gradient, Kind: navigation.DisplayTitle(section.Title, section.Titles, lang), Open: true, Nodes: nodes(section.Nodes), Recursive: true, CollapseKey: key(section.ID)})
+		visible := nodes(section.Nodes)
+		applyLegacyMenuOrder(visible, legacyOrders[section.ID])
+		out = append(out, navGroup{ID: section.ID, DOMID: navDOMID(tree.Context, section.ID), Icon: section.Icon, Gradient: section.Gradient, Kind: navigation.DisplayTitle(section.Title, section.Titles, lang), Open: true, Nodes: visible, Recursive: true, CollapseKey: key(section.ID)})
 	}
 	return out
+}
+
+// Reorder configured commands in their existing slots, keeping other entries
+// and personal folders in place. Only visible commands take part.
+func applyLegacyMenuOrder(nodes []navTreeNode, order []string) {
+	if len(order) == 0 {
+		return
+	}
+	ranks := make(map[string]int, len(order))
+	for rank, id := range order {
+		ranks[id] = rank
+	}
+	var positions []int
+	var ranked []navTreeNode
+	for index, node := range nodes {
+		if _, ok := ranks[node.ID]; ok {
+			positions = append(positions, index)
+			ranked = append(ranked, node)
+		}
+	}
+	slices.SortFunc(ranked, func(a, b navTreeNode) int { return ranks[a.ID] - ranks[b.ID] })
+	for index, position := range positions {
+		nodes[position] = ranked[index]
+	}
 }
 
 func allocateRecursiveNavigationContainers(base, effective navigation.Tree, desired *navigation.Tree, layer navigation.Layer) error {

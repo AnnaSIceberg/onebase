@@ -124,6 +124,7 @@ type Section struct {
 	Groups        []Group           `json:"groups,omitempty"`
 	Nodes         []Node            `json:"nodes,omitempty"`
 	RoleClauses   [][]string        `json:"role_clauses,omitempty"`
+	LegacyOrder   []string          `json:"-"`
 }
 
 type Group struct {
@@ -302,6 +303,7 @@ func cloneSections(input []Section) []Section {
 	for _, s := range input {
 		s.Titles = copyTitles(s.Titles)
 		s.RoleClauses = cloneClauses(s.RoleClauses)
+		s.LegacyOrder = slices.Clone(s.LegacyOrder)
 		s.Nodes = CloneNodes(s.Nodes)
 		s.Groups = append([]Group(nil), s.Groups...)
 		for j := range s.Groups {

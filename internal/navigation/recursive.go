@@ -18,7 +18,7 @@ type Node struct {
 func usesRecursiveMenu(menu *metadata.Menu) bool {
 	if menu != nil {
 		for _, s := range menu.Sections {
-			if s.Nodes != nil || len(s.Roles) > 0 {
+			if s.Nodes != nil || len(s.Roles) > 0 || len(s.LegacyOrder) > 0 {
 				return true
 			}
 		}
@@ -225,6 +225,22 @@ func normalizeRecursive(context string, menu *metadata.Menu, scope Scope) (Tree,
 		clauses := withRoles(nil, raw.Roles)
 		section := Section{ID: "cfg:" + raw.ID, Title: raw.Title, Titles: copyTitles(raw.Titles), Icon: metadata.NormalizeIconName(raw.Icon), Gradient: raw.Gradient, RoleClauses: clauses}
 		section.Nodes = children(input, 2, clauses)
+		if len(raw.LegacyOrder) > 0 {
+			if raw.Nodes == nil {
+				add("navigation.shape", raw.ID, "legacy_order requires section nodes", false)
+			}
+			commands := make(map[string]bool)
+			WalkItems(Tree{Sections: []Section{section}}, func(item Item) { commands[item.ID] = true })
+			for _, id := range raw.LegacyOrder {
+				key := "cfg:" + id
+				if !commands[key] {
+					add("navigation.legacy-order", raw.ID, fmt.Sprintf("invalid or repeated command ID %q in legacy_order", id), false)
+					continue
+				}
+				delete(commands, key)
+				section.LegacyOrder = append(section.LegacyOrder, key)
+			}
+		}
 		tree.Sections = append(tree.Sections, section)
 	}
 	other := Section{ID: "cfg:other", Title: "Другое", Titles: map[string]string{"en": "Other"}}
