@@ -1356,19 +1356,21 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return e != nil && e.Activity != nil && f.Name == e.Activity.Field
 		},
 		"listQuerySuffix": funcsListQuerySuffix,
-		// listExcelSuffix — состояние списка для выгрузки в Excel: то же, что
-		// listQuerySuffix, плюс снятые отборы формы списка (lf_off).
-		"listExcelSuffix": func(params storage.ListParams, offValue any) template.URL {
+		// listExcelSuffix carries applied filters and the rendered form order.
+		"listExcelSuffix": func(params storage.ListParams, offValue, orderValue any) template.URL {
 			suffix := string(funcsListQuerySuffix(params))
+			order, _ := orderValue.(string)
+			snapshot, _ := url.ParseQuery(order)
 			off, _ := offValue.(string)
-			if strings.TrimSpace(off) == "" {
-				return template.URL(suffix) //nolint:gosec // G203: строка собрана listQuerySuffix из экранированных частей
+			setQueryValue(snapshot, "lf_off", strings.TrimSpace(off))
+			if len(snapshot) == 0 {
+				return template.URL(suffix) //nolint:gosec // G203: listQuerySuffix escapes its values.
 			}
 			sep := "?"
 			if suffix != "" {
 				sep = "&"
 			}
-			return template.URL(suffix + sep + "lf_off=" + url.QueryEscape(off)) //nolint:gosec // G203: значение пропущено через url.QueryEscape
+			return template.URL(suffix + sep + snapshot.Encode()) //nolint:gosec // G203: url.Values.Encode escapes the snapshot.
 		},
 		"filterQuery": func(params storage.ListParams) template.URL {
 			var parts []string
@@ -3036,7 +3038,7 @@ const tplList = `
          приглушённой, дальше её состояние ведёт ui.js по выделению. */}}
     <button type="button" id="list-actions-btn" class="btn btn-secondary" data-ob-list-actions aria-disabled="true" title="{{t $.Lang "Сначала выберите строку списка"}}">⚙ {{t $.Lang "Действия"}} ▾</button>
     {{range .ProcessorLinks}}<a class="btn btn-secondary" href="{{.URL}}">{{.Title}}</a>{{end}}
-    <a class="btn btn-sm" href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/excel{{listExcelSuffix .Params .ListFormOff}}" style="background:#16a34a;color:#fff" title="{{t $.Lang "Скачать Excel"}}">{{t $.Lang "Excel ↓"}}</a>
+    <a class="btn btn-sm" href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/excel{{listExcelSuffix .Params .ListFormOff .ListOrderQuery}}" style="background:#16a34a;color:#fff" title="{{t $.Lang "Скачать Excel"}}">{{t $.Lang "Excel ↓"}}</a>
   </div>
 </div>
 {{if .LegacyEntityUI}}{{template "entity-list-search" .}}{{end}}
@@ -3380,6 +3382,7 @@ const tplList = `
   "canUnpost" .CanUnpost
   "basedOn" .BasedOnActions
   "treeEntity" .Entity.Name
+  "listOrderQuery" .ListOrderQuery
   "listFormOff" .ListFormOff
   "subsystem" (str $.CurrentSubsystem)
   "labels" (dict

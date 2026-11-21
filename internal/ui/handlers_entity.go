@@ -69,7 +69,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entity, hasFormOrder := entityForListQuery(r.Context(), entity)
-	chronological := !hasFormOrder && entity.Kind == metadata.KindDocument && !s.legacyEntityUI(r)
+	chronological := entity.Kind == metadata.KindDocument && !s.legacyEntityUI(r)
 	pageSize := storage.DefaultListPageSize
 	if chronological {
 		pageSize = 50
@@ -107,7 +107,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	stream := !treeView && s.continuousLists(r)
 	feed := !stream && !treeView && s.resolveListMode(w, r, entity)
 	chronological = chronological && !feed && !treeView
-	params.ChronologicalDocuments = chronological
+	params.ChronologicalDocuments = chronological && !hasFormOrder
 	params.StableListOrder = stream
 	requestedPage := r.URL.Query().Get("page")
 	openLast := chronological && (requestedPage == "last" || requestedPage == "" && params.Sort == "")
@@ -191,13 +191,17 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	// /ui/_tree-children/{entity} when the user expands a folder.
 	var treeRows []map[string]any
 	if treeView {
-		allRows, _ := s.store.List(r.Context(), entity.Name, entity, storage.ListParams{
+		treeParams := storage.ListParams{
 			ActivityScope:      metadata.ActivityScopeAll,
 			ParentStr:          "root",
 			RowFilter:          params.RowFilter,
 			RowFilterEvaluated: params.RowFilterEvaluated,
 			Limit:              storage.MaxListPageSize,
-		})
+		}
+		if hasFormOrder {
+			treeParams.Sort, treeParams.Dir = params.Sort, params.Dir
+		}
+		allRows, _ := s.store.List(r.Context(), entity.Name, entity, treeParams)
 		s.maskRecords(r.Context(), entity, allRows)
 		s.applyListRowStyle(r.Context(), entity, allRows)
 		s.resolveRefs(r.Context(), entity, allRows)
@@ -259,6 +263,14 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"ListFormToggles":  s.listFormFilterToggles(r, entity),
 		"ListFormOff":      r.URL.Query().Get(listFormFilterOffParam),
 		"ListFilterExtra":  listFilterExtra,
+	}
+	if hasFormOrder {
+		query := r.URL.Query()
+		snapshot := make(url.Values)
+		for _, key := range []string{"sort", "dir", "sort_default", "sort_snapshot"} {
+			setQueryValue(snapshot, key, query.Get(key))
+		}
+		data["ListOrderQuery"] = snapshot.Encode()
 	}
 	if !s.legacyEntityUI(r) {
 		data["CanCreate"] = s.canCreateFromList(r, entity)
