@@ -57,9 +57,12 @@ elements:
 		}
 		s := newSubmitTestServerOn(t, db, []*metadata.Entity{entity})
 		s.cfg.UIExceptRoles = []string{"ОператорКЦ", "ОператорМессенджера"}
+		rootNamesByID := make(map[string]string)
 		for i, name := range []string{"Alpha", "Beta", "Gamma", "Omega"} {
+			id := uuid.New()
+			rootNamesByID[id.String()] = name
 			row := map[string]any{"Наименование": name, "Ранг": []int{2, 1, 2, 1}[i]}
-			if err := db.Upsert(t.Context(), entity.Name, uuid.New(), row, entity); err != nil {
+			if err := db.Upsert(t.Context(), entity.Name, id, row, entity); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -181,7 +184,20 @@ elements:
 		checkTree := func(query url.Values, rootNames, childNames []string) {
 			t.Helper()
 			body := request(user, list, query).Body.String()
-			assertDefaultSortRows(t, body, rootNames)
+			var renderedRoot []string
+			folderFound := false
+			for _, row := range regexp.MustCompile(`data-tree-id="([^"]+)"`).FindAllStringSubmatch(body, -1) {
+				switch id := row[1]; id {
+				case folder.String():
+					folderFound = true
+				default:
+					renderedRoot = append(renderedRoot, rootNamesByID[id])
+				}
+			}
+			if !folderFound {
+				t.Fatal("folder does not appear at the root of the tree")
+			}
+			checkOrder(renderedRoot, rootNames)
 			match := regexp.MustCompile(`<script type="application/json" id="ob-list-config">([^<]+)</script>`).FindStringSubmatch(body)
 			if len(match) != 2 {
 				t.Fatal("missing list configuration")
