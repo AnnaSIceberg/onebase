@@ -24,6 +24,17 @@ import (
 // strings.ToLower (полная таблица Unicode) и применяется в LowerLike SQLite-
 // диалекта. Регистрация глобальна и действует на все коннекты, открытые позже.
 func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("ob_iso_datetime", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		value, ok := args[0].(string)
+		if !ok {
+			return nil, nil
+		}
+		parsed, ok := parseISODateTime(value)
+		if !ok {
+			return nil, nil
+		}
+		return parsed.UTC().Format(time.RFC3339Nano), nil
+	})
 	// Internal migration/maintenance fallback for keyless tables whose business
 	// fields shadow every rowid alias. Never mark this deterministic: SQLite
 	// must invoke crypto/rand separately for every physical row.

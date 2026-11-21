@@ -170,6 +170,9 @@ func Compile(src string, opts CompileOpts) (Result, error) {
 	if err := validateStartOfHourCalls(tokens); err != nil {
 		return Result{}, err
 	}
+	if err := validateISODateTimeCalls(tokens); err != nil {
+		return Result{}, err
+	}
 	tokens, opts = rewriteTablePartSources(tokens, opts)
 	res, err := translate(tokens, opts)
 	if err != nil {
@@ -7327,6 +7330,8 @@ func scalarFuncRewrites(dialect string) map[string]funcRewrite {
 	}
 	switch dialect {
 	case "sqlite":
+		m["датаизiso"] = rw("ob_iso_datetime(", ")")
+		m["isodatetime"] = m["датаизiso"]
 		m["нрег"] = rw("ob_lower(", ")")
 		// Цел — усечение к нулю (как decimal.Truncate(0) в DSL). В SQLite
 		// CAST(x AS INTEGER) усекает к нулю.
@@ -7349,6 +7354,8 @@ func scalarFuncRewrites(dialect string) map[string]funcRewrite {
 		m["day"] = rw("CAST(strftime('%d',", ") AS INTEGER)")
 	default: // pg
 		m["нрег"] = rw("LOWER(", ")")
+		m["датаизiso"] = postgresISODateTimeRewrite()
+		m["isodatetime"] = m["датаизiso"]
 		// Цел — усечение к нулю. В PG CAST(x AS INTEGER) округлял бы (half-even),
 		// поэтому берём TRUNC, которое усекает к нулю.
 		m["цел"] = rw("TRUNC(", ")")
@@ -7552,9 +7559,11 @@ func rewriteDateDiff(tokens []tok, at int, dialect string, scopedColTypes map[in
 		offset += len(raw) + 1
 		wrapped := tokenizeFragment("(")
 		if dialect == "sqlite" && dateArgumentIsMoment(raw, scopeColTypes, scopeQualified, params) {
-			wrapped = append(wrapped, tokenizeFragment("ob_local_datetime(")...)
+			// Calendar units start at whole seconds. SQLite date functions round
+			// fractional input before extracting the seconds component.
+			wrapped = append(wrapped, tokenizeFragment("substr(ob_local_datetime(")...)
 			wrapped = append(wrapped, inner...)
-			wrapped = append(wrapped, tokenizeFragment(")")...)
+			wrapped = append(wrapped, tokenizeFragment("), 1, 19)")...)
 		} else {
 			wrapped = append(wrapped, inner...)
 		}
@@ -7653,6 +7662,9 @@ func isCalendarDateFunc(name string) bool {
 func dateArgumentIsMoment(tokens []tok, colTypes map[string]metadata.FieldType, qualifiedColTypes map[string]map[string]metadata.FieldType, params map[string]any) bool {
 	for len(tokens) >= 2 && tokens[0].kind == tLParen && tokens[len(tokens)-1].kind == tRParen {
 		tokens = tokens[1 : len(tokens)-1]
+	}
+	if isISODateTimeCall(tokens, 0) && scalarCallEnd(tokens, 0) == len(tokens)-1 {
+		return true
 	}
 	if len(tokens) == 1 {
 		switch tokens[0].kind {

@@ -429,7 +429,10 @@ func scalarProjectionExpressionType(expr []tok, fields map[string]metadata.Field
 ) metadata.FieldType {
 	start, end := trimProjectionParentheses(expr, 0, len(expr))
 	expr = expr[start:end]
-	if isStartOfHourCall(expr, 0) && startOfHourEnd(expr, 0) == len(expr)-1 {
+	if isISODateTimeCall(expr, 0) && scalarCallEnd(expr, 0) == len(expr)-1 {
+		return metadata.FieldTypeDate
+	}
+	if isStartOfHourCall(expr, 0) && scalarCallEnd(expr, 0) == len(expr)-1 {
 		return scalarLocalHourType
 	}
 	if len(expr) >= 4 && expr[0].kind == tIdent && expr[1].kind == tLParen && expr[len(expr)-1].kind == tRParen {

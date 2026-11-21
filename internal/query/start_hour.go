@@ -7,7 +7,7 @@ func isStartOfHourCall(tokens []tok, at int) bool {
 		lowerFast(tokens[at].val) == "началочаса" && tokens[at+1].kind == tLParen
 }
 
-func startOfHourEnd(tokens []tok, at int) int {
+func scalarCallEnd(tokens []tok, at int) int {
 	depth := 0
 	for i := at + 1; i < len(tokens); i++ {
 		switch tokens[i].kind {
@@ -28,7 +28,7 @@ func validateStartOfHourCalls(tokens []tok) error {
 		if !isStartOfHourCall(tokens, i) {
 			continue
 		}
-		end := startOfHourEnd(tokens, i)
+		end := scalarCallEnd(tokens, i)
 		if end < 0 {
 			return fmt.Errorf("НачалоЧаса: ожидается один аргумент даты")
 		}
