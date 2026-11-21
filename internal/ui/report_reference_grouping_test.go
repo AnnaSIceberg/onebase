@@ -69,10 +69,14 @@ composition:
 			t.Helper()
 			permissions := auth.Permission{
 				Reports:  map[string][]string{rep.Name: {"run"}},
-				Catalogs: map[string][]string{input.Name: {"read"}},
+				Catalogs: map[string][]string{input.Name: {"read"}, target.Name: {"read"}},
 			}
-			if readTarget {
-				permissions.Catalogs[target.Name] = []string{"read"}
+			if !readTarget {
+				// The query can project the reference, but the label lookup
+				// must not read the target records under this row policy.
+				permissions.RowAccess.Catalogs = map[string]auth.RowPolicies{
+					target.Name: {"read": {Field: "Наименование", Op: "eq", Value: auth.RowValue{User: "login"}}},
+				}
 			}
 			user := &auth.User{ID: uuid.NewString(), Login: "group-reader", Roles: []*auth.Role{
 				{Name: "Reader", Permissions: permissions},
@@ -83,7 +87,7 @@ composition:
 				req = req.WithContext(auth.ContextWithUser(req.Context(), user))
 				rec := httptest.NewRecorder()
 				router.ServeHTTP(rec, req)
-				require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+				require.Equal(t, http.StatusOK, rec.Code, "response for %s", path)
 				return rec
 			}
 			body := get(base + "?__run=1").Body.String()
