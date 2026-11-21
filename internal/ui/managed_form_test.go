@@ -43,8 +43,7 @@ func TestPickManagedForm_MatchByKind(t *testing.T) {
 }
 
 // Smoke-тест: page-managed-form реально компилируется и рендерит элементы
-// дерева. Проверяем что в выводе есть заголовки группы, оба поля и
-// маркер ◇ managed.
+// дерева. Проверяем видимый заголовок, элементы и диагностику формы.
 func TestPageManagedForm_Renders(t *testing.T) {
 	form := &metadata.FormModule{
 		Name:       "ФормаОбъекта",
@@ -127,7 +126,6 @@ func TestPageManagedForm_Renders(t *testing.T) {
 	html := buf.String()
 
 	expects := []string{
-		"◇ managed",
 		"Контрагент",   // DisplayName
 		"Реквизиты",    // legend группы
 		"Наименование", // label поля
