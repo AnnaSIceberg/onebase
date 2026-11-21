@@ -1642,7 +1642,42 @@ window.obManagedApplyHints = obManagedApplyHints;
     return {names: names, files: files};
   }
 
-  async function snapshotFormEvent(elementName, eventName, extraParams, triggerSelection, pickerRequest){
+  function vtRowEditKey(row, field) {
+    return JSON.stringify(Array.from(row.querySelectorAll('input[name]'), function(input){
+      var column = input.name.split('.').pop();
+      if (column === field) return null;
+      return [column, input.type === 'checkbox' ? input.checked : input.value];
+    }).filter(Boolean));
+  }
+
+  function snapshotVtRowEdit(data, edit, params) {
+    var tbody = edit.body;
+    if (!tbody.isConnected || obManagedTableReadOnly(tbody)) return false;
+    var row = tbody.rows[edit.index];
+    // An earlier event can rebuild the table and remove its empty drafts.
+    // A changed position is usable only for an unambiguous matching row.
+    if (row !== edit.row && (!row || vtRowEditKey(row, edit.field) !== edit.rowKey)) {
+      var matches = Array.from(tbody.rows).filter(function(candidate){
+        return vtRowEditKey(candidate, edit.field) === edit.rowKey;
+      });
+      if (matches.length !== 1) return false;
+      row = matches[0];
+    }
+    var rowIndex = row.sectionRowIndex;
+    var name = 'vt.' + params._tp + '.' + rowIndex + '.' + edit.field;
+    var input = Array.from(row.querySelectorAll('input[name]')).find(function(cell){
+      return cell.name === name && cell.type !== 'hidden';
+    });
+    if (!input || input.readOnly || !controlSubmittable(input)) return false;
+    data.set(name, edit.value);
+    var rows = obManagedVtPayloadRows(tbody, data);
+    var index = rows ? rows.findIndex(function(item){ return item.index === rowIndex; }) : -1;
+    if (index < 0) return false;
+    params._tp_row = String(index);
+    return true;
+  }
+
+  async function snapshotFormEvent(elementName, eventName, extraParams, triggerSelection, pickerRequest, vtEdit){
     // Зафиксировать активную правку и синхронизировать ТЧ. При невалидной
     // ссылке или исключении editor-lock отправлять старое tp_json нельзя.
     if (window.obGridSync && window.obGridSync() === false) return;
@@ -1657,6 +1692,7 @@ window.obManagedApplyHints = obManagedApplyHints;
     const body = new URLSearchParams();
     const binaryFields = obBinaryFileFields(form);
     const eventFD = fileEventFormData(form, fileHelpers);
+    if (vtEdit && !snapshotVtRowEdit(eventFD, vtEdit, extraParams)) return;
     if (eventName === 'ПриАктивизацииСтроки' && extraParams && extraParams._tp) {
       var vtBody = obManagedTableBodies('vt-body-' + extraParams._tp, 'data-vt-fields').find(function(tbody){
         return tbody.getAttribute('data-ob-vt-activate') === elementName;
@@ -2035,7 +2071,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 
   if(window.obBindTabularHost)window.obBindTabularHost(fireFormEvent);
   if(window.obBindWorkbookPicker)window.obBindWorkbookPicker(document.getElementById('main-form'), flash);
-  function fireFormEvent(elementName, eventName, extraParams, pickerRequest, beforePostOwner, workbookSave){
+  function fireFormEvent(elementName, eventName, extraParams, pickerRequest, beforePostOwner, workbookSave, vtEdit){
 	pickerRequest = pickerRequest || (window.obPickerRequest ? window.obPickerRequest() : null);
 	if (formEventWriteUnknown || manualReconcileRequired) {
 	  flash(closeMessage('unknownResult', 'Исход операции неизвестен. Проверьте данные в отдельной вкладке и перезагрузите форму; повторная запись заблокирована.'), 'err');
@@ -2079,7 +2115,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 	var snapshotPromise = null;
 	var deferSnapshot = formEventPendingCount > 0;
 	if (!deferSnapshot) {
-	  try { snapshotPromise = snapshotFormEvent(capturedElement, capturedEvent, capturedExtra, capturedSelection, pickerRequest); }
+	  try { snapshotPromise = snapshotFormEvent(capturedElement, capturedEvent, capturedExtra, capturedSelection, pickerRequest, vtEdit); }
 	  catch (e) {
 		flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
         if (standaloneDeferred) deferredPendingCount--;
@@ -2093,7 +2129,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 	  try {
 		snapshot = snapshotPromise
 		  ? await snapshotPromise
-		  : await snapshotFormEvent(capturedElement, capturedEvent, capturedExtra, capturedSelection, pickerRequest);
+		  : await snapshotFormEvent(capturedElement, capturedEvent, capturedExtra, capturedSelection, pickerRequest, vtEdit);
 	  }
 	  catch (e) {
 		flash('Ошибка формы: ' + (e && e.message ? e.message : e), 'err');
@@ -2136,6 +2172,26 @@ window.obManagedApplyHints = obManagedApplyHints;
     Object.keys(headers).forEach(function(k){ if (k !== 'Content-Type') multipartHeaders[k] = headers[k]; });
     return {body: data, headers: multipartHeaders};
   }
+
+  window.obManagedVtInputChanged = function(input){
+    if (input.tagName !== 'INPUT' || input.type === 'hidden' || !input.name ||
+        input.readOnly || !controlSubmittable(input)) return;
+    var body = input.closest('tbody[data-ob-vt-rowchange]');
+    if (!body || obManagedTableReadOnly(body)) return;
+    var row = input.closest('tr');
+    if (!row || row.parentElement !== body) return;
+    var name = body.getAttribute('data-ob-vt-name');
+    var index = row.sectionRowIndex;
+    var prefix = 'vt.' + name + '.' + index + '.';
+    if (!input.name.startsWith(prefix)) return;
+    var field = input.name.slice(prefix.length);
+    var edit = {
+      body: body, row: row, index: index, field: field, rowKey: vtRowEditKey(row, field),
+      value: input.type === 'checkbox' ? String(input.checked) : input.value
+    };
+    return fireFormEvent(body.getAttribute('data-ob-vt-rowchange'), 'ПриИзмененииСтроки',
+      {_tp: name, _tp_col: field}, null, null, null, edit);
+  };
 
   window.obFire = function(elementName, eventName, extraParams, pickerRequest){
     if (window.obAudioBeforeEvent) extraParams = window.obAudioBeforeEvent(elementName, eventName, extraParams);
@@ -3653,6 +3709,7 @@ function obManagedInitDelegates() {
     }
     var fire = el.getAttribute('data-ob-fire-change');
     if (fire && window.obFire) window.obFire(fire, 'ПриИзменении');
+    else if (window.obManagedVtInputChanged) window.obManagedVtInputChanged(el);
   });
 
   // BEGIN onebase-free-choice
