@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -157,13 +158,15 @@ func (db *DB) JournalQuery(
 		switch {
 		case jf.Type == "date_range":
 			if fv.From != "" {
-				whereParts = append(whereParts, fmt.Sprintf("%s >= %s", colName, d.Placeholder(argIdx)))
-				args = append(args, fv.From)
+				condition, arg := journalDateCompare(d, colName, argIdx, fv.From, false)
+				whereParts = append(whereParts, condition)
+				args = append(args, arg)
 				argIdx++
 			}
 			if fv.To != "" {
-				whereParts = append(whereParts, fmt.Sprintf("%s <= %s", colName, d.Placeholder(argIdx)))
-				args = append(args, fv.To)
+				condition, arg := journalDateCompare(d, colName, argIdx, fv.To, true)
+				whereParts = append(whereParts, condition)
+				args = append(args, arg)
 				argIdx++
 			}
 		case strings.HasPrefix(jf.Type, "reference:"):
@@ -259,4 +262,27 @@ func (db *DB) JournalQuery(
 		rows = append(rows, row)
 	}
 	return rows, total, colRefMap, rows2.Err()
+}
+
+// A calendar selection is a local interval from the start of its first day
+// to the start of the day after its last. Explicit times keep their comparison.
+func journalDateCompare(d Dialect, column string, position int, raw string, upper bool) (string, any) {
+	op := ">="
+	if upper {
+		op = "<="
+	}
+	var arg any = raw
+	if day, err := time.ParseInLocation(time.DateOnly, raw, time.Local); err == nil {
+		if upper {
+			day = day.AddDate(0, 0, 1)
+			op = "<"
+		}
+		arg = day
+		if d.Name() == "sqlite" {
+			// Document dates may use different timestamp encodings in legacy rows.
+			column = "ob_local_datetime(" + column + ")"
+			arg = day.Format(time.DateTime)
+		}
+	}
+	return fmt.Sprintf("%s %s %s", column, op, d.Placeholder(position)), arg
 }
