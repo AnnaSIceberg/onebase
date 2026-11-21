@@ -108,7 +108,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	feed := !stream && !treeView && s.resolveListMode(w, r, entity)
 	chronological = chronological && !feed && !treeView
 	params.ChronologicalDocuments = chronological && !hasFormOrder
-	params.StableListOrder = stream
+	params.StableListOrder = stream || hasFormOrder
 	requestedPage := r.URL.Query().Get("page")
 	openLast := chronological && (requestedPage == "last" || requestedPage == "" && params.Sort == "")
 	backwards := chronological && params.Sort == ""
@@ -200,6 +200,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		}
 		if hasFormOrder {
 			treeParams.Sort, treeParams.Dir = params.Sort, params.Dir
+			treeParams.StableListOrder = true
 		}
 		allRows, _ := s.store.List(r.Context(), entity.Name, entity, treeParams)
 		s.maskRecords(r.Context(), entity, allRows)
@@ -270,7 +271,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		for _, key := range []string{"sort", "dir", "sort_default", "sort_snapshot"} {
 			setQueryValue(snapshot, key, query.Get(key))
 		}
-		data["ListOrderQuery"] = snapshot.Encode()
+		data["ListOrderQuery"] = snapshot
 	}
 	if !s.legacyEntityUI(r) {
 		data["CanCreate"] = s.canCreateFromList(r, entity)
@@ -1598,6 +1599,7 @@ func (s *Server) treeChildrenJSON(w http.ResponseWriter, r *http.Request) {
 	ent, hasFormOrder := entityForListQuery(r.Context(), ent)
 	if hasFormOrder {
 		params.Sort, params.Dir = r.URL.Query().Get("sort"), r.URL.Query().Get("dir")
+		params.StableListOrder = true
 		s.resolveListSort(r, ent, &params, false)
 	}
 	rows, err := s.store.List(r.Context(), ent.Name, ent, params)

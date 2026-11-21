@@ -31,6 +31,7 @@ func (s *Server) listExcel(w http.ResponseWriter, r *http.Request) {
 	params = s.applyListFormFilter(r, entity, params)
 	entity, hasFormOrder := entityForListQuery(r.Context(), entity)
 	if hasFormOrder {
+		params.StableListOrder = true
 		s.resolveListSort(r, entity, &params, false)
 	}
 	rows, err := s.store.List(r.Context(), entity.Name, entity, params)

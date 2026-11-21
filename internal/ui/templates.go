@@ -1359,8 +1359,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		// listExcelSuffix carries applied filters and the rendered form order.
 		"listExcelSuffix": func(params storage.ListParams, offValue, orderValue any) template.URL {
 			suffix := string(funcsListQuerySuffix(params))
-			order, _ := orderValue.(string)
-			snapshot, _ := url.ParseQuery(order)
+			snapshot := cloneQuery(orderValue)
 			off, _ := offValue.(string)
 			setQueryValue(snapshot, "lf_off", strings.TrimSpace(off))
 			if len(snapshot) == 0 {
@@ -3004,7 +3003,7 @@ const tplList = `
            бы нельзя. */}}
       <a class="view-btn{{if and (not .TreeView) (not .TilesView)}} active{{end}}" href="{{listURL $.Query "view" "list"}}" title="{{t $.Lang "Список"}}">☰</a>
       <a class="view-btn{{if .TilesView}} active{{end}}" href="{{listURL $.Query "view" "tiles"}}" title="{{t $.Lang "Плитка"}}">▦</a>
-      {{if .Entity.Hierarchical}}<a class="view-btn{{if .TreeView}} active{{end}}" href="?view=tree{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}" title="{{t $.Lang "Дерево"}}">📂</a>{{end}}
+      {{if .Entity.Hierarchical}}<a class="view-btn{{if .TreeView}} active{{end}}" href="{{listURL .ListOrderQuery "view" "tree" "subsystem" (str $.CurrentSubsystem) "lf_off" (str .ListFormOff)}}" title="{{t $.Lang "Дерево"}}">📂</a>{{end}}
     </div>
     {{template "detail-panel-toggle" .}}
     {{if and .Entity.Activity (not .TreeView)}}

@@ -2956,7 +2956,9 @@ function toggleTreeNode(btn) {
   var url = '/ui/_tree-children/' + encodeURIComponent(cfg.treeEntity || '') + '?parent=' + encodeURIComponent(fid) + '&depth=' + encodeURIComponent(depth);
   if (cfg.subsystem) url += '&subsystem=' + encodeURIComponent(cfg.subsystem);
   if (cfg.listFormOff) url += '&lf_off=' + encodeURIComponent(cfg.listFormOff);
-  if (cfg.listOrderQuery) url += '&' + cfg.listOrderQuery;
+  Object.entries(cfg.listOrderQuery || {}).forEach(function(entry) {
+    if (entry[1].length) url += '&' + encodeURIComponent(entry[0]) + '=' + encodeURIComponent(entry[1][0]);
+  });
   fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
     .then(function (resp) {
       if (!resp.ok) throw new Error('HTTP ' + resp.status);

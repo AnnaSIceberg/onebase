@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"html"
 	"net/http"
 	"net/http/httptest"
@@ -122,6 +123,14 @@ elements:
 		if err != nil {
 			t.Fatal(err)
 		}
+		treeLink := regexp.MustCompile(`href="([^"]*view=tree[^"]*)"[^>]*>📂`).FindStringSubmatch(opening)
+		if len(treeLink) != 2 {
+			t.Fatal("missing tree action")
+		}
+		treeURL, err := url.Parse(html.UnescapeString(treeLink[1]))
+		if err != nil {
+			t.Fatal(err)
+		}
 		assertDefaultSortRows(t, request(user, list, pinnedSecond).Body.String(), byRank[2:])
 		checkOrder(excelNames(user, list+"/excel", url.Values{"limit": {"4"}}), byRank)
 
@@ -178,14 +187,14 @@ elements:
 				t.Fatal("missing list configuration")
 			}
 			var cfg struct {
-				ListOrderQuery string
+				ListOrderQuery url.Values
 			}
 			if err := json.Unmarshal([]byte(match[1]), &cfg); err != nil {
 				t.Fatal(err)
 			}
-			childQuery, err := url.ParseQuery(cfg.ListOrderQuery)
-			if err != nil {
-				t.Fatal(err)
+			childQuery := cfg.ListOrderQuery
+			if childQuery == nil {
+				t.Fatal("missing order snapshot in tree configuration")
 			}
 			childQuery.Set("parent", folder.String())
 			if err := db.SaveListSortUserSettings(t.Context(), entity.Name, user.Login, "Наименование", "asc"); err != nil {
@@ -201,8 +210,8 @@ elements:
 			}
 			checkOrder(names, childNames)
 		}
+		checkTree(treeURL.Query(), byRank, byRank)
 		checkTree(url.Values{"view": {"tree"}, "sort": {"Наименование"}, "dir": {"desc"}}, byNameDesc, byNameDesc)
-		checkTree(url.Values{"view": {"tree"}, "sort_default": {"1"}}, byRank, byRank)
 		if err := db.SaveListSortUserSettings(t.Context(), entity.Name, user.Login, "Наименование", "desc"); err != nil {
 			t.Fatal(err)
 		}
@@ -229,7 +238,8 @@ func TestManagedDocumentListOrderKeepsLastPageHTTP(t *testing.T) {
 			row := map[string]any{
 				"Наименование": name, "Дата": "2026-11-21", "Ранг": []int{2, 1, 2, 1}[i],
 			}
-			if err := db.Upsert(t.Context(), doc.Name, uuid.New(), row, doc); err != nil {
+			id := uuid.MustParse(fmt.Sprintf("00000000-0000-0000-0000-%012d", 4-i))
+			if err := db.Upsert(t.Context(), doc.Name, id, row, doc); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -247,6 +257,8 @@ func TestManagedDocumentListOrderKeepsLastPageHTTP(t *testing.T) {
 		assertDefaultSortRows(t, request(""), []string{"Alpha", "Gamma"})
 		assertDefaultSortRows(t, request("&page=last"), []string{"Alpha", "Gamma"})
 		assertDefaultSortRows(t, request("&page=last&sort=Наименование"), []string{"Gamma", "Omega"})
+		assertDefaultSortRows(t, request("&page=1&sort=Ранг"), []string{"Omega", "Beta"})
+		assertDefaultSortRows(t, request("&page=2&sort=Ранг"), []string{"Gamma", "Alpha"})
 		s.cfg.UIEnhancements = true
 		body := request("")
 		assertDefaultSortRows(t, body, []string{"Alpha", "Gamma"})
