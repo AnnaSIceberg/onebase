@@ -23,6 +23,15 @@
         }
       ]
     },
+    "github.com/boombuler/barcode": {
+      "license": "MIT",
+      "files": [
+        {
+          "path": "LICENSE",
+          "sha256": "36d2e94c565d51a5146d729e6be6a3d26168d473d97c94011b13700e82c622e4"
+        }
+      ]
+    },
     "github.com/coder/websocket": {
       "license": "ISC",
       "files": [
