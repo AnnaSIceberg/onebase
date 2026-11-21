@@ -21,7 +21,7 @@ func TestBarcodePNGInDSL(t *testing.T) {
 		{"Code39", "ITEM-007"},
 		{"Code128", codeGS1},
 		{"EAN128", codeGS1},
-		{"GS1-128", "010950600013435210" + strings.Repeat("A", 20) + "\x1d21" + strings.Repeat("B", 8)},
+		{"GS1-128", "010950600013435210" + strings.Repeat("A", 20) + "\x1d21" + strings.Repeat("B", 7)},
 	}
 	images := make(map[string]image.Image)
 	for _, tc := range cases {
@@ -98,6 +98,7 @@ func TestBarcodePNGDSLRejectsInvalidInput(t *testing.T) {
 		{"EAN128", "(01)09506000134352", "подготовленные данные AI"},
 		{"EAN128", "10LOT\x1d", "подготовленные данные AI"},
 		{"GS1-128", strings.Repeat("1", 49), "подготовленные данные AI"},
+		{"GS1-128", "010950600013435210" + strings.Repeat("A", 20) + "\x1d21" + strings.Repeat("B", 8), "подготовленные данные AI"},
 		{"Code128", strings.Repeat("1", 81), "длина кода"},
 		{"QR", "123", "неизвестный тип"},
 	} {

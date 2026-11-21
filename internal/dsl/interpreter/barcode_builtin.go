@@ -99,7 +99,7 @@ func encodeLinearBarcode(kind, code string) (barcode.Barcode, error) {
 		}
 		return code128.Encode(code)
 	case "EAN128", "GS1-128":
-		if len(code)-strings.Count(code, "\x1d") <= gs1MaxDataBytes && validGS1BarcodePayload(code) {
+		if len(code) <= gs1MaxDataBytes && validGS1BarcodePayload(code) {
 			fnc1 := string(code128.FNC1)
 			return code128.Encode(fnc1 + strings.ReplaceAll(code, "\x1d", fnc1))
 		}
