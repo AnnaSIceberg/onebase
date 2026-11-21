@@ -154,7 +154,8 @@ const tplManagedForm = `
        и видимость (obRefreshHeaderFields). */}}
   {{if not (elHidden $ctx $el)}}<span class="ob-header-field" data-ob-header-field="{{$el.Name}}"><span class="ob-header-field-label">{{fieldTitleRU $el.TitleMap (dpField $el.DataPath)}}:</span> <span class="ob-header-field-value">{{index $ctx.Values (dpField $el.DataPath)}}</span></span>{{end}}
 {{else if and (elHidden $ctx $el) (ne (str $el.Kind) "Кнопка") (ne (str $el.Kind) "Аудиоплеер")}}
-{{else if and $ctx.WorkbookPickerID $el.WorkbookSavePicker (eq (str $el.Kind) "ПолеФормы")}}
+{{else if and $el.WorkbookSavePicker (eq (str $el.Kind) "ПолеФормы")}}
+  {{if $ctx.WorkbookPickerID}}
   <div class="form-group" data-ob-workbook-picker="{{$ctx.WorkbookPickerID}}" style="{{elLayout $el}}">
     <label for="ob-workbook-name">{{fieldTitleRU $el.TitleMap $el.Name}}</label>
     <div style="display:flex;align-items:center;gap:4px">
@@ -162,6 +163,7 @@ const tplManagedForm = `
       <button type="button" class="btn btn-secondary" data-ob-workbook-choose title="{{t $ctx.Lang "Выбрать файл"}}" aria-label="{{t $ctx.Lang "Выбрать файл"}}"{{if $ro}} disabled{{end}}>…</button>
     </div>
   </div>
+  {{end}}
 {{else if eq (str $el.Kind) "ГруппаФормы"}}
   <fieldset class="form-group-box{{if eq $el.Orientation "horizontal"}} managed-group-horizontal{{end}}{{if $el.ScrollX}} managed-group-scrollx{{end}}{{if elEqualColumns $ctx $el}} ob-equal-columns{{end}}{{if $el.EqualColumnsWhen}} ob-equal-columns-conditional{{end}}{{if $el.Frameless}} ob-group-plain{{end}}"{{if $el.FitWindow}} data-ob-fit-group="1"{{end}}{{if hasHandler $el "ПослеОткрытия"}} data-ob-after-open="{{$el.Name}}"{{end}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{if $el.HiddenWhen}} data-ob-hidden-group="1"{{if elHiddenStyle $ctx $el}} disabled{{end}}{{end}} style="{{elHiddenStyle $ctx $el}}{{if $el.Frameless}}border:0;padding:0;margin:0;min-width:0;{{else}}border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;{{end}}{{elBackground $el}}{{elLayout $el}}">
     {{/* frame: false — только раскладка: без рамки, отступов и заголовка. */}}

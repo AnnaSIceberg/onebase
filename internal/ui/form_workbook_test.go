@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/processor"
@@ -64,6 +65,17 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 			require.Contains(t, page.Body.String(), marker)
 		}
 		require.NotContains(t, page.Body.String(), "data-ob-tabular-field=")
+		s.cfg.UIExceptRoles = []string{"ОператорКЦ", "ОператорМессенджера"}
+		for _, role := range s.cfg.UIExceptRoles {
+			mixed := *user
+			mixed.Roles = []*auth.Role{user.Roles[0], {Name: role}}
+			legacy := tabularHTTP(s, &mixed, "own", "GET", base, nil)
+			require.Equal(t, http.StatusOK, legacy.Code, role)
+			require.Contains(t, legacy.Body.String(), `data-ob-fire-click="Build"`, role)
+			require.NotContains(t, legacy.Body.String(), "data-ob-workbook-picker=", role)
+			require.NotContains(t, legacy.Body.String(), "data-ob-workbook-save", role)
+			require.NotContains(t, legacy.Body.String(), "рендеринг не реализован", role)
+		}
 		clickRequest := func(session, button string) *httptest.ResponseRecorder {
 			body := url.Values{"_form": {form.Name}, "_element": {button}, "_event": {"Нажатие"}}
 			return tabularHTTP(s, user, session, "POST", base+"/form-event", body)
