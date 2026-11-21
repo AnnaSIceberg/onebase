@@ -382,6 +382,8 @@ type FormElement struct {
 	NoGrid    bool   `yaml:"no_grid,omitempty"`    // отключить SlickGrid у ТЧ (вернуть простую таблицу)
 	AutoSum   bool   `yaml:"auto_sum,omitempty"`   // ТЧ: авто Сумма = Количество × Цена по именам колонок — opt-in (#215.1)
 	Hint      string `yaml:"hint,omitempty"`       // всплывающая подсказка
+	// RowKey is the stable column identifying a native ValueTable row across events.
+	RowKey string `yaml:"row_key,omitempty"`
 	// HintFrom — всплывающая подсказка из реквизита формы (`hint_from`): текст
 	// берётся из значения реквизита при отрисовке и после каждого события
 	// формы. Пустое значение — статический hint. Как title_from у колонок ТЧ.

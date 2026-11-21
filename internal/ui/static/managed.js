@@ -1642,24 +1642,24 @@ window.obManagedApplyHints = obManagedApplyHints;
     return {names: names, files: files};
   }
 
-  function vtRowEditKey(row, field) {
-    return JSON.stringify(Array.from(row.querySelectorAll('input[name]'), function(input){
+  function vtRowEditKey(row, field, keyColumn) {
+    var values = Array.from(row.querySelectorAll('input[name]'), function(input){
       var column = input.name.split('.').pop();
-      if (column === field) return null;
-      return [column, input.type === 'checkbox' ? input.checked : input.value];
-    }).filter(Boolean));
+      var value = input.type === 'checkbox' ? String(input.checked) : input.value;
+      if (keyColumn) return column.toLowerCase() === keyColumn && value !== '' ? [column, value] : null;
+      return column === field ? null : [column, value];
+    }).filter(Boolean);
+    return values.length ? JSON.stringify(values) : '';
   }
 
   function snapshotVtRowEdit(data, edit, params) {
     var tbody = edit.body;
     if (!tbody.isConnected || obManagedTableReadOnly(tbody)) return false;
-    var row = tbody.rows[edit.index];
-    // An earlier event can rebuild the table and remove its empty drafts.
-    // A changed position is usable only for an unambiguous matching row.
-    if (row !== edit.row && (!row || vtRowEditKey(row, edit.field) !== edit.rowKey)) {
-      var matches = Array.from(tbody.rows).filter(function(candidate){
-        return vtRowEditKey(candidate, edit.field) === edit.rowKey;
-      });
+    var row = edit.row;
+    if (row.parentElement !== tbody) {
+      var matches = edit.unique ? Array.from(tbody.rows).filter(function(candidate){
+        return vtRowEditKey(candidate, edit.field, edit.keyColumn) === edit.rowKey;
+      }) : [];
       if (matches.length !== 1) return false;
       row = matches[0];
     }
@@ -1692,7 +1692,10 @@ window.obManagedApplyHints = obManagedApplyHints;
     const body = new URLSearchParams();
     const binaryFields = obBinaryFileFields(form);
     const eventFD = fileEventFormData(form, fileHelpers);
-    if (vtEdit && !snapshotVtRowEdit(eventFD, vtEdit, extraParams)) return;
+    if (vtEdit && !snapshotVtRowEdit(eventFD, vtEdit, extraParams)) {
+      flash('Таблица обновилась. Повторите изменение строки.', 'err');
+      return;
+    }
     if (eventName === 'ПриАктивизацииСтроки' && extraParams && extraParams._tp) {
       var vtBody = obManagedTableBodies('vt-body-' + extraParams._tp, 'data-vt-fields').find(function(tbody){
         return tbody.getAttribute('data-ob-vt-activate') === elementName;
@@ -2185,8 +2188,13 @@ window.obManagedApplyHints = obManagedApplyHints;
     var prefix = 'vt.' + name + '.' + index + '.';
     if (!input.name.startsWith(prefix)) return;
     var field = input.name.slice(prefix.length);
+    var keyColumn = (body.getAttribute('data-ob-vt-row-key') || '').trim().toLowerCase();
+    var rowKey = vtRowEditKey(row, field, keyColumn);
+    var unique = rowKey !== '' && !Array.from(body.rows).some(function(candidate){
+      return candidate !== row && vtRowEditKey(candidate, field, keyColumn) === rowKey;
+    });
     var edit = {
-      body: body, row: row, index: index, field: field, rowKey: vtRowEditKey(row, field),
+      body: body, row: row, field: field, keyColumn: keyColumn, rowKey: rowKey, unique: unique,
       value: input.type === 'checkbox' ? String(input.checked) : input.value
     };
     return fireFormEvent(body.getAttribute('data-ob-vt-rowchange'), 'ПриИзмененииСтроки',

@@ -33,6 +33,10 @@ func CheckFormTablePartColumns(proj *project.Project) []Issue {
 				})
 			}
 			checkTablePartColumns(add, ent, el)
+			if key := strings.TrimSpace(el.RowKey); key != "" && !hasFormValueTableColumn(form, el.DataPath, key) {
+				add(fmt.Sprintf("row_key %q не является колонкой ValueTable", key),
+					"укажите колонку таблицы значений с постоянным уникальным ключом строки")
+			}
 		})
 		// Колонка вне табличной части не попадает в состав ничего и потому
 		// невидима вдвойне: её нет ни на форме, ни в диагностике.
@@ -90,6 +94,23 @@ func CheckFormTablePartColumns(proj *project.Project) []Issue {
 		}
 	}
 	return issues
+}
+
+func hasFormValueTableColumn(form *metadata.FormModule, dataPath, key string) bool {
+	definitions, err := metadata.FormTableDefinitions(form, nil)
+	if err != nil {
+		return false
+	}
+	for _, definition := range definitions {
+		if strings.EqualFold(definition.Name, formDataPathField(dataPath)) {
+			for _, column := range definition.Columns {
+				if strings.EqualFold(column, key) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func checkTablePartColumns(add func(msg, fix string), ent *metadata.Entity, el *metadata.FormElement) {

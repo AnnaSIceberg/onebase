@@ -16,16 +16,16 @@ import (
 
 func TestValueTableRowChangeBrowser(t *testing.T) {
 	browser := newMobileLayoutBrowser(t, managedLayoutTestBrowser(t))
-	table := func(name string, ro bool) *metadata.FormElement {
+	table := func(name, attribute, key string, ro bool) *metadata.FormElement {
 		return &metadata.FormElement{
-			Kind: metadata.FormElementTablePart, Name: name, DataPath: "Форма.Результаты",
-			FixedRows: true, ReadOnly: ro,
+			Kind: metadata.FormElementTablePart, Name: name, DataPath: "Форма." + attribute,
+			FixedRows: true, ReadOnly: ro, RowKey: key,
 			Children: []*metadata.FormElement{
 				{Kind: metadata.FormElementColumn, Name: "Отметка", DataPath: "Отмечен"},
 				{Kind: metadata.FormElementColumn, Name: "Подпись", DataPath: "Имя", ReadOnly: true},
 			},
 			Handlers: map[metadata.FormEventType]string{
-				metadata.FormEventOnRowActivated: "Активировать",
+				metadata.FormEventOnRowActivated: "Активировать" + attribute,
 				metadata.FormEventOnRowChanged:   "Обновить",
 			},
 		}
@@ -35,28 +35,49 @@ func TestValueTableRowChangeBrowser(t *testing.T) {
  Результаты.Очистить();
  Для Индекс = 0 По 1 Цикл
   Запись = Результаты.Добавить();
-  Запись.Имя = "Вариант" + Строка(Индекс);
+  Запись.Имя = "Вариант";
+  Запись.Номер = Индекс + 1;
   Запись.Отмечен = Ложь;
+  Повтор = Дубликаты.Добавить();
+  Повтор.Имя = "Одинаковый вариант";
+  Повтор.Отмечен = Ложь;
  КонецЦикла;
 КонецПроцедуры
 
-Процедура Активировать()
+Процедура АктивироватьРезультаты()
  Если Объект.Наименование = "" Тогда
-  ТекущаяСтрока.Отмечен = Ложь;
+  Результаты.Очистить();
+  Запись = Результаты.Добавить();
+  Запись.Имя = "Вариант";
+  Запись.Номер = 2;
+  Запись.Отмечен = Ложь;
+  Запись = Результаты.Добавить();
+  Запись.Имя = "Уточнённый вариант";
+  Запись.Номер = 1;
+  Запись.Отмечен = Ложь;
  КонецЕсли;
 КонецПроцедуры
 
+Процедура АктивироватьДубликаты()
+ ТекущаяСтрока.Отмечен = Ложь;
+КонецПроцедуры
+
 Процедура Обновить()
- Объект.Наименование = ТекущаяСтрока.Имя + ":" + ИмяКолонки + ?(ТекущаяСтрока.Отмечен, ":да", ":нет");
+ Объект.Наименование = Строка(ТекущаяСтрока.Номер) + ":" + ИмяКолонки + ?(ТекущаяСтрока.Отмечен, ":да", ":нет");
 КонецПроцедуры
 `, map[metadata.FormEventType]string{metadata.FormEventOnOpen: "Заполнить"}, []*metadata.FormElement{
 		{Kind: metadata.FormElementField, Name: "ПринятыйОтвет", DataPath: "Объект.Наименование"},
 		{Kind: metadata.FormElementGroupBox, Name: "Варианты", Children: []*metadata.FormElement{
-			table("РедактируемаяТаблица", false), table("ТаблицаПросмотра", true),
+			table("РедактируемаяТаблица", "Результаты", "Номер", false),
+			table("ТаблицаПросмотра", "Результаты", "Номер", true),
+			table("ТаблицаДубликатов", "Дубликаты", "", false),
 		}},
 	})
 	entity.Forms[0].Attributes = []*metadata.FormAttribute{
 		{Name: "Результаты", TypeRef: "ValueTable", Columns: []*metadata.FormAttributeColumn{
+			{Name: "Имя", TypeRef: "string"}, {Name: "Отмечен", TypeRef: "bool"}, {Name: "Номер", TypeRef: "number"},
+		}},
+		{Name: "Дубликаты", TypeRef: "ValueTable", Columns: []*metadata.FormAttributeColumn{
 			{Name: "Имя", TypeRef: "string"}, {Name: "Отмечен", TypeRef: "bool"},
 		}},
 	}
@@ -112,6 +133,7 @@ window.addEventListener('load', async function() {
   try {
     const editable = '[data-ob-vt-rowchange="РедактируемаяТаблица"]';
     const locked = '[data-ob-vt-rowchange="ТаблицаПросмотра"]';
+    const duplicates = '[data-ob-vt-rowchange="ТаблицаДубликатов"]';
     const answer = document.querySelector('[name="Наименование"]');
     const mark = (selector, index) => document.querySelectorAll(selector + ' input[type="checkbox"]')[index];
     const changeRequests = [];
@@ -119,26 +141,32 @@ window.addEventListener('load', async function() {
     window.fetch = function(url, options) {
       const body = options && options.body;
       if (String(url).includes('form-event') && body && body.get('_event') === 'ПриИзмененииСтроки') {
-        changeRequests.push([body.get('_tp_row'), body.get('_tp_col'), body.get('vt.Результаты.0.Отмечен')]);
+        changeRequests.push([body.get('_tp_row'), body.get('_tp_col'), body.get('vt.Результаты.1.Отмечен')]);
       }
       return fetchOriginal.apply(this, arguments);
     };
     await wait(() => mark(editable, 0), 'fixed_rows options did not load');
     mark(editable, 0).click();
-    await wait(() => answer.value === 'Вариант0:Отмечен:да', 'checkbox change did not reach the handler');
-    check(mark(editable, 0).checked, 'the activation response rolled back the check');
-    await window.obFire('РедактируемаяТаблица', 'ПриАктивизацииСтроки', {_tp:'Результаты', _tp_row:'1'});
-    check(mark(editable, 0).checked && !mark(editable, 1).checked, 'the next event overwrote the edited row');
-    mark(editable, 0).click();
-    await wait(() => answer.value === 'Вариант0:Отмечен:нет', 'unchecked value did not reach the handler');
-    check(!mark(editable, 0).checked, 'repaint rechecked the checkbox');
+    await wait(() => answer.value === '1:Отмечен:да', 'checkbox change did not reach the original row');
+    check(!mark(editable, 0).checked && mark(editable, 1).checked, 'reordered row has the wrong mark: ' + JSON.stringify(changeRequests));
+    check(document.querySelector('[name="vt.Результаты.1.Имя"]').value === 'Уточнённый вариант',
+      'change overwrote the neighboring value returned by activation');
+    await window.obFire('РедактируемаяТаблица', 'ПриАктивизацииСтроки', {_tp:'Результаты', _tp_row:'0'});
+    check(!mark(editable, 0).checked && mark(editable, 1).checked, 'the next event overwrote the edited row');
+    mark(editable, 1).click();
+    await wait(() => answer.value === '1:Отмечен:нет', 'unchecked value did not reach the handler');
+    check(!mark(editable, 1).checked, 'repaint rechecked the checkbox');
 
     const lockedMark = mark(locked, 0);
     check(lockedMark && lockedMark.disabled, 'readonly check is not disabled');
     lockedMark.click();
     lockedMark.dispatchEvent(new Event('change', {bubbles:true}));
     await window.obFire('РедактируемаяТаблица', 'ПриАктивизацииСтроки', {_tp:'Результаты', _tp_row:'1'});
-    check(JSON.stringify(changeRequests) === JSON.stringify([['0','Отмечен','true'], ['0','Отмечен','false']]),
+    mark(duplicates, 0).click();
+    await wait(() => document.body.innerText.includes('Таблица обновилась. Повторите изменение строки.'),
+      'ambiguous edit was not reported');
+    check(!mark(duplicates, 1).checked, 'an ambiguous edit was applied to another item');
+    check(JSON.stringify(changeRequests) === JSON.stringify([['1','Отмечен','true'], ['1','Отмечен','false']]),
       'unexpected row change requests: ' + JSON.stringify(changeRequests));
     report();
   } catch (error) {
