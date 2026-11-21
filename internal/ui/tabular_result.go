@@ -456,16 +456,16 @@ func tabularAttribute(form *metadata.FormModule, entity *metadata.Entity, name s
 	return false
 }
 
-func (s *Server) runTabularReport(w http.ResponseWriter, r *http.Request, rep *reportpkg.Report, params map[string]any, rows []map[string]any) error {
+func (s *Server) buildTabularReportDocument(r *http.Request, rep *reportpkg.Report, params map[string]any, rows []map[string]any) (*sheet.Document, error) {
 	if _, filtered := r.Context().Value(reportSourceFilterKey{}).(*reportSourceFilterState); filtered {
 		// Filtered SQL inputs do not prove the returned document's lineage.
 		// Until a host-sealed producer trace is available, stop before creating
 		// any DSL capabilities or executing the module, including caught errors.
-		return errReportFilterProducerUnproven
+		return nil, errReportFilterProducerUnproven
 	}
 	decl := s.reg.GetProcedure(rep.Name, rep.ResultProc)
 	if decl == nil {
-		return fmt.Errorf("процедура результата отчёта не найдена")
+		return nil, fmt.Errorf("процедура результата отчёта не найдена")
 	}
 	vars, tx := s.buildDSLVarsTx(r.Context(), runtime.NewMovementsCollector("report", uuid.Nil))
 	defer rollbackDSLExecution(tx)
@@ -486,13 +486,21 @@ func (s *Server) runTabularReport(w http.ResponseWriter, r *http.Request, rep *r
 	profile := interpreter.SandboxProfile{Context: r.Context(), MaxWallClock: 30 * time.Second}
 	err := s.interp.RunSandboxed(decl, &interpreter.MapThis{M: params}, profile, &result, vars)
 	if err = finishDSLExecution(tx, err); err != nil {
-		return err
+		return nil, err
 	}
 	doc, ok := result.(*interpreter.SpreadsheetDocument)
 	if !ok || doc == nil {
-		return fmt.Errorf("процедура должна возвращать ТабличныйДокумент")
+		return nil, fmt.Errorf("процедура должна возвращать ТабличныйДокумент")
 	}
-	path, err := s.publishTabular(w, r, tabularScope{Kind: "report", Name: rep.Name, Period: reportPeriodCaption(rep, params)}, doc.Doc)
+	return doc.Doc, nil
+}
+
+func (s *Server) runTabularReport(w http.ResponseWriter, r *http.Request, rep *reportpkg.Report, params map[string]any, rows []map[string]any) error {
+	doc, err := s.buildTabularReportDocument(r, rep, params, rows)
+	if err != nil {
+		return err
+	}
+	path, err := s.publishTabular(w, r, tabularScope{Kind: "report", Name: rep.Name, Period: reportPeriodCaption(rep, params)}, doc)
 	if err != nil {
 		return err
 	}
