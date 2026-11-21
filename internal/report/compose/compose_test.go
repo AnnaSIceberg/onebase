@@ -52,6 +52,53 @@ func TestSingleGrouping(t *testing.T) {
 	}
 }
 
+func TestSumNullWhenEmptyAcrossGroupsAndTotals(t *testing.T) {
+	spec := report.Composition{
+		Groupings: []string{"Мастер", "Партия"},
+		Measures: []report.Measure{
+			{Field: "Стоимость", Agg: "sum"},
+			{Field: "ПоЦенеМастера", Agg: "sum", NullWhenEmpty: true},
+		},
+		Totals: report.Totals{Grand: true, Subtotals: true},
+	}
+	rows := []Row{
+		{"Мастер": "A", "Партия": "1", "Стоимость": 30, "ПоЦенеМастера": nil},
+		{"Мастер": "A", "Партия": "2", "Стоимость": 40},
+	}
+	compose := func() *Result {
+		t.Helper()
+		res, err := Compose(rows, spec, noEval{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	res := compose()
+	for _, row := range []Row{res.Grand, res.Groups[0].Subtotals, res.Groups[0].Children[0].Subtotals} {
+		if got := row["ПоЦенеМастера"]; got != nil {
+			t.Fatalf("blank sum became %v", got)
+		}
+	}
+	decEq(t, res.Grand["Стоимость"], "70")
+
+	rows[0]["ПоЦенеМастера"] = 0
+	res = compose()
+	decEq(t, res.Grand["ПоЦенеМастера"], "0")
+	decEq(t, res.Groups[0].Children[0].Subtotals["ПоЦенеМастера"], "0")
+	if got := res.Groups[0].Children[1].Subtotals["ПоЦенеМастера"]; got != nil {
+		t.Fatalf("missing price of the second lot became %v", got)
+	}
+
+	rows[1]["ПоЦенеМастера"] = 7
+	res = compose()
+	decEq(t, res.Grand["ПоЦенеМастера"], "7")
+
+	spec.Measures[1].NullWhenEmpty = false
+	rows[0]["ПоЦенеМастера"], rows[1]["ПоЦенеМастера"] = nil, nil
+	res = compose()
+	decEq(t, res.Grand["ПоЦенеМастера"], "0")
+}
+
 func TestGroupByDecimalKey(t *testing.T) {
 	// Две равные по значению decimal должны попасть в одну группу: ключ
 	// нормализуется в строку, а не сравнивается по указателю big.Int.

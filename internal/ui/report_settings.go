@@ -358,9 +358,10 @@ func mergeUserComposition(base, u *reportpkg.Composition) *reportpkg.Composition
 				Format: firstNonEmpty(m.Format, baseMeasure.Format),
 				// Expr НЕ из пользовательского ввода: берём доверенное значение
 				// по имени поля; если показателя нет в доверенной — Expr пуст.
-				Expr:         baseMeasure.Expr,
-				Scope:        append([]string(nil), baseMeasure.Scope...),
-				Calculations: append([]reportpkg.MeasureCalculation(nil), baseMeasure.Calculations...),
+				Expr:          baseMeasure.Expr,
+				Scope:         append([]string(nil), baseMeasure.Scope...),
+				NullWhenEmpty: baseMeasure.NullWhenEmpty,
+				Calculations:  append([]reportpkg.MeasureCalculation(nil), baseMeasure.Calculations...),
 			}
 			measures = append(measures, safe)
 		}

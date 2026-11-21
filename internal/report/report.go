@@ -159,8 +159,10 @@ type Measure struct {
 	Expr   string `yaml:"expr"`   // непустое = вычисляемый показатель (DSL-выражение по другим полям)
 	// Scope limits resource values to named row groupings, $grand and/or $detail.
 	// Empty means every level, preserving existing reports.
-	Scope        []string             `yaml:"scope,omitempty" json:",omitempty"`
-	Calculations []MeasureCalculation `yaml:"calculations,omitempty" json:",omitempty"`
+	Scope []string `yaml:"scope,omitempty" json:",omitempty"`
+	// NullWhenEmpty keeps SUM empty if there are no numeric inputs.
+	NullWhenEmpty bool                 `yaml:"null_when_empty,omitempty" json:",omitempty"`
+	Calculations  []MeasureCalculation `yaml:"calculations,omitempty" json:",omitempty"`
 }
 
 // Totals управляет выводом итогов в отчёте.

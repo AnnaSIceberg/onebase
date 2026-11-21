@@ -328,7 +328,7 @@ func TestEffectiveCompositionInheritsMeasurePresentationDefaults(t *testing.T) {
 	trusted := &reportpkg.Composition{
 		Groupings: []string{"Организация"},
 		Measures: []reportpkg.Measure{
-			{Field: "ВаловаяПрибыль", Agg: "sum", Title: "Валовая прибыль", Align: "right", Format: "#,##0.00", Expr: "Выручка - Себестоимость"},
+			{Field: "ВаловаяПрибыль", Agg: "sum", Title: "Валовая прибыль", Align: "right", Format: "#,##0.00", Expr: "Выручка - Себестоимость", NullWhenEmpty: true},
 		},
 	}
 	rep := &reportpkg.Report{Composition: trusted}
@@ -350,6 +350,9 @@ func TestEffectiveCompositionInheritsMeasurePresentationDefaults(t *testing.T) {
 	}
 	if m.Title != "Валовая прибыль" || m.Align != "right" || m.Format != "#,##0.00" || m.Agg != "sum" {
 		t.Fatalf("презентационные дефолты из YAML потерялись: %+v", m)
+	}
+	if !m.NullWhenEmpty {
+		t.Fatal("trusted empty sum rule was lost")
 	}
 	if m.Expr != "Выручка - Себестоимость" {
 		t.Fatalf("доверенный Expr должен наследоваться из YAML, got %q", m.Expr)

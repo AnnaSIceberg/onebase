@@ -749,6 +749,9 @@ func aggMeasure(rows []Row, m report.Measure) any {
 		}
 		return acc.Div(decimal.NewFromInt(int64(cnt)))
 	default: // sum / ""
+		if m.NullWhenEmpty && cnt == 0 {
+			return nil
+		}
 		return acc
 	}
 }

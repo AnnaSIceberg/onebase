@@ -51,14 +51,15 @@ func Parse(f url.Values) (*report.Composition, bool) {
 			continue
 		}
 		c.Measures = append(c.Measures, report.Measure{
-			Field:        fld,
-			Agg:          f.Get(p + ".agg"),
-			Title:        strings.TrimSpace(f.Get(p + ".title")),
-			Align:        f.Get(p + ".align"),
-			Format:       strings.TrimSpace(f.Get(p + ".format")),
-			Expr:         strings.TrimSpace(f.Get(p + ".expr")),
-			Scope:        parseMeasureScope(f.Get(p + ".scope")),
-			Calculations: parseCalculations(f.Get(p + ".calculations")),
+			Field:         fld,
+			Agg:           f.Get(p + ".agg"),
+			Title:         strings.TrimSpace(f.Get(p + ".title")),
+			Align:         f.Get(p + ".align"),
+			Format:        strings.TrimSpace(f.Get(p + ".format")),
+			Expr:          strings.TrimSpace(f.Get(p + ".expr")),
+			Scope:         parseMeasureScope(f.Get(p + ".scope")),
+			NullWhenEmpty: f.Get(p+".null_when_empty") == "true",
+			Calculations:  parseCalculations(f.Get(p + ".calculations")),
 		})
 	}
 

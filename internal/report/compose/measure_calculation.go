@@ -46,7 +46,7 @@ func aggMeasureAtLevel(rows []Row, m report.Measure, level string, wc *warnColle
 	}
 	values := make([]Row, 0, len(keys))
 	for _, key := range keys {
-		values = append(values, Row{m.Field: aggMeasure(buckets[key], report.Measure{Field: m.Field, Agg: c.InnerAgg})})
+		values = append(values, Row{m.Field: aggMeasure(buckets[key], report.Measure{Field: m.Field, Agg: c.InnerAgg, NullWhenEmpty: m.NullWhenEmpty})})
 	}
 	return aggMeasure(values, m)
 }
