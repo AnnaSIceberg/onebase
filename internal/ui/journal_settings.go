@@ -78,6 +78,15 @@ func effectiveJournalColumns(j *metadata.Journal, st *JournalUserSettings) []met
 	return out
 }
 
+func journalDisplayColumns(j *metadata.Journal, st *JournalUserSettings, defaultKindLabel string) []metadata.JournalColumn {
+	columns := effectiveJournalColumns(j, st)
+	if j.HasDocumentKindColumn() {
+		return columns
+	}
+	kind := metadata.JournalColumn{Field: metadata.JournalDocumentKindField, Label: defaultKindLabel}
+	return append([]metadata.JournalColumn{kind}, columns...)
+}
+
 func journalSettingsColumns(j *metadata.Journal, st *JournalUserSettings) []journalColumnUI {
 	if j == nil {
 		return nil

@@ -24,7 +24,8 @@ func (s *Server) journalList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	settings := loadJournalSettings(s.store, r, j)
-	visibleColumns := effectiveJournalColumns(j, settings)
+	lang := s.resolveLang(r)
+	visibleColumns := journalDisplayColumns(j, settings, s.tr(lang, "Документ"))
 
 	docs, rowFilters, ok := s.journalDocsForRead(w, r, j)
 	if !ok {
@@ -78,6 +79,8 @@ func (s *Server) journalList(w http.ResponseWriter, r *http.Request) {
 	if s.interp != nil {
 		journalWarnings = applyJournalConditionalStyles(rows, j.Conditional, newInterpEvaluator(s.interp))
 	}
+
+	setJournalDocumentKindLabels(j, docs, rows, lang)
 
 	// Load filter options for reference filters
 	filterOpts := make(map[string][]map[string]any)
@@ -189,6 +192,9 @@ func (s *Server) journalDocsForRead(w http.ResponseWriter, r *http.Request, j *m
 func journalColumnFormats(j *metadata.Journal, docs map[string]*metadata.Entity) map[string]string {
 	colFormats := make(map[string]string)
 	for _, jcol := range j.Columns {
+		if jcol.IsDocumentKind() {
+			continue
+		}
 		if jcol.Format != "" {
 			colFormats[jcol.Field] = jcol.Format
 			continue
@@ -262,13 +268,46 @@ func (s *Server) resolveJournalRefs(ctx context.Context, j *metadata.Journal, co
 	}
 }
 
+const journalDocumentKindLabel = "\x00journal_doc_kind_label"
+
+// Keep the source name for ACL, conditions and navigation. A configurable
+// document kind column shows the synonym in both the UI and Excel.
+func setJournalDocumentKindLabels(j *metadata.Journal, docs map[string]*metadata.Entity, rows []map[string]any, lang string) {
+	if !j.HasDocumentKindColumn() {
+		return
+	}
+	labels := make(map[string]string, len(docs))
+	for name, doc := range docs {
+		labels[name] = doc.DisplayName(lang)
+	}
+	for _, row := range rows {
+		name := asString(row[metadata.JournalDocumentKindField])
+		if label := labels[name]; label != "" {
+			row[journalDocumentKindLabel] = label
+		} else {
+			row[journalDocumentKindLabel] = name
+		}
+	}
+}
+
+func journalColumnValue(row map[string]any, column metadata.JournalColumn) any {
+	if column.IsDocumentKind() {
+		if label, ok := row[journalDocumentKindLabel]; ok {
+			return label
+		}
+		return row[metadata.JournalDocumentKindField]
+	}
+	return row[column.Field]
+}
+
 // journalExcel exports a journal as XLSX.
 func (s *Server) journalExcel(w http.ResponseWriter, r *http.Request) {
 	j := s.getJournal(w, r)
 	if j == nil {
 		return
 	}
-	visibleColumns := effectiveJournalColumns(j, loadJournalSettings(s.store, r, j))
+	lang := s.resolveLang(r)
+	visibleColumns := journalDisplayColumns(j, loadJournalSettings(s.store, r, j), s.tr(lang, "Документ"))
 
 	docs, rowFilters, ok := s.journalDocsForRead(w, r, j)
 	if !ok {
@@ -296,16 +335,8 @@ func (s *Server) journalExcel(w http.ResponseWriter, r *http.Request) {
 	s.maskJournalRecords(r.Context(), j, docs, rows)
 	s.resolveJournalRefs(r.Context(), j, colRefMap, rows)
 
-	// Выгрузка повторяет таблицу на экране: слева вид документа, дальше видимые
-	// колонки журнала. Прежде колонок было две — «Дата» и «Вид», и обе брались
-	// из ключей `date`/`doc_type`, которых в строках журнала нет: JournalQuery
-	// отдаёт `_doc_kind`, `id` и поля колонок журнала в нижнем регистре. Обе
-	// колонки приезжали в файл пустыми (#886). Отдельная «Дата» на экране не
-	// показывается вовсе — дата документа объявляется обычной колонкой журнала
-	// и уже попадает в выгрузку через visibleColumns.
-	lang := s.resolveLang(r)
-	cols := make([]string, 0, len(visibleColumns)+1)
-	cols = append(cols, s.tr(lang, "Документ"))
+	setJournalDocumentKindLabels(j, docs, rows, lang)
+	cols := make([]string, 0, len(visibleColumns))
 	for _, jcol := range visibleColumns {
 		cols = append(cols, jcol.DisplayLabel(lang))
 	}
@@ -313,9 +344,8 @@ func (s *Server) journalExcel(w http.ResponseWriter, r *http.Request) {
 	xlsRows := make([][]any, len(rows))
 	for i, row := range rows {
 		cells := make([]any, len(cols))
-		cells[0] = row["_doc_kind"]
 		for ji, jcol := range visibleColumns {
-			cells[1+ji] = row[jcol.Field]
+			cells[ji] = journalColumnValue(row, jcol)
 		}
 		xlsRows[i] = cells
 	}

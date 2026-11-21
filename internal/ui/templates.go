@@ -400,6 +400,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return fmt.Sprintf("%v", v)
 		},
+		"journalColumnValue": journalColumnValue,
 		// Инлайн-CSS условного оформления журнала обязан уходить в атрибут style
 		// типом template.CSS: строку html/template прогоняет через cssValueFilter,
 		// который запрещает ';'/'(' и подменяет стиль из двух и более свойств (или
@@ -496,7 +497,11 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			out := make([]metadata.Field, 0, len(j.Columns))
 			for _, c := range j.Columns {
-				out = append(out, metadata.Field{Name: c.Field, Title: c.Label, Titles: c.Labels, Type: metadata.FieldTypeString})
+				field := c.Field
+				if c.IsDocumentKind() {
+					field = journalDocumentKindLabel
+				}
+				out = append(out, metadata.Field{Name: field, Title: c.Label, Titles: c.Labels, Type: metadata.FieldTypeString})
 			}
 			return out
 		},
@@ -4957,7 +4962,6 @@ const tplJournal = `
 {{if .Rows}}
 <div style="overflow-x:auto"{{if .StreamDir}} {{template "list-stream-attrs" .}}{{end}}>
 <table><thead><tr>
-  <th>{{t $.Lang "Документ"}}</th>
   {{range .JournalColumns}}<th>{{.DisplayLabel $.Lang}}</th>{{end}}
   {{if not .Cfg.HideListRowActions}}<th style="width:90px"></th>{{end}}
 </tr></thead>
@@ -4966,9 +4970,8 @@ const tplJournal = `
 <tr style="cursor:pointer;{{journalRowStyle .}}" data-ob-list-row tabindex="-1" aria-selected="false"
   data-open-url="/ui/document/{{lower (str (index . "_doc_kind"))}}/{{str (index . "id")}}"
   data-ob-detail='{{detailPanel (journalFields $.Journal) $row nil $.Lang}}'>
-  <td style="{{journalCellStyle $row "_doc_kind"}}">{{index . "_doc_kind"}}</td>
   {{range $.JournalColumns}}
-    {{$v := index $row .Field}}
+    {{$v := journalColumnValue $row .}}
     {{if eq (index $fmts .Field) "date"}}<td style="{{journalCellStyle $row .Field}}">{{fmtDate $v}}</td>
     {{else}}<td style="{{journalCellStyle $row .Field}}">{{$v}}</td>{{end}}
   {{end}}

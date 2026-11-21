@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,9 @@ func (j *Journal) DisplayName(lang string) string {
 	return j.Name
 }
 
+// JournalDocumentKindField is the built-in source document type column.
+const JournalDocumentKindField = "_doc_kind"
+
 type JournalColumn struct {
 	Field    string
 	Label    string
@@ -46,6 +50,19 @@ type JournalColumn struct {
 	// не задан — работает старый fallback-механизм (back compat).
 	Map    map[string]string
 	Format string // "date" | "number" | "" (auto)
+}
+
+func (c JournalColumn) IsDocumentKind() bool {
+	return strings.EqualFold(strings.TrimSpace(c.Field), JournalDocumentKindField)
+}
+
+func (j *Journal) HasDocumentKindColumn() bool {
+	for _, column := range j.Columns {
+		if column.IsDocumentKind() {
+			return true
+		}
+	}
+	return false
 }
 
 // DisplayLabel возвращает подпись колонки журнала с учётом языка.
@@ -146,7 +163,15 @@ func LoadJournalFile(path string) (*Journal, error) {
 		Documents:   raw.Documents,
 		Conditional: rawJournalConditional(raw),
 	}
+	kindSeen := false
 	for _, rc := range raw.Columns {
+		if strings.EqualFold(strings.TrimSpace(rc.Field), JournalDocumentKindField) {
+			if kindSeen || len(rc.Map) != 0 || len(rc.Fallback) != 0 || rc.Format != "" {
+				return nil, fmt.Errorf("журнал %s: %s допускается один раз без map, fallback и format", j.Name, JournalDocumentKindField)
+			}
+			kindSeen = true
+			rc.Field = JournalDocumentKindField
+		}
 		label := rc.Label
 		if label == "" {
 			label = rc.Field

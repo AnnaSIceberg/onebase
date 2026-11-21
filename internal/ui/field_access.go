@@ -248,7 +248,7 @@ func (s *Server) maskJournalRecords(
 // result provenance, the output must use the most restrictive applicable
 // decision to avoid exposing whichever fallback happened to be non-NULL.
 func journalColumnSourceFields(column metadata.JournalColumn, entity *metadata.Entity) []string {
-	if entity == nil {
+	if entity == nil || column.IsDocumentKind() {
 		return nil
 	}
 	if mapped, ok := column.Map[entity.Name]; ok && mapped != "" {

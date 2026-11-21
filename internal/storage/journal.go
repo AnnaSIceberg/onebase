@@ -87,10 +87,15 @@ func (db *DB) JournalQuery(
 	argIdx := 1
 	d := db.dialect
 
-	// Build the column alias list (output names for the CTE)
-	outCols := make([]string, len(j.Columns))
-	for i, jcol := range j.Columns {
-		outCols[i] = strings.ToLower(jcol.Field)
+	// The source type already belongs to every SELECT. Its presentation
+	// position in the journal does not create another SQL column.
+	queryColumns := make([]metadata.JournalColumn, 0, len(j.Columns))
+	outCols := make([]string, 0, len(j.Columns))
+	for _, jcol := range j.Columns {
+		if !jcol.IsDocumentKind() {
+			queryColumns = append(queryColumns, jcol)
+			outCols = append(outCols, strings.ToLower(jcol.Field))
+		}
 	}
 
 	// Build one SELECT per document
@@ -106,7 +111,7 @@ func (db *DB) JournalQuery(
 			fmt.Sprintf("'%s' AS _doc_kind", docName),
 			"id",
 		}
-		for i, jcol := range j.Columns {
+		for i, jcol := range queryColumns {
 			expr, f := colExprForDoc(jcol, entity)
 			alias := outCols[i]
 			parts = append(parts, fmt.Sprintf("%s AS %s", expr, alias))
@@ -187,7 +192,7 @@ func (db *DB) JournalQuery(
 
 	// Determine ORDER BY: use first date column (by name heuristic) or id
 	orderCol := "id"
-	for _, jcol := range j.Columns {
+	for _, jcol := range queryColumns {
 		lf := strings.ToLower(jcol.Field)
 		if lf == "дата" || lf == "date" || strings.Contains(lf, "дата") {
 			orderCol = lf
@@ -216,10 +221,11 @@ func (db *DB) JournalQuery(
 			offset = max(total-1, 0) / limit * limit
 		}
 	}
+	selectColumns := append([]string{metadata.JournalDocumentKindField, "id"}, outCols...)
 	dataSQL := fmt.Sprintf(
-		"WITH j AS (%s)\nSELECT _doc_kind, id, %s FROM j%s ORDER BY %s %s%s%s LIMIT %s OFFSET %s",
+		"WITH j AS (%s)\nSELECT %s FROM j%s ORDER BY %s %s%s%s LIMIT %s OFFSET %s",
 		union,
-		strings.Join(outCols, ", "),
+		strings.Join(selectColumns, ", "),
 		whereClause,
 		orderCol, orderDir, nullsClause, tie,
 		d.Placeholder(argIdx), d.Placeholder(argIdx+1),
@@ -235,7 +241,7 @@ func (db *DB) JournalQuery(
 	// Scan results: [_doc_kind, id, col0, col1, ...]
 	var rows []map[string]any
 	for rows2.Next() {
-		n := len(j.Columns) + 2 // _doc_kind + id + columns
+		n := len(selectColumns)
 		dest := make([]any, n)
 		ptrs := make([]any, n)
 		for i := range dest {
@@ -245,9 +251,9 @@ func (db *DB) JournalQuery(
 			return nil, 0, colRefMap, fmt.Errorf("journal scan: %w", err)
 		}
 		row := make(map[string]any, n)
-		row["_doc_kind"] = normalizeValue(dest[0])
+		row[metadata.JournalDocumentKindField] = normalizeValue(dest[0])
 		row["id"] = normalizeValue(dest[1])
-		for i, jcol := range j.Columns {
+		for i, jcol := range queryColumns {
 			row[jcol.Field] = normalizeValue(dest[i+2])
 		}
 		rows = append(rows, row)

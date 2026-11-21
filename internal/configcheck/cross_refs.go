@@ -97,11 +97,10 @@ func CheckCrossRefs(proj *project.Project, roles []*auth.Role) []Issue {
 		if len(jdocs) == 0 {
 			continue
 		}
-		// Колонка/фильтр должны резолвиться в поле хотя бы одного документа
-		// (через Map/точное имя/Fallback). Тип документа журнал показывает сам
-		// (колонка _doc_kind), его в columns указывать не нужно.
+		// Для обычных колонок и фильтров нужен реквизит хотя бы одного документа.
+		// Позицию системного вида документа можно задать в columns.
 		for _, c := range j.Columns {
-			if !journalFieldResolves(c.Field, c.Map, c.Fallback, jdocs) {
+			if !c.IsDocumentKind() && !journalFieldResolves(c.Field, c.Map, c.Fallback, jdocs) {
 				add("journals", j.Name, "Журнал", fmt.Sprintf("колонка %q не найдена ни в одном документе журнала", c.Field))
 			}
 		}
