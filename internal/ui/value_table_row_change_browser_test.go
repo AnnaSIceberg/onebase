@@ -38,9 +38,9 @@ func TestValueTableRowChangeBrowser(t *testing.T) {
   Запись.Имя = "Вариант";
   Запись.Номер = Индекс + 1;
   Запись.Отмечен = Ложь;
-  Повтор = Дубликаты.Добавить();
-  Повтор.Имя = "Одинаковый вариант";
-  Повтор.Отмечен = Ложь;
+  СтрокаБезКлюча = БезКлюча.Добавить();
+  СтрокаБезКлюча.Имя = "Описание" + Строка(Индекс);
+  СтрокаБезКлюча.Отмечен = Ложь;
  КонецЦикла;
 КонецПроцедуры
 
@@ -58,8 +58,13 @@ func TestValueTableRowChangeBrowser(t *testing.T) {
  КонецЕсли;
 КонецПроцедуры
 
-Процедура АктивироватьДубликаты()
- ТекущаяСтрока.Отмечен = Ложь;
+Процедура АктивироватьБезКлюча()
+ БезКлюча.Очистить();
+ Для Индекс = 0 По 1 Цикл
+  Запись = БезКлюча.Добавить();
+  Запись.Имя = "Описание" + Строка(1 - Индекс);
+  Запись.Отмечен = Ложь;
+ КонецЦикла;
 КонецПроцедуры
 
 Процедура Обновить()
@@ -70,14 +75,14 @@ func TestValueTableRowChangeBrowser(t *testing.T) {
 		{Kind: metadata.FormElementGroupBox, Name: "Варианты", Children: []*metadata.FormElement{
 			table("РедактируемаяТаблица", "Результаты", "Номер", false),
 			table("ТаблицаПросмотра", "Результаты", "Номер", true),
-			table("ТаблицаДубликатов", "Дубликаты", "", false),
+			table("ТаблицаБезКлюча", "БезКлюча", "", false),
 		}},
 	})
 	entity.Forms[0].Attributes = []*metadata.FormAttribute{
 		{Name: "Результаты", TypeRef: "ValueTable", Columns: []*metadata.FormAttributeColumn{
 			{Name: "Имя", TypeRef: "string"}, {Name: "Отмечен", TypeRef: "bool"}, {Name: "Номер", TypeRef: "number"},
 		}},
-		{Name: "Дубликаты", TypeRef: "ValueTable", Columns: []*metadata.FormAttributeColumn{
+		{Name: "БезКлюча", TypeRef: "ValueTable", Columns: []*metadata.FormAttributeColumn{
 			{Name: "Имя", TypeRef: "string"}, {Name: "Отмечен", TypeRef: "bool"},
 		}},
 	}
@@ -133,7 +138,7 @@ window.addEventListener('load', async function() {
   try {
     const editable = '[data-ob-vt-rowchange="РедактируемаяТаблица"]';
     const locked = '[data-ob-vt-rowchange="ТаблицаПросмотра"]';
-    const duplicates = '[data-ob-vt-rowchange="ТаблицаДубликатов"]';
+    const unkeyed = '[data-ob-vt-rowchange="ТаблицаБезКлюча"]';
     const answer = document.querySelector('[name="Наименование"]');
     const mark = (selector, index) => document.querySelectorAll(selector + ' input[type="checkbox"]')[index];
     const changeRequests = [];
@@ -162,10 +167,12 @@ window.addEventListener('load', async function() {
     lockedMark.click();
     lockedMark.dispatchEvent(new Event('change', {bubbles:true}));
     await window.obFire('РедактируемаяТаблица', 'ПриАктивизацииСтроки', {_tp:'Результаты', _tp_row:'1'});
-    mark(duplicates, 0).click();
+    mark(unkeyed, 0).click();
     await wait(() => document.body.innerText.includes('Таблица обновилась. Повторите изменение строки.'),
       'ambiguous edit was not reported');
-    check(!mark(duplicates, 1).checked, 'an ambiguous edit was applied to another item');
+    check(document.querySelector('[name="vt.БезКлюча.1.Имя"]').value === 'Описание0',
+      'the preceding event did not exchange the descriptions');
+    check(!mark(unkeyed, 1).checked, 'an edit followed the old description to another row');
     check(JSON.stringify(changeRequests) === JSON.stringify([['1','Отмечен','true'], ['1','Отмечен','false']]),
       'unexpected row change requests: ' + JSON.stringify(changeRequests));
     report();

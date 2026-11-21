@@ -1642,14 +1642,13 @@ window.obManagedApplyHints = obManagedApplyHints;
     return {names: names, files: files};
   }
 
-  function vtRowEditKey(row, field, keyColumn) {
-    var values = Array.from(row.querySelectorAll('input[name]'), function(input){
-      var column = input.name.split('.').pop();
-      var value = input.type === 'checkbox' ? String(input.checked) : input.value;
-      if (keyColumn) return column.toLowerCase() === keyColumn && value !== '' ? [column, value] : null;
-      return column === field ? null : [column, value];
-    }).filter(Boolean);
-    return values.length ? JSON.stringify(values) : '';
+  function vtRowEditKey(row, keyColumn) {
+    if (!keyColumn) return '';
+    var input = Array.from(row.querySelectorAll('input[name]')).find(function(cell){
+      return cell.name.split('.').pop().toLowerCase() === keyColumn;
+    });
+    if (!input) return '';
+    return input.type === 'checkbox' ? String(input.checked) : input.value;
   }
 
   function snapshotVtRowEdit(data, edit, params) {
@@ -1658,7 +1657,7 @@ window.obManagedApplyHints = obManagedApplyHints;
     var row = edit.row;
     if (row.parentElement !== tbody) {
       var matches = edit.unique ? Array.from(tbody.rows).filter(function(candidate){
-        return vtRowEditKey(candidate, edit.field, edit.keyColumn) === edit.rowKey;
+        return vtRowEditKey(candidate, edit.keyColumn) === edit.rowKey;
       }) : [];
       if (matches.length !== 1) return false;
       row = matches[0];
@@ -2189,9 +2188,9 @@ window.obManagedApplyHints = obManagedApplyHints;
     if (!input.name.startsWith(prefix)) return;
     var field = input.name.slice(prefix.length);
     var keyColumn = (body.getAttribute('data-ob-vt-row-key') || '').trim().toLowerCase();
-    var rowKey = vtRowEditKey(row, field, keyColumn);
+    var rowKey = vtRowEditKey(row, keyColumn);
     var unique = rowKey !== '' && !Array.from(body.rows).some(function(candidate){
-      return candidate !== row && vtRowEditKey(candidate, field, keyColumn) === rowKey;
+      return candidate !== row && vtRowEditKey(candidate, keyColumn) === rowKey;
     });
     var edit = {
       body: body, row: row, field: field, keyColumn: keyColumn, rowKey: rowKey, unique: unique,
