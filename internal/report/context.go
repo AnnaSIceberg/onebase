@@ -24,8 +24,9 @@ type ParamContext struct {
 
 // CatalogNameSource identifies an existing catalog element by its configured name.
 type CatalogNameSource struct {
-	Catalog string `yaml:"catalog"`
-	Name    string `yaml:"name"`
+	Catalog      string `yaml:"catalog"`
+	Name         string `yaml:"name"`
+	AllowMissing bool   `yaml:"allow_missing,omitempty"`
 }
 
 type catalogNameReader interface {
@@ -54,11 +55,17 @@ func (c *ParamContext) UnmarshalYAML(n *yaml.Node) error {
 	case "user", "user_card":
 	case "catalog_name":
 		source := n.Content[1]
-		if source.Kind != yaml.MappingNode || len(source.Content) != 4 {
+		if source.Kind != yaml.MappingNode {
 			return fmt.Errorf("catalog_name requires catalog and name")
 		}
 		for i := 0; i < len(source.Content); i += 2 {
-			if field := source.Content[i].Value; field != "catalog" && field != "name" {
+			switch field := source.Content[i].Value; field {
+			case "catalog", "name":
+			case "allow_missing":
+				if source.Content[i+1].Tag != "!!bool" {
+					return fmt.Errorf("catalog_name allow_missing must be a boolean")
+				}
+			default:
 				return fmt.Errorf("unknown catalog_name field %q", field)
 			}
 		}
@@ -68,6 +75,10 @@ func (c *ParamContext) UnmarshalYAML(n *yaml.Node) error {
 	type plain ParamContext
 	if err := n.Decode((*plain)(c)); err != nil {
 		return err
+	}
+	if source := c.CatalogName; source != nil &&
+		(strings.TrimSpace(source.Catalog) == "" || strings.TrimSpace(source.Name) == "") {
+		return fmt.Errorf("catalog_name requires catalog and name")
 	}
 	if c.User == "" && c.UserCard == nil && c.CatalogName == nil {
 		return fmt.Errorf("empty report context source")
@@ -206,9 +217,15 @@ func ResolveContextParams(ctx context.Context, rep *Report, input map[string]any
 			if err != nil || !ok {
 				return nil, ErrContextUnavailable
 			}
-			id, count, err := catalogReader.ReadCatalogNameReference(ctx, catalog, p.Context.CatalogName.Name)
+			source := p.Context.CatalogName
+			id, count, err := catalogReader.ReadCatalogNameReference(ctx, catalog, source.Name)
 			if err != nil {
 				return nil, ErrContextUnavailable
+			}
+			if count == 0 && source.AllowMissing {
+				// SQL NULL leaves an equality join unmatched, including prices
+				// whose type itself is missing. The name source is still trusted.
+				break
 			}
 			if count == 0 {
 				return nil, fmt.Errorf("%w: запись для параметра %s не найдена", errCatalogNameUnavailable, p.Name)

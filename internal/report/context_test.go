@@ -76,13 +76,26 @@ func TestReportTrustedContext(t *testing.T) {
 }
 
 func TestReportContextYAML(t *testing.T) {
-	for _, source := range []string{`{user: login}`, `{user_card: Staff.Department}`, `{user_card: {catalog: Staff, account_field: Account, field: Department}}`} {
+	for _, source := range []string{
+		`{user: login}`,
+		`{user_card: Staff.Department}`,
+		`{user_card: {catalog: Staff, account_field: Account, field: Department}}`,
+		`{catalog_name: {catalog: Prices, name: Master}}`,
+		`{catalog_name: {catalog: Prices, name: Master, allow_missing: true}}`,
+	} {
 		r, err := report.ParseBytes([]byte("name: Context\nparams:\n  - name: Actor\n    type: string\n    context: " + source + "\n"))
 		if err != nil || r.Params[0].Context == nil {
 			t.Fatalf("valid context %s: %v", source, err)
 		}
 	}
-	for _, source := range []string{`null`, `{}`, `{user: null}`, `{user: login, user_card: Staff.Department}`, `{user: login, user: id}`, `{clinet: login}`, `{user_card: null}`} {
+	for _, source := range []string{
+		`null`, `{}`, `{user: null}`, `{user: login, user_card: Staff.Department}`,
+		`{user: login, user: id}`, `{clinet: login}`, `{user_card: null}`,
+		`{catalog_name: {catalog: Prices, allow_missing: true}}`,
+		`{catalog_name: {catalog: Prices, name: Master, allow_missing: "true"}}`,
+		`{catalog_name: {catalog: Prices, name: Master, allow_missing: null}}`,
+		`{catalog_name: {catalog: Prices, name: Master, allow_unknown: true}}`,
+	} {
 		if _, err := report.ParseBytes([]byte("name: Context\nparams:\n  - name: Actor\n    type: string\n    context: " + source + "\n")); err == nil {
 			t.Fatalf("invalid context accepted: %s", source)
 		}

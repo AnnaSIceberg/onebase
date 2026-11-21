@@ -11,9 +11,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/metadata"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/runtime"
+	"github.com/ivantit66/onebase/internal/storage"
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
 	"gopkg.in/yaml.v3"
@@ -125,4 +127,129 @@ query: |
 		require.Equal(t, http.StatusForbidden, res.Code)
 		require.Contains(t, res.Body.String(), "для параметра PriceType найдено несколько записей")
 	}
+}
+
+func TestReportCatalogNameAllowMissingHTTP(t *testing.T) {
+	var rep reportpkg.Report
+	require.NoError(t, yaml.Unmarshal([]byte(`
+name: PartiesWithOptionalPrice
+params:
+  - name: PriceType
+    type: reference:OptionalPriceType
+    context:
+      catalog_name:
+        catalog: OptionalPriceType
+        name: Цена мастера
+        allow_missing: true
+query: |
+  ВЫБРАТЬ П.Наименование, П.Количество, П.Себестоимость, Ц.Цена
+  ИЗ Справочник.OptionalPriceParty КАК П
+  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.OptionalPriceEntry КАК Ц
+    ПО Ц.Партия = П.Ссылка И Ц.ТипЦены = &PriceType
+`), &rep))
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := t.Context()
+		priceType := &metadata.Entity{Name: "OptionalPriceType", Kind: metadata.KindCatalog, Fields: []metadata.Field{
+			{Name: "Наименование", Type: metadata.FieldTypeString},
+		}}
+		party := &metadata.Entity{Name: "OptionalPriceParty", Kind: metadata.KindCatalog, Fields: []metadata.Field{
+			{Name: "Наименование", Type: metadata.FieldTypeString},
+			{Name: "Количество", Type: metadata.FieldTypeNumber},
+			{Name: "Себестоимость", Type: metadata.FieldTypeNumber},
+		}}
+		price := &metadata.Entity{Name: "OptionalPriceEntry", Kind: metadata.KindCatalog, Fields: []metadata.Field{
+			{Name: "Партия", Type: metadata.FieldTypeString, RefEntity: party.Name},
+			{Name: "ТипЦены", Type: metadata.FieldTypeString, RefEntity: priceType.Name},
+			{Name: "Цена", Type: metadata.FieldTypeNumber},
+		}}
+		entities := []*metadata.Entity{priceType, party, price}
+		s := newSubmitTestServerOn(t, db, entities)
+		s.ops = newOperationLimiter()
+		s.reg.Load(runtime.LoadOptions{Entities: entities, Reports: []*reportpkg.Report{&rep}})
+		partyID, retailID, masterID := uuid.New(), uuid.New(), uuid.New()
+		putType := func(id uuid.UUID, name string) {
+			t.Helper()
+			require.NoError(t, db.Upsert(ctx, priceType.Name, id, map[string]any{"Наименование": name}, priceType))
+		}
+		putPrice := func(typeID any, amount int) {
+			t.Helper()
+			require.NoError(t, db.Upsert(ctx, price.Name, uuid.New(), map[string]any{
+				"Партия": partyID.String(), "ТипЦены": typeID, "Цена": amount,
+			}, price))
+		}
+		putType(retailID, "Розничная цена")
+		require.NoError(t, db.Upsert(ctx, party.Name, partyID, map[string]any{
+			"Наименование": "PARTY_FIXTURE", "Количество": 3, "Себестоимость": 30,
+		}, party))
+		putPrice(retailID.String(), 800)
+		putPrice(nil, 900)
+
+		router := chi.NewRouter()
+		s.Mount(router)
+		const base = "/ui/report/PartiesWithOptionalPrice"
+		spoof := "?" + url.Values{
+			"__run": {"1"}, "PriceType": {retailID.String()}, "pricetype": {retailID.String()},
+		}.Encode()
+		check := func(wantPrice string, status int) {
+			t.Helper()
+			for _, roleName := range []string{"ОТКСотрудник", "ОТКРуководитель"} {
+				user := &auth.User{ID: uuid.NewString(), Login: roleName, Roles: []*auth.Role{{
+					Name: roleName, Permissions: auth.Permission{
+						Reports:  map[string][]string{rep.Name: {"run"}},
+						Catalogs: map[string][]string{party.Name: {"read"}, price.Name: {"read"}},
+					},
+				}}}
+				get := func(path string) *httptest.ResponseRecorder {
+					t.Helper()
+					req := httptest.NewRequest(http.MethodGet, path, nil)
+					req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+					rec := httptest.NewRecorder()
+					router.ServeHTTP(rec, req)
+					return rec
+				}
+				require.Equal(t, http.StatusForbidden, get("/ui/catalog/"+priceType.Name).Code, roleName)
+				list := get(base + spoof)
+				xlsx := get(base + "/excel" + spoof)
+				if status != http.StatusOK {
+					for _, rec := range []*httptest.ResponseRecorder{list, xlsx} {
+						require.Equal(t, status, rec.Code, roleName)
+						require.Contains(t, rec.Body.String(), "для параметра PriceType найдено несколько записей")
+					}
+					continue
+				}
+				require.Equal(t, status, list.Code, list.Body.String())
+				require.Contains(t, list.Body.String(), "PARTY_FIXTURE")
+				require.NotContains(t, list.Body.String(), `name="PriceType"`)
+				require.Equal(t, status, xlsx.Code, xlsx.Body.String())
+				book, err := excelize.OpenReader(bytes.NewReader(xlsx.Body.Bytes()))
+				require.NoError(t, err)
+				sheet := book.GetSheetName(0)
+				rows, err := book.GetRows(sheet)
+				require.NoError(t, err)
+				matchedRows := 0
+				for i, record := range rows {
+					if len(record) == 0 || record[0] != "PARTY_FIXTURE" {
+						continue
+					}
+					matchedRows++
+					require.GreaterOrEqual(t, len(record), 3)
+					require.Equal(t, []string{"3", "30"}, record[1:3])
+					cell, err := excelize.CoordinatesToCellName(4, i+1)
+					require.NoError(t, err)
+					value, err := book.GetCellValue(sheet, cell)
+					require.NoError(t, err)
+					require.Equal(t, wantPrice, value, roleName)
+				}
+				require.NoError(t, book.Close())
+				require.Equal(t, 1, matchedRows, rows)
+			}
+		}
+
+		check("", http.StatusOK)
+		putType(masterID, "Цена мастера")
+		putPrice(masterID.String(), 7)
+		check("7", http.StatusOK)
+		putType(uuid.New(), "Цена мастера")
+		check("", http.StatusForbidden)
+	})
 }
