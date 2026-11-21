@@ -79,17 +79,16 @@ func (s *Server) processorForm(w http.ResponseWriter, r *http.Request) {
 			"TablePartRows": tablePartRows,
 		}
 		s.setProcessorManagedContext(r, data, proc)
-		if resultContext != nil {
-			// Заголовок окна результата — заголовок формы (как у диалога), а
-			// без него — представление обработки.
-			data["TabTitle"] = proc.DisplayName(s.resolveLang(r))
-			if mf := pickProcessorManagedFormCtx(r.Context(), proc); mf != nil {
-				if title := mf.Title[s.resolveLang(r)]; title != "" {
-					data["TabTitle"] = title
-				} else if title := mf.Title["ru"]; title != "" {
-					data["TabTitle"] = title
-				}
+		if resultContext != nil || !s.legacyEntityUI(r) {
+			lang := s.resolveLang(r)
+			title := mf.Title[lang]
+			if title == "" {
+				title = mf.Title["ru"]
 			}
+			if title == "" {
+				title = proc.DisplayName(lang)
+			}
+			data["TabTitle"] = title
 		}
 		// choice_filter полей формы обработки — тем же серверным путём, что у
 		// форм сущностей: отфильтрованный первый список и контекст подбора (#1840).
