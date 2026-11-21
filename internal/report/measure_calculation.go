@@ -44,7 +44,7 @@ func (m Measure) CalculationErrors() []string {
 	}
 	var out []string
 	add := func(msg string) { out = append(out, fmt.Sprintf("показатель %q: %s", m.Field, msg)) }
-	aggs := map[string]bool{"": true, "sum": true, "avg": true, "count": true, "min": true, "max": true}
+	aggs := map[string]bool{"": true, "sum": true, "avg": true, "count": true, "count_distinct": true, "min": true, "max": true}
 	if len(m.Calculations) > 32 {
 		add("слишком много формул уровней (не более 32)")
 	}

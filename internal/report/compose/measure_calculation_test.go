@@ -56,6 +56,46 @@ func TestMeasureCalculationUnequalGroups(t *testing.T) {
 		t.Fatal("input changed")
 	}
 }
+func TestMeasureCalculationCountDistinct(t *testing.T) {
+	rep, err := report.ParseBytes([]byte(`name: distinct-requests
+composition:
+  groupings: [Мастер]
+  detail: true
+  measures:
+  - field: Заявок
+    agg: count
+    scope: [Мастер, $grand]
+    calculations:
+    - {level: Мастер, agg: count_distinct}
+    - {level: $grand, agg: count_distinct}
+  totals: {grand: true, subtotals: true}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := []Row{
+		{"Мастер": "M1", "Заявок": "key:first"},
+		{"Мастер": "M1", "Заявок": "key:first"},
+		{"Мастер": "M1", "Заявок": "key:second"},
+		{"Мастер": "M2", "Заявок": "key:first"},
+		{"Мастер": "M2", "Заявок": nil},
+	}
+	res, err := Compose(rows, *rep.Composition, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decEq(t, res.Groups[0].Subtotals["Заявок"], "2")
+	decEq(t, res.Groups[1].Subtotals["Заявок"], "1")
+	decEq(t, res.Grand["Заявок"], "2")
+	for _, group := range res.Groups {
+		for _, detail := range group.Details {
+			if detail.Values["Заявок"] != nil {
+				t.Fatalf("request key appears in detail: %v", detail.Values)
+			}
+		}
+	}
+}
+
 func TestMeasureCalculationCrossPeriods(t *testing.T) {
 	rows, spec := levelCalculationFixture(t)
 	spec.Columns = []string{"Period"}

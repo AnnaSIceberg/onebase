@@ -359,6 +359,30 @@ func TestEffectiveCompositionInheritsMeasurePresentationDefaults(t *testing.T) {
 	}
 }
 
+func TestTrustedDistinctCalculationKeepsAggregateWithSavedSum(t *testing.T) {
+	rep := &reportpkg.Report{Composition: &reportpkg.Composition{
+		Groupings: []string{"Мастер"},
+		Measures: []reportpkg.Measure{{
+			Field: "Заявок", Agg: "count_distinct",
+			Scope:        []string{"Мастер", reportpkg.MeasureScopeGrand},
+			Calculations: []reportpkg.MeasureCalculation{{Level: reportpkg.MeasureScopeGrand, Agg: "count_distinct"}},
+		}},
+	}}
+	// Presets serialized before the report update carried the same field as SUM.
+	saved, err := reportpkg.ParseUserSettings(`{"composition":{"measures":[{"field":"Заявок","agg":"sum"}]}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eff := effectiveComposition(rep, saved)
+	m := eff.Measures[0]
+	if m.Agg != "count_distinct" || m.Calculation(reportpkg.MeasureScopeGrand).Agg != "count_distinct" {
+		t.Fatalf("saved sum replaced the trusted count: %+v", m)
+	}
+	if m.InScope(reportpkg.MeasureScopeDetail) {
+		t.Fatal("saved measure exposed the request key as a detail value")
+	}
+}
+
 func TestReportSettingsPanelJSONUsesBaseComposition(t *testing.T) {
 	rep := &reportpkg.Report{
 		Name: "ВаловаяПрибыльСКД",

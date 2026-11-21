@@ -12,7 +12,10 @@ import (
 )
 
 func TestReportMeasureCalculationEditorRoundTrip(t *testing.T) {
-	rules := []report.MeasureCalculation{{Level: "D", Agg: "avg", GroupBy: "B", InnerAgg: "avg"}}
+	rules := []report.MeasureCalculation{
+		{Level: "D", Agg: "avg", GroupBy: "B", InnerAgg: "avg"},
+		{Level: report.MeasureScopeGrand, Agg: "count_distinct"},
+	}
 	comp := &report.Composition{Groupings: []string{"D", "B"}, Measures: []report.Measure{{Field: "X", Agg: "sum", Calculations: rules, NullWhenEmpty: true}}}
 	page := renderConfiguratorReport(t, comp)
 	tag := `name="comp.measure.0.calculations" value="`
