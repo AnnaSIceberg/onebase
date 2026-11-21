@@ -118,7 +118,7 @@ func (h *htmlComposeSink) detailFieldCells(detail *compose.DetailRow) {
 		style, text := "", ""
 		if detail != nil {
 			style = cssOf(detail.Styles[d.Field])
-			text = h.detailCell(detail, d.Field, fmtDetailVal(detailFieldValue(h.spec, detail, d.Field)))
+			text = string(h.drilldowns.Cell(d.Field, detail.Values, fmtDetailVal(detailFieldValue(h.spec, detail, d.Field))))
 		}
 		h.b.WriteString(`<td class="detail-field" style="` + html.EscapeString(style) + `">` + text + `</td>`)
 	}
@@ -129,17 +129,10 @@ func (h *htmlComposeSink) measureOnlyCells(vals map[string]any, styles map[strin
 		cell := joinStyles(measureAlign(m), cssOf(styles[m.Field]))
 		text := html.EscapeString(fmtMeasure(vals[m.Field], m))
 		if detail != nil {
-			text = h.detailCell(detail, m.Field, fmtMeasure(detailMeasureValue(detail, m.Field), m))
+			text = string(h.drilldowns.Cell(m.Field, detail.Values, fmtMeasure(detailMeasureValue(detail, m.Field), m)))
 		}
 		h.b.WriteString(`<td class="num" style="` + html.EscapeString(cell) + `">` + text + `</td>`)
 	}
-}
-
-func (h *htmlComposeSink) detailCell(detail *compose.DetailRow, field, text string) string {
-	if label, ok := detail.ReferenceLabel(field); ok && label == "" {
-		return ""
-	}
-	return string(h.drilldowns.Cell(field, detail.Values, text))
 }
 
 func (h *htmlComposeSink) group(g *compose.Group, level int, path string) {

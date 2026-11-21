@@ -24,17 +24,25 @@ import (
 func TestReportReferenceGroupingsHTTP(t *testing.T) {
 	rep, err := report.ParseBytes([]byte(`name: GroupedReferences
 query: |
-  ВЫБРАТЬ Src.Объект КАК Заявка, Src.Оценка КАК Оценка
+  ВЫБРАТЬ Src.Объект КАК Заявка, Src.Оценка КАК Оценка, 'More details' КАК Caption
   ИЗ Справочник.GroupedReferenceInput КАК Src
 drilldowns:
   - field: Заявка
+    id_field: Заявка
+    target: {kind: entity, entity: GroupedReferenceTarget}
+  - field: Caption
+    id_field: Заявка
+    target: {kind: entity, entity: GroupedReferenceTarget}
+  - title: Open row
     id_field: Заявка
     target: {kind: entity, entity: GroupedReferenceTarget}
 composition:
   groupings: [Заявка]
   reference_groupings: [Заявка]
   detail: true
-  detail_fields: [{field: Заявка}]
+  detail_fields: [{field: Заявка}, {field: Caption}]
+  detail_link: Заявка
+  detail_entity: GroupedReferenceTarget
   measures: [{field: Оценка, agg: sum}]
   totals: {grand: true, subtotals: true}
 `))
@@ -110,7 +118,13 @@ composition:
 					require.NotContains(t, group[1], id.String())
 				}
 				require.NotContains(t, visible, id.String())
-				require.Equal(t, readTarget, strings.Contains(body, "id="+id.String()))
+				for _, action := range []string{"0", "1", "2"} {
+					require.Equal(t, readTarget, strings.Contains(body, "/drilldown?d="+action+"&amp;id="+id.String()))
+				}
+				require.Equal(t, readTarget, strings.Contains(body, "/ui/document/"+target.Name+"/"+id.String()))
+				if !readTarget {
+					require.NotContains(t, body, id.String())
+				}
 			}
 
 			book, err := excelize.OpenReader(bytes.NewReader(get(base + "/excel").Body.Bytes()))
@@ -128,8 +142,8 @@ composition:
 						require.NotContains(t, cell, shared)
 					}
 				}
-				if len(cells) == 3 && cells[0] == shared {
-					sums = append(sums, cells[2])
+				if len(cells) == 4 && cells[0] == shared {
+					sums = append(sums, cells[3])
 				}
 			}
 			if readTarget {

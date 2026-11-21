@@ -53,7 +53,7 @@ func (s *Server) resolveReportViewReferences(ctx context.Context, rows []map[str
 
 	// The detail link already retains its ID and resolves a separate caption.
 	// Resolve any other configured group caption with the same authorization,
-	// restoring the original drilldown input afterward.
+	// restoring the original drilldown input only for a visible reference.
 	resolveSkip := make([]string, 0, len(skipCols))
 	for i, field := range skipCols {
 		if i == 0 || !reportColumnSkipped(field, fields) {
@@ -70,7 +70,7 @@ func (s *Server) resolveReportViewReferences(ctx context.Context, rows []map[str
 		if label == fmtVal(ref.raw) || strings.EqualFold(label, ref.id.String()) {
 			label = ""
 		}
-		if reportColumnSkipped(ref.field, skipCols) {
+		if label != "" && reportColumnSkipped(ref.field, skipCols) {
 			ref.row[ref.field] = ref.raw
 		} else {
 			ref.row[ref.field] = label
