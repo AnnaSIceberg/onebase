@@ -1,6 +1,7 @@
 package query_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -20,16 +21,21 @@ func TestISODateTimeCallDuration(t *testing.T) {
 		seconds    any
 		duration   int
 	}{
-		"normal":    {"2026-09-01T09:00:00Z", "2026-09-01T09:00:33Z", 33, 33},
-		"offsets":   {"2026-09-01T12:00:00+03:00", "2026-09-01T05:00:33-04:00", 33, 33},
-		"fraction":  {"2026-09-01T09:00:00.999999Z", "2026-09-01T09:00:01.000001Z", 1, 1},
-		"empty":     {"", "2026-09-01T09:00:33Z", nil, fallback},
-		"missing":   {"2026-09-01T09:00:00Z", nil, nil, fallback},
-		"malformed": {"2026-09-01T09:00:00Z", "bad", nil, fallback},
-		"calendar":  {"2026-02-30T09:00:00Z", "2026-09-01T09:00:33Z", nil, fallback},
-		"no zone":   {"2026-09-01T09:00:00", "2026-09-01T09:00:33Z", nil, fallback},
-		"year zero": {"0000-09-01T09:00:00Z", "2026-09-01T09:00:33Z", nil, fallback},
-		"reverse":   {"2026-09-01T12:00:33+03:00", "2026-09-01T09:00:00Z", -33, fallback},
+		"normal":                {"2026-09-01T09:00:00Z", "2026-09-01T09:00:33Z", 33, 33},
+		"offsets":               {"2026-09-01T12:00:00+03:00", "2026-09-01T05:00:33-04:00", 33, 33},
+		"fraction":              {"2026-09-01T09:00:00.999999Z", "2026-09-01T09:00:01.000001Z", 1, 1},
+		"empty":                 {"", "2026-09-01T09:00:33Z", nil, fallback},
+		"missing":               {"2026-09-01T09:00:00Z", nil, nil, fallback},
+		"malformed":             {"2026-09-01T09:00:00Z", "bad", nil, fallback},
+		"calendar":              {"2026-02-30T09:00:00Z", "2026-09-01T09:00:33Z", nil, fallback},
+		"no zone":               {"2026-09-01T09:00:00", "2026-09-01T09:00:33Z", nil, fallback},
+		"year zero":             {"0000-09-01T09:00:00Z", "2026-09-01T09:00:33Z", nil, fallback},
+		"reverse":               {"2026-09-01T12:00:33+03:00", "2026-09-01T09:00:00Z", -33, fallback},
+		"reverse within second": {"2026-09-01T09:00:00.9Z", "2026-09-01T09:00:00.1Z", 0, fallback},
+		"order 0":               {"2026-09-02T09:00:00Z", "2026-09-02T09:00:00Z", 0, 0},
+		"order 1":               {"2026-09-02T09:00:00.1Z", "2026-09-02T12:00:00.100000+03:00", 0, 0},
+		"order 2":               {"2026-09-02T12:00:00.1+03:00", "2026-09-02T09:00:00.1Z", 0, 0},
+		"order 3":               {"2026-09-02T09:00:00.100001Z", "2026-09-02T09:00:00.100002Z", 0, 0},
 	}
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := t.Context()
@@ -51,17 +57,22 @@ func TestISODateTimeCallDuration(t *testing.T) {
 				З.Наименование,
 				ДатаИзISO(З.Начало) КАК Момент,
 				РАЗНОСТЬДАТ(ДатаИзISO(З.Начало), ISODateTime(З.Окончание), СЕКУНДА) КАК Секунд,
-				ВЫБОР КОГДА РАЗНОСТЬДАТ(ДатаИзISO(З.Начало), ДатаИзISO(З.Окончание), СЕКУНДА) >= 0
+				ВЫБОР КОГДА ДатаИзISO(З.Окончание) >= ДатаИзISO(З.Начало)
 					ТОГДА РАЗНОСТЬДАТ(ДатаИзISO(З.Начало), ДатаИзISO(З.Окончание), СЕКУНДА)
 					ИНАЧЕ З.CDR + 0 КОНЕЦ КАК Длительность
-			ИЗ Справочник.Разговоры КАК З`, opts)
+			ИЗ Справочник.Разговоры КАК З
+			УПОРЯДОЧИТЬ ПО Момент, З.Наименование`, opts)
 		require.NoError(t, err)
 		rows, _, err := query.Run(ctx, db, &compiled)
 		require.NoError(t, err, compiled.SQL)
 		require.Len(t, rows, len(cases))
+		var fractionalOrder []string
 		for _, row := range rows {
 			name, ok := row["наименование"].(string)
 			require.True(t, ok)
+			if strings.HasPrefix(name, "order ") {
+				fractionalOrder = append(fractionalOrder, name)
+			}
 			tc, known := cases[name]
 			require.True(t, known, name)
 			require.Equal(t, tc.duration, intValue(t, row["длительность"]), name)
@@ -76,6 +87,7 @@ func TestISODateTimeCallDuration(t *testing.T) {
 				require.True(t, got.Equal(time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC)))
 			}
 		}
+		require.Equal(t, []string{"order 0", "order 1", "order 2", "order 3"}, fractionalOrder)
 	})
 }
 

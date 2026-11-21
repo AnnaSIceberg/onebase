@@ -33,7 +33,9 @@ func init() {
 		if !ok {
 			return nil, nil
 		}
-		return parsed.UTC().Format(time.RFC3339Nano), nil
+		// SQLite compares date strings lexically. Keep fractions fixed even
+		// on whole seconds so the ordering agrees with PostgreSQL timestamps.
+		return parsed.UTC().Format("2006-01-02T15:04:05.000000Z"), nil
 	})
 	// Internal migration/maintenance fallback for keyless tables whose business
 	// fields shadow every rowid alias. Never mark this deterministic: SQLite
