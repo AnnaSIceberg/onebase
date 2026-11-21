@@ -38,6 +38,11 @@ func CheckFormListFilters(proj *project.Project) []Issue {
 						SuggestedFix: fix,
 					})
 				}
+				if cond.NullAsFalse {
+					if _, err := cond.NullAsFalseField(ent); err != nil {
+						add(err.Error(), "используйте null_as_false с прямым булевым полем и value: false")
+					}
+				}
 				if op := strings.ToLower(strings.TrimSpace(cond.Op)); !listFilterOps[op] {
 					add(fmt.Sprintf("оператор %q не поддерживается", cond.Op), "допустимы eq (по умолчанию), ne, empty, not_empty")
 				}

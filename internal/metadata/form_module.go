@@ -1069,6 +1069,27 @@ type FormListCondition struct {
 	// рабочем списке задач 1С). Без Removable условие снять нельзя.
 	Removable bool              `yaml:"removable,omitempty"`
 	Label     map[string]string `yaml:"label,omitempty"`
+	// ApplyToFolders applies this condition even when the row is a folder.
+	ApplyToFolders bool `yaml:"apply_to_folders,omitempty"`
+	// NullAsFalse includes NULL values in an equality test for a false boolean.
+	NullAsFalse bool `yaml:"null_as_false,omitempty"`
+}
+
+// NullAsFalseField validates the condition and returns its declared Boolean field.
+func (c FormListCondition) NullAsFalseField(entity *Entity) (string, error) {
+	op := strings.ToLower(strings.TrimSpace(c.Op))
+	if c.Query != "" || c.ValueQuery != "" || (op != "" && op != "eq") ||
+		!strings.EqualFold(strings.TrimSpace(c.Value), "false") {
+		return "", fmt.Errorf("null_as_false требует eq с value: false без query и value_query")
+	}
+	name := strings.TrimSpace(c.Field)
+	if entity != nil && !strings.Contains(name, ".") {
+		field := findEntityFieldFold(entity, name)
+		if field != nil && field.Type == FieldTypeBool && field.RefEntity == "" && field.EnumName == "" {
+			return field.Name, nil
+		}
+	}
+	return "", fmt.Errorf("null_as_false: %q должно быть булевым полем сущности", name)
 }
 
 // ValueQueryField validates the configuration and resolves the reference field.

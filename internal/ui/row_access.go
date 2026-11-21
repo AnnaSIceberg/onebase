@@ -62,7 +62,7 @@ func (s *Server) applyListFormFilter(r *http.Request, entity *metadata.Entity, p
 	}
 	user := auth.UserFromContext(r.Context())
 	off := listFormFilterOff(r)
-	var extra []storage.Predicate
+	var all, foldersExcepted []storage.Predicate
 	for i, cond := range form.ListFilter {
 		// Снятый пользователем отбор по умолчанию не применяется; снять можно
 		// только removable-условие — адресом остальные не отключить.
@@ -73,7 +73,9 @@ func (s *Server) applyListFormFilter(r *http.Request, entity *metadata.Entity, p
 			pred storage.Predicate
 			ok   bool
 		)
-		if cond.ValueQuery != "" {
+		if cond.NullAsFalse {
+			pred, ok = s.listFilterPredicate(entity, cond, user)
+		} else if cond.ValueQuery != "" {
 			pred, ok = s.listFilterValueQueryPredicate(r.Context(), entity, cond, user)
 		} else if strings.TrimSpace(cond.Query) != "" {
 			pred, ok = s.listFilterQueryPredicate(r.Context(), entity, cond, user)
@@ -83,28 +85,27 @@ func (s *Server) applyListFormFilter(r *http.Request, entity *metadata.Entity, p
 		if !ok {
 			continue
 		}
-		extra = append(extra, pred)
+		if entity.Hierarchical && !cond.ApplyToFolders {
+			foldersExcepted = append(foldersExcepted, pred)
+		} else {
+			all = append(all, pred)
+		}
 	}
-	if len(extra) == 0 {
+	// Ordinary list filters keep folders navigable. Explicit folder conditions
+	// and row access are conjoined outside that exception.
+	if len(foldersExcepted) > 0 {
+		all = append(all, storage.Predicate{Any: []storage.Predicate{
+			{Field: "is_folder", Op: "eq", Value: true},
+			{All: foldersExcepted},
+		}})
+	}
+	if len(all) == 0 {
 		return params
 	}
-	cond := storage.Predicate{All: extra}
-	// Папки иерархического справочника отбор не скрывает: по ним идёт
-	// навигация, и без папки без автора до своей записи внутри неё из списка
-	// и дерева было бы не дойти. Строковый доступ (row_access) на папки
-	// по-прежнему действует — он добавляется ниже через «И».
-	if entity.Hierarchical {
-		cond = storage.Predicate{Any: []storage.Predicate{
-			{Field: "is_folder", Op: "eq", Value: true},
-			cond,
-		}}
-	}
-	parts := []storage.Predicate{cond}
 	if params.RowFilter != nil {
-		parts = append(parts, *params.RowFilter)
+		all = append(all, *params.RowFilter)
 	}
-	combined := storage.Predicate{All: parts}
-	params.RowFilter = &combined
+	params.RowFilter = &storage.Predicate{All: all}
 	return params
 }
 
@@ -350,11 +351,21 @@ func userHasAnyRole(user *auth.User, roles []string) bool {
 }
 
 func (s *Server) listFilterPredicate(entity *metadata.Entity, cond metadata.FormListCondition, user *auth.User) (storage.Predicate, bool) {
-	field := strings.TrimSpace(cond.Field)
-	if field == "" {
+	if len(cond.Roles) > 0 && !userHasAnyRole(user, cond.Roles) {
 		return storage.Predicate{}, false
 	}
-	if len(cond.Roles) > 0 && !userHasAnyRole(user, cond.Roles) {
+	if cond.NullAsFalse {
+		field, err := cond.NullAsFalseField(entity)
+		if err != nil {
+			return storage.Predicate{Deny: true}, true
+		}
+		return storage.Predicate{Any: []storage.Predicate{
+			{Field: field, Op: "eq", Value: false},
+			{Field: field, Op: "eq", Value: nil},
+		}}, true
+	}
+	field := strings.TrimSpace(cond.Field)
+	if field == "" {
 		return storage.Predicate{}, false
 	}
 	op := strings.TrimSpace(cond.Op)

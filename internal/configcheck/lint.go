@@ -734,7 +734,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 		"roles":             seq(obj()),
 		"except_roles":      seq(obj()),
 		"title":             freeMap(),
-		"filter": seq(with(obj("field", "op", "value", "roles", "query", "value_query", "removable"), map[string]*yamlLintSchema{
+		"filter": seq(with(obj("field", "op", "value", "roles", "query", "value_query", "removable", "null_as_false", "apply_to_folders"), map[string]*yamlLintSchema{
 			"label": freeMap(),
 		})),
 		"row_style": with(obj("background_from", "bold_from", "color_from"), map[string]*yamlLintSchema{

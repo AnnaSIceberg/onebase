@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,8 +13,13 @@ import (
 	"github.com/xuri/excelize/v2"
 
 	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/configcheck"
+	"github.com/ivantit66/onebase/internal/dbtest"
+	"github.com/ivantit66/onebase/internal/dsl/loader"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/project"
 	"github.com/ivantit66/onebase/internal/runtime"
+	"github.com/ivantit66/onebase/internal/storage"
 )
 
 func listFilterTestServer() (*Server, *metadata.Entity) {
@@ -322,4 +329,131 @@ func TestUI_EntityList_FormFilterReferenceKeepsOuterRow(t *testing.T) {
 	if body := rec.Body.String(); !strings.Contains(body, "MY-REF-ROW") || strings.Contains(body, "OTHER-REF-ROW") {
 		t.Fatal("отбор Owner.Account = я пропустил чужую запись")
 	}
+}
+
+func TestUI_EntityList_FormFilterNullAndFolders(t *testing.T) {
+	yamlPath := filepath.Join(t.TempDir(), "stock.form.yaml")
+	formYAML := `schema: onebase.form/v1
+form:
+  name: StockList
+  kind: list
+  entity: StockFilter
+  filter:
+    - {field: deletion_mark, op: eq, value: false, removable: true, apply_to_folders: true}
+    - {field: Черновик, op: eq, value: false, null_as_false: true}
+elements:
+  - kind: ПолеВвода
+    name: Имя
+    data_path: Объект.Наименование
+`
+	if err := os.WriteFile(yamlPath, []byte(formYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	form, err := loader.NewManagedFormLoader().LoadFormFile(yamlPath, "StockFilter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entity := &metadata.Entity{
+		Name: "StockFilter", Kind: metadata.KindCatalog, Hierarchical: true,
+		Forms: []*metadata.FormModule{form}, OrderBy: []string{"Наименование"},
+		Fields: []metadata.Field{
+			{Name: "Наименование", Type: metadata.FieldTypeString},
+			{Name: "Черновик", Type: metadata.FieldTypeBool},
+		},
+	}
+	proj := &project.Project{Entities: []*metadata.Entity{entity}}
+	if issues := configcheck.CheckFormListFilters(proj); len(issues) != 0 {
+		t.Fatalf("valid form: %+v", issues)
+	}
+	condition := form.ListFilter[1]
+	form.ListFilter[1].Field = "Наименование"
+	if issues := configcheck.CheckFormListFilters(proj); len(issues) != 1 {
+		t.Fatalf("null_as_false on string: %+v", issues)
+	}
+	form.ListFilter[1] = condition
+
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		s := newSubmitTestServerOn(t, db, []*metadata.Entity{entity})
+		s.cfg.UIEnhancements = true
+		rows := []struct {
+			name           string
+			draft          any
+			folder, marked bool
+		}{
+			{"ActiveFolderFilter", true, true, false},
+			{"MarkedFolderFilter", true, true, true},
+			{"PlainFalseFilter", false, false, false},
+			{"PlainNullFilter", nil, false, false},
+			{"DraftTrueFilter", true, false, false},
+			{"MarkedItemFilter", false, false, true},
+		}
+		for _, row := range rows {
+			id := uuid.New()
+			if err := db.Upsert(t.Context(), entity.Name, id, map[string]any{
+				"Наименование": row.name, "Черновик": row.draft, "is_folder": row.folder,
+			}, entity); err != nil {
+				t.Fatal(err)
+			}
+			if row.marked {
+				if err := db.MarkForDeletion(t.Context(), entity.Name, id, true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if row.draft == nil {
+				stored, err := db.GetByID(t.Context(), entity.Name, id, entity)
+				if err != nil || stored["Черновик"] != nil {
+					t.Fatalf("test row must contain NULL: %v %v", stored, err)
+				}
+			}
+		}
+		request := func(handler http.HandlerFunc, suffix string) *httptest.ResponseRecorder {
+			t.Helper()
+			rec := httptest.NewRecorder()
+			req := reqWithChi(http.MethodGet, "/ui/catalog/stockfilter"+suffix, nil,
+				map[string]string{"kind": "catalog", "entity": entity.Name})
+			handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("GET %s: HTTP %d %s", suffix, rec.Code, rec.Body.String())
+			}
+			return rec
+		}
+		check := func(body string, indices ...int) {
+			t.Helper()
+			want := make(map[int]bool, len(indices))
+			for _, i := range indices {
+				want[i] = true
+			}
+			for i, row := range rows {
+				if got := strings.Contains(body, row.name); got != want[i] {
+					t.Errorf("row %q: shown=%t, want %t", row.name, got, want[i])
+				}
+			}
+		}
+		check(request(s.list, "?limit=2").Body.String(), 0, 2)
+		check(request(s.list, "?limit=2&page=2&_list_chunk=1").Body.String(), 3)
+		check(request(s.list, "?limit=20&lf_off=0").Body.String(), 0, 1, 2, 3, 5)
+		check(request(s.list, "?limit=20&lf_off=1").Body.String(), 0, 2, 3)
+		check(request(s.list, "?view=tree").Body.String(), 0, 2, 3)
+
+		excel := func(query string, indices ...int) {
+			t.Helper()
+			rec := request(s.listExcel, "/excel?limit=20"+query)
+			book, err := excelize.OpenReader(bytes.NewReader(rec.Body.Bytes()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer book.Close()
+			cells, err := book.GetRows(book.GetSheetName(0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var names []string
+			for _, row := range cells[1:] {
+				names = append(names, row[0])
+			}
+			check(strings.Join(names, ","), indices...)
+		}
+		excel("", 0, 2, 3)
+		excel("&lf_off=0", 0, 1, 2, 3, 5)
+	})
 }
