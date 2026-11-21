@@ -28,8 +28,8 @@ func (tr *translator) emitRequestPhoneJoin() error {
 	if leftAlias == rightAlias || joined == "" || joined != leftAlias && joined != rightAlias {
 		return requestPhoneJoinArgsError()
 	}
-	leftColumns, leftOK := tr.requestPhoneJoinColumns(scope, call, leftAlias)
-	rightColumns, rightOK := tr.requestPhoneJoinColumns(scope, call, rightAlias)
+	leftColumns, leftOK := tr.requestPhoneJoinColumns(scope, call, leftAlias, leftAlias == joined)
+	rightColumns, rightOK := tr.requestPhoneJoinColumns(scope, call, rightAlias, rightAlias == joined)
 	if !leftOK || !rightOK {
 		return requestPhoneJoinArgsError()
 	}
@@ -50,7 +50,7 @@ func requestPhoneJoinArgsError() error {
 	return i18nerr.New("Сопоставление телефонов заявок ожидает два псевдонима А_Заявка в условии ПО")
 }
 
-func (tr *translator) requestPhoneJoinColumns(scope, call int, alias string) ([]string, bool) {
+func (tr *translator) requestPhoneJoinColumns(scope, call int, alias string, joined bool) ([]string, bool) {
 	typ, source, known := tr.columnSourceAt(call, requestPhoneFields[0], alias)
 	if !known || typ != metadata.FieldTypeString || source.tokenPos < 0 || source.tokenPos+4 >= call {
 		return nil, false
@@ -63,6 +63,13 @@ func (tr *translator) requestPhoneJoinColumns(scope, call int, alias string) ([]
 		tr.tokens[source.tokenPos+4].kind != tIdent || lowerFast(tr.tokens[source.tokenPos+4].val) != alias ||
 		(kind != "ДОКУМЕНТ" && kind != "DOCUMENT") || !strings.EqualFold(entity, "А_Заявка") {
 		return nil, false
+	}
+	if joined {
+		on := source.tokenPos + 5
+		keyword, ok := sqlKW(tr.tokens[on].val)
+		if on >= call || !ok || keyword != "ON" {
+			return nil, false
+		}
 	}
 	physical := sourcePhysicalColumns(kind, entity, tr.opts)
 	columns := make([]string, 0, len(requestPhoneFields))

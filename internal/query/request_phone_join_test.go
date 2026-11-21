@@ -42,6 +42,7 @@ func TestRequestPhoneJoinRequiresTrustedReportAndPhysicalAliases(t *testing.T) {
 			for _, text := range []string{
 				"ВЫБРАТЬ " + call + " КАК Совпадение" + from + "1 = 1",
 				"ВЫБРАТЬ З1.Label" + from + "1 = 1 ГДЕ " + call,
+				"ВЫБРАТЬ З1.Label" + strings.TrimSuffix(from, "ПО ") + call + " ПО 1 = 1",
 				"ВЫБРАТЬ З1.Label" + from + "ТЕЛЕФОНЫЗАЯВОКСОВПАДАЮТ(З1, З1)",
 				strings.Replace(valid, "Документ.А_Заявка КАК З2", "Документ.ДругойДокумент КАК З2", 1),
 				strings.Replace(valid, "Документ.А_Заявка КАК З2", "(ВЫБРАТЬ * ИЗ Документ.А_Заявка) КАК З2", 1),

@@ -89,7 +89,7 @@ type Report struct {
 // AllowsRequestPhoneJoin binds the comparison to the opted-in project report.
 // The external flag is set by the loader and cannot be overridden in YAML.
 func (r *Report) AllowsRequestPhoneJoin() bool {
-	return r.CompareRequestPhones && !r.External && strings.EqualFold(r.Name, "А_ЗаявкиПоНомеруТелефона")
+	return r.CompareRequestPhones && !r.External && r.ResultProc == "" && strings.EqualFold(r.Name, "А_ЗаявкиПоНомеруТелефона")
 }
 
 // FormActions configures the action row below the report parameters.
