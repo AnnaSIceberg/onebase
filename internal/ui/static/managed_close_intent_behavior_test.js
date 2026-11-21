@@ -13,6 +13,10 @@ const eventStart = managed.indexOf('  // obFire(elementName');
 assert.ok(eventStart >= 0 && eventStart < start, 'managed form-event slice not found');
 const eventController = managed.slice(eventStart, start);
 const controller = managed.slice(start, end);
+const submitChecksStart = managed.indexOf('function obManagedWriteActionsReadOnly(');
+const submitChecksEnd = managed.indexOf('var obManagedFrameDocumentToken', submitChecksStart);
+assert.ok(submitChecksStart >= 0 && submitChecksEnd > submitChecksStart, 'managed submit helpers not found');
+const submitChecks = managed.slice(submitChecksStart, submitChecksEnd);
 const escapeComment = managed.indexOf('// Esc — отмена незаконченного ввода');
 const escapeStart = managed.indexOf('  function consumeManagedEscape', escapeComment);
 const escapeEnd = managed.indexOf('  }, true);', escapeStart);
@@ -66,6 +70,8 @@ function runtime(fetchImpl, cfgOverride = {}, productionValues = false, producti
   const versionInput = {value: ''};
   const form = {
     id: 'main-form',
+    getAttribute() { return null; },
+    hasAttribute() { return false; },
     values: new Map([['Наименование', 'Черновик']]),
     // Настоящему applyValues поля нужны постоянными объектами: он ищет их
     // через querySelectorAll и сверяет снимок controlState по ссылке.
@@ -178,6 +184,8 @@ function runtime(fetchImpl, cfgOverride = {}, productionValues = false, producti
     __applied: applied,
     document,
     FormData: FakeFormData,
+    obManagedFileSubmitPending: new WeakSet(),
+    obManagedFileSubmitReentry: new WeakSet(),
     URLSearchParams,
     AbortController,
     Promise,
@@ -246,7 +254,7 @@ function runtime(fetchImpl, cfgOverride = {}, productionValues = false, producti
 	  function openItemPicker(value, name, extra){ globalThis.__applied.push(['picker', value, name, extra]); }
       function flash(value, kind){ globalThis.__applied.push(['flash', value, kind]); }
   ` + messageStatus;
-  vm.runInNewContext(prefix + (productionValues ? valueRenderer + dirtyListeners : controlStateRenderer) + eventController + controller + '\n})();', context, {filename: 'managed-close-controller.js'});
+  vm.runInNewContext(submitChecks + prefix + (productionValues ? valueRenderer + dirtyListeners : controlStateRenderer) + eventController + controller + '\n})();', context, {filename: 'managed-close-controller.js'});
   vm.runInNewContext(escapeHandler, context, {filename: 'managed-close-escape.js'});
 	return {
 	  context, form, idInput, versionInput, applied, listeners, document, closeButton, assigned, dirtyReports,
