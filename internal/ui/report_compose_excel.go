@@ -82,7 +82,7 @@ func (e *excelComposeSink) row(label string, vals map[string]any) {
 
 // rowWithDetail — строка с полями детальной записи (detail != nil только у
 // строки детализации; у групп и итогов эти колонки пусты).
-func (e *excelComposeSink) rowWithDetail(label string, detail, vals map[string]any) {
+func (e *excelComposeSink) rowWithDetail(label string, detail *compose.DetailRow, vals map[string]any) {
 	r := make([]any, e.colCount)
 	off := 0
 	if composedLabelColumn(e.spec) {
@@ -102,7 +102,11 @@ func (e *excelComposeSink) rowWithDetail(label string, detail, vals map[string]a
 	}
 	off += len(e.spec.DetailFields)
 	for i, m := range e.spec.Measures {
-		r[off+i] = measureCellForExcel(vals[m.Field], m)
+		value := vals[m.Field]
+		if detail != nil {
+			value = detailMeasureValue(detail, m.Field)
+		}
+		r[off+i] = measureCellForExcel(value, m)
 	}
 	e.rows = append(e.rows, r)
 	e.rowStyles = append(e.rowStyles, excel.RowStyle{})
@@ -120,7 +124,7 @@ func (e *excelComposeSink) group(g *compose.Group, level int, _ string) {
 func (e *excelComposeSink) detail(d compose.DetailRow, level int, _ string) {
 	// Первая ячейка детали — только отступ (зеркалит HTML-рендер). Осмысленный
 	// идентификатор строки (ссылка на документ) — задача B3 (detail_link).
-	e.rowWithDetail(strings.Repeat("  ", level), d.Values, d.Values)
+	e.rowWithDetail(strings.Repeat("  ", level), &d, d.Values)
 }
 
 func (e *excelComposeSink) grand(grand map[string]any) {

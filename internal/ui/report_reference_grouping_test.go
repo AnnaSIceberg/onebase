@@ -24,8 +24,12 @@ import (
 func TestReportReferenceGroupingsHTTP(t *testing.T) {
 	rep, err := report.ParseBytes([]byte(`name: GroupedReferences
 query: |
-  ВЫБРАТЬ В.Объект КАК Заявка, В.Оценка КАК Оценка
-  ИЗ Справочник.GroupedReferenceInput КАК В
+  ВЫБРАТЬ Src.Объект КАК Заявка, Src.Оценка КАК Оценка
+  ИЗ Справочник.GroupedReferenceInput КАК Src
+drilldowns:
+  - field: Заявка
+    id_field: Заявка
+    target: {kind: entity, entity: GroupedReferenceTarget}
 composition:
   groupings: [Заявка]
   reference_groupings: [Заявка]
@@ -40,7 +44,7 @@ composition:
 			{Name: "Наименование", Type: metadata.FieldTypeString},
 		}}
 		input := &metadata.Entity{Name: "GroupedReferenceInput", Kind: metadata.KindCatalog, Fields: []metadata.Field{
-			{Name: "Объект", Type: metadata.FieldTypeString, RefEntity: target.Name},
+			{Name: "Объект", Type: metadata.FieldType("reference:" + target.Name), RefEntity: target.Name},
 			{Name: "Оценка", Type: metadata.FieldTypeNumber},
 		}}
 		entities := []*metadata.Entity{target, input}
@@ -85,13 +89,24 @@ composition:
 			body := get(base + "?__run=1").Body.String()
 			groups := regexp.MustCompile(`class="grp" data-group="([^"]+)"[^>]*>[^<]*<td[^>]*>(.*?)</td>`).
 				FindAllStringSubmatch(body, -1)
-			require.Len(t, groups, 2)
+			if len(groups) != 2 {
+				require.Len(t, groups, 2, "HTML result: %.3000s", body)
+			}
 			require.NotEqual(t, groups[0][1], groups[1][1])
 			for _, group := range groups {
 				require.Equal(t, readTarget, strings.Contains(group[2], shared))
 			}
+			visible := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(body, "")
+			require.Equal(t, readTarget, strings.Contains(body, `class="report-drilldown"`))
+			if readTarget {
+				require.Equal(t, 5, strings.Count(visible, shared))
+			}
 			for _, id := range ids {
-				require.NotContains(t, body, id.String())
+				for _, group := range groups {
+					require.NotContains(t, group[1], id.String())
+				}
+				require.NotContains(t, visible, id.String())
+				require.Equal(t, readTarget, strings.Contains(body, "id="+id.String()))
 			}
 
 			book, err := excelize.OpenReader(bytes.NewReader(get(base + "/excel").Body.Bytes()))

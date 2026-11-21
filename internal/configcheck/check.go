@@ -825,8 +825,15 @@ func CheckReportComposition(proj *project.Project) []Issue {
 			add(repName, prefix+err)
 		}
 		groups := map[string]bool{}
+		groupNames := map[string]bool{}
 		for _, g := range c.Groupings {
 			groups[g] = true
+			groupNames[strings.ToLower(g)] = true
+		}
+		for _, field := range c.ReferenceGroupings {
+			if !groupNames[strings.ToLower(field)] {
+				add(repName, prefix+fmt.Sprintf("reference_groupings: поле %q отсутствует в groupings", field))
+			}
 		}
 		measures := map[string]bool{}
 		measureNames := map[string]bool{}

@@ -107,31 +107,39 @@ func (h *htmlComposeSink) hiddenStyle(level int) string {
 // оформление по styles[поле]. Общий код для строк группы, подытога и детали
 // (раньше один и тот же цикл был скопирован трижды).
 func (h *htmlComposeSink) measureCells(vals map[string]any, styles map[string]report.CellStyle) {
-	h.detailFieldCells(nil, nil)
-	h.measureOnlyCells(vals, styles)
+	h.detailFieldCells(nil)
+	h.measureOnlyCells(vals, styles, nil)
 }
 
 // detailFieldCells — ячейки полей детальной записи. Строки групп и итогов
 // передают nil: колонки есть, значений в них нет.
-func (h *htmlComposeSink) detailFieldCells(vals map[string]any, styles map[string]report.CellStyle) {
+func (h *htmlComposeSink) detailFieldCells(detail *compose.DetailRow) {
 	for _, d := range h.spec.DetailFields {
-		v := ""
-		if vals != nil {
-			v = fmtDetailVal(detailFieldValue(h.spec, vals, d.Field))
+		style, text := "", ""
+		if detail != nil {
+			style = cssOf(detail.Styles[d.Field])
+			text = h.detailCell(detail, d.Field, fmtDetailVal(detailFieldValue(h.spec, detail, d.Field)))
 		}
-		h.b.WriteString(`<td class="detail-field" style="` + html.EscapeString(cssOf(styles[d.Field])) + `">` + string(h.drilldowns.Cell(d.Field, vals, v)) + `</td>`)
+		h.b.WriteString(`<td class="detail-field" style="` + html.EscapeString(style) + `">` + text + `</td>`)
 	}
 }
 
-func (h *htmlComposeSink) measureOnlyCells(vals map[string]any, styles map[string]report.CellStyle, detail ...bool) {
+func (h *htmlComposeSink) measureOnlyCells(vals map[string]any, styles map[string]report.CellStyle, detail *compose.DetailRow) {
 	for _, m := range h.spec.Measures {
 		cell := joinStyles(measureAlign(m), cssOf(styles[m.Field]))
 		text := html.EscapeString(fmtMeasure(vals[m.Field], m))
-		if len(detail) > 0 && detail[0] {
-			text = string(h.drilldowns.Cell(m.Field, vals, fmtMeasure(vals[m.Field], m)))
+		if detail != nil {
+			text = h.detailCell(detail, m.Field, fmtMeasure(detailMeasureValue(detail, m.Field), m))
 		}
 		h.b.WriteString(`<td class="num" style="` + html.EscapeString(cell) + `">` + text + `</td>`)
 	}
+}
+
+func (h *htmlComposeSink) detailCell(detail *compose.DetailRow, field, text string) string {
+	if label, ok := detail.ReferenceLabel(field); ok && label == "" {
+		return ""
+	}
+	return string(h.drilldowns.Cell(field, detail.Values, text))
 }
 
 func (h *htmlComposeSink) group(g *compose.Group, level int, path string) {
@@ -181,8 +189,8 @@ func (h *htmlComposeSink) detail(d compose.DetailRow, level int, path string) {
 			fmt.Fprintf(h.b, `<td style="padding-left:%dpx"></td>`, 8+level*18)
 		}
 	}
-	h.detailFieldCells(d.Values, d.Styles)
-	h.measureOnlyCells(d.Values, d.Styles, true)
+	h.detailFieldCells(&d)
+	h.measureOnlyCells(d.Values, d.Styles, &d)
 	if h.drilldowns.HasRows() {
 		h.b.WriteString(`<td>` + string(h.drilldowns.Row(d.Values)) + `</td>`)
 	}
@@ -396,13 +404,24 @@ const reportDetailLinkLabelKey = "_ob_detail_link_label"
 
 // detailFieldValue — значение поля детальной записи. Поле, которое служит и
 // detail_link, показывается представлением ссылки, а не её UUID.
-func detailFieldValue(spec *report.Composition, vals map[string]any, field string) any {
+func detailFieldValue(spec *report.Composition, detail *compose.DetailRow, field string) any {
+	if _, ok := detail.ReferenceLabel(field); ok {
+		return detailMeasureValue(detail, field)
+	}
 	if spec != nil && spec.DetailLink != "" && strings.EqualFold(field, spec.DetailLink) {
-		if label, ok := vals[reportDetailLinkLabelKey]; ok {
+		if label, ok := detail.Values[reportDetailLinkLabelKey]; ok {
 			return label
 		}
 	}
-	return vals[field]
+	return detail.Values[field]
+}
+
+func detailMeasureValue(detail *compose.DetailRow, field string) any {
+	value := detail.Values[field]
+	if label, ok := detail.ReferenceLabel(field); ok && value != nil {
+		return label
+	}
+	return value
 }
 
 // detailFieldTitle — заголовок колонки детальной записи (пустой = имя поля).

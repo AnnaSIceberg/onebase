@@ -18,7 +18,7 @@ type referenceGroup struct {
 type referenceGroups map[string]referenceGroup
 
 // SetReferenceGroup keeps grouping identity separate from the authorized label.
-// The auxiliary value stays private to composition and never reaches a detail.
+// Only the authorized caption is copied into detail presentation.
 func SetReferenceGroup(row Row, field string, id uuid.UUID, label string) {
 	groups, _ := row[referenceGroupsKey].(referenceGroups)
 	if groups == nil {
@@ -26,6 +26,12 @@ func SetReferenceGroup(row Row, field string, id uuid.UUID, label string) {
 		row[referenceGroupsKey] = groups
 	}
 	groups[strings.ToLower(field)] = referenceGroup{id: referenceGroupID(id), label: label}
+}
+
+// ReferenceLabel returns the visible caption while Values retains drilldown input.
+func (d DetailRow) ReferenceLabel(field string) (string, bool) {
+	label, ok := d.referenceLabels[strings.ToLower(field)]
+	return label, ok
 }
 
 func groupingKey(row Row, field string, value any) any {

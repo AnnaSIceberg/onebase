@@ -35,8 +35,11 @@ func Parse(f url.Values) (*report.Composition, bool) {
 	}
 
 	for _, field := range f["comp.reference_grouping"] {
-		if field = strings.TrimSpace(field); field != "" {
-			c.ReferenceGroupings = append(c.ReferenceGroupings, field)
+		for _, group := range c.Groupings {
+			if strings.EqualFold(strings.TrimSpace(field), group) {
+				c.ReferenceGroupings = append(c.ReferenceGroupings, group)
+				break
+			}
 		}
 	}
 

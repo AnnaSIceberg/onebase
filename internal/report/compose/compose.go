@@ -84,8 +84,9 @@ type Group struct {
 }
 
 type DetailRow struct {
-	Values map[string]any              `json:"values"`
-	Styles map[string]report.CellStyle `json:"styles,omitempty"` // ключ "" = стиль на всю строку
+	Values          map[string]any              `json:"values"`
+	Styles          map[string]report.CellStyle `json:"styles,omitempty"` // ключ "" = стиль на всю строку
+	referenceLabels map[string]string
 }
 
 func Compose(rows []Row, spec report.Composition, ev Evaluator) (*Result, error) {
@@ -254,8 +255,13 @@ func buildDetails(rows []Row, spec report.Composition, ev Evaluator, wc *warnCol
 	out := make([]DetailRow, 0, len(rows))
 	for _, r := range rows {
 		values := r
-		_, cloned := r[referenceGroupsKey]
+		groups, cloned := r[referenceGroupsKey].(referenceGroups)
+		var labels map[string]string
 		if cloned {
+			labels = make(map[string]string, len(groups))
+			for field, group := range groups {
+				labels[field] = group.label
+			}
 			values = maps.Clone(r)
 			delete(values, referenceGroupsKey)
 		}
@@ -274,7 +280,7 @@ func buildDetails(rows []Row, spec report.Composition, ev Evaluator, wc *warnCol
 				values[m.Field] = nil
 			}
 		}
-		out = append(out, DetailRow{Values: values, Styles: evalStyles(values, spec, ev, wc)})
+		out = append(out, DetailRow{Values: values, Styles: evalStyles(values, spec, ev, wc), referenceLabels: labels})
 	}
 	sortDetails(out, spec)
 	return out
