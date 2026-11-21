@@ -292,10 +292,10 @@ func NewFileFunctions(guard FileGuard) map[string]any {
 	// Эти функции не читают и не создают сам файл, но раскрывают путь хоста и
 	// выдают пригодное для последующей записи имя. Поэтому DenyFile обязан
 	// перекрывать их тем же guard'ом, что и остальные файловые возможности.
-	m["каталогвременныхфайлов"] = guardedFile(guard, catchableEnvBuiltin(tempDirFn))
-	m["tempfilesdir"] = guardedFile(guard, catchableEnvBuiltin(tempDirFn))
-	m["получитьимявременногофайла"] = guardedFile(guard, catchableEnvBuiltin(tempFileNameFn))
-	m["gettempfilename"] = guardedFile(guard, catchableEnvBuiltin(tempFileNameFn))
+	m["каталогвременныхфайлов"] = guardedFile(guard, catchableBuiltin(tempDirFn))
+	m["tempfilesdir"] = guardedFile(guard, catchableBuiltin(tempDirFn))
+	m["получитьимявременногофайла"] = guardedFile(guard, catchableBuiltin(tempFileNameFn))
+	m["gettempfilename"] = guardedFile(guard, catchableBuiltin(tempFileNameFn))
 
 	return m
 }

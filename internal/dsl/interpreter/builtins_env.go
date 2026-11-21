@@ -18,32 +18,16 @@ import (
 // в код. URL-кодирование нужно всем, кто собирает адрес с параметрами:
 // без него параметр с пробелом или кириллицей ломает запрос.
 func init() {
-	builtins["каталогвременныхфайлов"] = catchableEnvBuiltin(tempDirFn)
-	builtins["tempfilesdir"] = catchableEnvBuiltin(tempDirFn)
-	builtins["получитьимявременногофайла"] = catchableEnvBuiltin(tempFileNameFn)
-	builtins["gettempfilename"] = catchableEnvBuiltin(tempFileNameFn)
-	builtins["получитьразделительпути"] = catchableEnvBuiltin(pathSeparatorFn)
-	builtins["getpathseparator"] = catchableEnvBuiltin(pathSeparatorFn)
-	builtins["кодироватьстроку"] = catchableEnvBuiltin(encodeStringFn)
-	builtins["encodestring"] = catchableEnvBuiltin(encodeStringFn)
-	builtins["раскодироватьстроку"] = catchableEnvBuiltin(decodeStringFn)
-	builtins["decodestring"] = catchableEnvBuiltin(decodeStringFn)
-}
-
-// catchableEnvBuiltin переводит штатные ошибки функций окружения в
-// пользовательские исключения DSL. Обычный error из BuiltinFunc означает для
-// интерпретатора системную остановку (dslStop) и намеренно обходит Попытку;
-// ошибки аргументов и ОС у этих функций, напротив, должны быть перехватываемы.
-// Чистые функции ниже продолжают возвращать error, поэтому их можно тестировать
-// и переиспользовать без recover.
-func catchableEnvBuiltin(fn BuiltinFunc) BuiltinFunc {
-	return func(args []any, file string, line int) (any, error) {
-		result, err := fn(args, file, line)
-		if err != nil {
-			panic(userError{Msg: err.Error(), File: file, Line: line, Err: err})
-		}
-		return result, nil
-	}
+	builtins["каталогвременныхфайлов"] = catchableBuiltin(tempDirFn)
+	builtins["tempfilesdir"] = catchableBuiltin(tempDirFn)
+	builtins["получитьимявременногофайла"] = catchableBuiltin(tempFileNameFn)
+	builtins["gettempfilename"] = catchableBuiltin(tempFileNameFn)
+	builtins["получитьразделительпути"] = catchableBuiltin(pathSeparatorFn)
+	builtins["getpathseparator"] = catchableBuiltin(pathSeparatorFn)
+	builtins["кодироватьстроку"] = catchableBuiltin(encodeStringFn)
+	builtins["encodestring"] = catchableBuiltin(encodeStringFn)
+	builtins["раскодироватьстроку"] = catchableBuiltin(decodeStringFn)
+	builtins["decodestring"] = catchableBuiltin(decodeStringFn)
 }
 
 // installEnvironmentConstants публикует совместимые с 1С значения способов

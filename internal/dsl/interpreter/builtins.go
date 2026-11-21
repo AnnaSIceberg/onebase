@@ -16,6 +16,22 @@ import (
 // BuiltinFunc is a callable value that can be injected via extraVars (e.g. Сообщить).
 type BuiltinFunc func(args []any, file string, line int) (any, error)
 
+// catchableBuiltin переводит штатные ошибки встроенных функций в
+// пользовательские исключения DSL. Обычный error из BuiltinFunc означает для
+// интерпретатора системную остановку (dslStop) и намеренно обходит Попытку;
+// ошибки аргументов и доступных пользователю операций, напротив, должны быть перехватываемы.
+// Чистые функции ниже продолжают возвращать error, поэтому их можно тестировать
+// и переиспользовать без recover.
+func catchableBuiltin(fn BuiltinFunc) BuiltinFunc {
+	return func(args []any, file string, line int) (any, error) {
+		result, err := fn(args, file, line)
+		if err != nil {
+			panic(userError{Msg: err.Error(), File: file, Line: line, Err: err})
+		}
+		return result, nil
+	}
+}
+
 // ReadOnlyBuiltinFunc is an explicit opt-in for an injected callback that is
 // safe to invoke from an unattended debugger condition. Ordinary BuiltinFunc
 // values fail closed there: the interpreter cannot infer whether an arbitrary
@@ -290,6 +306,9 @@ var builtins = map[string]func(args []any, file string, line int) (any, error){
 	"мин":   builtinMin,
 
 	// ─── JSON ─────────────────────────────────────────────────────────────
+	"штрихкодpng": catchableBuiltin(builtinBarcodePNG),
+	"barcodepng":  catchableBuiltin(builtinBarcodePNG),
+
 	"прочитатьjson": builtinReadJSON,
 	"readjson":      builtinReadJSON,
 	"записатьjson":  builtinWriteJSON,

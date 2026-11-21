@@ -18,8 +18,8 @@ import (
 // и файлы сервера. Мастер-ключ — у процесса (ONEBASE_MASTER_KEY), в базе его
 // нет. Песочница недоверенного кода функцию закрывает (DenySecrets).
 func init() {
-	builtins["расшифроватьсекрет"] = catchableEnvBuiltin(decryptSecretFn)
-	builtins["decryptsecret"] = catchableEnvBuiltin(decryptSecretFn)
+	builtins["расшифроватьсекрет"] = catchableBuiltin(decryptSecretFn)
+	builtins["decryptsecret"] = catchableBuiltin(decryptSecretFn)
 }
 
 func decryptSecretFn(args []any, _ string, _ int) (any, error) {
