@@ -507,12 +507,13 @@ func reportYAMLSchema() *yamlLintSchema {
 	style := obj("color", "background", "bold", "italic")
 	conditional := with(obj("when", "field"), map[string]*yamlLintSchema{"style": style})
 	composition := with(obj("groupings", "columns", "detail", "detail_link", "detail_entity"), map[string]*yamlLintSchema{
-		"measures":    seq(measure),
-		"totals":      obj("grand", "subtotals"),
-		"sort":        seq(sortKey),
-		"conditional": seq(conditional),
-		"appearance":  obj("lines", "zebra", "collapse_to"),
-		"chart":       obj("type", "category", "series"),
+		"reference_groupings": seq(nil),
+		"measures":            seq(measure),
+		"totals":              obj("grand", "subtotals"),
+		"sort":                seq(sortKey),
+		"conditional":         seq(conditional),
+		"appearance":          obj("lines", "zebra", "collapse_to"),
+		"chart":               obj("type", "category", "series"),
 		// detail_fields — поля детальной записи (аналог «Выбранных полей» 1С).
 		"detail_fields": seq(obj("field", "title")),
 	})

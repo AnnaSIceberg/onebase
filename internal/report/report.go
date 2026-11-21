@@ -110,17 +110,19 @@ type ReportVariant struct {
 
 // Composition описывает настройки компоновки данных отчёта.
 type Composition struct {
-	Groupings    []string   `yaml:"groupings"`
-	Columns      []string   `yaml:"columns"` // непусто = режим кросс-таблицы: измерения в колонки
-	Measures     []Measure  `yaml:"measures"`
-	Totals       Totals     `yaml:"totals"`
-	Detail       bool       `yaml:"detail"`
-	Sort         []SortKey  `yaml:"sort"`
-	Conditional  []CondRule `yaml:"conditional"`
-	Appearance   Appearance `yaml:"appearance"` // общее оформление вывода (линии, зебра)
-	Chart        *ChartSpec `yaml:"chart"`
-	DetailLink   string     `yaml:"detail_link"`   // поле строки с UUID регистратора/ссылки
-	DetailEntity string     `yaml:"detail_entity"` // имя сущности для перехода по ссылке
+	Groupings []string `yaml:"groupings"`
+	// ReferenceGroupings groups these projected references by UUID and displays their authorized labels.
+	ReferenceGroupings []string   `yaml:"reference_groupings,omitempty" json:",omitempty"`
+	Columns            []string   `yaml:"columns"` // непусто = режим кросс-таблицы: измерения в колонки
+	Measures           []Measure  `yaml:"measures"`
+	Totals             Totals     `yaml:"totals"`
+	Detail             bool       `yaml:"detail"`
+	Sort               []SortKey  `yaml:"sort"`
+	Conditional        []CondRule `yaml:"conditional"`
+	Appearance         Appearance `yaml:"appearance"` // общее оформление вывода (линии, зебра)
+	Chart              *ChartSpec `yaml:"chart"`
+	DetailLink         string     `yaml:"detail_link"`   // поле строки с UUID регистратора/ссылки
+	DetailEntity       string     `yaml:"detail_entity"` // имя сущности для перехода по ссылке
 	// DetailFields — поля детальной записи (аналог «Выбранных полей» 1С):
 	// колонки, которые в строке детализации показывают значения записи
 	// (номер, наименование, даты), а в строках групп и итогов пусты.

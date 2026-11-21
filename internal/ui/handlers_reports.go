@@ -446,7 +446,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 			return
 		}
 	}
-	s.resolveUUIDsInReport(opCtx, rows, compiled, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
+	s.resolveReportViewReferences(opCtx, rows, compiled, comp, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
 
 	// Typed source filters have already run before the accepted-row cap.
 
@@ -827,7 +827,7 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 	if comp != nil {
 		detailLinkCol = comp.DetailLink
 	}
-	s.resolveUUIDsInReport(ctx, data, compiled, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
+	s.resolveReportViewReferences(ctx, data, compiled, comp, append([]string{detailLinkCol}, reportDrilldownSourceFields(rep)...)...)
 
 	// The export consumes the same filtered source as the screen.
 

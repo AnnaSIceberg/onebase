@@ -38,11 +38,12 @@ func (c CrossCol) Key() string { return colKey(c.Path, c.MeasureIdx) }
 // агрегаты показателей по каждой колонке (ключ = CrossCol.Key()). Промежуточный
 // узел несёт подытоги по своему поддереву и Children; лист — только Cells.
 type CrossRow struct {
-	Field  string                      `json:"field"`
-	Key    any                         `json:"key"`
-	Count  int                         `json:"count"`
-	Cells  map[string]any              `json:"cells"`
-	Styles map[string]report.CellStyle `json:"styles,omitempty"` // ключ = CrossCol.Key() → оформление ячейки
+	Field          string                      `json:"field"`
+	Key            any                         `json:"key"`
+	ReferenceGroup bool                        `json:"-"`
+	Count          int                         `json:"count"`
+	Cells          map[string]any              `json:"cells"`
+	Styles         map[string]report.CellStyle `json:"styles,omitempty"` // ключ = CrossCol.Key() → оформление ячейки
 	// Total — итог строки по всем колонкам (колонка «Итого» справа, как в СКД
 	// 1С); ключ = CrossTotalKey(индекс показателя). Считается по исходным
 	// строкам группы, а не суммой ячеек: среднее и «количество различных» по
@@ -215,7 +216,7 @@ func buildCrossRows(rows []Row, spec report.Composition, level int, ev Evaluator
 	var order []any
 	buckets := map[any][]Row{}
 	for _, r := range rows {
-		k := normalizeGroupKey(r[field])
+		k := groupingKey(r, field, r[field])
 		if _, ok := buckets[k]; !ok {
 			order = append(order, k)
 		}
@@ -226,13 +227,15 @@ func buildCrossRows(rows []Row, spec report.Composition, level int, ev Evaluator
 		rowCtx := ctx
 		rowCtx.level = field
 		cells, styles := crossAgg(buckets[k], spec, ev, wc, rowCtx)
+		label, reference := groupingDisplay(buckets[k][0], field, k)
 		cr := &CrossRow{
-			Field:  field,
-			Key:    k,
-			Count:  len(buckets[k]),
-			Cells:  cells,
-			Styles: styles,
-			Total:  crossTotals(buckets[k], spec, ev, wc, rowCtx),
+			Field:          field,
+			Key:            label,
+			ReferenceGroup: reference,
+			Count:          len(buckets[k]),
+			Cells:          cells,
+			Styles:         styles,
+			Total:          crossTotals(buckets[k], spec, ev, wc, rowCtx),
 
 			sortValues: sortFieldValues(buckets[k], spec),
 		}

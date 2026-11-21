@@ -11,7 +11,76 @@ import (
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/query"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
+	"github.com/ivantit66/onebase/internal/report/compose"
 )
+
+// resolveReportViewReferences preserves identity only for the active, opted-in
+// groupings. The ordinary reference resolver still owns all label reads.
+func (s *Server) resolveReportViewReferences(ctx context.Context, rows []map[string]any, compiled query.Result, spec *reportpkg.Composition, skipCols ...string) {
+	if spec == nil || len(spec.ReferenceGroupings) == 0 {
+		s.resolveUUIDsInReport(ctx, rows, compiled, skipCols...)
+		return
+	}
+	var fields []string
+	for _, field := range spec.Groupings {
+		if reportColumnSkipped(field, spec.ReferenceGroupings) {
+			fields = append(fields, field)
+		}
+	}
+	type groupReference struct {
+		row   map[string]any
+		field string
+		raw   any
+		id    uuid.UUID
+	}
+	var references []groupReference
+	for _, row := range rows {
+		for _, field := range fields {
+			key, ok := rowKeyByName(row, field)
+			if !ok {
+				continue
+			}
+			raw := row[key]
+			parsed := raw
+			if bs, ok := raw.([]byte); ok {
+				parsed = string(bs)
+			}
+			if _, id, ok := uuidFromValue(parsed); ok {
+				references = append(references, groupReference{row: row, field: key, raw: raw, id: id})
+			}
+		}
+	}
+
+	// The detail link already retains its ID and resolves a separate caption.
+	// Resolve any other configured group caption with the same authorization,
+	// restoring the original drilldown input afterward.
+	resolveSkip := make([]string, 0, len(skipCols))
+	for i, field := range skipCols {
+		if i == 0 || !reportColumnSkipped(field, fields) {
+			resolveSkip = append(resolveSkip, field)
+		}
+	}
+	s.resolveUUIDsInReport(ctx, rows, compiled, resolveSkip...)
+	for _, ref := range references {
+		label := fmtVal(ref.row[ref.field])
+		isDetail := len(skipCols) > 0 && strings.EqualFold(ref.field, skipCols[0])
+		if isDetail {
+			label = fmtVal(ref.row[reportDetailLinkLabelKey])
+		}
+		if label == fmtVal(ref.raw) || strings.EqualFold(label, ref.id.String()) {
+			label = ""
+		}
+		if reportColumnSkipped(ref.field, skipCols) {
+			ref.row[ref.field] = ref.raw
+		} else {
+			ref.row[ref.field] = label
+		}
+		if isDetail {
+			ref.row[reportDetailLinkLabelKey] = label
+		}
+		compose.SetReferenceGroup(ref.row, ref.field, ref.id, label)
+	}
+}
 
 // Resolve only columns proven to contain entity references. Unknown UUID-like
 // strings never trigger a search across unrelated catalogs/documents.

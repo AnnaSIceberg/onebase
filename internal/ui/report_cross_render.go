@@ -57,8 +57,8 @@ func renderCrossTablePresented(cr *compose.CrossResult, spec *report.Composition
 	b.WriteString(`</tr></thead><tbody>`)
 
 	// Тело: дерево строк.
-	for _, row := range cr.Rows {
-		writeCrossRow(&b, row, cr.Cols, measureAt, 0, "", spec, presentation)
+	for i, row := range cr.Rows {
+		writeCrossRow(&b, row, cr.Cols, measureAt, 0, "", i, spec, presentation)
 	}
 
 	// Общий итог по колонкам.
@@ -75,9 +75,9 @@ func renderCrossTablePresented(cr *compose.CrossResult, spec *report.Composition
 
 // writeCrossRow рисует строку дерева и рекурсивно её детей с нарастающим отступом.
 // Узлы с детьми (промежуточные группы) несут подытоги по колонкам.
-func writeCrossRow(b *strings.Builder, row *compose.CrossRow, cols []compose.CrossCol, measureAt func(compose.CrossCol) report.Measure, level int, parentPath string, spec *report.Composition, presentation reportCompositionPresentation) {
+func writeCrossRow(b *strings.Builder, row *compose.CrossRow, cols []compose.CrossCol, measureAt func(compose.CrossCol) report.Measure, level int, parentPath string, position int, spec *report.Composition, presentation reportCompositionPresentation) {
 	pad := fmt.Sprintf("padding-left:%dpx", 8+level*18)
-	path := parentPath + "/" + pathSeg(fmtVal(row.Key))
+	path := parentPath + "/" + reportGroupPathSegment(row.Key, row.ReferenceGroup, position)
 	rowStyle := "--rc-group-fill:" + composedGroupFill(level, len(spec.Groupings)) + ";--rc-group-dark:" + composedGroupDarkFill(level, len(spec.Groupings))
 	depth, collapsed := collapseLevel(spec)
 	if collapsed && level > depth {
@@ -100,8 +100,8 @@ func writeCrossRow(b *strings.Builder, row *compose.CrossRow, cols []compose.Cro
 	}
 	writeCrossTotals(b, row.Total, spec)
 	b.WriteString(`</tr>`)
-	for _, ch := range row.Children {
-		writeCrossRow(b, ch, cols, measureAt, level+1, path, spec, presentation)
+	for i, ch := range row.Children {
+		writeCrossRow(b, ch, cols, measureAt, level+1, path, i, spec, presentation)
 	}
 }
 

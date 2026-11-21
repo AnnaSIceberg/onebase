@@ -34,6 +34,12 @@ func Parse(f url.Values) (*report.Composition, bool) {
 		c.Groupings = append(c.Groupings, v)
 	}
 
+	for _, field := range f["comp.reference_grouping"] {
+		if field = strings.TrimSpace(field); field != "" {
+			c.ReferenceGroupings = append(c.ReferenceGroupings, field)
+		}
+	}
+
 	// Колонки кросс-таблицы (непусто → режим кросс-таблицы)
 	for _, i := range rowIndexes(f, "comp.column.", "") {
 		v := strings.TrimSpace(f.Get("comp.column." + strconv.Itoa(i)))

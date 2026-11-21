@@ -4,6 +4,7 @@ package compose
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"sort"
 	"strconv"
@@ -69,11 +70,12 @@ func (w *warnCollector) add(msg string) {
 }
 
 type Group struct {
-	Field     string         `json:"field"`
-	Key       any            `json:"key"`
-	Subtotals map[string]any `json:"subtotals"`
-	Count     int            `json:"count"`
-	Children  []*Group       `json:"children,omitempty"`
+	Field          string         `json:"field"`
+	Key            any            `json:"key"`
+	ReferenceGroup bool           `json:"-"`
+	Subtotals      map[string]any `json:"subtotals"`
+	Count          int            `json:"count"`
+	Children       []*Group       `json:"children,omitempty"`
 	// sortValues — значения полей сортировки, которые не группировка и не
 	// показатель (sortFieldValues).
 	sortValues map[string]any
@@ -181,7 +183,7 @@ func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, w
 	var order []any
 	buckets := map[any][]Row{}
 	for _, r := range rows {
-		k := normalizeGroupKey(r[field])
+		k := groupingKey(r, field, r[field])
 		if _, ok := buckets[k]; !ok {
 			order = append(order, k)
 		}
@@ -189,12 +191,14 @@ func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, w
 	}
 	groups := make([]*Group, 0, len(order))
 	for _, k := range order {
+		label, reference := groupingDisplay(buckets[k][0], field, k)
 		gr := &Group{
-			Field:      field,
-			Key:        k,
-			Count:      len(buckets[k]),
-			Subtotals:  aggregateContext(buckets[k], spec.Measures, ev, wc, measureContext{grand: grand, level: field}),
-			sortValues: sortFieldValues(buckets[k], spec),
+			Field:          field,
+			Key:            label,
+			ReferenceGroup: reference,
+			Count:          len(buckets[k]),
+			Subtotals:      aggregateContext(buckets[k], spec.Measures, ev, wc, measureContext{grand: grand, level: field}),
+			sortValues:     sortFieldValues(buckets[k], spec),
 		}
 		// Условное оформление группы/подытога вычисляется по её подытогам плюс
 		// собственному полю группировки (field→Key) — чтобы правило вида
@@ -250,15 +254,16 @@ func buildDetails(rows []Row, spec report.Composition, ev Evaluator, wc *warnCol
 	out := make([]DetailRow, 0, len(rows))
 	for _, r := range rows {
 		values := r
-		cloned := false
+		_, cloned := r[referenceGroupsKey]
+		if cloned {
+			values = maps.Clone(r)
+			delete(values, referenceGroupsKey)
+		}
 		for _, m := range spec.Measures {
 			if !m.InScope(report.MeasureScopeDetail) {
 				// Clone once before blanking; input still feeds grand/group totals.
 				if !cloned {
-					values = make(Row, len(r))
-					for key, value := range r {
-						values[key] = value
-					}
+					values = maps.Clone(r)
 					cloned = true
 				}
 				for key := range values {

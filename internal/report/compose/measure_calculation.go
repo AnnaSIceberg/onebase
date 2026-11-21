@@ -38,7 +38,7 @@ func aggMeasureAtLevel(rows []Row, m report.Measure, level string, wc *warnColle
 			wc.add(fmt.Sprintf("показатель «%s»: исходное поле group_by «%s» отсутствует", m.Field, c.GroupBy))
 			return nil
 		}
-		key := normalizeGroupKey(value)
+		key := groupingKey(row, c.GroupBy, value)
 		if _, ok := buckets[key]; !ok {
 			keys = append(keys, key)
 		}
