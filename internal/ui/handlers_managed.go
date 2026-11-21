@@ -289,6 +289,16 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 		}
 	}
 
+	if entity != nil {
+		locked, err := s.managedWriteActionsReadOnly(form, header)
+		if locked != nil {
+			data["WriteActionsReadOnly"] = strconv.FormatBool(*locked)
+		}
+		if err != nil {
+			data["FormWarnings"] = appendManagedFormWarnings(data["FormWarnings"], []string{err.Error()})
+		}
+	}
+
 	// Якори размещений нужны и без интерпретатора: editable_admin_only
 	// вычисляется независимо от DSL и возвращается после события формы.
 	paths := make(map[*metadata.FormElement]string)
@@ -329,6 +339,23 @@ func (s *Server) prepareManagedFormData(ctx context.Context, data map[string]any
 	if len(warnings) > 0 {
 		data["FormWarnings"] = appendManagedFormWarnings(data["FormWarnings"], warnings)
 	}
+}
+
+// managedWriteActionsReadOnly returns nil for forms without the opt-in. If
+// the expression cannot be evaluated, keep the standard write commands disabled.
+func (s *Server) managedWriteActionsReadOnly(form *metadata.FormModule, header map[string]any) (*bool, error) {
+	expr := form.WriteActionsReadOnlyWhen
+	if expr == "" {
+		return nil, nil
+	}
+	if s.interp == nil {
+		return boolPtr(true), fmt.Errorf("form.write_actions_readonly_when: отсутствует интерпретатор")
+	}
+	locked, err := newInterpEvaluator(s.interp).EvalBool(expr, compose.Row(header))
+	if err != nil {
+		return boolPtr(true), fmt.Errorf("form.write_actions_readonly_when (%s): %w", expr, err)
+	}
+	return &locked, nil
 }
 
 // managedFormElementStates вычисляет состояние readonly/hidden каждого элемента

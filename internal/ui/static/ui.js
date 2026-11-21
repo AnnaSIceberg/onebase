@@ -2868,6 +2868,11 @@ function obInitKeyboardShortcuts() {
     if (obHandleDOMTableShortcut(e)) return;
 
     if (e.ctrlKey) {
+      if ((e.key === 'Enter' || e.code === 'KeyS') &&
+          document.querySelector('#main-form[data-ob-managed-write-readonly="true"]')) {
+        e.preventDefault();
+        return;
+      }
       if (e.key === 'Enter') {
         var go = obFormActionButton(['post_and_close', '']);
         if (go) { e.preventDefault(); go.click(); }

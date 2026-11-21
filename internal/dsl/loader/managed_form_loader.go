@@ -216,6 +216,8 @@ type formYAMLDoc struct {
 		GroupTitles string `yaml:"group_titles"`
 		// HeaderInline — заголовок и строка команд одной строкой.
 		HeaderInline bool `yaml:"header_inline"`
+
+		WriteActionsReadOnlyWhen string `yaml:"write_actions_readonly_when"`
 	} `yaml:"form"`
 	Attributes            []*metadata.FormAttribute       `yaml:"attributes"`
 	Commands              []*metadata.FormCommand         `yaml:"commands"`
@@ -292,6 +294,8 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		Conditional:            rawFormConditional(doc),
 		Procedures:             make(map[string]*metadata.FormProcedure),
 		OneCMeta:               doc.OneCMeta,
+
+		WriteActionsReadOnlyWhen: strings.TrimSpace(doc.Form.WriteActionsReadOnlyWhen),
 	}
 
 	if match := form.SavedPhoneMatch; match != nil {
@@ -300,6 +304,9 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 			len(match.TargetFields) < 1 || len(match.TargetFields) > 3 {
 			return nil, i18nerr.New("form.saved_phone_match требует форму объекта, документ назначения, 1–2 поля источника и 1–3 поля назначения")
 		}
+	}
+	if form.WriteActionsReadOnlyWhen != "" && !strings.EqualFold(form.Kind, "object") {
+		return nil, i18nerr.New("form.write_actions_readonly_when требует управляемую форму объекта")
 	}
 	if form.CloseConfirmation != "" && form.CloseConfirmation != "handler" {
 		return nil, i18nerr.Errorf("неизвестное form.close_confirmation %q: допустимо handler", form.CloseConfirmation)

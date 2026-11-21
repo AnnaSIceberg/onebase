@@ -2907,7 +2907,7 @@ const tplList = `
 {{define "entity-command"}}
 <span class="entity-command" title="{{.Title}}"{{if .ListCommand}} data-ob-list-command="{{.ListCommand}}" data-ob-command-denied="{{if not .Allowed}}1{{end}}" data-ob-command-label="{{.Label}}"{{end}}>
   {{if and .Href .Allowed}}<a class="btn btn-command {{.Class}}" href="{{.Href}}" aria-label="{{.Label}}"{{if .Create}} data-ob-list-create aria-keyshortcuts="Insert"{{end}}>{{lucideIcon .Icon}}</a>
-  {{else}}<button class="btn btn-command {{.Class}}" aria-label="{{.Label}}"{{if and .Name .Allowed}} name="{{.Name}}" value="{{.Value}}"{{end}}{{if .Form}} type="submit" form="{{.Form}}"{{else}} type="button"{{end}}{{if or (not .Allowed) .ListCommand}} disabled{{end}}>{{lucideIcon .Icon}}</button>{{end}}
+  {{else}}<button class="btn btn-command {{.Class}}" aria-label="{{.Label}}"{{if and .Name .Allowed}} name="{{.Name}}" value="{{.Value}}"{{end}}{{if .Form}} type="submit" form="{{.Form}}"{{else}} type="button"{{end}}{{if or (not .Allowed) .ListCommand}} disabled{{else}}{{template "managed-write-action" .WriteActionsReadOnly}}{{end}}>{{lucideIcon .Icon}}</button>{{end}}
 </span>
 {{end}}
 
@@ -2920,7 +2920,7 @@ const tplList = `
   {{$postTitle := $post}}{{$unpostTitle := $unpost}}
   {{if not .CanPost}}{{$postTitle = t .Lang "Недостаточно прав"}}{{else if $marked}}{{$postTitle = t .Lang "Документ помечен на удаление"}}{{end}}
   {{if not .CanUnpost}}{{$unpostTitle = t .Lang "Недостаточно прав"}}{{else if not $posted}}{{$unpostTitle = t .Lang "Не проведён"}}{{end}}
-  {{template "entity-command" (dict "Icon" "file-input" "Class" "btn-document-post" "Form" "main-form" "Name" "_action" "Value" "post" "Allowed" (and .CanPost (not $marked)) "Label" $post "Title" $postTitle)}}
+  {{template "entity-command" (dict "Icon" "file-input" "Class" "btn-document-post" "Form" "main-form" "Name" "_action" "Value" "post" "Allowed" (and .CanPost (not $marked)) "Label" $post "Title" $postTitle "WriteActionsReadOnly" .WriteActionsReadOnly)}}
   {{template "entity-command" (dict "Icon" "file-output" "Class" "btn-document-unpost" "Form" "form-unpost" "Allowed" (and .CanUnpost $posted) "Label" $unpost "Title" $unpostTitle)}}
 {{end}}
 {{end}}

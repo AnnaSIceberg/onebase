@@ -842,6 +842,8 @@ const tplManagedForm = `
 {{/* form-header-commands — кнопки формы с placement: header и «? Справка» в строке
      команд документа: сразу после «История» (у новой записи и обработки — в конце
      строки). Освобождает строку тела формы, где такие кнопки стояли отдельно. */}}
+{{define "managed-write-action"}}{{with .}} data-ob-managed-write-action{{if eq . "true"}} disabled{{end}}{{end}}{{end}}
+
 {{define "form-header-element"}}{{$page := .Page}}{{$it := .Item}}{{$tableName := ""}}{{$tableRO := false}}{{with $it.Table}}{{$tableName = canonicalFormTableName $page.Form $page.Entity (dpField .DataPath)}}{{$tableRO = or (not $page.CanWrite) (elReadOnly $page .) (adminOnlyLocked $page .)}}{{end}}{{template "managed-element" (dict "El" $it.Element "Ctx" $page "HeaderPass" true "TableName" $tableName "TableReadOnly" $tableRO "TableWriteDenied" (and $it.Table (not $page.CanWrite)))}}{{end}}
 {{/* Во всплывающей форме строки команд нет: там только кнопки, поля остаются в теле. */}}
 {{define "form-header-commands"}}{{$page := .}}{{if .IsPopup}}<span class="ob-header-commands">{{range formHeaderButtons .Form}}{{template "form-header-element" (dict "Item" . "Page" $page)}}{{end}}</span>{{else}}<span class="ob-header-commands">{{range formHeaderElements .Form "header"}}{{template "form-header-element" (dict "Item" . "Page" $page)}}{{end}}</span>{{template "context-help" .}}<span class="ob-header-commands">{{range formHeaderElements .Form "header_end"}}{{template "form-header-element" (dict "Item" . "Page" $page)}}{{end}}</span>
@@ -1141,8 +1143,8 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
   {{end}}
   {{if and .LegacyEntityUI .Entity.Posting}}
     {{if ne (index .Values "deletion_mark") "true"}}
-      {{if .CanPost}}<button class="btn btn-primary" type="submit" name="_action" value="post" form="main-form">{{if .Entity.PostCaption}}{{.Entity.PostCaption}}{{else}}{{t $.Lang "Провести"}}{{end}}</button>{{end}}
-      {{if and .CanPost (not .Entity.PostAndCloseHidden)}}<button class="btn btn-post" type="button" data-ob-form-close="post" data-ob-close-reason="post_and_close" title="Ctrl+Enter" aria-keyshortcuts="Control+Enter">{{if .Entity.PostCaption}}{{.Entity.PostCaption}} и закрыть{{else}}{{t $.Lang "Провести и закрыть"}}{{end}}</button>{{end}}
+      {{if .CanPost}}<button class="btn btn-primary" type="submit" name="_action" value="post" form="main-form"{{template "managed-write-action" .WriteActionsReadOnly}}>{{if .Entity.PostCaption}}{{.Entity.PostCaption}}{{else}}{{t $.Lang "Провести"}}{{end}}</button>{{end}}
+      {{if and .CanPost (not .Entity.PostAndCloseHidden)}}<button class="btn btn-post" type="button" data-ob-form-close="post" data-ob-close-reason="post_and_close"{{template "managed-write-action" .WriteActionsReadOnly}} title="Ctrl+Enter" aria-keyshortcuts="Control+Enter">{{if .Entity.PostCaption}}{{.Entity.PostCaption}} и закрыть{{else}}{{t $.Lang "Провести и закрыть"}}{{end}}</button>{{end}}
     {{end}}
     {{if not .IsNew}}
       {{if eq (index .Values "posted") "true"}}
@@ -1251,7 +1253,7 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 {{end}}
 
 <div class="card{{if .ObjectFormLayout}} ob-object-form-card{{end}}">
-<form id="main-form"{{if not .LegacyEntityUI}} class="ob-form-action-spacing"{{end}} method="POST" autocomplete="off"{{with .FormInstance}} data-ob-form-instance="{{.}}"{{end}}{{if .ConcealContext}} data-ob-conceal-context="{{.ConcealContext}}" action="{{.ConcealAction}}"{{end}} data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}{{formKeyboardAttrs (index . "Form")}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
+<form id="main-form"{{with .WriteActionsReadOnly}} data-ob-managed-write-readonly="{{.}}"{{end}}{{if not .LegacyEntityUI}} class="ob-form-action-spacing"{{end}} method="POST" autocomplete="off"{{with .FormInstance}} data-ob-form-instance="{{.}}"{{end}}{{if .ConcealContext}} data-ob-conceal-context="{{.ConcealContext}}" action="{{.ConcealAction}}"{{end}} data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}{{formKeyboardAttrs (index . "Form")}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
 {{with .FormOpeningInstanceField}}<input type="hidden" name="{{.}}" value="{{$.FormInstance}}">{{end}}
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{if .IsPopup}}<input type="hidden" name="_popup" value="1">{{end}}
@@ -1283,7 +1285,7 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 
 <div{{if .ObjectFormLayout}} class="ob-object-form-footer"{{end}} data-ob-managed-footer style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
   {{if .IsPopup}}
-  {{if .CanWrite}}<button class="btn btn-primary" type="button" data-ob-form-close="save_and_select" data-ob-close-reason="ok" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать и выбрать"}}</button>{{end}}
+  {{if .CanWrite}}<button class="btn btn-primary" type="button" data-ob-form-close="save_and_select" data-ob-close-reason="ok"{{template "managed-write-action" .WriteActionsReadOnly}} title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать и выбрать"}}</button>{{end}}
   <a href="#" data-ob-ref-cancel class="btn btn-cancel">Отмена</a>
   {{else if .IsProcessor}}
   {{$page := .}}
@@ -1292,8 +1294,8 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
   <a href="/ui/" data-ob-close-tab data-ob-close-reason="close" class="btn btn-cancel"{{if not .LegacyEntityUI}} data-ob-form-footer-close{{end}}>{{if .LegacyEntityUI}}Отмена{{else}}{{t $.Lang "Закрыть"}}{{end}}</a>
   {{end}}
   {{else}}
-  {{if and .CanWrite (formActionVisible .Form "save")}}<button class="btn {{if .LegacyEntityUI}}btn-secondary{{else}}btn-primary{{end}}" type="submit" name="_action" value="" form="main-form" title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
-  {{if and .CanWrite (formActionVisible .Form "ok")}}<button class="btn btn-primary" type="button" data-ob-form-close="{{if and .Entity.Posting .CanPost .Form.OKPosts (ne (index .Values "deletion_mark") "true")}}post{{else}}save{{end}}" data-ob-close-reason="ok" data-ob-close-href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}">{{t $.Lang "ОК"}}</button>{{end}}
+  {{if and .CanWrite (formActionVisible .Form "save")}}<button class="btn {{if .LegacyEntityUI}}btn-secondary{{else}}btn-primary{{end}}" type="submit" name="_action" value="" form="main-form"{{template "managed-write-action" .WriteActionsReadOnly}} title="Ctrl+S" aria-keyshortcuts="Control+S">{{t $.Lang "Записать"}}</button>{{end}}
+  {{if and .CanWrite (formActionVisible .Form "ok")}}<button class="btn btn-primary" type="button" data-ob-form-close="{{if and .Entity.Posting .CanPost .Form.OKPosts (ne (index .Values "deletion_mark") "true")}}post{{else}}save{{end}}" data-ob-close-reason="ok"{{template "managed-write-action" .WriteActionsReadOnly}} data-ob-close-href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}">{{t $.Lang "ОК"}}</button>{{end}}
   {{if formActionVisible .Form "close"}}<button class="btn btn-cancel" type="button" data-ob-form-close="" data-ob-close-reason="close" data-ob-close-href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}">{{t $.Lang "Закрыть"}}</button>{{end}}
   {{end}}
 </div>

@@ -2292,9 +2292,10 @@ func (st formEventState) response(ok bool) formEventResponse {
 // изменит до перезагрузки страницы. Исключение — кнопка: она рисуется с
 // display:none и показывается сразу. Для readonly обе стороны рабочие.
 type elementStates struct {
-	ReadOnly     map[string]bool `json:"readonly,omitempty"`
-	Hidden       map[string]bool `json:"hidden,omitempty"`
-	EqualColumns map[string]bool `json:"equalColumns,omitempty"`
+	WriteActionsReadOnly *bool           `json:"writeActionsReadOnly,omitempty"`
+	ReadOnly             map[string]bool `json:"readonly,omitempty"`
+	Hidden               map[string]bool `json:"hidden,omitempty"`
+	EqualColumns         map[string]bool `json:"equalColumns,omitempty"`
 	// Hints — значения реквизитов, на которые ссылается hint_from, ПОСЛЕ
 	// обработчика: «реквизит → текст». Отдельно от values: у формы обработки
 	// в values едут только реквизиты с элементами на форме, а реквизит
@@ -2335,8 +2336,13 @@ func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.E
 		return nil
 	}
 	var ro, hidden, equalColumns map[string]bool
+	var writeActionsReadOnly *bool
+	header := managedFormHeaderValues(entity, values)
+	if entity != nil {
+		writeActionsReadOnly, _ = s.managedWriteActionsReadOnly(form, header)
+	}
 	if s.interp != nil {
-		ro, hidden, equalColumns, _, _ = managedFormElementStates(form, managedFormHeaderValues(entity, values), newInterpEvaluator(s.interp))
+		ro, hidden, equalColumns, _, _ = managedFormElementStates(form, header, newInterpEvaluator(s.interp))
 	}
 	// editable_admin_only не зависит от данных записи, поэтому его нет в
 	// readonly_when-состояниях. Добавляем здесь: ответ события применяется
@@ -2351,10 +2357,10 @@ func (s *Server) formElementStates(form *metadata.FormModule, entity *metadata.E
 		}
 	}
 	hints := formHintFromValues(form, entity, values)
-	if len(ro) == 0 && len(hidden) == 0 && len(equalColumns) == 0 && len(hints) == 0 {
+	if writeActionsReadOnly == nil && len(ro) == 0 && len(hidden) == 0 && len(equalColumns) == 0 && len(hints) == 0 {
 		return nil
 	}
-	return &elementStates{ReadOnly: ro, Hidden: hidden, EqualColumns: equalColumns, Hints: hints}
+	return &elementStates{WriteActionsReadOnly: writeActionsReadOnly, ReadOnly: ro, Hidden: hidden, EqualColumns: equalColumns, Hints: hints}
 }
 
 // adminOnlyElementPaths — размещения формы, запертые для неадминистратора.

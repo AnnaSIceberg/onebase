@@ -884,6 +884,9 @@ type FormModule struct {
 	// CloseConfirmation "handler" lets ПередЗакрытием decide whether
 	// a plain close needs a confirmation.
 	CloseConfirmation string `yaml:"close_confirmation,omitempty"`
+	// WriteActionsReadOnlyWhen governs standard write commands of a managed
+	// object form. Record permissions and domain write guards are independent.
+	WriteActionsReadOnlyWhen string `yaml:"write_actions_readonly_when,omitempty"`
 
 	// InstanceContext provides a verified identity for each rendered managed form.
 	InstanceContext bool `yaml:"instance_context,omitempty"`

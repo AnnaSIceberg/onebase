@@ -773,6 +773,15 @@ window.obManagedApplyHints = obManagedApplyHints;
   // BEGIN onebase-ro-apply-states
   function applyElementStates(st) {
     if (!st) return;
+    if (typeof st.writeActionsReadOnly === 'boolean') {
+      var form = document.getElementById('main-form');
+      if (form && form.hasAttribute('data-ob-managed-write-readonly')) {
+        form.setAttribute('data-ob-managed-write-readonly', String(st.writeActionsReadOnly));
+        document.querySelectorAll('[data-ob-managed-write-action]').forEach(function (button) {
+          button.disabled = st.writeActionsReadOnly;
+        });
+      }
+    }
     var byPath = function (path) {
       return document.querySelector('[data-ob-el-path="' + (window.CSS && CSS.escape ? CSS.escape(path) : path) + '"]');
     };
@@ -2545,6 +2554,11 @@ window.obManagedApplyHints = obManagedApplyHints;
 	    return window.obRequestFormClose(next);
 	  });
 	}
+    var form = document.getElementById('main-form');
+    if (options.mode && options.mode !== 'discard' && !retryableClose && obManagedWriteActionsReadOnly(form)) {
+      closeHandoffPending = false;
+      return Promise.resolve({allowed: false, intentId: '', error: 'readonly-form'});
+    }
     // An unknown result belongs to an already checked operation. Recover its
     // exact payload/UUID before starting any new BeforePost handler.
     if (BEFORE_POST && options.mode === 'post' && !options.__beforePostDone && !retryableClose && !closePending) {
@@ -2606,12 +2620,14 @@ window.obManagedApplyHints = obManagedApplyHints;
       var automaticDiscard = !options.mode && ownSource && sourceSnapshot.revision === formEditState.revision;
       // With an explicit form opt-in the server handler owns confirmation.
       // The ordinary discard intent still runs ПередЗакрытием and its question.
-      var mode = options.mode
-        ? String(options.mode)
-        : (automaticDiscard || cfg.handlerCloseConfirmation === true ? 'discard' : await closeChoice());
+      var skipSaveChoice = automaticDiscard || cfg.handlerCloseConfirmation === true || obManagedWriteActionsReadOnly(form);
+      var mode = options.mode ? String(options.mode) : (skipSaveChoice ? 'discard' : await closeChoice());
       if (mode === 'cancel') return {allowed: false, intentId: '', error: 'user-cancelled'};
       var body = await closeSnapshotBody(reason, mode);
       if (!body) return {allowed: false, intentId: '', error: 'form-state'};
+      if (mode !== 'discard' && !retryableClose && obManagedWriteActionsReadOnly(form)) {
+        return {allowed: false, intentId: '', error: 'readonly-form'};
+      }
       if (automaticDiscard && sourceSnapshot.revision !== formEditState.revision) {
         return {allowed: false, intentId: '', error: 'form-changed'};
       }
@@ -2946,6 +2962,11 @@ window.obManagedApplyHints = obManagedApplyHints;
   }
   document.addEventListener('submit', function(e){
     var form = e.target;
+    if (obManagedWriteActionsReadOnly(form)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
     if (!BEFORE_POST || !form || form.id !== 'main-form' || form.__obBeforePostApproved) return;
     var submitter = e.submitter || null;
     if (!submitter || submitter.name !== '_action' || submitter.value !== 'post') return;
@@ -3405,6 +3426,10 @@ function obManagedRemoveRow(btn) {
   return true;
 }
 
+function obManagedWriteActionsReadOnly(form) {
+  return !!form && form.id === 'main-form' && form.getAttribute('data-ob-managed-write-readonly') === 'true';
+}
+
 function obManagedSubmitAllowed(form) {
   var msg = form.getAttribute('data-ob-confirm');
   if (msg && !confirm(msg)) return false;
@@ -3412,6 +3437,7 @@ function obManagedSubmitAllowed(form) {
 }
 
 function obManagedGridSubmitAllowed(form) {
+  if (obManagedWriteActionsReadOnly(form)) return false;
   if (form.hasAttribute('data-ob-grid-sync') && window.obGridSync) {
     // Незавершённая правка ячейки не даёт записать документ: причину показал
     // обработчик onValidationError, пользователю есть что исправить (или Esc).
@@ -3500,7 +3526,10 @@ function obManagedInitDelegates() {
         window.obFinalizeFormClose();
         var href = btn.getAttribute('data-ob-close-href') || btn.getAttribute('href') || '/ui/';
         window.location.assign(href);
-      }).finally(function(){ btn.disabled = false; });
+      }).finally(function(){
+        btn.disabled = btn.hasAttribute('data-ob-managed-write-action') &&
+          obManagedWriteActionsReadOnly(document.getElementById('main-form'));
+      });
       return;
     }
 
