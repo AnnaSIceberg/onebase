@@ -1098,7 +1098,7 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 <div class="ob-form-head" style="display:{{if .IsResultForm}}none{{else}}flex{{end}};justify-content:space-between;align-items:center;margin-bottom:20px;max-width:1400px">
   <h2 style="margin-bottom:0">
     <span data-ob-form-title>{{if .DisplayTitleConfigured}}{{.RecordTitle}}{{else if .ObjectFormTitle}}{{.ObjectFormTitle}}{{else}}{{if .IsProcessor}}{{.Processor.DisplayName $.Lang}}{{else}}{{if .IsNew}}{{t $.Lang "Создать"}} — {{.Entity.DisplayName $.Lang}}{{else}}{{if .RecordTitle}}{{.RecordTitle}}{{else}}{{t $.Lang "Редактировать"}} — {{.Entity.DisplayName $.Lang}}{{end}}{{end}}{{end}}{{end}}</span>
-    <span style="font-size:11px;color:#10b981;background:#d1fae5;padding:2px 8px;border-radius:10px;vertical-align:middle;font-weight:500" title="Управляемая форма из forms/{{if .IsProcessor}}{{lower .Processor.Name}}{{else}}{{lower .Entity.Name}}{{end}}/">◇ managed</span>
+    {{if .LegacyEntityUI}}<span style="font-size:11px;color:#10b981;background:#d1fae5;padding:2px 8px;border-radius:10px;vertical-align:middle;font-weight:500" title="Управляемая форма из forms/{{if .IsProcessor}}{{lower .Processor.Name}}{{else}}{{lower .Entity.Name}}{{end}}/">◇ managed</span>{{end}}
   </h2>
   {{/* «? Справка» у формы в строке команд рядом с «История»; у всплывающей
        формы этой строки нет — справка остаётся в заголовке. */}}
