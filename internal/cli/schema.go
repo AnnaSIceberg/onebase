@@ -458,6 +458,21 @@ func allSchemas() map[string]map[string]any {
 		"inforeg": fieldGroupSchema("OneBase information register", field, []string{"dimensions", "resources"}, map[string]any{
 			"periodic": map[string]any{"type": "boolean"},
 			"recorder": map[string]any{"type": "boolean", "description": "регистр подчинён регистратору: строки формирует проведение документа, программная запись отклоняется"},
+			"list": map[string]any{
+				"type": "object", "required": []string{"columns"}, "additionalProperties": false,
+				"properties": map[string]any{
+					"except_roles": arrayOf(stringSchema("Роль с прежней раскладкой списка")),
+					"columns": arrayOf(map[string]any{
+						"type": "object", "required": []string{"field"}, "additionalProperties": false,
+						"properties": map[string]any{
+							"field":      stringSchema("Измерение, ресурс или period"),
+							"label":      stringSchema("Подпись колонки"),
+							"roles":      arrayOf(stringSchema("Роль, которой показывается колонка")),
+							"admin_only": map[string]any{"type": "boolean"},
+						},
+					}),
+				},
+			},
 		}),
 		"enum": {
 			"$schema":              "https://json-schema.org/draft/2020-12/schema",

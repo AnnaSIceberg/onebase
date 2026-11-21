@@ -42,8 +42,9 @@ func TestInfoRegDetailPanelLocalizesSyntheticPeriodLabel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	panelFn := templateFuncs(bundle)["infoRegDetailPanel"].(func(*metadata.InfoRegister, map[string]any, string) string)
-	raw := panelFn(&metadata.InfoRegister{Name: "Prices", Periodic: true}, map[string]any{"period": "12.08.2026"}, "en")
+	panelFn := templateFuncs(bundle)["infoRegDetailPanel"].(func([]infoRegListColumn, map[string]any, string) string)
+	columns := infoRegListColumns(&metadata.InfoRegister{Name: "Prices", Periodic: true}, nil, bundle.T("en", "Период"))
+	raw := panelFn(columns, map[string]any{"period": "12.08.2026"}, "en")
 	var panel detailPanelData
 	if err := json.Unmarshal([]byte(raw), &panel); err != nil {
 		t.Fatal(err)

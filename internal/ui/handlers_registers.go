@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/exchange"
 	"github.com/ivantit66/onebase/internal/i18n/i18nerr"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -487,6 +488,7 @@ func (s *Server) infoRegList(w http.ResponseWriter, r *http.Request) {
 		"StreamDir":     direction,
 		"StreamURL":     streamURL,
 		"InfoReg":       ir,
+		"ListColumns":   infoRegListColumns(ir, auth.UserFromContext(r.Context()), s.tr(s.resolveLang(r), "Период")),
 		"Rows":          rows,
 		"FilterFields":  filterFields,
 		"Filter":        filterFormValues(r, filterFields),

@@ -212,6 +212,7 @@ func saveInfoRegToFile(dir string, reg saveInfoReg, objTitles *map[string]string
 			reg.Dimensions = ensureFieldIDs(existing.Dimensions, reg.Dimensions)
 			reg.Resources = ensureFieldIDs(existing.Resources, reg.Resources)
 			reg.Indexes = existing.Indexes
+			reg.List = existing.List
 		}
 	}
 	if objTitles != nil {
@@ -256,6 +257,7 @@ func (h *handler) saveInfoRegToDB(ctx context.Context, b *Base, reg saveInfoReg,
 			reg.Dimensions = ensureFieldIDs(existing.Dimensions, reg.Dimensions)
 			reg.Resources = ensureFieldIDs(existing.Resources, reg.Resources)
 			reg.Indexes = existing.Indexes
+			reg.List = existing.List
 			break
 		}
 	}

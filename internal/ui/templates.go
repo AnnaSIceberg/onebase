@@ -505,12 +505,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			}
 			return out
 		},
-		"infoRegDetailPanel": func(ir *metadata.InfoRegister, row map[string]any, lang string) string {
-			periodTitle := "Период"
-			if bundle != nil {
-				periodTitle = bundle.T(lang, periodTitle)
-			}
-			return infoRegisterDetailPanelJSONTranslated(ir, row, lang, periodTitle,
+		"infoRegDetailPanel": func(columns []infoRegListColumn, row map[string]any, lang string) string {
+			return infoRegisterDetailPanelJSONTranslated(columns, row, lang,
 				func(key string) string { return translate(lang, key) })
 		},
 		// choiceContextJSON — карта «имя параметра → путь к контролу» для
@@ -4713,16 +4709,12 @@ const tplInfoReg = `
 {{if .Rows}}
 <div style="overflow-x:auto"{{if .StreamDir}} {{template "list-stream-attrs" .}}{{end}}>
 <table><thead><tr>
-  {{if .InfoReg.Periodic}}<th>{{t $.Lang "Период"}}</th>{{end}}
-  {{range .InfoReg.Dimensions}}<th>{{.DisplayName $.Lang}}</th>{{end}}
-  {{range .InfoReg.Resources}}<th>{{.DisplayName $.Lang}}</th>{{end}}
+  {{range .ListColumns}}<th>{{.Field.DisplayName $.Lang}}</th>{{end}}
   {{if .CanDelete}}<th></th>{{end}}
 </tr></thead><tbody>
 {{range .Rows}}{{$row := .}}<tr data-ob-list-row tabindex="-1" aria-selected="false"
-  data-ob-detail='{{infoRegDetailPanel $.InfoReg $row $.Lang}}'>
-  {{if $.InfoReg.Periodic}}<td>{{index $row "period"}}</td>{{end}}
-  {{range $.InfoReg.Dimensions}}<td>{{$lbl := index $row (printf "%s_label" .Name)}}{{if $lbl}}{{$lbl}}{{else}}{{index $row .Name}}{{end}}</td>{{end}}
-  {{range $.InfoReg.Resources}}<td style="font-weight:600">{{$lbl := index $row (printf "%s_label" .Name)}}{{if $lbl}}{{$lbl}}{{else}}{{index $row .Name}}{{end}}</td>{{end}}
+  data-ob-detail='{{infoRegDetailPanel $.ListColumns $row $.Lang}}'>
+  {{range $.ListColumns}}<td{{if .Resource}} style="font-weight:600"{{end}}>{{$lbl := index $row (printf "%s_label" .Field.Name)}}{{if $lbl}}{{$lbl}}{{else}}{{index $row .Field.Name}}{{end}}</td>{{end}}
   {{if $.CanDelete}}<td>
     <form method="POST" action="{{$.DeleteURL}}" style="display:inline"
           data-ob-confirm="{{t $.Lang "Удалить запись?"}}">

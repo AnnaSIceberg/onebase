@@ -22,6 +22,11 @@ resources:
     type: number
 indexes:
   - fields: [Адрес, period]
+list:
+  except_roles: [ОператорКЦ]
+  columns:
+    - {field: period, label: Начало работы}
+    - {field: Сумма, admin_only: true}
 `)
 	form := url.Values{}
 	form.Set("inforeg", "Зоны")
@@ -35,5 +40,5 @@ indexes:
 	if rec.Code != http.StatusOK {
 		t.Fatalf("код %d: %s", rec.Code, rec.Body.String())
 	}
-	assertFileContainsRv(t, p, "indexes:", "fields: [Адрес, period]")
+	assertFileContainsRv(t, p, "indexes:", "fields: [Адрес, period]", "list:", "Начало работы", "admin_only: true")
 }

@@ -574,6 +574,7 @@ type rawInfoRegister struct {
 	Dimensions []rawField        `yaml:"dimensions"`
 	Resources  []rawField        `yaml:"resources"`
 	Indexes    []rawIndex        `yaml:"indexes"`
+	List       *InfoRegisterList `yaml:"list"`
 }
 
 func LoadInfoRegisterFile(path string) (*InfoRegister, error) {
@@ -589,7 +590,7 @@ func LoadInfoRegisterFile(path string) (*InfoRegister, error) {
 		return nil, fmt.Errorf("%s: missing name", path)
 	}
 	ir := &InfoRegister{Name: raw.Name, Title: raw.Title, Titles: raw.Titles,
-		Periodic: raw.Periodic, Recorder: raw.Recorder}
+		Periodic: raw.Periodic, Recorder: raw.Recorder, List: raw.List}
 	for _, rf := range raw.Dimensions {
 		ir.Dimensions = append(ir.Dimensions, parseField(rf))
 	}
@@ -603,6 +604,9 @@ func LoadInfoRegisterFile(path string) (*InfoRegister, error) {
 		ir.Indexes = append(ir.Indexes, IndexSpec{Fields: trimStringList(ri.Fields), Unique: ri.Unique})
 	}
 	if err := rejectRegisterPIIOpenWhen(raw.Dimensions, raw.Resources); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := validateInfoRegisterList(ir); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := ValidateInfoRegisterIndexes(ir); err != nil {

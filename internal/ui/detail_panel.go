@@ -396,9 +396,12 @@ func infoRegisterDetailPanelJSON(ir *metadata.InfoRegister, row map[string]any, 
 	return detailPanelJSON(fields, row, detailPanelTitle(fields, row), nil, lang)
 }
 
-func infoRegisterDetailPanelJSONTranslated(ir *metadata.InfoRegister, row map[string]any, lang, periodTitle string,
+func infoRegisterDetailPanelJSONTranslated(columns []infoRegListColumn, row map[string]any, lang string,
 	translate func(string) string) string {
-	fields := infoRegisterDetailFields(ir, periodTitle)
+	fields := make([]metadata.Field, 0, len(columns))
+	for _, column := range columns {
+		fields = append(fields, column.Field)
+	}
 	return detailPanelJSON(fields, row, detailPanelTitle(fields, row), nil, lang, translate)
 }
 

@@ -238,6 +238,7 @@ type saveInfoReg struct {
 	Recorder bool `yaml:"recorder,omitempty"`
 	// Indexes форма не редактирует: переносится из файла как есть.
 	Indexes yaml.Node `yaml:"indexes,omitempty"`
+	List    yaml.Node `yaml:"list,omitempty"`
 }
 
 type saveAccountReg struct {
