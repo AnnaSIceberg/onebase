@@ -68,7 +68,8 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	if !s.requirePerm(w, r, string(entity.Kind), entity.Name, "read") {
 		return
 	}
-	chronological := entity.Kind == metadata.KindDocument && !s.legacyEntityUI(r)
+	entity, hasFormOrder := entityForListQuery(r.Context(), entity)
+	chronological := !hasFormOrder && entity.Kind == metadata.KindDocument && !s.legacyEntityUI(r)
 	pageSize := storage.DefaultListPageSize
 	if chronological {
 		pageSize = 50
@@ -79,7 +80,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.resolveListSort(r, entity, &params)
+	s.resolveListSort(r, entity, &params, true)
 
 	params = s.applyListFormFilter(r, entity, params)
 
@@ -1582,6 +1583,11 @@ func (s *Server) treeChildrenJSON(w http.ResponseWriter, r *http.Request) {
 	// Ветка дерева — тот же список: постоянный отбор формы списка действует и
 	// здесь, иначе раскрытие папки показало бы записи, скрытые в её списке.
 	params = s.applyListFormFilter(r, ent, params)
+	ent, hasFormOrder := entityForListQuery(r.Context(), ent)
+	if hasFormOrder {
+		params.Sort, params.Dir = r.URL.Query().Get("sort"), r.URL.Query().Get("dir")
+		s.resolveListSort(r, ent, &params, false)
+	}
 	rows, err := s.store.List(r.Context(), ent.Name, ent, params)
 	if err != nil {
 		s.serverError(w, r, err)
@@ -3187,8 +3193,8 @@ func parseLegacyTablePartRows(r *http.Request, entity *metadata.Entity) (map[str
 // Хранится как вид списка (#1485) — по пользователю и сущности. Явный ?sort
 // без sort_snapshot перекрывает и обновляет сохранённое. Сохраняется и
 // восстанавливается только поле, которое есть у сущности: исчезнувшее из
-// метаданных молча забывается.
-func (s *Server) resolveListSort(r *http.Request, entity *metadata.Entity, params *storage.ListParams) {
+// метаданных молча забывается. Выгрузка читает предпочтение без записи.
+func (s *Server) resolveListSort(r *http.Request, entity *metadata.Entity, params *storage.ListParams, remember bool) {
 	user := auth.UserFromContext(r.Context())
 	if user == nil || user.Login == "" || s.store == nil {
 		return
@@ -3210,7 +3216,7 @@ func (s *Server) resolveListSort(r *http.Request, entity *metadata.Entity, param
 		return
 	}
 	if params.Sort != "" {
-		if !known(params.Sort) {
+		if !remember || !known(params.Sort) {
 			return
 		}
 		dir := "asc"

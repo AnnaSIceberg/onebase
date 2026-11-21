@@ -29,6 +29,10 @@ func (s *Server) listExcel(w http.ResponseWriter, r *http.Request) {
 	// Выгрузка текущего списка — с тем же постоянным отбором формы списка
 	// (те же роли, пересечение с row_access), что и сама страница.
 	params = s.applyListFormFilter(r, entity, params)
+	entity, hasFormOrder := entityForListQuery(r.Context(), entity)
+	if hasFormOrder {
+		s.resolveListSort(r, entity, &params, false)
+	}
 	rows, err := s.store.List(r.Context(), entity.Name, entity, params)
 	if err != nil {
 		s.serverError(w, r, err)

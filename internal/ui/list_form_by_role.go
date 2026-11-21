@@ -2,9 +2,22 @@ package ui
 
 import (
 	"context"
-	"github.com/ivantit66/onebase/internal/metadata"
 	"strings"
+
+	"github.com/ivantit66/onebase/internal/metadata"
 )
+
+// entityForListQuery limits the form's default order to list routes. It keeps the
+// registry order available to reference pickers and callers outside those routes.
+func entityForListQuery(ctx context.Context, entity *metadata.Entity) (*metadata.Entity, bool) {
+	form := pickManagedFormCtx(ctx, entity, "list")
+	if form == nil || len(form.ListOrderBy) == 0 {
+		return entity, false
+	}
+	view := *entity
+	view.OrderBy = form.ListOrderBy
+	return &view, true
+}
 
 // A request-local metadata view lets existing column/tile/detail helpers use
 // the same selected list form as filtering and row styling, without mutating

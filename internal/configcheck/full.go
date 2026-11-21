@@ -79,6 +79,7 @@ func RunFullWithOptions(dir string, opts Options) Result {
 		issues = append(issues, CheckFormVirtualColumns(proj)...)
 		issues = append(issues, CheckFormTablePartColumns(proj)...)
 		issues = append(issues, CheckFormListFilters(proj)...)
+		issues = append(issues, CheckFormListOrderBy(proj)...)
 		issues = append(issues, CheckReportOutputFormat(proj)...)
 		issues = append(issues, CheckReportContext(proj)...)
 

@@ -199,6 +199,7 @@ type formYAMLDoc struct {
 		// Постоянный отбор формы списка (metadata.FormListCondition).
 		ListFilter     []metadata.FormListCondition `yaml:"filter"`
 		ListProcessors []metadata.FormListProcessor `yaml:"list_processors"`
+		ListOrderBy    []string                     `yaml:"order_by"`
 		// Оформление строк формы списка (metadata.FormListRowStyle).
 		RowStyle *metadata.FormListRowStyle `yaml:"row_style"`
 		// «🔍 только администратору» (#1876).
@@ -273,6 +274,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		VerticalScroll:         doc.Form.VerticalScroll,
 		RefCardButton:          doc.Form.RefCardButton,
 		ListFilter:             doc.Form.ListFilter,
+		ListOrderBy:            doc.Form.ListOrderBy,
 		ListProcessors:         doc.Form.ListProcessors,
 		ListRowStyle:           doc.Form.RowStyle,
 		RefCardButtonAdminOnly: doc.Form.RefCardButtonAdminOnly,
@@ -304,6 +306,9 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 			len(match.TargetFields) < 1 || len(match.TargetFields) > 3 {
 			return nil, i18nerr.New("form.saved_phone_match требует форму объекта, документ назначения, 1–2 поля источника и 1–3 поля назначения")
 		}
+	}
+	if len(form.ListOrderBy) > 0 && !strings.EqualFold(form.Kind, "list") {
+		return nil, i18nerr.New("form.order_by требует kind: list")
 	}
 	if form.WriteActionsReadOnlyWhen != "" && !strings.EqualFold(form.Kind, "object") {
 		return nil, i18nerr.New("form.write_actions_readonly_when требует управляемую форму объекта")

@@ -712,6 +712,7 @@ func managedFormSchema() map[string]any {
 					"ref_card_button_admin_only":  boolSchema("true — кнопку «Открыть карточку» видит только администратор; настройка интерфейса, не защита"),
 					"instance_context":            boolSchema("Выдать подписанный контекст экземпляра управляемой формы для ИдЭкземпляраФормы()"),
 					"write_actions_readonly_when": stringSchema("При истинном условии блокировать стандартные команды записи и проведения управляемой формы объекта"),
+					"order_by":                    arrayOf(stringSchema("Реквизит порядка по умолчанию формы kind: list, необязательный суффикс desc")),
 					"row_style": map[string]any{"type": "object", "properties": map[string]any{
 						"background_from": stringSchema("Путь цвета фона"), "bold_from": stringSchema("Путь признака жирного"), "color_from": stringSchema("Путь цвета текста"),
 						"rules": arrayOf(map[string]any{"type": "object", "properties": map[string]any{"field": stringSchema("Путь значения"), "equals": stringSchema("Литерал или @ТекущийПользователь (ID учётки)"), "background": stringSchema("#RGB/#RRGGBB"), "color": stringSchema("#RGB/#RRGGBB"), "bold": boolSchema("Жирный шрифт")}}),

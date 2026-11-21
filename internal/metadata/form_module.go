@@ -932,6 +932,8 @@ type FormModule struct {
 	// по реквизиту связанной записи. Значение — литерал или @ТекущийПользователь
 	// (идентификатор учётной записи смотрящего).
 	ListFilter []FormListCondition `yaml:"filter,omitempty"`
+	// ListOrderBy overrides the entity's default order for this managed list.
+	ListOrderBy []string `yaml:"order_by,omitempty"`
 	// ListProcessors adds links to runnable processors in the list toolbar.
 	ListProcessors []FormListProcessor `yaml:"list_processors,omitempty"`
 	// ListRowStyle — оформление строк формы списка (`row_style`), только kind: list.
