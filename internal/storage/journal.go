@@ -205,6 +205,9 @@ func (db *DB) JournalQuery(
 	// Determine ORDER BY: use first date column (by name heuristic) or id
 	orderCol := "id"
 	for _, jcol := range queryColumns {
+		if jcol.ReferencePath != "" {
+			continue
+		}
 		lf := strings.ToLower(jcol.Field)
 		if lf == "дата" || lf == "date" || strings.Contains(lf, "дата") {
 			orderCol = lf
