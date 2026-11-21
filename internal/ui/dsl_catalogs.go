@@ -67,14 +67,20 @@ func (s *Server) newEntityService(hooks *webhook.Dispatcher) *entityservice.Serv
 	}
 }
 
-// BuildJobDSLVars — полное DSL-окружение для регламентных заданий (план 101):
-// scheduler вызывает его вместо собственного базового набора, чтобы задания
-// имели Справочники/Документы/вложения/транзакции — как обработки из UI/procrun.
-// Вместе с картой возвращается TxState: scheduler закрывает его после запуска.
+// BuildJobDSLVars — общее DSL-окружение обработок вне HTTP и регламентных заданий.
+// Вместе с картой возвращается TxState, который закрывает вызывающий код.
 func (s *Server) BuildJobDSLVars(ctx context.Context, mc *runtime.MovementsCollector, messages *[]string) (map[string]any, *interpreter.TxState) {
 	vars, tx := s.buildDSLVarsWithMessagesTx(ctx, mc, messages)
 	vars["СформироватьОтчетXLSX"] = s.reportWorkbookBuiltin(tx)
 	vars["BuildReportXLSX"] = vars["СформироватьОтчетXLSX"]
+	return vars, tx
+}
+
+// BuildScheduledJobDSLVars adds operations reserved for server-configured jobs.
+func (s *Server) BuildScheduledJobDSLVars(ctx context.Context, mc *runtime.MovementsCollector, messages *[]string) (map[string]any, *interpreter.TxState) {
+	vars, tx := s.BuildJobDSLVars(ctx, mc, messages)
+	replace := scheduledWorkbookReplace(tx)
+	vars["ЗаменитьЛистыExcelФоном"], vars["ReplaceExcelSheetsInBackground"] = replace, replace
 	return vars, tx
 }
 

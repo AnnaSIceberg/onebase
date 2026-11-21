@@ -74,7 +74,7 @@ func Build(ctx context.Context, cfg Config) (*Application, error) {
 	frontend := ui.New(cfg.Registry, cfg.Store, cfg.Interpreter, cfg.AuthRepo, cfg.UI, cfg.Scheduler)
 	if cfg.Scheduler != nil {
 		// Scheduled jobs need the same DSL environment as interactive requests.
-		cfg.Scheduler.SetVarsBuilder(frontend.BuildJobDSLVars)
+		cfg.Scheduler.SetVarsBuilder(frontend.BuildScheduledJobDSLVars)
 	}
 	server := api.New(cfg.Registry, cfg.Store, cfg.Interpreter, cfg.AuthRepo, cfg.Host, cfg.Port, api.Config{
 		AppName:       cfg.UI.AppName,

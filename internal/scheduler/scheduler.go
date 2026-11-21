@@ -84,7 +84,7 @@ type Scheduler struct {
 	mailer  *mailer.Mailer
 	msgSink func(userID, text string)
 	// varsBuilder — внешний сборщик полного DSL-окружения заданий (обычно
-	// ui.Server.BuildJobDSLVars): даёт заданиям Справочники/Документы/вложения/
+	// ui.Server.BuildScheduledJobDSLVars): даёт заданиям Справочники/Документы/вложения/
 	// транзакции наравне с обработками. nil → базовый набор dslvars.Common.
 	varsBuilder VarsBuilder
 

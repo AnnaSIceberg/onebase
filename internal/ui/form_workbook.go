@@ -139,6 +139,28 @@ func (s *Server) bindWorkbookCommands(ctx context.Context, w http.ResponseWriter
 	vars["СкачатьКнигуExcel"], vars["DownloadExcelWorkbook"] = create, create
 }
 
+func scheduledWorkbookReplace(tx *interpreter.TxState) interpreter.BuiltinFunc {
+	return func(args []any, _ string, _ int) (any, error) {
+		const function = "ЗаменитьЛистыExcelФоном"
+		if len(args) != 2 {
+			interpreter.RaiseUserError(function + ": ожидаются полный путь XLSX и книга табличных документов")
+		}
+		path, pathOK := args[0].(string)
+		book, bookOK := args[1].(*interpreter.SpreadsheetWorkbook)
+		if !pathOK || !filepath.IsAbs(path) || !bookOK || book == nil {
+			interpreter.RaiseUserError(function + ": ожидаются полный путь XLSX и книга табличных документов")
+		}
+		ctx := tx.Ctx()
+		if _, err := book.UpdateXLSXFile(ctx, os.Getenv("ONEBASE_REPORT_XLSX_DIR"), path); err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			interpreter.RaiseUserError(function + ": " + err.Error())
+		}
+		return true, nil
+	}
+}
+
 func attachWorkbook(scope tabularScope, reservation *workbookReservation, resp *formEventResponse) {
 	if reservation == nil {
 		return

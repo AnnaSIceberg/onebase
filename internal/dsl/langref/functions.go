@@ -104,6 +104,15 @@ var functionDescriptors = []Descriptor{
 		Group:     "Табличный документ",
 	},
 	{
+		Name: "заменитьлистыexcelфоном", Display: "ЗаменитьЛистыExcelФоном", Aliases: []string{"ReplaceExcelSheetsInBackground"}, Kind: KindFunc,
+		Signature: "ЗаменитьЛистыExcelФоном(ПолныйПуть, Книга)",
+		Params:    []Param{{Name: "ПолныйПуть", Type: "строка"}, {Name: "Книга", Type: "КнигаТабличныхДокументов"}},
+		Returns:   "Истина при успехе",
+		Doc:       "В обработке регламентного задания заменяет листы существующего XLSX по точному имени и добавляет отсутствующие в конец. Принимает абсолютный путь к обычному файлу непосредственно в каталоге ONEBASE_REPORT_XLSX_DIR. Обновляет файл под блокировкой. При ошибке исходный файл сохраняется. Скачивание не создаётся.",
+		Example:   "ЗаменитьЛистыExcelФоном(Константы.ПутьКОтчёту400Сайты, Книга);",
+		Group:     "Табличный документ",
+	},
+	{
 		Name: "скачатькнигуexcel", Display: "СкачатьКнигуExcel", Aliases: []string{"DownloadExcelWorkbook"}, Kind: KindFunc,
 		Signature: "СкачатьКнигуExcel(ИмяФайла, Книга)",
 		Params:    []Param{{Name: "ИмяФайла", Type: "строка"}, {Name: "Книга", Type: "КнигаТабличныхДокументов"}},

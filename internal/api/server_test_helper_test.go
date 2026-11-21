@@ -23,7 +23,7 @@ func newTestServer(reg *runtime.Registry, store *storage.DB, interp *interpreter
 	}
 	frontend := ui.New(reg, store, interp, authRepo, uiCfg, sched)
 	if sched != nil {
-		sched.SetVarsBuilder(frontend.BuildJobDSLVars)
+		sched.SetVarsBuilder(frontend.BuildScheduledJobDSLVars)
 	}
 	return New(reg, store, interp, authRepo, host, port, Config{
 		AppName: uiCfg.AppName, MaxFileSizeMB: uiCfg.MaxFileSizeMB,
