@@ -13,6 +13,8 @@
   "form.saved_phone_match требует форму объекта, документ назначения, 1–2 поля источника и 1–3 поля назначения": "form.saved_phone_match requires an object form, a target document, 1–2 source fields, and 1–3 target fields",
   "Некорректные настройки поиска по сохранённому телефону": "Invalid saved-phone lookup configuration",
   "Недостаточно прав для поиска по сохранённому телефону": "Insufficient permissions for saved-phone lookup",
+  "Сопоставление телефонов заявок доступно только в настроенном встроенном отчёте": "Request phone matching is available only in the configured built-in report",
+  "Сопоставление телефонов заявок ожидает два псевдонима А_Заявка в условии ПО": "Request phone matching requires two request aliases in the JOIN condition",
   "Подбор по сохранённому телефону доступен при открытии настроенной формы": "Saved-phone lookup is available when opening a configured form",
   "СОХРАНЕННЫЙТЕЛЕФОНСОВПАДАЕТ ожидает псевдоним документа в условии ГДЕ": "SAVED_PHONE_MATCH expects a document alias in a WHERE condition",
   "Подбор по сохранённому телефону: отсутствуют поля заявки": "Saved-phone lookup: target fields are missing",

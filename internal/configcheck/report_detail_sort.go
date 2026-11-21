@@ -18,7 +18,7 @@ func reportDetailSortColumns(proj *project.Project, rep *report.Report, queryTex
 	for _, p := range rep.Params {
 		params[p.Name] = nil
 	}
-	compiled, err := query.Compile(queryText, query.CompileOpts{Params: params, Entities: proj.Entities, Registers: proj.Registers, InfoRegs: proj.InfoRegisters, AccountRegs: proj.AccountRegisters})
+	compiled, err := query.Compile(queryText, query.CompileOpts{Params: params, Entities: proj.Entities, Registers: proj.Registers, InfoRegs: proj.InfoRegisters, AccountRegs: proj.AccountRegisters, CompareRequestPhones: rep.AllowsRequestPhoneJoin()})
 	if err != nil {
 		return nil
 	}

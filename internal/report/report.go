@@ -2,6 +2,7 @@ package report
 
 import (
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -70,6 +71,8 @@ type Report struct {
 
 	// ComparePhoneField opts a project report's result procedure into request-local comparison.
 	ComparePhoneField string `yaml:"compare_phone_field,omitempty"`
+	// CompareRequestPhones enables the protected predicate in the native request-match report.
+	CompareRequestPhones bool `yaml:"compare_request_phones,omitempty"`
 
 	// OutputFormat — предпочтительный формат выгрузки отчёта (issue #218): пусто|html
 	// (интерактивный просмотр + кнопки Excel/PDF), pdf, excel или совместимый
@@ -81,6 +84,12 @@ type Report struct {
 	// а не из конфигурации проекта. Заполняется программно при загрузке;
 	// в YAML не сериализуется.
 	External bool `yaml:"-"`
+}
+
+// AllowsRequestPhoneJoin binds the comparison to the opted-in project report.
+// The external flag is set by the loader and cannot be overridden in YAML.
+func (r *Report) AllowsRequestPhoneJoin() bool {
+	return r.CompareRequestPhones && !r.External && strings.EqualFold(r.Name, "А_ЗаявкиПоНомеруТелефона")
 }
 
 // FormActions configures the action row below the report parameters.

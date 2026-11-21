@@ -516,7 +516,7 @@ func reportYAMLSchema() *yamlLintSchema {
 		// detail_fields — поля детальной записи (аналог «Выбранных полей» 1С).
 		"detail_fields": seq(obj("field", "title")),
 	})
-	return with(obj("name", "title", "query", "chart_proc", "result_proc", "compare_phone_field", "output_format"), map[string]*yamlLintSchema{
+	return with(obj("name", "title", "query", "chart_proc", "result_proc", "compare_phone_field", "compare_request_phones", "output_format"), map[string]*yamlLintSchema{
 		"form_actions": obj("primary_background", "cancel"),
 		"titles":       freeMap(),
 		"drilldowns": seq(with(obj("field", "title", "id_field", "type_field"), map[string]*yamlLintSchema{

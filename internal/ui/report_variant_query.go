@@ -11,5 +11,10 @@ func (s *Server) compileReportVariantQuery(ctx context.Context, rep *reportpkg.R
 	if err != nil {
 		return query.Result{}, err
 	}
-	return s.compileQueryWithRowAccess(ctx, text, values)
+	opts, err := s.queryCompileOptionsWithAccess(ctx, text, values)
+	if err != nil {
+		return query.Result{}, err
+	}
+	opts.CompareRequestPhones = rep.AllowsRequestPhoneJoin()
+	return query.Compile(text, opts)
 }

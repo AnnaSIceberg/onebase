@@ -479,6 +479,7 @@ func CheckQueries(proj *project.Project) []Issue {
 			text, values, err := rep.QueryForVariant(name, params)
 			o := opts
 			o.Params = values
+			o.CompareRequestPhones = rep.AllowsRequestPhoneJoin()
 			if err == nil && strings.TrimSpace(text) != "" {
 				_, err = query.Compile(text, o)
 			}
@@ -511,12 +512,13 @@ func CheckQueriesExecutable(proj *project.Project, validate func(sqlText string)
 		Entities:    proj.Entities,
 		Dialect:     storage.SQLiteDialect{},
 	}
-	check := func(qtext, file, name, kind string, params map[string]any) {
+	check := func(qtext, file, name, kind string, params map[string]any, compareRequestPhones bool) {
 		if qtext == "" {
 			return
 		}
 		o := opts
 		o.Params = params
+		o.CompareRequestPhones = compareRequestPhones
 		r, err := query.Compile(qtext, o)
 		if err != nil {
 			return // ошибки компиляции уже репортит CheckQueries
@@ -530,7 +532,7 @@ func CheckQueriesExecutable(proj *project.Project, validate func(sqlText string)
 		for k := range w.Params {
 			params[k] = nil
 		}
-		check(w.Query, "widgets/"+w.Name+".yaml", w.Name, "Виджет (исполнение запроса)", params)
+		check(w.Query, "widgets/"+w.Name+".yaml", w.Name, "Виджет (исполнение запроса)", params, false)
 	}
 	for _, rep := range proj.Reports {
 		params := map[string]any{}
@@ -544,17 +546,17 @@ func CheckQueriesExecutable(proj *project.Project, validate func(sqlText string)
 		for _, name := range names {
 			text, values, err := rep.QueryForVariant(name, params)
 			if err == nil {
-				check(text, "reports/"+rep.Name+".yaml", rep.Name, "Отчёт (исполнение запроса), вариант "+name, values)
+				check(text, "reports/"+rep.Name+".yaml", rep.Name, "Отчёт (исполнение запроса), вариант "+name, values, rep.AllowsRequestPhoneJoin())
 			}
 		}
 	}
 	for _, lq := range listFormFilterQueries(proj) {
 		if lq.err == nil {
-			check(lq.query, lq.file, lq.object, "Форма списка (исполнение запроса отбора)", listFormFilterQueryParams())
+			check(lq.query, lq.file, lq.object, "Форма списка (исполнение запроса отбора)", listFormFilterQueryParams(), false)
 		}
 	}
 	for _, cq := range choiceFilterQueries(proj) {
-		check(cq.query, cq.file, cq.object, "Управляемая форма (исполнение запроса choice_filter)", cq.params)
+		check(cq.query, cq.file, cq.object, "Управляемая форма (исполнение запроса choice_filter)", cq.params, false)
 	}
 	return issues
 }

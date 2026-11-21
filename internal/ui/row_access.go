@@ -606,15 +606,23 @@ func (s *Server) queryRowFilters(ctx context.Context) (map[query.SourceRef]*stor
 }
 
 func (s *Server) compileQueryWithRowAccess(ctx context.Context, text string, params map[string]any) (query.Result, error) {
-	rowFilters, err := s.queryRowFilters(ctx)
+	opts, err := s.queryCompileOptionsWithAccess(ctx, text, params)
 	if err != nil {
 		return query.Result{}, err
+	}
+	return query.Compile(text, opts)
+}
+
+func (s *Server) queryCompileOptionsWithAccess(ctx context.Context, text string, params map[string]any) (query.CompileOpts, error) {
+	rowFilters, err := s.queryRowFilters(ctx)
+	if err != nil {
+		return query.CompileOpts{}, err
 	}
 	match, err := s.savedPhoneMatchForQuery(ctx, text)
 	if err != nil {
-		return query.Result{}, err
+		return query.CompileOpts{}, err
 	}
-	return query.Compile(text, query.CompileOpts{
+	return query.CompileOpts{
 		Entities:        s.reg.Entities(),
 		Params:          params,
 		Registers:       s.reg.Registers(),
@@ -623,7 +631,7 @@ func (s *Server) compileQueryWithRowAccess(ctx context.Context, text string, par
 		RowFilters:      rowFilters,
 		Dialect:         s.store.Dialect(),
 		SavedPhoneMatch: match,
-	})
+	}, nil
 }
 
 func (s *Server) compileDSLQueryWithRowAccess(ctx context.Context, text string, params map[string]any) (query.Result, error) {

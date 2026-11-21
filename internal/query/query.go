@@ -25,8 +25,9 @@ type CompileOpts struct {
 	Entities    []*metadata.Entity
 	// RowFilters are SQL-side read predicates keyed by source object. The
 	// compiler qualifies each predicate against the actual table alias.
-	RowFilters      map[SourceRef]*storage.Predicate
-	SavedPhoneMatch *SavedPhoneMatch
+	RowFilters           map[SourceRef]*storage.Predicate
+	SavedPhoneMatch      *SavedPhoneMatch
+	CompareRequestPhones bool
 	// Dialect selects the SQL flavour. nil = PgDialect (default).
 	Dialect storage.Dialect
 
@@ -6715,6 +6716,12 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 			}
 			if prevDot && !nextIsDot && tr.shadowedSourceColumn(tr.pos-1, lower) {
 				return Result{}, i18nerr.Errorf("поле %s локального источника %s не разрешено однозначно; внешнее поле затенено", t.val, tr.tokens[tr.pos-3].val)
+			}
+			if !prevDot && !prevAlias && tr.peek(0).kind == tLParen && lower == requestPhoneJoinName {
+				if err := tr.emitRequestPhoneJoin(); err != nil {
+					return Result{}, err
+				}
+				continue
 			}
 			if !prevDot && !prevAlias && tr.peek(0).kind == tLParen && IsSavedPhoneMatchName(lower) {
 				if err := tr.emitSavedPhoneMatch(); err != nil {
