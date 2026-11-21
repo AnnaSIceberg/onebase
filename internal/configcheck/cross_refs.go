@@ -100,8 +100,25 @@ func CheckCrossRefs(proj *project.Project, roles []*auth.Role) []Issue {
 		// Для обычных колонок и фильтров нужен реквизит хотя бы одного документа.
 		// Позицию системного вида документа можно задать в columns.
 		for _, c := range j.Columns {
-			if !c.IsDocumentKind() && !journalFieldResolves(c.Field, c.Map, c.Fallback, jdocs) {
-				add("journals", j.Name, "Журнал", fmt.Sprintf("колонка %q не найдена ни в одном документе журнала", c.Field))
+			switch {
+			case c.IsDocumentKind(), c.IsDeletionMark():
+				continue
+			case c.ReferencePath != "":
+				lookup := func(name string) *metadata.Entity { return entityByName[strings.ToLower(name)] }
+				valid := false
+				for _, doc := range jdocs {
+					if _, ok := c.ResolveReference(doc, lookup); ok {
+						valid = true
+						break
+					}
+				}
+				if !valid {
+					add("journals", j.Name, "Журнал", fmt.Sprintf("колонка %q: reference_path %q не разрешает ссылку ни для одного документа", c.Field, c.ReferencePath))
+				}
+			default:
+				if !journalFieldResolves(c.Field, c.Map, c.Fallback, jdocs) {
+					add("journals", j.Name, "Журнал", fmt.Sprintf("колонка %q не найдена ни в одном документе журнала", c.Field))
+				}
 			}
 		}
 		for _, f := range j.Filters {

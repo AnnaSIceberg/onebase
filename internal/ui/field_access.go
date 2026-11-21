@@ -230,6 +230,9 @@ func (s *Server) maskJournalRecords(
 		for _, column := range j.Columns {
 			decision, ok := journalColumnDecision(sourceDecisions, journalColumnSourceFields(column, entity))
 			if ok {
+				if column.ReferencePath != "" {
+					decision = access.FieldDecision{Strategy: access.FieldHide}
+				}
 				outputDecisions[column.Field] = decision
 			}
 		}
@@ -249,6 +252,15 @@ func (s *Server) maskJournalRecords(
 // decision to avoid exposing whichever fallback happened to be non-NULL.
 func journalColumnSourceFields(column metadata.JournalColumn, entity *metadata.Entity) []string {
 	if entity == nil || column.IsDocumentKind() {
+		return nil
+	}
+	if column.IsDeletionMark() {
+		return []string{metadata.JournalDeletionMarkField}
+	}
+	if column.ReferencePath != "" {
+		if source := column.ReferenceSource(entity); source != nil {
+			return []string{source.Name}
+		}
 		return nil
 	}
 	if mapped, ok := column.Map[entity.Name]; ok && mapped != "" {

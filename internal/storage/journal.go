@@ -18,6 +18,15 @@ import (
 //  2. Exact match — у документа есть поле с именем jcol.Field.
 //  3. Fallback list — старый fallback (back compat); COALESCE если несколько.
 func colExprForDoc(jcol metadata.JournalColumn, entity *metadata.Entity) (string, *metadata.Field) {
+	if jcol.IsDeletionMark() {
+		return metadata.JournalDeletionMarkField, nil
+	}
+	if jcol.ReferencePath != "" {
+		if source := jcol.ReferenceSource(entity); source != nil {
+			return metadata.ColumnName(*source), nil
+		}
+		return "NULL", nil
+	}
 	// 1. Explicit map для этого документа.
 	if jcol.Map != nil {
 		if mapped, ok := jcol.Map[entity.Name]; ok && mapped != "" {
@@ -257,7 +266,11 @@ func (db *DB) JournalQuery(
 		row[metadata.JournalDocumentKindField] = normalizeValue(dest[0])
 		row["id"] = normalizeValue(dest[1])
 		for i, jcol := range queryColumns {
-			row[jcol.Field] = normalizeValue(dest[i+2])
+			if jcol.IsDeletionMark() {
+				row[jcol.Field] = normalizeBool(dest[i+2])
+			} else {
+				row[jcol.Field] = normalizeValue(dest[i+2])
+			}
 		}
 		rows = append(rows, row)
 	}
