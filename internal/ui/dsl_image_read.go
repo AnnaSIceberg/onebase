@@ -10,10 +10,11 @@ import (
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/scheduler"
 )
 
 func (s *Server) readStoredImageBytes(ctx context.Context, args []any) (any, error) {
-	if auth.UserFromContext(ctx) != nil {
+	if !scheduler.InJobExecution(ctx) || auth.UserFromContext(ctx) != nil {
 		return nil, fmt.Errorf("ПрочитатьБайтыКартинки: доступно только серверному заданию")
 	}
 	if len(args) != 2 {
