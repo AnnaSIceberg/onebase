@@ -349,6 +349,11 @@ func (s *Server) buildDSLVarsTx(ctx context.Context, mc *runtime.MovementsCollec
 	vars["ObjectAttributeValues"] = attrValuesFn
 	vars["СохранитьКартинку"] = putImageFn
 	vars["PutImage"] = putImageFn
+	readImage := interpreter.BuiltinFunc(func(args []any, _ string, _ int) (any, error) {
+		return s.readStoredImageBytes(txState.Ctx(), args)
+	})
+	vars["ПрочитатьБайтыКартинки"] = readImage
+	vars["ReadImageBytes"] = readImage
 	// Глобальный поиск из обработок (план 82). Живой контекст txState.Ctx() —
 	// поиск видит данные открытой DSL-транзакции; права — пользователя сессии.
 	fullTextSearchFn := interpreter.BuiltinFunc(func(args []any, _ string, _ int) (any, error) {

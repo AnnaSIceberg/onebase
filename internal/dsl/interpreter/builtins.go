@@ -659,6 +659,7 @@ func KnownBuiltinNames() map[string]struct{} {
 		"скачатьcsv", "downloadcsv",
 		"ссылканаобъект", "objectref",
 		"сохранитькартинку", "putimage",
+		"прочитатьбайтыкартинки", "readimagebytes",
 		"добавитьправилооформления", "addformattingrule",
 		"очиститьоформление", "clearformatting",
 		// глобальный поиск из DSL (план 82, internal/ui/search.go)
