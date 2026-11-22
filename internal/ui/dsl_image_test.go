@@ -194,3 +194,41 @@ func TestSaveImageWithOwnerChecksAccessAndTransaction(t *testing.T) {
 		t.Fatal("rollback оставил owner-aware blob")
 	}
 }
+
+func TestReadImageBytesThroughDSL(t *testing.T) {
+	entity := ownerCatalog("Фотографии", metadata.Field{Name: "Картинка", Type: metadata.FieldTypeImage})
+	s, ctx := newSubmitTestServer(t, []*metadata.Entity{entity})
+	if err := s.store.EnsureBlobTable(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.SaveFileStorageMode(ctx, storage.FileStorageDB); err != nil {
+		t.Fatal(err)
+	}
+	data := "\x89PNG\r\n\x1a\n\x00\xff"
+	blob, err := s.store.PutBlob(ctx, "image/png", strings.NewReader(data), 100,
+		storage.BlobOwner{Kind: string(entity.Kind), Entity: entity.Name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := seedOwnerRow(t, ctx, s, entity, "operator", map[string]any{"Картинка": blob.ID.String()})
+	src := "Функция Тест() Возврат MD5Данных(ПрочитатьБайтыКартинки(Реф, \"Картинка\")); КонецФункции"
+	prog, err := parser.New(lexer.New(src, "image-read.os")).ParseProgram()
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(ctx context.Context) (any, error) {
+		t.Helper()
+		vars, _ := s.buildDSLVarsTx(ctx, runtime.NewMovementsCollector("processor", [16]byte{}))
+		vars["Реф"] = &interpreter.Ref{UUID: record.String(), Type: entity.Name}
+		var result any
+		err := s.interp.RunWithResult(prog.Procedures[0], runtime.NewObject("Test", metadata.KindDocument), &result, vars)
+		return result, err
+	}
+	if result, err := run(ctx); err != nil || result != "ba78c8657b1d02893c2e8356f3f26330" {
+		t.Fatalf("server read = %v, %v", result, err)
+	}
+	userCtx := auth.ContextWithUser(ctx, rowOwnerUser("operator", entity.Name, "read"))
+	if _, err := run(userCtx); err == nil {
+		t.Fatal("operator session read a server-only binary")
+	}
+}

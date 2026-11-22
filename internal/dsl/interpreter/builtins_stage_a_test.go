@@ -154,3 +154,12 @@ func TestBase64RoundTrip(t *testing.T) {
 		t.Errorf("Base64Значение на мусоре → \"\": got %q", got)
 	}
 }
+
+func TestMD5BytesPreservesBinaryData(t *testing.T) {
+	data := callB(t, "base64значение", "/9j/AIlQTkc=")
+	for _, name := range []string{"md5данных", "md5bytes"} {
+		if got := callB(t, name, data); got != "232b78c460093b91b664293edc4f281e" {
+			t.Errorf("%s(binary) = %q", name, got)
+		}
+	}
+}
