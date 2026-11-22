@@ -1,7 +1,9 @@
 package interpreter
 
 import (
+	"crypto/md5" //nolint:gosec // G501: compatibility checksum for file exchange.
 	"encoding/base64"
+	"encoding/hex"
 	"math"
 	"strings"
 	"time"
@@ -82,6 +84,8 @@ func init() {
 	builtins["base64string"] = base64EncodeFn
 	builtins["base64значение"] = base64DecodeFn
 	builtins["base64value"] = base64DecodeFn
+	builtins["md5данных"] = md5BytesFn
+	builtins["md5bytes"] = md5BytesFn
 }
 
 // ─── Строковые реализации ──────────────────────────────────────────────────
@@ -261,4 +265,10 @@ func base64DecodeFn(args []any, _ string, _ int) (any, error) {
 		return "", nil
 	}
 	return string(b), nil
+}
+
+// md5BytesFn hashes the raw bytes retained by DSL strings, including binary HTTP bodies.
+func md5BytesFn(args []any, _ string, _ int) (any, error) {
+	sum := md5.Sum([]byte(strArg(args, 0))) //nolint:gosec // G401: legacy file-integrity format.
+	return hex.EncodeToString(sum[:]), nil
 }
