@@ -19,6 +19,7 @@ import (
 	"github.com/ivantit66/onebase/internal/exchange"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/runtime"
+	"github.com/ivantit66/onebase/internal/scheduler"
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
@@ -346,6 +347,14 @@ func (s *Server) buildDSLVarsTx(ctx context.Context, mc *runtime.MovementsCollec
 	})
 	vars["ПрочитатьБайтыКартинки"] = readImage
 	vars["ReadImageBytes"] = readImage
+	inJob := interpreter.BuiltinFunc(func(args []any, _ string, _ int) (any, error) {
+		if len(args) != 0 {
+			return nil, fmt.Errorf("ВыполняетсяФоновоеЗадание: параметры не предусмотрены")
+		}
+		return scheduler.InJobExecution(txState.Ctx()) && auth.UserFromContext(txState.Ctx()) == nil, nil
+	})
+	vars["ВыполняетсяФоновоеЗадание"] = inJob
+	vars["IsBackgroundJob"] = inJob
 	// Глобальный поиск из обработок (план 82). Живой контекст txState.Ctx() —
 	// поиск видит данные открытой DSL-транзакции; права — пользователя сессии.
 	fullTextSearchFn := interpreter.BuiltinFunc(func(args []any, _ string, _ int) (any, error) {

@@ -1018,7 +1018,16 @@ func (s *Scheduler) updateRun(ctx context.Context, runID uuid.UUID, status, outp
 	}
 }
 
+type jobExecutionKey struct{}
+
+// InJobExecution reports whether the context belongs to a scheduler processor.
+func InJobExecution(ctx context.Context) bool {
+	active, _ := ctx.Value(jobExecutionKey{}).(bool)
+	return active
+}
+
 func (s *Scheduler) runProcessor(ctx context.Context, job *metadata.ScheduledJob) (output string, runErr error) {
+	ctx = context.WithValue(ctx, jobExecutionKey{}, true)
 	// Без Registry искать обработку негде: методы на нулевом приёмнике
 	// разыменовывают мьютекс и паникуют (#1202). Прогон должен получить
 	// честную ошибку, а не панику в журнале.

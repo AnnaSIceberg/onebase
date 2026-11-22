@@ -3,16 +3,22 @@ package ui
 import (
 	"context"
 	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/dsl/lexer"
 	"github.com/ivantit66/onebase/internal/dsl/parser"
+	"github.com/ivantit66/onebase/internal/httpservice"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/processor"
 	"github.com/ivantit66/onebase/internal/runtime"
+	"github.com/ivantit66/onebase/internal/scheduler"
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
@@ -211,24 +217,54 @@ func TestReadImageBytesThroughDSL(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := seedOwnerRow(t, ctx, s, entity, "operator", map[string]any{"Картинка": blob.ID.String()})
-	src := "Функция Тест() Возврат MD5Данных(ПрочитатьБайтыКартинки(Реф, \"Картинка\")); КонецФункции"
-	prog, err := parser.New(lexer.New(src, "image-read.os")).ParseProgram()
+	source := `
+Процедура Выполнить()
+    Сообщить(ВыполняетсяФоновоеЗадание());
+    Сообщить(MD5Данных(ПрочитатьБайтыКартинки(Реф, "Картинка")));
+КонецПроцедуры
+
+Функция ReadImage(Запрос) Экспорт
+    Реф = Справочники.Фотографии.НайтиПоИдентификатору(Запрос.ПараметрыURL.Получить("id"));
+    Возврат ОтветТекст(200, MD5Данных(ПрочитатьБайтыКартинки(Реф, "Картинка")));
+КонецФункции
+`
+	prog, err := parser.New(lexer.New(source, "image-read.os")).ParseProgram()
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := func(ctx context.Context) (any, error) {
-		t.Helper()
-		vars, _ := s.buildDSLVarsTx(ctx, runtime.NewMovementsCollector("processor", [16]byte{}))
-		vars["Реф"] = &interpreter.Ref{UUID: record.String(), Type: entity.Name}
-		var result any
-		err := s.interp.RunWithResult(prog.Procedures[0], runtime.NewObject("Test", metadata.KindDocument), &result, vars)
-		return result, err
+	s.reg.Load(runtime.LoadOptions{
+		Entities:        []*metadata.Entity{entity},
+		Programs:        map[string]*ast.Program{"ReadImage": prog},
+		ServicePrograms: map[string]*ast.Program{"ReadImage": prog},
+	})
+	s.reg.LoadProcessors([]*processor.Processor{{Name: "ReadImage"}})
+	sched := scheduler.New(s.store, s.reg, s.interp)
+	if err := sched.LoadJobs([]*metadata.ScheduledJob{{Name: "ReadImage", Processor: "ReadImage"}}); err != nil {
+		t.Fatal(err)
 	}
-	if result, err := run(ctx); err != nil || result != "ba78c8657b1d02893c2e8356f3f26330" {
-		t.Fatalf("server read = %v, %v", result, err)
+	sched.SetVarsBuilder(func(ctx context.Context, mc *runtime.MovementsCollector, _ *[]string) (map[string]any, *interpreter.TxState) {
+		vars, tx := s.buildDSLVarsTx(ctx, mc)
+		vars["Реф"] = &interpreter.Ref{UUID: record.String(), Type: entity.Name}
+		return vars, tx
+	})
+	if result, err := sched.ExecuteJobOnce(ctx, "ReadImage", nil); err != nil || !strings.Contains(result, "ba78c8657b1d02893c2e8356f3f26330") {
+		t.Fatalf("queued read = %q, %v", result, err)
 	}
 	userCtx := auth.ContextWithUser(ctx, rowOwnerUser("operator", entity.Name, "read"))
-	if _, err := run(userCtx); err == nil {
-		t.Fatal("operator session read a server-only binary")
+	if _, err := sched.ExecuteJobOnce(userCtx, "ReadImage", nil); err == nil || !strings.Contains(err.Error(), "только серверному заданию") {
+		t.Fatalf("job with user context: %v", err)
+	}
+
+	svc := &httpservice.Service{Name: "ReadImage", RootURL: "image-read", Auth: "none",
+		Templates: []httpservice.URLTemplate{{Template: "/{id}", Methods: map[string]string{"GET": "ReadImage"}}}}
+	svc.Normalize()
+	s.reg.LoadHTTPServices([]*httpservice.Service{svc})
+	if err := s.store.SaveNetworkEnabled(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	s.serviceDispatch(w, httptest.NewRequest(http.MethodGet, "/hs/image-read/"+record.String(), nil))
+	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), "только серверному заданию") {
+		t.Fatalf("anonymous HTTP read: status=%d, body=%q", w.Code, w.Body.String())
 	}
 }
