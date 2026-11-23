@@ -28,7 +28,15 @@ type workbookAnswerTicket struct {
 }
 
 func workbookAnswerScope(proc *processorpkg.Processor, form *metadata.FormModule, element string, fields map[string]any) [32]byte {
-	values := processorCarryValues(proc, form, fields)
+	state := processorCarryValues(proc, form, fields)
+	values := make(map[string]string, len(proc.Params))
+	for _, param := range proc.Params {
+		if processorCarryParam(param) {
+			// Absent and explicitly cleared controls carry the same empty value.
+			// A populated default or reference still has its own value.
+			values[param.Name] = state[param.Name]
+		}
+	}
 	// JSON serialization of strings and string maps cannot fail. The ticket
 	// stores only a digest, never the submitted form values.
 	encoded, _ := json.Marshal(values)
