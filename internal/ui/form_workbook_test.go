@@ -65,7 +65,7 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
     ЗаменитьЛистыExcel("Отчёт 400.xlsx", MakeBook(45));
   КонецЕсли;
 КонецПроцедуры`)
-		proc := &processor.Processor{Name: "WorkbookTest", Forms: []*metadata.FormModule{form}}
+		proc := &processor.Processor{Name: "WorkbookTest", Forms: []*metadata.FormModule{form}, Params: []processor.Param{{Name: "Branch", Type: "string"}}}
 		s.reg.LoadProcessors([]*processor.Processor{proc})
 		user.Roles[0].Permissions.Processors = map[string][]string{proc.Name: {"run"}}
 		base := "/ui/processor/" + proc.Name
@@ -218,22 +218,36 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 		require.True(t, question.OK)
 		require.NotNil(t, question.Question)
 		require.Empty(t, question.WorkbookDownloadURL)
-		answer := func(button, value string) formEventResponse {
-			body := url.Values{"_form": {form.Name}, "_element": {button}, "_event": {"Ответ"}, "_question_answer": {value}}
-			rec := tabularHTTP(s, user, "own", http.MethodPost, base+"/form-event", body)
+		require.NotEmpty(t, question.Question.WorkbookAnswerToken)
+		answer := func(session, button, value, token, branch string) formEventResponse {
+			body := url.Values{"_form": {form.Name}, "_element": {button}, "_event": {"Ответ"}, "_question_answer": {value},
+				workbookAnswerTokenField: {token}, "Branch": {branch}}
+			rec := tabularHTTP(s, user, session, http.MethodPost, base+"/form-event", body)
 			require.Equal(t, http.StatusOK, rec.Code)
 			return decodeFormEventResponse(t, rec.Body.Bytes())
 		}
-		cancelled := answer("Confirm", "Нет")
+		token := question.Question.WorkbookAnswerToken
+		denied := func(resp formEventResponse) {
+			t.Helper()
+			require.False(t, resp.OK)
+			require.Empty(t, resp.WorkbookDownloadURL)
+		}
+		denied(answer("own", "Confirm", "Да", "", ""))
+		denied(answer("second", "Confirm", "Да", token, ""))
+		denied(answer("own", "Confirm", "Да", token, "Изменённый филиал"))
+		denied(answer("own", "Unmarked", "Да", token, ""))
+		cancelled := answer("own", "Confirm", "Нет", token, "")
 		require.True(t, cancelled.OK, cancelled.Error)
 		require.Empty(t, cancelled.WorkbookDownloadURL)
-		blocked := answer("Unmarked", "Да")
-		require.False(t, blocked.OK)
-		require.Empty(t, blocked.WorkbookDownloadURL)
+		denied(answer("own", "Confirm", "Да", token, ""))
 		beforeApproval, err := os.ReadFile(path)
 		require.NoError(t, err)
 		assertCell(beforeApproval, "Итого", "42")
-		read("own", answer("Confirm", "Да"), "45")
+		newQuestion := click("own", "Confirm")
+		require.NotNil(t, newQuestion.Question)
+		token = newQuestion.Question.WorkbookAnswerToken
+		read("own", answer("own", "Confirm", "Да", token, ""), "45")
+		denied(answer("own", "Confirm", "Да", token, ""))
 		user.Roles[0].Permissions.Processors = nil
 		require.Equal(t, http.StatusNotFound, tabularHTTP(s, user, "own", "GET", recovered.WorkbookDownloadURL, nil).Code)
 	})

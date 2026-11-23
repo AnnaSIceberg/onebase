@@ -3171,9 +3171,14 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		if closeInv == nil && eventName == string(metadata.FormEventOnClick) && eventTarget.element != nil && (eventTarget.element.TabularProgress != "" || (!proc.External && eventTarget.element.Kind == metadata.FormElementButton && eventTarget.element.WorkbookSave)) {
 			vars["СообщитьПрогрессФормирования"] = tabularProgressBuiltin(w, r, enc)
 		}
-		workbookAnswer := !proc.External && closeInv == nil && eventName == string(metadata.FormEventOnAnswer) &&
+		workbookConfirmation := !proc.External && closeInv == nil &&
 			eventTarget.element != nil && eventTarget.element.Kind == metadata.FormElementButton &&
 			eventTarget.element.WorkbookUpdateOnAnswer && eventTarget.element.Handlers[metadata.FormEventOnAnswer] != ""
+		workbookAnswer := workbookConfirmation && eventName == string(metadata.FormEventOnAnswer)
+		if workbookAnswer && !s.consumeWorkbookAnswer(r, proc, form, elementName) {
+			respondJSON(enc, formEventResponse{Error: "Подтверждение изменения книги устарело. Выполните команду ещё раз."})
+			return
+		}
 		if !proc.External && (eventName == string(metadata.FormEventOnClick) || workbookAnswer) &&
 			eventTarget.element != nil && eventTarget.element.Kind == metadata.FormElementButton {
 			s.bindPhoneComparison(vars, txState.Ctx, eventTarget.element.ComparePhoneField)
@@ -3392,6 +3397,14 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		resp.PickerData = picker
 		if question.Variants != nil {
 			q := question
+			if workbookClick && workbookConfirmation {
+				token, err := s.issueWorkbookAnswer(w, r, proc, form, elementName, q.Variants)
+				if err != nil {
+					respondJSON(enc, formEventResponse{Error: err.Error()})
+					return
+				}
+				q.WorkbookAnswerToken = token
+			}
 			resp.Question = &q
 		}
 		resp.Idle = idle

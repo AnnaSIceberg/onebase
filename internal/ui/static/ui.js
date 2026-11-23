@@ -5893,6 +5893,7 @@ function obOpenQuestion(payload, elementName, handlers) {
       finished = true;
       modal.remove();
       var extra = { _question_answer: variant };
+      if (payload.workbookAnswerToken) extra._workbook_answer_token = payload.workbookAnswerToken;
       var names = Object.keys(inputs);
       if (names.length) {
         var values = {};

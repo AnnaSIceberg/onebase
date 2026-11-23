@@ -784,6 +784,7 @@ var processorServiceFields = []string{
 	"_pick_query",
 	"_pick_fields",
 	"_question_fields",
+	workbookAnswerTokenField,
 	"_tp",
 	"_tp_selected",
 	"_tp_row",
