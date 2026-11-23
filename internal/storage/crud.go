@@ -18,6 +18,8 @@ import (
 // ListParams controls filtering, search, sorting and pagination for List queries.
 type ListParams struct {
 	Filters map[string]FilterValue
+	// AccountPriority is supplied by the configured UI list filter only.
+	AccountPriority *ListAccountPriority
 	// ChoicePredicates are trusted, metadata-derived choice_filter conditions.
 	ChoicePredicates []ChoicePredicate
 	// ChoiceSearchIDs limits a configuration search independently of the eight
@@ -991,6 +993,13 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 		query += " ORDER BY id ASC"
 	} else if docDate != nil {
 		query += fmt.Sprintf(" ORDER BY %s ASC NULLS FIRST, id ASC", metadata.ColumnName(*docDate))
+	} else if params.AccountPriority != nil {
+		order, roles, err := db.listAccountOrder(entity, params.AccountPriority, len(args))
+		if err != nil {
+			return nil, err
+		}
+		query += " ORDER BY " + order
+		args = append(args, roles...)
 	} else if params.Sort == "" && len(entity.OrderBy) > 0 {
 		// Порядок по умолчанию из метаданных (order_by): у значений бывает свой
 		// порядок, не алфавитный, — «порядок в отчётах» у направлений. Папки

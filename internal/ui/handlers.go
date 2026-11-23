@@ -337,6 +337,7 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	params.Offset = extra.Offset
 	params.ChoicePredicates = extra.ChoicePredicates
 	params.ChoiceSearchIDs = extra.ChoiceSearchIDs
+	params.AccountPriority = extra.AccountPriority
 	// choice_folders: элемент формы разрешил выбирать группы — снимаем неявный
 	// запрет подбора, но оставляем остальные его правила (активность, права).
 	if extra.IncludeFolders {
@@ -565,11 +566,15 @@ func (s *Server) loadInitialRefFilterOptions(ctx context.Context, entity *metada
 		if refEntity == nil {
 			continue
 		}
-		rows, err := s.initialReferenceOptions(ctx, refEntity, refOptionsFilter.withMarked(f.ChoiceShowDeleted), []string{params.Filters[f.Name].Value})
+		mode := refOptionsFilter.withMarked(f.ChoiceShowDeleted)
+		priority := s.listFilterAccountPriority(ctx, entity, &f, refEntity)
+		rows, err := s.referenceOptionsWithParams(ctx, refEntity, mode, storage.ListParams{
+			Limit: refPickerDefaultLimit, AccountPriority: priority,
+		})
 		if err != nil {
 			return nil, err
 		}
-		opts[f.Name] = rows
+		opts[f.Name] = s.appendSelectedRefOptions(ctx, rows, refEntity, []string{params.Filters[f.Name].Value})
 	}
 	return opts, nil
 }
