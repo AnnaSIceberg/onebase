@@ -244,6 +244,16 @@ func (s *Server) choicePredicates(ctx context.Context, owner *metadata.Entity, f
 	predicates := make([]storage.ChoicePredicate, 0, len(element.ChoiceFilter))
 	targetDecisions := s.fieldDecisions(ctx, target)
 	for _, condition := range element.ChoiceFilter {
+		if condition.SkipWhenEmpty {
+			source, ok := condition.OptionalChoiceSource()
+			if !ok || tpName == "" {
+				return nil, false, fmt.Errorf("skip_when_empty requires a table-part column with a direct object reference")
+			}
+			field, found := entityFieldByName(owner, source.Field)
+			if !found || field.RefEntity == "" || choiceAttrMasked(s.fieldDecisions(ctx, owner), field.Name) {
+				return nil, true, nil
+			}
+		}
 		if condition.IsQuery() {
 			predicate, closed, err := s.choiceQueryPredicate(ctx, owner, form, condition, sources)
 			if err != nil || closed {
@@ -287,15 +297,16 @@ func (s *Server) choicePredicates(ctx context.Context, owner *metadata.Entity, f
 		rawValue, present := sources[path]
 		raw := strings.TrimSpace(rawValue)
 		kpiSource := element.KPIChoice != nil && path == element.KPIChoice.AllWhenEmpty
-		if kpiSource && !present {
+		optionalSource := kpiSource || condition.SkipWhenEmpty
+		if optionalSource && !present {
 			return nil, true, nil
 		}
-		if kpiSource && rawValue != "" && raw == "" {
-			return nil, false, fmt.Errorf("invalid value for KPI choice source %q", path)
+		if optionalSource && rawValue != "" && raw == "" {
+			return nil, false, fmt.Errorf("invalid value for optional choice source %q", path)
 		}
 		if raw == "" {
-			if kpiSource {
-				continue // explicit opt-in empty source removes only this eq
+			if optionalSource {
+				continue // Explicit empty value drops this condition only.
 			}
 			// eq_or_empty: источник пуст — остаются записи с пустым
 			// реквизитом (общие), а не пустой список.
@@ -310,7 +321,7 @@ func (s *Server) choicePredicates(ctx context.Context, owner *metadata.Entity, f
 		if err != nil || id == uuid.Nil {
 			return nil, false, fmt.Errorf("invalid value for choice source %q", path)
 		}
-		if kpiSource {
+		if optionalSource {
 			visible, err := s.choiceRefVisible(ctx, target, fieldName, id)
 			if err != nil || !visible {
 				return nil, true, err

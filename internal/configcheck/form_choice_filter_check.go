@@ -83,7 +83,7 @@ func validateChoiceFilterYAML(node *yaml.Node, path, file string, issues *[]Issu
 		add(node, fmt.Sprintf("%s должен быть списком условий", path))
 		return
 	}
-	allowed := map[string]bool{"field": true, "op": true, "from": true, "value": true, "ref": true, "query": true, "params": true}
+	allowed := map[string]bool{"field": true, "op": true, "from": true, "value": true, "ref": true, "query": true, "params": true, "skip_when_empty": true}
 	for index, condition := range node.Content {
 		conditionPath := fmt.Sprintf("%s[%d]", path, index)
 		if condition == nil || condition.Kind != yaml.MappingNode {
@@ -115,9 +115,9 @@ func validateChoiceFilterYAML(node *yaml.Node, path, file string, issues *[]Issu
 				if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 					add(value, fmt.Sprintf("%s.%s должен быть строкой", conditionPath, key.Value))
 				}
-			case "value":
+			case "value", "skip_when_empty":
 				if value.Kind != yaml.ScalarNode || value.Tag != "!!bool" {
-					add(value, fmt.Sprintf("%s.value должен быть boolean", conditionPath))
+					add(value, fmt.Sprintf("%s.%s должен быть boolean", conditionPath, key.Value))
 				}
 			case "ref":
 				// Пустая строка в структуре неотличима от отсутствующего ключа,
@@ -237,6 +237,12 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 				seenFields := make(map[string]bool, len(el.ChoiceFilter))
 				for i, cond := range el.ChoiceFilter {
 					where := fmt.Sprintf("choice_filter[%d]", i)
+					if cond.SkipWhenEmpty {
+						if _, ok := cond.OptionalChoiceSource(); !ok || tpName == "" {
+							add("%s: skip_when_empty допускается у колонки ТЧ для eq с прямой ссылкой from: Объект.<Реквизит>", where)
+							continue
+						}
+					}
 					// Условие запросом (как filter[].query формы списка, #2181):
 					// реквизит цели не задаётся, текст запроса проверяет
 					// CheckQueries, здесь — форма условия и источники параметров.
