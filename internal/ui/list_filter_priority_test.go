@@ -9,15 +9,26 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
 func TestListAuthorAccountPriorityHTTP(t *testing.T) {
+	testListAuthorPriorityHTTP(t, false)
+}
+
+func TestListAuthorStaffingPriorityHTTP(t *testing.T) {
+	testListAuthorPriorityHTTP(t, true)
+}
+
+func testListAuthorPriorityHTTP(t *testing.T, byStaffing bool) {
+	t.Helper()
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
 		repo := auth.NewRepo(db)
@@ -34,16 +45,57 @@ func TestListAuthorAccountPriorityHTTP(t *testing.T) {
 		}
 		authors := &metadata.Entity{Name: "Пользователи", Kind: metadata.KindCatalog, OrderBy: []string{"Наименование"}, Fields: []metadata.Field{
 			{Name: "Наименование", Type: metadata.FieldTypeString},
+			{Name: "Архив", Type: metadata.FieldTypeBool},
 			{Name: "УчётнаяЗапись", Type: "reference:_users", RefEntity: metadata.SystemUsersEntity},
 		}}
 		author := metadata.Field{Name: "АвторДокумента", Type: "reference:Пользователи", RefEntity: authors.Name}
 		request := &metadata.Entity{Name: "А_Заявка", Kind: metadata.KindDocument, Fields: []metadata.Field{author}, ListFilters: []string{author.Name}}
 		call := &metadata.Entity{Name: "А_Звонок", Kind: metadata.KindDocument, Fields: []metadata.Field{author}, ListFilters: []string{author.Name}}
-		s := newSubmitTestServerOn(t, db, []*metadata.Entity{authors, request, call})
+		departments := &metadata.Entity{Name: "Подразделения", Kind: metadata.KindCatalog,
+			Predefined: []*metadata.PredefinedItem{{Name: "КоллЦентр"}, {Name: "Склад"}}}
+		jobs := &metadata.Entity{Name: "ДолжностиОрганизаций", Kind: metadata.KindCatalog,
+			Predefined: []*metadata.PredefinedItem{{Name: "Сотрудник"}, {Name: "Руководитель"}}}
+		department := metadata.Field{Name: "Подразделение", Type: "reference:Подразделения", RefEntity: departments.Name}
+		job := metadata.Field{Name: "Должность", Type: "reference:ДолжностиОрганизаций", RefEntity: jobs.Name}
+		person := metadata.Field{Name: "Пользователь", Type: "reference:Пользователи", RefEntity: authors.Name}
+		staffing := &metadata.InfoRegister{Name: "А_ДолжностиПодразделения", Periodic: true,
+			Dimensions: []metadata.Field{person}, Resources: []metadata.Field{department, job}}
+		entities := []*metadata.Entity{authors, request, call, departments, jobs}
+		s := newSubmitTestServerOn(t, db, entities)
+		var callCenter, otherDept, employee, supervisorJob uuid.UUID
+		if byStaffing {
+			s.reg.Load(runtime.LoadOptions{Entities: entities, InfoRegs: []*metadata.InfoRegister{staffing}})
+			if err := db.MigrateInfoRegisters(ctx, []*metadata.InfoRegister{staffing}); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.SyncAllPredefined(ctx, []*metadata.Entity{departments, jobs}); err != nil {
+				t.Fatal(err)
+			}
+			predefined := func(entity *metadata.Entity, name string) uuid.UUID {
+				t.Helper()
+				id, err := db.GetPredefinedID(ctx, entity.Name, name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return id
+			}
+			callCenter = predefined(departments, "КоллЦентр")
+			otherDept = predefined(departments, "Склад")
+			employee = predefined(jobs, "Сотрудник")
+			supervisorJob = predefined(jobs, "Руководитель")
+		}
 		s.cfg.UIExceptRoles = []string{op.Name, messenger.Name}
 		s.cfg.UIListFilterAccountPriority = &metadata.ListFilterAccountPriority{
 			Documents: []string{request.Name, call.Name}, Field: author.Name, AccountField: "УчётнаяЗапись",
 			NameField: "Наименование", Roles: []string{op.Name, messenger.Name},
+		}
+
+		if byStaffing {
+			s.cfg.UIListFilterAccountPriority.Roles = nil
+			s.cfg.UIListFilterAccountPriority.Staffing = &metadata.ListFilterStaffingPriority{
+				Register: staffing.Name, DepartmentField: department.Name, PositionField: job.Name,
+				Department: "КоллЦентр", Position: "Сотрудник", ArchiveField: "Архив",
+			}
 		}
 
 		type choiceRow struct {
@@ -59,7 +111,17 @@ func TestListAuthorAccountPriorityHTTP(t *testing.T) {
 			{name: "Архив"},
 			{login: "archive", name: "Александр", role: op, marked: true},
 		} {
-			values := map[string]any{"Наименование": row.name}
+			if byStaffing {
+				switch row.name {
+				case "Яков", "борис":
+					row.login = ""
+				case "Архив":
+					row.login = "archived-staff"
+				case "Андрей":
+					row.role = op
+				}
+			}
+			values := map[string]any{"Наименование": row.name, "Архив": byStaffing && row.name == "Архив"}
 			if row.login != "" {
 				u, err := repo.Create(ctx, row.login, "auth-fixture-only-20", row.name, false)
 				if err != nil {
@@ -75,6 +137,26 @@ func TestListAuthorAccountPriorityHTTP(t *testing.T) {
 			id := uuid.New()
 			if err := db.Upsert(ctx, authors.Name, id, values, authors); err != nil {
 				t.Fatal(err)
+			}
+			if byStaffing {
+				now := time.Now().UTC().Truncate(time.Second)
+				assign := func(at time.Time, depID, jobID uuid.UUID) {
+					t.Helper()
+					if err := db.InfoRegSet(ctx, staffing, map[string]any{person.Name: id},
+						map[string]any{department.Name: depID, job.Name: jobID}, &at); err != nil {
+						t.Fatal(err)
+					}
+				}
+				switch row.name {
+				case "Яков":
+					assign(now.AddDate(0, 0, -1), callCenter, employee)
+					assign(now.AddDate(0, 0, 1), otherDept, employee)
+				case "борис", "Александр", "Архив":
+					assign(now.AddDate(0, 0, -1), callCenter, employee)
+				case "Андрей":
+					assign(now.AddDate(0, 0, -2), callCenter, employee)
+					assign(now.AddDate(0, 0, -1), callCenter, supervisorJob)
+				}
 			}
 			if row.marked {
 				if err := db.MarkForDeletion(ctx, authors.Name, id, true); err != nil {
@@ -124,6 +206,12 @@ func TestListAuthorAccountPriorityHTTP(t *testing.T) {
 			if !slices.Equal(first, []string{"борис", "Яков"}) || !slices.Equal(rest, []string{"Андрей", "Александр", "Архив"}) ||
 				total != 5 || totalRest != total {
 				t.Fatalf("unexpected pages: %v then %v, totals %d/%d", first, rest, total, totalRest)
+			}
+			if byStaffing {
+				archived, total := labels(doc, viewer, url.Values{"q": {"АРХ"}})
+				if !slices.Equal(archived, []string{"Архив"}) || total != 1 {
+					t.Fatalf("archived author must remain searchable: %v, total %d", archived, total)
+				}
 			}
 			found, total := labels(doc, viewer, url.Values{"q": {"БОР"}})
 			if !slices.Equal(found, []string{"борис"}) || total != 1 {

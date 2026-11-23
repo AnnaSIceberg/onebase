@@ -23,10 +23,55 @@ func (s *Server) listFilterAccountPriority(ctx context.Context, source *metadata
 	account := listFilterField(target, opt.AccountField)
 	name := listFilterField(target, opt.NameField)
 	if account == nil || account.RefEntity != "_users" || name == nil || name.Type != metadata.FieldTypeString ||
-		name.RefEntity != "" || name.EnumName != "" || len(opt.Roles) == 0 {
+		name.RefEntity != "" || name.EnumName != "" || (opt.Staffing == nil && len(opt.Roles) == 0) {
 		return nil
 	}
-	return &storage.ListAccountPriority{AccountField: *account, NameField: *name, Roles: opt.Roles}
+	priority := &storage.ListAccountPriority{AccountField: *account, NameField: *name, Roles: opt.Roles}
+	if opt.Staffing != nil {
+		priority.Staffing = s.listFilterStaffingPriority(opt.Staffing, target)
+		if priority.Staffing == nil {
+			return nil
+		}
+	}
+	return priority
+}
+
+func (s *Server) listFilterStaffingPriority(opt *metadata.ListFilterStaffingPriority, target *metadata.Entity) *storage.ListStaffingPriority {
+	register := s.reg.GetInfoRegister(opt.Register)
+	if register == nil || !register.Periodic || register.Recorder || len(register.Dimensions) != 1 ||
+		!strings.EqualFold(register.Dimensions[0].RefEntity, target.Name) || opt.Department == "" || opt.Position == "" ||
+		strings.EqualFold(opt.DepartmentField, opt.PositionField) {
+		return nil
+	}
+	fields := metadata.Entity{Fields: register.Resources}
+	department := listFilterField(&fields, opt.DepartmentField)
+	position := listFilterField(&fields, opt.PositionField)
+	if department == nil || position == nil {
+		return nil
+	}
+	departmentCatalog := s.reg.GetEntity(department.RefEntity)
+	positionCatalog := s.reg.GetEntity(position.RefEntity)
+	if !listFilterHasPredefined(departmentCatalog, opt.Department) ||
+		!listFilterHasPredefined(positionCatalog, opt.Position) {
+		return nil
+	}
+	var archive *metadata.Field
+	if opt.ArchiveField != "" {
+		archive = listFilterField(target, opt.ArchiveField)
+		if archive == nil || archive.Type != metadata.FieldTypeBool || archive.RefEntity != "" || archive.EnumName != "" {
+			return nil
+		}
+	}
+	return &storage.ListStaffingPriority{
+		Register: register, DepartmentField: *department, PositionField: *position,
+		DepartmentCatalog: departmentCatalog.Name, PositionCatalog: positionCatalog.Name,
+		Department: opt.Department, Position: opt.Position, ArchiveField: archive,
+	}
+}
+
+func listFilterHasPredefined(entity *metadata.Entity, name string) bool {
+	return entity != nil && entity.Kind == metadata.KindCatalog &&
+		slices.ContainsFunc(entity.Predefined, func(item *metadata.PredefinedItem) bool { return item != nil && item.Name == name })
 }
 
 func (s *Server) listFilterPriorityFields(ctx context.Context, entity *metadata.Entity, fields []metadata.Field) map[string]string {
