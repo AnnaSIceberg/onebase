@@ -28,6 +28,7 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 		s, user, _ := tabularFixture(t, db)
 		const filename = "Отчёт 400.xlsx"
 		form := processorExecutionForm(
+			&metadata.FormElement{Kind: metadata.FormElementField, Name: "Branch", DataPath: "Объект.Branch"},
 			&metadata.FormElement{Kind: metadata.FormElementFormField, Name: "Destination", WorkbookSavePicker: filename},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Build", WorkbookSave: true, Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Build"}},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Replace", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Replace"}},
