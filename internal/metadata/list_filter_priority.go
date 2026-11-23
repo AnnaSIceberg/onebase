@@ -16,6 +16,7 @@ type ListFilterStaffingPriority struct {
 	Register        string `yaml:"register"`
 	DepartmentField string `yaml:"department_field"`
 	PositionField   string `yaml:"position_field"`
+	ArchiveField    string `yaml:"archive_field,omitempty"`
 	Department      string `yaml:"department"`
 	Position        string `yaml:"position"`
 }

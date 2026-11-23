@@ -45,6 +45,7 @@ func testListAuthorPriorityHTTP(t *testing.T, byStaffing bool) {
 		}
 		authors := &metadata.Entity{Name: "Пользователи", Kind: metadata.KindCatalog, OrderBy: []string{"Наименование"}, Fields: []metadata.Field{
 			{Name: "Наименование", Type: metadata.FieldTypeString},
+			{Name: "Архив", Type: metadata.FieldTypeBool},
 			{Name: "УчётнаяЗапись", Type: "reference:_users", RefEntity: metadata.SystemUsersEntity},
 		}}
 		author := metadata.Field{Name: "АвторДокумента", Type: "reference:Пользователи", RefEntity: authors.Name}
@@ -93,7 +94,7 @@ func testListAuthorPriorityHTTP(t *testing.T, byStaffing bool) {
 			s.cfg.UIListFilterAccountPriority.Roles = nil
 			s.cfg.UIListFilterAccountPriority.Staffing = &metadata.ListFilterStaffingPriority{
 				Register: staffing.Name, DepartmentField: department.Name, PositionField: job.Name,
-				Department: "КоллЦентр", Position: "Сотрудник",
+				Department: "КоллЦентр", Position: "Сотрудник", ArchiveField: "Архив",
 			}
 		}
 
@@ -114,11 +115,13 @@ func testListAuthorPriorityHTTP(t *testing.T, byStaffing bool) {
 				switch row.name {
 				case "Яков", "борис":
 					row.login = ""
+				case "Архив":
+					row.login = "archived-staff"
 				case "Андрей":
 					row.role = op
 				}
 			}
-			values := map[string]any{"Наименование": row.name}
+			values := map[string]any{"Наименование": row.name, "Архив": byStaffing && row.name == "Архив"}
 			if row.login != "" {
 				u, err := repo.Create(ctx, row.login, "auth-fixture-only-20", row.name, false)
 				if err != nil {
@@ -148,13 +151,11 @@ func testListAuthorPriorityHTTP(t *testing.T, byStaffing bool) {
 				case "Яков":
 					assign(now.AddDate(0, 0, -1), callCenter, employee)
 					assign(now.AddDate(0, 0, 1), otherDept, employee)
-				case "борис", "Александр":
+				case "борис", "Александр", "Архив":
 					assign(now.AddDate(0, 0, -1), callCenter, employee)
 				case "Андрей":
 					assign(now.AddDate(0, 0, -2), callCenter, employee)
 					assign(now.AddDate(0, 0, -1), callCenter, supervisorJob)
-				case "Архив":
-					assign(now.AddDate(0, 0, -1), otherDept, employee)
 				}
 			}
 			if row.marked {
@@ -205,6 +206,12 @@ func testListAuthorPriorityHTTP(t *testing.T, byStaffing bool) {
 			if !slices.Equal(first, []string{"борис", "Яков"}) || !slices.Equal(rest, []string{"Андрей", "Александр", "Архив"}) ||
 				total != 5 || totalRest != total {
 				t.Fatalf("unexpected pages: %v then %v, totals %d/%d", first, rest, total, totalRest)
+			}
+			if byStaffing {
+				archived, total := labels(doc, viewer, url.Values{"q": {"АРХ"}})
+				if !slices.Equal(archived, []string{"Архив"}) || total != 1 {
+					t.Fatalf("archived author must remain searchable: %v, total %d", archived, total)
+				}
 			}
 			found, total := labels(doc, viewer, url.Values{"q": {"БОР"}})
 			if !slices.Equal(found, []string{"борис"}) || total != 1 {

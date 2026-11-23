@@ -55,10 +55,17 @@ func (s *Server) listFilterStaffingPriority(opt *metadata.ListFilterStaffingPrio
 		!listFilterHasPredefined(positionCatalog, opt.Position) {
 		return nil
 	}
+	var archive *metadata.Field
+	if opt.ArchiveField != "" {
+		archive = listFilterField(target, opt.ArchiveField)
+		if archive == nil || archive.Type != metadata.FieldTypeBool || archive.RefEntity != "" || archive.EnumName != "" {
+			return nil
+		}
+	}
 	return &storage.ListStaffingPriority{
 		Register: register, DepartmentField: *department, PositionField: *position,
 		DepartmentCatalog: departmentCatalog.Name, PositionCatalog: positionCatalog.Name,
-		Department: opt.Department, Position: opt.Position,
+		Department: opt.Department, Position: opt.Position, ArchiveField: archive,
 	}
 }
 

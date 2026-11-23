@@ -24,6 +24,7 @@ type ListStaffingPriority struct {
 	PositionCatalog   string
 	Department        string
 	Position          string
+	ArchiveField      *metadata.Field
 }
 
 // The default PostgreSQL C locale lowercases ASCII only. Keep the Cyrillic
@@ -71,8 +72,12 @@ func (db *DB) listStaffingOrder(table, account, name string, staffing *ListStaff
 		// Imported ISO timestamps and SQLite driver timestamps have different spellings.
 		period, now = "julianday(staff.period)", "julianday('now')"
 	}
+	inactive := "COALESCE(" + table + ".deletion_mark, FALSE)"
+	if staffing.ArchiveField != nil {
+		inactive += " OR COALESCE(" + table + "." + metadata.ColumnName(*staffing.ArchiveField) + ", FALSE)"
+	}
 	order := fmt.Sprintf(
-		"CASE WHEN COALESCE(%[1]s.deletion_mark, FALSE) THEN 2 "+
+		"CASE WHEN %[14]s THEN 2 "+
 			"WHEN (SELECT dep._predefined_name = %[2]s AND job._predefined_name = %[3]s "+
 			"AND dep._is_predefined AND job._is_predefined "+
 			"AND NOT COALESCE(dep.deletion_mark, FALSE) AND NOT COALESCE(job.deletion_mark, FALSE) "+
@@ -87,6 +92,6 @@ func (db *DB) listStaffingOrder(table, account, name string, staffing *ListStaff
 		metadata.InfoRegTableName(staffing.Register.Name),
 		metadata.TableName(staffing.DepartmentCatalog), metadata.ColumnName(staffing.DepartmentField),
 		metadata.TableName(staffing.PositionCatalog), metadata.ColumnName(staffing.PositionField),
-		metadata.ColumnName(staffing.Register.Dimensions[0]), period, now, account, name)
+		metadata.ColumnName(staffing.Register.Dimensions[0]), period, now, account, name, inactive)
 	return order, []any{staffing.Department, staffing.Position}, nil
 }
