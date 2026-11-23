@@ -5694,6 +5694,8 @@ function obRefMarkedParam(el) {
   if (!el || !el.getAttribute) return '';
   var out = '';
   if (el.getAttribute('data-ref-search') === '1') out += '&search=1';
+  var listFilter = el.getAttribute('data-ref-list-filter');
+  if (listFilter) out += '&list_filter=' + encodeURIComponent(listFilter);
   var marked = el.getAttribute('data-ref-marked');
   if (marked === '1' || marked === '0') out += '&marked=' + marked;
   return out;

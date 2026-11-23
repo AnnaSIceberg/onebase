@@ -3076,7 +3076,7 @@ const tplList = `
       <div>
         <label>{{.DisplayName $.Lang}}</label>
         <div style="display:flex;gap:4px;align-items:center">
-          <select id="flt-{{.Name}}" name="f.{{.Name}}{{if (filterVal $params .Name).Exact}}.eq{{end}}" data-ref-entity="{{.RefEntity}}"{{refPickAttrs true $f.ChoiceShowDeleted}} style="flex:1;min-width:0">
+          <select id="flt-{{.Name}}" name="f.{{.Name}}{{if (filterVal $params .Name).Exact}}.eq{{end}}" data-ref-entity="{{.RefEntity}}"{{refPickAttrs true $f.ChoiceShowDeleted}}{{with $.RefFilterPriority}}{{with index . $f.Name}} data-ref-list-filter="{{.}}"{{end}}{{end}} style="flex:1;min-width:0">
             <option value="">{{t $.Lang "— все —"}}</option>
             {{range index $refOpts .Name}}
             <option value="{{index . "id"}}"{{refOptionStyle .}} {{if eq (index . "id") (filterVal $params $f.Name).Value}}selected{{end}}>{{index . "_label"}}</option>

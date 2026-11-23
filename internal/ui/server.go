@@ -20,6 +20,7 @@ import (
 	"github.com/ivantit66/onebase/internal/incident"
 	"github.com/ivantit66/onebase/internal/jobqueue"
 	"github.com/ivantit66/onebase/internal/mailer"
+	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/metrics"
 	"github.com/ivantit66/onebase/internal/realtime"
 	"github.com/ivantit66/onebase/internal/runtime"
@@ -31,7 +32,8 @@ import (
 
 // Config holds static info shown in «О программе».
 type Config struct {
-	UIReportNativeChoices []string
+	UIListFilterAccountPriority *metadata.ListFilterAccountPriority
+	UIReportNativeChoices       []string
 
 	UIReportRoles        []string
 	UIReportExceptRoles  []string
