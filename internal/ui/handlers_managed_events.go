@@ -3175,7 +3175,7 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 			eventTarget.element != nil && eventTarget.element.Kind == metadata.FormElementButton &&
 			eventTarget.element.WorkbookUpdateOnAnswer && eventTarget.element.Handlers[metadata.FormEventOnAnswer] != ""
 		workbookAnswer := workbookConfirmation && eventName == string(metadata.FormEventOnAnswer)
-		if workbookAnswer && !s.consumeWorkbookAnswer(r, proc.Params, workbookAnswerScope(proc, form, elementName, fieldsBefore)) {
+		if workbookAnswer && !s.consumeWorkbookAnswer(r, proc.Params, workbookAnswerScope(proc, form, elementName, obj.Fields)) {
 			respondJSON(enc, formEventResponse{Error: "Подтверждение изменения книги устарело. Выполните команду ещё раз."})
 			return
 		}
