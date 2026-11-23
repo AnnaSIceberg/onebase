@@ -396,6 +396,7 @@ func (s *Server) referenceOptionsPageWithParams(ctx context.Context, refEntity *
 	countParams.Search = strings.TrimSpace(search)
 	countParams.ChoicePredicates = extra.ChoicePredicates
 	countParams.ChoiceSearchIDs = extra.ChoiceSearchIDs
+	countParams.AccountPriority = extra.AccountPriority
 	if extra.IncludeFolders {
 		countParams.IncludeFolders = true
 		countParams.ExcludeFolders = false
