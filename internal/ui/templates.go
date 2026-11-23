@@ -18,6 +18,7 @@ import (
 	processorpkg "github.com/ivantit66/onebase/internal/processor"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
 	"github.com/ivantit66/onebase/internal/richtext"
+	"github.com/ivantit66/onebase/internal/sheet"
 	"github.com/ivantit66/onebase/internal/storage"
 	"github.com/shopspring/decimal"
 )
@@ -265,6 +266,10 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		return key
 	}
 	return template.FuncMap{
+		"columnResizeScript": func() template.JS {
+			//nolint:gosec // G203: embedded application JavaScript has no request data.
+			return template.JS(sheet.ColumnResizeScript())
+		},
 		"hasAudioPlayer":        hasAudioPlayer,
 		"audioField":            metadata.FormTitleSourceName,
 		"audioValue":            audioValue,
@@ -4143,7 +4148,7 @@ const tplReport = `
 {{if .Capped}}<div class="card" style="background:#fffbeb;border-color:#fde68a;margin-bottom:8px;padding:8px 12px">{{t $.Lang "Показаны первые строки — данных больше потолка."}}</div>{{end}}
 {{if .ComposeWarnings}}<div class="card" style="background:#fef2f2;border-color:#fecaca;margin-bottom:8px;padding:8px 12px"><strong>{{t $.Lang "Предупреждения компоновки:"}}</strong><ul style="margin:4px 0 0;padding-left:20px">{{range .ComposeWarnings}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
 {{if not (or .CompactReport .ReportResultOnly)}}{{template "report-export-buttons" .}}{{end}}
-<details class="card report-block{{if not .LegacyEntityUI}} ob-report-fit{{end}}" data-block="data" open>
+<details class="card report-block{{if not .LegacyEntityUI}} ob-report-fit{{end}}" data-block="data" data-ob-report-columns open>
 <summary>{{t $.Lang "Данные"}}</summary>
 <div class="rc-toolbar" role="group" aria-label="{{t $.Lang "Уровни группировки"}}" style="margin-bottom:8px;display:flex;gap:4px"></div>
 {{.ComposedHTML}}
@@ -4151,7 +4156,7 @@ const tplReport = `
 {{end}}
 {{if .Cols}}
 {{if not (or .CompactReport .ReportResultOnly)}}{{template "report-export-buttons" .}}{{end}}
-<div class="card{{if not .LegacyEntityUI}} ob-report-fit{{end}}">
+<div class="card{{if not .LegacyEntityUI}} ob-report-fit{{end}}" data-ob-report-columns>
 {{if .Rows}}
 <table><thead><tr>{{range .Cols}}<th>{{.}}</th>{{end}}{{if .Drilldowns}}{{if .Drilldowns.HasRows}}<th>{{.Drilldowns.RowTitle}}</th>{{end}}{{end}}</tr></thead>
 <tbody>
@@ -4163,6 +4168,7 @@ const tplReport = `
 {{else}}<p class="empty">{{t $.Lang "Нет данных"}}</p>{{end}}
 </div>
 {{end}}
+{{if or .ComposedHTML (and .Cols .Rows)}}<script>{{columnResizeScript}}</script>{{end}}
 {{template "form-shared-js" .}}
 </main></div></body></html>
 {{end}}

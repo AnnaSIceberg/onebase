@@ -11,6 +11,11 @@ import (
 //go:embed tabular_column_resize.js
 var tabularColumnResizeJS string
 
+// ColumnResizeScript is shared by spreadsheet views and HTML report results.
+func ColumnResizeScript() string {
+	return tabularColumnResizeJS
+}
+
 //go:embed tabular_cell_open.js
 var tabularCellOpenJS string
 
