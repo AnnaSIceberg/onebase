@@ -86,7 +86,7 @@ func TestTPChoiceSkipEmptyObjectSourcePublicHTTP(t *testing.T) {
 				if got.Total != tt.total || len(got.Items) != tt.total || got.SelectedAllowed == nil || *got.SelectedAllowed != tt.allowed {
 					t.Fatalf("picker: %#v, want total %d and selected_allowed %t", got, tt.total, tt.allowed)
 				}
-				if slices.Contains(choiceItemIDs(got), f.hidden) {
+				if slices.Contains(choiceItemIDs(got), f.hidden.String()) {
 					t.Fatal("picker included an inaccessible row")
 				}
 			})
