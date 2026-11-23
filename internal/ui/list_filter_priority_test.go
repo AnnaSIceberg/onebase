@@ -52,9 +52,9 @@ func testListAuthorPriorityHTTP(t *testing.T, byStaffing bool) {
 		request := &metadata.Entity{Name: "А_Заявка", Kind: metadata.KindDocument, Fields: []metadata.Field{author}, ListFilters: []string{author.Name}}
 		call := &metadata.Entity{Name: "А_Звонок", Kind: metadata.KindDocument, Fields: []metadata.Field{author}, ListFilters: []string{author.Name}}
 		departments := &metadata.Entity{Name: "Подразделения", Kind: metadata.KindCatalog,
-			Predefined: []metadata.PredefinedItem{{Name: "КоллЦентр"}, {Name: "Склад"}}}
+			Predefined: []*metadata.PredefinedItem{{Name: "КоллЦентр"}, {Name: "Склад"}}}
 		jobs := &metadata.Entity{Name: "ДолжностиОрганизаций", Kind: metadata.KindCatalog,
-			Predefined: []metadata.PredefinedItem{{Name: "Сотрудник"}, {Name: "Руководитель"}}}
+			Predefined: []*metadata.PredefinedItem{{Name: "Сотрудник"}, {Name: "Руководитель"}}}
 		department := metadata.Field{Name: "Подразделение", Type: "reference:Подразделения", RefEntity: departments.Name}
 		job := metadata.Field{Name: "Должность", Type: "reference:ДолжностиОрганизаций", RefEntity: jobs.Name}
 		person := metadata.Field{Name: "Пользователь", Type: "reference:Пользователи", RefEntity: authors.Name}

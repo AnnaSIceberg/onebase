@@ -71,7 +71,7 @@ func (s *Server) listFilterStaffingPriority(opt *metadata.ListFilterStaffingPrio
 
 func listFilterHasPredefined(entity *metadata.Entity, name string) bool {
 	return entity != nil && entity.Kind == metadata.KindCatalog &&
-		slices.ContainsFunc(entity.Predefined, func(item metadata.PredefinedItem) bool { return item.Name == name })
+		slices.ContainsFunc(entity.Predefined, func(item *metadata.PredefinedItem) bool { return item != nil && item.Name == name })
 }
 
 func (s *Server) listFilterPriorityFields(ctx context.Context, entity *metadata.Entity, fields []metadata.Field) map[string]string {
