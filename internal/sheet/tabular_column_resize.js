@@ -87,7 +87,7 @@
     bindResize(group.closest('table'), group);
   });
 
-  document.querySelectorAll('[data-ob-report-columns] > table').forEach(function (table) {
+  document.querySelectorAll('[data-ob-report-columns] > table:not([data-ob-report-resize-bound])').forEach(function (table) {
     const header = table.tHead && table.tHead.rows[0];
     if (!header || header.cells.length === 0) return;
     const group = document.createElement('colgroup');
@@ -99,6 +99,7 @@
       headerColumns.set(cell, index - 1);
     }
     table.insertBefore(group, table.tHead);
+    table.setAttribute('data-ob-report-resize-bound', '');
     bindResize(table, group, headerColumns);
   });
 })();
