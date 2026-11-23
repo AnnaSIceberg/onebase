@@ -11,6 +11,9 @@ func TestRunFullTPChoicePublicYAML(t *testing.T) {
 	for _, tt := range []struct{ name, source, id, path, key, want string }{
 		{"global", "Объект.Направление", "local", "Объект.Строки.Неисправность", "", ""},
 		{"form-attribute", "Форма.НаправлениеФормы", "local", "Объект.Строки.Неисправность", "", ""},
+		{"optional-global", "Объект.Направление", "local", "Объект.Строки.Неисправность", ", skip_when_empty: true", ""},
+		{"optional-row-local", "Строки.Направление", "local", "Объект.Строки.Неисправность", ", skip_when_empty: true", "skip_when_empty допускается"},
+		{"optional-invalid-bool", "Объект.Направление", "local", "Объект.Строки.Неисправность", ", skip_when_empty: \"true\"", "skip_when_empty должен быть boolean"},
 		{"row-local", "Строки.Направление", "local", "Объект.Строки.Неисправность", "", ""},
 		{"foreign-row", "Чужая.Направление", "local", "Объект.Строки.Неисправность", "", "префикс ТЧ"},
 		{"missing-id", "Строки.Направление", "", "Объект.Строки.Неисправность", "", "стабильный id"},

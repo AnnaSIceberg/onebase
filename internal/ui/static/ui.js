@@ -5694,6 +5694,8 @@ function obRefMarkedParam(el) {
   if (!el || !el.getAttribute) return '';
   var out = '';
   if (el.getAttribute('data-ref-search') === '1') out += '&search=1';
+  var listFilter = el.getAttribute('data-ref-list-filter');
+  if (listFilter) out += '&list_filter=' + encodeURIComponent(listFilter);
   var marked = el.getAttribute('data-ref-marked');
   if (marked === '1' || marked === '0') out += '&marked=' + marked;
   return out;
@@ -5891,6 +5893,7 @@ function obOpenQuestion(payload, elementName, handlers) {
       finished = true;
       modal.remove();
       var extra = { _question_answer: variant };
+      if (payload.workbookAnswerToken) extra._workbook_answer_token = payload.workbookAnswerToken;
       var names = Object.keys(inputs);
       if (names.length) {
         var values = {};

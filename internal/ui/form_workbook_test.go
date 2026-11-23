@@ -28,11 +28,14 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 		s, user, _ := tabularFixture(t, db)
 		const filename = "Отчёт 400.xlsx"
 		form := processorExecutionForm(
+			&metadata.FormElement{Kind: metadata.FormElementField, Name: "Branch", DataPath: "Объект.Branch"},
 			&metadata.FormElement{Kind: metadata.FormElementFormField, Name: "Destination", WorkbookSavePicker: filename},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Build", WorkbookSave: true, Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Build"}},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Replace", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Replace"}},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "ReplaceAgain", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "ReplaceAgain"}},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "AddOther", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "AddOther"}},
+			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Confirm", WorkbookUpdateOnAnswer: true, Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Ask", metadata.FormEventOnAnswer: "Confirm"}},
+			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Unmarked", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnAnswer: "Confirm"}},
 		)
 		form.ProgramAST = mustParse(t, `Функция MakeBook(Число, ИмяЛиста = "Итого")
   Лист = Новый ТабличныйДокумент;
@@ -54,8 +57,16 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 КонецПроцедуры
 Процедура AddOther()
   ЗаменитьЛистыExcel("Отчёт 400.xlsx", MakeBook(44, "Период"));
+КонецПроцедуры
+Процедура Ask()
+  ПоказатьВопрос("Продолжить?", "ДаНет");
+КонецПроцедуры
+Процедура Confirm()
+  Если ВопросОтвет = "Да" Тогда
+    ЗаменитьЛистыExcel("Отчёт 400.xlsx", MakeBook(45));
+  КонецЕсли;
 КонецПроцедуры`)
-		proc := &processor.Processor{Name: "WorkbookTest", Forms: []*metadata.FormModule{form}}
+		proc := &processor.Processor{Name: "WorkbookTest", Forms: []*metadata.FormModule{form}, Params: []processor.Param{{Name: "Branch", Type: "string"}}}
 		s.reg.LoadProcessors([]*processor.Processor{proc})
 		user.Roles[0].Permissions.Processors = map[string][]string{proc.Name: {"run"}}
 		base := "/ui/processor/" + proc.Name
@@ -204,6 +215,40 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 		recovered := click("own", "Replace")
 		read("own", recovered, "42")
 		require.Equal(t, http.StatusNotFound, tabularHTTP(s, user, "second", "GET", updated.WorkbookDownloadURL, nil).Code)
+		question := click("own", "Confirm")
+		require.True(t, question.OK)
+		require.NotNil(t, question.Question)
+		require.Empty(t, question.WorkbookDownloadURL)
+		require.NotEmpty(t, question.Question.WorkbookAnswerToken)
+		answer := func(session, button, value, token, branch string) formEventResponse {
+			body := url.Values{"_form": {form.Name}, "_element": {button}, "_event": {"Ответ"}, "_question_answer": {value},
+				workbookAnswerTokenField: {token}, "Branch": {branch}}
+			rec := tabularHTTP(s, user, session, http.MethodPost, base+"/form-event", body)
+			require.Equal(t, http.StatusOK, rec.Code)
+			return decodeFormEventResponse(t, rec.Body.Bytes())
+		}
+		token := question.Question.WorkbookAnswerToken
+		denied := func(resp formEventResponse) {
+			t.Helper()
+			require.False(t, resp.OK)
+			require.Empty(t, resp.WorkbookDownloadURL)
+		}
+		denied(answer("own", "Confirm", "Да", "", ""))
+		denied(answer("second", "Confirm", "Да", token, ""))
+		denied(answer("own", "Confirm", "Да", token, "Изменённый филиал"))
+		denied(answer("own", "Unmarked", "Да", token, ""))
+		cancelled := answer("own", "Confirm", "Нет", token, "")
+		require.True(t, cancelled.OK, cancelled.Error)
+		require.Empty(t, cancelled.WorkbookDownloadURL)
+		denied(answer("own", "Confirm", "Да", token, ""))
+		beforeApproval, err := os.ReadFile(path)
+		require.NoError(t, err)
+		assertCell(beforeApproval, "Итого", "42")
+		newQuestion := click("own", "Confirm")
+		require.NotNil(t, newQuestion.Question)
+		token = newQuestion.Question.WorkbookAnswerToken
+		read("own", answer("own", "Confirm", "Да", token, ""), "45")
+		denied(answer("own", "Confirm", "Да", token, ""))
 		user.Roles[0].Permissions.Processors = nil
 		require.Equal(t, http.StatusNotFound, tabularHTTP(s, user, "own", "GET", recovered.WorkbookDownloadURL, nil).Code)
 	})

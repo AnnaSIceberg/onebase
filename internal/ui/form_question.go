@@ -20,11 +20,12 @@ import (
 
 // questionPayload уходит клиенту в ответе form-event.
 type questionPayload struct {
-	Text     string          `json:"text"`
-	Variants []string        `json:"variants"`
-	Title    string          `json:"title,omitempty"`
-	Fields   []questionField `json:"fields,omitempty"`
-	Period   *questionPeriod `json:"period,omitempty"`
+	WorkbookAnswerToken string          `json:"workbookAnswerToken,omitempty"`
+	Text                string          `json:"text"`
+	Variants            []string        `json:"variants"`
+	Title               string          `json:"title,omitempty"`
+	Fields              []questionField `json:"fields,omitempty"`
+	Period              *questionPeriod `json:"period,omitempty"`
 }
 
 // questionField — строка данных в диалоге. Только чтение по умолчанию: диалог

@@ -219,6 +219,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	listFilterExtra := s.listFilterExtra(r, entity)
 	panelFields := listFilterPanelFields(map[string]any{"Entity": entity, "ListFilterExtra": listFilterExtra, "Params": params})
 	refFilterOptions, _ := s.loadInitialRefFilterOptions(r.Context(), entity, params, panelFields)
+	refFilterPriority := s.listFilterPriorityFields(r.Context(), entity, panelFields)
 
 	user := auth.UserFromContext(r.Context())
 	isAdmin := user == nil || user.IsAdmin
@@ -265,6 +266,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		"ListFormOff":      r.URL.Query().Get(listFormFilterOffParam),
 		"ListFilterExtra":  listFilterExtra,
 	}
+	data["RefFilterPriority"] = refFilterPriority
 	if hasFormOrder {
 		query := r.URL.Query()
 		snapshot := make(url.Values)
@@ -1440,6 +1442,9 @@ func (s *Server) refOptionsJSON(w http.ResponseWriter, r *http.Request) {
 				mode = mode.withMarked(choice.ShowDeleted)
 			}
 			optCtx = withChoiceStyleParams(optCtx, choice.StyleParams)
+		}
+		if choice == nil {
+			extra.AccountPriority = s.listFilterPriorityFromRequest(r, ent)
 		}
 		items, total, err = s.referenceOptionsPageWithParams(optCtx, ent, mode, r.URL.Query().Get("q"), limit, offset, extra)
 		if errors.Is(err, errChoiceSearch) {

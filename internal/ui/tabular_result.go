@@ -44,11 +44,12 @@ type tabularResult struct {
 const tabularResultLifetime = time.Hour
 
 type tabularResultStore struct {
-	mu            sync.Mutex
-	items         map[string]*tabularResult
-	workbooks     map[string]*tabularResult
-	workbookBytes int
-	reservedBooks int
+	mu              sync.Mutex
+	items           map[string]*tabularResult
+	workbooks       map[string]*tabularResult
+	workbookBytes   int
+	reservedBooks   int
+	workbookAnswers map[string]workbookAnswerTicket
 }
 
 func tabularOwner(r *http.Request) ([32]byte, error) {

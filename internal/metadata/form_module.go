@@ -271,14 +271,15 @@ type FormElement struct {
 	Handlers  map[FormEventType]string `yaml:"events,omitempty"`
 	Props     map[string]any           `yaml:"props,omitempty"`
 
-	TabularProgress    string `yaml:"tabular_progress,omitempty"`     // result attribute for a processor button
-	WorkbookSavePicker string `yaml:"workbook_save_picker,omitempty"` // proposed XLSX filename for a processor field
-	WorkbookSave       bool   `yaml:"workbook_save,omitempty"`        // processor button saves the returned book locally
-	TabularPlainRows   bool   `yaml:"tabular_plain_rows,omitempty"`
-	TabularCompact     bool   `yaml:"tabular_compact,omitempty"`
-	TabularResultTab   bool   `yaml:"tabular_result_tab,omitempty"`
-	TabularPeriodFrom  string `yaml:"tabular_period_from,omitempty"`
-	TabularPeriodTo    string `yaml:"tabular_period_to,omitempty"`
+	TabularProgress        string `yaml:"tabular_progress,omitempty"`          // result attribute for a processor button
+	WorkbookSavePicker     string `yaml:"workbook_save_picker,omitempty"`      // proposed XLSX filename for a processor field
+	WorkbookUpdateOnAnswer bool   `yaml:"workbook_update_on_answer,omitempty"` // trusted processor button may replace workbook on its own answer
+	WorkbookSave           bool   `yaml:"workbook_save,omitempty"`             // processor button saves the returned book locally
+	TabularPlainRows       bool   `yaml:"tabular_plain_rows,omitempty"`
+	TabularCompact         bool   `yaml:"tabular_compact,omitempty"`
+	TabularResultTab       bool   `yaml:"tabular_result_tab,omitempty"`
+	TabularPeriodFrom      string `yaml:"tabular_period_from,omitempty"`
+	TabularPeriodTo        string `yaml:"tabular_period_to,omitempty"`
 
 	Children []*FormElement `yaml:"children,omitempty"`
 	Columns  []*FormElement `yaml:"columns,omitempty"` // план 183: колонки ТЧ с отбором
@@ -611,17 +612,27 @@ func FormChoiceParentFieldOf(entity *Entity) *Field {
 // правами пользователя: строковый доступ его источников действует, закрытые
 // источники и поля дают пустой подбор.
 type FormChoiceCondition struct {
-	Field  string             `yaml:"field,omitempty"`
-	Op     FormChoiceOperator `yaml:"op,omitempty"`
-	From   string             `yaml:"from,omitempty"`
-	Value  *bool              `yaml:"value,omitempty"`
-	Ref    string             `yaml:"ref,omitempty"`
-	Query  string             `yaml:"query,omitempty"`
-	Params map[string]string  `yaml:"params,omitempty"`
+	Field         string             `yaml:"field,omitempty"`
+	Op            FormChoiceOperator `yaml:"op,omitempty"`
+	From          string             `yaml:"from,omitempty"`
+	SkipWhenEmpty bool               `yaml:"skip_when_empty,omitempty"`
+	Value         *bool              `yaml:"value,omitempty"`
+	Ref           string             `yaml:"ref,omitempty"`
+	Query         string             `yaml:"query,omitempty"`
+	Params        map[string]string  `yaml:"params,omitempty"`
 }
 
 // IsQuery — условие задано запросом (query), а не реквизитом цели.
 func (c FormChoiceCondition) IsQuery() bool { return strings.TrimSpace(c.Query) != "" }
+
+// OptionalChoiceSource recognizes the direct object reference supported by
+// skip_when_empty. The caller also verifies that this is a table-part column.
+func (c FormChoiceCondition) OptionalChoiceSource() (FormChoiceSource, bool) {
+	source, ok := ParseFormChoiceSource(c.From)
+	return source, ok && strings.EqualFold(source.Root, "Объект") && !source.Deep() &&
+		c.Op == FormChoiceOpEqual && c.Value == nil && strings.TrimSpace(c.Ref) == "" &&
+		!c.IsQuery() && len(c.Params) == 0 && !strings.Contains(c.Field, ".")
+}
 
 // FormChoiceSource — разобранный источник условия подбора.
 //
