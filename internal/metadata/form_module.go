@@ -271,14 +271,15 @@ type FormElement struct {
 	Handlers  map[FormEventType]string `yaml:"events,omitempty"`
 	Props     map[string]any           `yaml:"props,omitempty"`
 
-	TabularProgress    string `yaml:"tabular_progress,omitempty"`     // result attribute for a processor button
-	WorkbookSavePicker string `yaml:"workbook_save_picker,omitempty"` // proposed XLSX filename for a processor field
-	WorkbookSave       bool   `yaml:"workbook_save,omitempty"`        // processor button saves the returned book locally
-	TabularPlainRows   bool   `yaml:"tabular_plain_rows,omitempty"`
-	TabularCompact     bool   `yaml:"tabular_compact,omitempty"`
-	TabularResultTab   bool   `yaml:"tabular_result_tab,omitempty"`
-	TabularPeriodFrom  string `yaml:"tabular_period_from,omitempty"`
-	TabularPeriodTo    string `yaml:"tabular_period_to,omitempty"`
+	TabularProgress        string `yaml:"tabular_progress,omitempty"`          // result attribute for a processor button
+	WorkbookSavePicker     string `yaml:"workbook_save_picker,omitempty"`      // proposed XLSX filename for a processor field
+	WorkbookUpdateOnAnswer bool   `yaml:"workbook_update_on_answer,omitempty"` // trusted processor button may replace workbook on its own answer
+	WorkbookSave           bool   `yaml:"workbook_save,omitempty"`             // processor button saves the returned book locally
+	TabularPlainRows       bool   `yaml:"tabular_plain_rows,omitempty"`
+	TabularCompact         bool   `yaml:"tabular_compact,omitempty"`
+	TabularResultTab       bool   `yaml:"tabular_result_tab,omitempty"`
+	TabularPeriodFrom      string `yaml:"tabular_period_from,omitempty"`
+	TabularPeriodTo        string `yaml:"tabular_period_to,omitempty"`
 
 	Children []*FormElement `yaml:"children,omitempty"`
 	Columns  []*FormElement `yaml:"columns,omitempty"` // план 183: колонки ТЧ с отбором

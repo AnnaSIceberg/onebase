@@ -1378,7 +1378,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	var workbook *workbookReservation
 	defer func() { workbook.release() }()
 	if closeInv == nil && eventName == string(metadata.FormEventOnClick) {
-		s.bindWorkbookCommands(opCtx, w, r, vars, &workbook)
+		s.bindWorkbookCommands(opCtx, w, r, vars, &workbook, true)
 	}
 	var requestedResult *resultFormRequest
 	resultFn := newResultFormBuiltin(&requestedResult, closeInv == nil)
@@ -3171,8 +3171,11 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		if closeInv == nil && eventName == string(metadata.FormEventOnClick) && eventTarget.element != nil && (eventTarget.element.TabularProgress != "" || (!proc.External && eventTarget.element.Kind == metadata.FormElementButton && eventTarget.element.WorkbookSave)) {
 			vars["СообщитьПрогрессФормирования"] = tabularProgressBuiltin(w, r, enc)
 		}
-		if !proc.External && eventName == string(metadata.FormEventOnClick) && eventTarget.element != nil &&
-			eventTarget.element.Kind == metadata.FormElementButton {
+		workbookAnswer := !proc.External && closeInv == nil && eventName == string(metadata.FormEventOnAnswer) &&
+			eventTarget.element != nil && eventTarget.element.Kind == metadata.FormElementButton &&
+			eventTarget.element.WorkbookUpdateOnAnswer && eventTarget.element.Handlers[metadata.FormEventOnAnswer] != ""
+		if !proc.External && (eventName == string(metadata.FormEventOnClick) || workbookAnswer) &&
+			eventTarget.element != nil && eventTarget.element.Kind == metadata.FormElementButton {
 			s.bindPhoneComparison(vars, txState.Ctx, eventTarget.element.ComparePhoneField)
 		}
 		defer rollbackDSLExecution(txState)
@@ -3252,8 +3255,9 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		// перестановки строк: при следующей правке порядка запрет не потеряется.
 		var workbook *workbookReservation
 		defer func() { workbook.release() }()
-		if !proc.External && closeInv == nil && eventName == string(metadata.FormEventOnClick) {
-			s.bindWorkbookCommands(opCtx, w, r, vars, &workbook)
+		workbookClick := !proc.External && closeInv == nil && eventName == string(metadata.FormEventOnClick)
+		if workbookClick || workbookAnswer {
+			s.bindWorkbookCommands(opCtx, w, r, vars, &workbook, workbookClick)
 		}
 		var closeResult bool
 		closeResultFn := s.resultCloseBuiltin(r, proc.Name, &closeResult, closeInv == nil)

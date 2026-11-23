@@ -86,7 +86,7 @@ func (reservation *workbookReservation) release() {
 	reservation.store = nil
 }
 
-func (s *Server) bindWorkbookCommands(ctx context.Context, w http.ResponseWriter, r *http.Request, vars map[string]any, output **workbookReservation) {
+func (s *Server) bindWorkbookCommands(ctx context.Context, w http.ResponseWriter, r *http.Request, vars map[string]any, output **workbookReservation, includeDownload bool) {
 	makeCommand := func(replace bool) interpreter.BuiltinFunc {
 		return func(args []any, _ string, _ int) (any, error) {
 			if len(args) != 2 {
@@ -134,9 +134,12 @@ func (s *Server) bindWorkbookCommands(ctx context.Context, w http.ResponseWriter
 			return true, nil
 		}
 	}
-	replace, create := makeCommand(true), makeCommand(false)
+	replace := makeCommand(true)
 	vars["ЗаменитьЛистыExcel"], vars["ReplaceExcelSheets"] = replace, replace
-	vars["СкачатьКнигуExcel"], vars["DownloadExcelWorkbook"] = create, create
+	if includeDownload {
+		create := makeCommand(false)
+		vars["СкачатьКнигуExcel"], vars["DownloadExcelWorkbook"] = create, create
+	}
 }
 
 func scheduledWorkbookReplace(tx *interpreter.TxState) interpreter.BuiltinFunc {

@@ -33,6 +33,8 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Replace", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Replace"}},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "ReplaceAgain", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "ReplaceAgain"}},
 			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "AddOther", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "AddOther"}},
+			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Confirm", WorkbookUpdateOnAnswer: true, Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Ask", metadata.FormEventOnAnswer: "Confirm"}},
+			&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Unmarked", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnAnswer: "Confirm"}},
 		)
 		form.ProgramAST = mustParse(t, `Функция MakeBook(Число, ИмяЛиста = "Итого")
   Лист = Новый ТабличныйДокумент;
@@ -54,6 +56,14 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 КонецПроцедуры
 Процедура AddOther()
   ЗаменитьЛистыExcel("Отчёт 400.xlsx", MakeBook(44, "Период"));
+КонецПроцедуры
+Процедура Ask()
+  ПоказатьВопрос("Продолжить?", "ДаНет");
+КонецПроцедуры
+Процедура Confirm()
+  Если ВопросОтвет = "Да" Тогда
+    ЗаменитьЛистыExcel("Отчёт 400.xlsx", MakeBook(45));
+  КонецЕсли;
 КонецПроцедуры`)
 		proc := &processor.Processor{Name: "WorkbookTest", Forms: []*metadata.FormModule{form}}
 		s.reg.LoadProcessors([]*processor.Processor{proc})
@@ -204,6 +214,26 @@ func TestManagedWorkbookDownloadAndUpdateHTTP(t *testing.T) {
 		recovered := click("own", "Replace")
 		read("own", recovered, "42")
 		require.Equal(t, http.StatusNotFound, tabularHTTP(s, user, "second", "GET", updated.WorkbookDownloadURL, nil).Code)
+		question := click("own", "Confirm")
+		require.True(t, question.OK)
+		require.NotNil(t, question.Question)
+		require.Empty(t, question.WorkbookDownloadURL)
+		answer := func(button, value string) formEventResponse {
+			body := url.Values{"_form": {form.Name}, "_element": {button}, "_event": {"Ответ"}, "_question_answer": {value}}
+			rec := tabularHTTP(s, user, "own", http.MethodPost, base+"/form-event", body)
+			require.Equal(t, http.StatusOK, rec.Code)
+			return decodeFormEventResponse(t, rec.Body.Bytes())
+		}
+		cancelled := answer("Confirm", "Нет")
+		require.True(t, cancelled.OK, cancelled.Error)
+		require.Empty(t, cancelled.WorkbookDownloadURL)
+		blocked := answer("Unmarked", "Да")
+		require.False(t, blocked.OK)
+		require.Empty(t, blocked.WorkbookDownloadURL)
+		beforeApproval, err := os.ReadFile(path)
+		require.NoError(t, err)
+		assertCell(beforeApproval, "Итого", "42")
+		read("own", answer("Confirm", "Да"), "45")
 		user.Roles[0].Permissions.Processors = nil
 		require.Equal(t, http.StatusNotFound, tabularHTTP(s, user, "own", "GET", recovered.WorkbookDownloadURL, nil).Code)
 	})
