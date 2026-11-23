@@ -611,17 +611,27 @@ func FormChoiceParentFieldOf(entity *Entity) *Field {
 // правами пользователя: строковый доступ его источников действует, закрытые
 // источники и поля дают пустой подбор.
 type FormChoiceCondition struct {
-	Field  string             `yaml:"field,omitempty"`
-	Op     FormChoiceOperator `yaml:"op,omitempty"`
-	From   string             `yaml:"from,omitempty"`
-	Value  *bool              `yaml:"value,omitempty"`
-	Ref    string             `yaml:"ref,omitempty"`
-	Query  string             `yaml:"query,omitempty"`
-	Params map[string]string  `yaml:"params,omitempty"`
+	Field         string             `yaml:"field,omitempty"`
+	Op            FormChoiceOperator `yaml:"op,omitempty"`
+	From          string             `yaml:"from,omitempty"`
+	SkipWhenEmpty bool               `yaml:"skip_when_empty,omitempty"`
+	Value         *bool              `yaml:"value,omitempty"`
+	Ref           string             `yaml:"ref,omitempty"`
+	Query         string             `yaml:"query,omitempty"`
+	Params        map[string]string  `yaml:"params,omitempty"`
 }
 
 // IsQuery — условие задано запросом (query), а не реквизитом цели.
 func (c FormChoiceCondition) IsQuery() bool { return strings.TrimSpace(c.Query) != "" }
+
+// OptionalChoiceSource recognizes the direct object reference supported by
+// skip_when_empty. The caller also verifies that this is a table-part column.
+func (c FormChoiceCondition) OptionalChoiceSource() (FormChoiceSource, bool) {
+	source, ok := ParseFormChoiceSource(c.From)
+	return source, ok && strings.EqualFold(source.Root, "Объект") && !source.Deep() &&
+		c.Op == FormChoiceOpEqual && c.Value == nil && strings.TrimSpace(c.Ref) == "" &&
+		!c.IsQuery() && len(c.Params) == 0 && !strings.Contains(c.Field, ".")
+}
 
 // FormChoiceSource — разобранный источник условия подбора.
 //

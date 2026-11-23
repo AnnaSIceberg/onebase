@@ -55,6 +55,45 @@ func tpChoiceQuery(f choiceHTTPFixture, column, path, value string) url.Values {
 	return url.Values{"form_entity": {f.owner.Name}, "form": {"ФормаОбъекта"}, "element": {"Строки." + column}, "row_id": {"0"}, "sources": {string(sources)}, "q": {"needle"}, "limit": {"100"}}
 }
 
+func TestTPChoiceSkipEmptyObjectSourcePublicHTTP(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		f := newChoiceHTTPFixtureWithStore(t, db, false)
+		addTPChoiceFixture(t, f, true)
+		form := f.owner.Forms[0]
+		condition := &form.Elements[2].Columns[1].ChoiceFilter[0]
+		condition.Op = metadata.FormChoiceOpEqual
+		condition.SkipWhenEmpty = true
+
+		for _, tt := range []struct {
+			name, source string
+			missing      bool
+			total        int
+			allowed      bool
+		}{
+			{name: "empty", total: 4, allowed: true},
+			{name: "incompatible", source: f.rootA.String(), total: 1},
+			{name: "compatible", source: f.rootB.String(), total: 2, allowed: true},
+			{name: "missing", missing: true},
+			{name: "unknown", source: uuid.NewString()},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				q := tpChoiceQuery(f, "global", condition.From, tt.source)
+				q.Set("selected_id", f.legacySelected.String())
+				if tt.missing {
+					q.Set("sources", "{}")
+				}
+				got := decodeChoiceHTTP(t, f.serveRefOptions(t, f.target, q))
+				if got.Total != tt.total || len(got.Items) != tt.total || got.SelectedAllowed == nil || *got.SelectedAllowed != tt.allowed {
+					t.Fatalf("picker: %#v, want total %d and selected_allowed %t", got, tt.total, tt.allowed)
+				}
+				if slices.Contains(choiceItemIDs(got), f.hidden) {
+					t.Fatal("picker included an inaccessible row")
+				}
+			})
+		}
+	})
+}
+
 func TestTPChoicePublicHTTPMatrix(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		f := newChoiceHTTPFixtureWithStore(t, db, false)
