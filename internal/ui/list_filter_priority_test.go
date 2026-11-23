@@ -59,7 +59,7 @@ func TestListAuthorAccountPriorityHTTP(t *testing.T) {
 			{name: "Архив"},
 			{login: "archive", name: "Александр", role: op, marked: true},
 		} {
-			values := map[string]any{"Наименование": row.name, "deletion_mark": row.marked}
+			values := map[string]any{"Наименование": row.name}
 			if row.login != "" {
 				u, err := repo.Create(ctx, row.login, "auth-fixture-only-20", row.name, false)
 				if err != nil {
@@ -72,8 +72,14 @@ func TestListAuthorAccountPriorityHTTP(t *testing.T) {
 				}
 				values["УчётнаяЗапись"] = u.ID
 			}
-			if err := db.Upsert(ctx, authors.Name, uuid.New(), values, authors); err != nil {
+			id := uuid.New()
+			if err := db.Upsert(ctx, authors.Name, id, values, authors); err != nil {
 				t.Fatal(err)
+			}
+			if row.marked {
+				if err := db.MarkForDeletion(ctx, authors.Name, id, true); err != nil {
+					t.Fatal(err)
+				}
 			}
 		}
 		supervisor := &auth.Role{Name: "РуководительКЦ", Permissions: auth.Permission{

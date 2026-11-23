@@ -15,6 +15,16 @@ type ListAccountPriority struct {
 	Roles        []string
 }
 
+// The default PostgreSQL C locale lowercases ASCII only. Keep the Cyrillic
+// search and ordering of author choices consistent with SQLite.
+func (db *DB) listSearchFold(expr string, priority *ListAccountPriority) string {
+	fold := db.dialect.LowerLike(expr)
+	if priority != nil && db.dialect.Name() == "postgres" {
+		return "translate(" + fold + ", 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ', 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя')"
+	}
+	return fold
+}
+
 func (db *DB) listAccountOrder(entity *metadata.Entity, priority *ListAccountPriority, argCount int) (string, []any, error) {
 	if entity.Kind != metadata.KindCatalog || priority.AccountField.RefEntity != "_users" ||
 		priority.NameField.Type != metadata.FieldTypeString || len(priority.Roles) == 0 {
@@ -22,7 +32,7 @@ func (db *DB) listAccountOrder(entity *metadata.Entity, priority *ListAccountPri
 	}
 	table := metadata.TableName(entity.Name)
 	account := table + "." + metadata.ColumnName(priority.AccountField)
-	name := db.dialect.LowerLike(table + "." + metadata.ColumnName(priority.NameField))
+	name := db.listSearchFold(table+"."+metadata.ColumnName(priority.NameField), priority)
 	args := make([]any, len(priority.Roles))
 	placeholders := make([]string, len(args))
 	for i, role := range priority.Roles {

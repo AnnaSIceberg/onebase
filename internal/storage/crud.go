@@ -866,7 +866,7 @@ func (db *DB) listWhere(entityName string, entity *metadata.Entity, params ListP
 		for _, path := range paths {
 			if path.TablePart == nil {
 				column := metadata.ColumnName(path.Field)
-				searchParts = append(searchParts, d.LowerLike(column)+" LIKE "+d.LowerLike(d.Placeholder(argIdx)))
+				searchParts = append(searchParts, db.listSearchFold(column, params.AccountPriority)+" LIKE "+db.listSearchFold(d.Placeholder(argIdx), params.AccountPriority))
 				args = append(args, pattern)
 				argIdx++
 				continue
@@ -887,7 +887,7 @@ func (db *DB) listWhere(entityName string, entity *metadata.Entity, params ListP
 			}
 			var matches []string
 			for _, column := range tp.columns {
-				matches = append(matches, d.LowerLike(alias+"."+column)+" LIKE "+d.LowerLike(d.Placeholder(argIdx)))
+				matches = append(matches, db.listSearchFold(alias+"."+column, params.AccountPriority)+" LIKE "+db.listSearchFold(d.Placeholder(argIdx), params.AccountPriority))
 				args = append(args, pattern)
 				argIdx++
 			}
