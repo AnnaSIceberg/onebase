@@ -472,6 +472,7 @@ func (s *Server) buildTabularReportDocument(r *http.Request, rep *reportpkg.Repo
 	defer rollbackDSLExecution(tx)
 	if !rep.External {
 		s.bindPhoneComparison(vars, tx.Ctx, rep.ComparePhoneField)
+		vars["ОтказатьВДоступеКОтчету"] = interpreter.BuiltinFunc(refuseReportAccess)
 	}
 	for name, fn := range interpreter.NewSpreadsheetFunctions() {
 		vars[name] = fn

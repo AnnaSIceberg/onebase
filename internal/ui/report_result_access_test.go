@@ -48,12 +48,14 @@ func TestReportResultQueryAccessStatusMatrix(t *testing.T) {
 			{Name: "AccessQueryless", ResultProc: "Build"},
 			{Name: "AccessRethrow", ResultProc: "Build"},
 			{Name: "AccessFakeText", ResultProc: "Build"},
+			{Name: "AccessPersonalDenied", ResultProc: "Build"},
 			{Name: "AccessBadQuery", ResultProc: "Build"},
 			{Name: "AccessSQLFailure", ResultProc: "Build"},
 		}
 		programs := map[string]*ast.Program{
 			"AccessWithQuery": mustParse(t, body(text, false)), "AccessQueryless": mustParse(t, body(text, false)), "AccessRethrow": mustParse(t, body(text, true)),
-			"AccessFakeText":   mustParse(t, `Функция Build() ВызватьИсключение "нет доступа к объекту: ResultAccessSource"; КонецФункции`),
+			"AccessPersonalDenied": mustParse(t, `Функция Build() ОтказатьВДоступеКОтчету("Нет личного права доступа к отчёту 400."); КонецФункции`),
+			"AccessFakeText":       mustParse(t, `Функция Build() ВызватьИсключение "нет доступа к объекту: ResultAccessSource"; КонецФункции`),
 			// PostgreSQL accepts a zero-column SELECT; an unmatched parenthesis is invalid on both dialects.
 			"AccessBadQuery":   mustParse(t, body(`ВЫБРАТЬ (`, false)),
 			"AccessSQLFailure": mustParse(t, body(`ВЫБРАТЬ Name ИЗ Справочник.ResultAccessMissing`, false)),
@@ -95,6 +97,11 @@ func TestReportResultQueryAccessStatusMatrix(t *testing.T) {
 					t.Fatalf("native viewer HTTP%d", view.Code)
 				}
 			})
+		}
+		w := tabularHTTP(s, denied, "session", "POST", "/ui/report/AccessPersonalDenied", nil)
+		if w.Code != http.StatusForbidden || w.Header().Get("Location") != "" ||
+			strings.TrimSpace(w.Body.String()) != "Нет личного права доступа к отчёту 400." {
+			t.Fatalf("expected a clean refusal without a report, HTTP%d: %s", w.Code, w.Body.String())
 		}
 		for _, name := range []string{"AccessFakeText", "AccessBadQuery", "AccessSQLFailure"} {
 			t.Run("genuine-error/"+name, func(t *testing.T) {
