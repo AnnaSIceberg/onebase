@@ -27,24 +27,19 @@ type workbookAnswerTicket struct {
 	expires  time.Time
 }
 
-func workbookAnswerScope(r *http.Request, proc *processorpkg.Processor, form *metadata.FormModule, element string) [32]byte {
-	values := make(map[string]string, len(proc.Params))
-	for _, parameter := range proc.Params {
-		value, _ := processorPostFormText(r, parameter.Name)
-		values[parameter.Name] = value
-	}
+func workbookAnswerScope(proc *processorpkg.Processor, form *metadata.FormModule, element string, fields map[string]any) [32]byte {
+	values := processorCarryValues(proc, form, fields)
 	// JSON serialization of strings and string maps cannot fail. The ticket
 	// stores only a digest, never the submitted form values.
 	encoded, _ := json.Marshal(values)
 	return sha256.Sum256(append([]byte(proc.Name+"\x00"+form.Name+"\x00"+element+"\x00"), encoded...))
 }
 
-func (s *Server) issueWorkbookAnswer(w http.ResponseWriter, r *http.Request, proc *processorpkg.Processor, form *metadata.FormModule, element string, variants []string) (string, error) {
+func (s *Server) issueWorkbookAnswer(w http.ResponseWriter, r *http.Request, scope [32]byte, variants []string) (string, error) {
 	owner, err := ensureTabularOwner(w, r)
 	if err != nil {
 		return "", err
 	}
-	scope := workbookAnswerScope(r, proc, form, element)
 	now := time.Now()
 	store := &s.tabularResults
 	store.mu.Lock()
@@ -65,8 +60,8 @@ func (s *Server) issueWorkbookAnswer(w http.ResponseWriter, r *http.Request, pro
 	return id, nil
 }
 
-func (s *Server) consumeWorkbookAnswer(r *http.Request, proc *processorpkg.Processor, form *metadata.FormModule, element string) bool {
-	id, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, workbookAnswerTokenField))
+func (s *Server) consumeWorkbookAnswer(r *http.Request, params []processorpkg.Param, scope [32]byte) bool {
+	id, _ := processorPostFormText(r, processorServiceFieldName(params, workbookAnswerTokenField))
 	if len(id) != 36 {
 		return false
 	}
@@ -74,8 +69,7 @@ func (s *Server) consumeWorkbookAnswer(r *http.Request, proc *processorpkg.Proce
 	if err != nil {
 		return false
 	}
-	answer, _ := processorPostFormText(r, processorServiceFieldName(proc.Params, "_question_answer"))
-	scope := workbookAnswerScope(r, proc, form, element)
+	answer, _ := processorPostFormText(r, processorServiceFieldName(params, "_question_answer"))
 	store := &s.tabularResults
 	store.mu.Lock()
 	defer store.mu.Unlock()
