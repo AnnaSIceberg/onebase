@@ -51,8 +51,8 @@ func (s *Server) listFilterStaffingPriority(opt *metadata.ListFilterStaffingPrio
 	}
 	departmentCatalog := s.reg.GetEntity(department.RefEntity)
 	positionCatalog := s.reg.GetEntity(position.RefEntity)
-	if departmentCatalog == nil || departmentCatalog.Kind != metadata.KindCatalog ||
-		positionCatalog == nil || positionCatalog.Kind != metadata.KindCatalog {
+	if !listFilterHasPredefined(departmentCatalog, opt.Department) ||
+		!listFilterHasPredefined(positionCatalog, opt.Position) {
 		return nil
 	}
 	return &storage.ListStaffingPriority{
@@ -60,6 +60,11 @@ func (s *Server) listFilterStaffingPriority(opt *metadata.ListFilterStaffingPrio
 		DepartmentCatalog: departmentCatalog.Name, PositionCatalog: positionCatalog.Name,
 		Department: opt.Department, Position: opt.Position,
 	}
+}
+
+func listFilterHasPredefined(entity *metadata.Entity, name string) bool {
+	return entity != nil && entity.Kind == metadata.KindCatalog &&
+		slices.ContainsFunc(entity.Predefined, func(item metadata.PredefinedItem) bool { return item.Name == name })
 }
 
 func (s *Server) listFilterPriorityFields(ctx context.Context, entity *metadata.Entity, fields []metadata.Field) map[string]string {

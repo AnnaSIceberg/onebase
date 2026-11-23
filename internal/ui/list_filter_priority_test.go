@@ -50,8 +50,10 @@ func testListAuthorPriorityHTTP(t *testing.T, byStaffing bool) {
 		author := metadata.Field{Name: "АвторДокумента", Type: "reference:Пользователи", RefEntity: authors.Name}
 		request := &metadata.Entity{Name: "А_Заявка", Kind: metadata.KindDocument, Fields: []metadata.Field{author}, ListFilters: []string{author.Name}}
 		call := &metadata.Entity{Name: "А_Звонок", Kind: metadata.KindDocument, Fields: []metadata.Field{author}, ListFilters: []string{author.Name}}
-		departments := &metadata.Entity{Name: "Подразделения", Kind: metadata.KindCatalog}
-		jobs := &metadata.Entity{Name: "ДолжностиОрганизаций", Kind: metadata.KindCatalog}
+		departments := &metadata.Entity{Name: "Подразделения", Kind: metadata.KindCatalog,
+			Predefined: []metadata.PredefinedItem{{Name: "КоллЦентр"}, {Name: "Склад"}}}
+		jobs := &metadata.Entity{Name: "ДолжностиОрганизаций", Kind: metadata.KindCatalog,
+			Predefined: []metadata.PredefinedItem{{Name: "Сотрудник"}, {Name: "Руководитель"}}}
 		department := metadata.Field{Name: "Подразделение", Type: "reference:Подразделения", RefEntity: departments.Name}
 		job := metadata.Field{Name: "Должность", Type: "reference:ДолжностиОрганизаций", RefEntity: jobs.Name}
 		person := metadata.Field{Name: "Пользователь", Type: "reference:Пользователи", RefEntity: authors.Name}
@@ -59,29 +61,27 @@ func testListAuthorPriorityHTTP(t *testing.T, byStaffing bool) {
 			Dimensions: []metadata.Field{person}, Resources: []metadata.Field{department, job}}
 		entities := []*metadata.Entity{authors, request, call, departments, jobs}
 		s := newSubmitTestServerOn(t, db, entities)
-		callCenter, otherDept, employee, supervisorJob := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+		var callCenter, otherDept, employee, supervisorJob uuid.UUID
 		if byStaffing {
 			s.reg.Load(runtime.LoadOptions{Entities: entities, InfoRegs: []*metadata.InfoRegister{staffing}})
 			if err := db.MigrateInfoRegisters(ctx, []*metadata.InfoRegister{staffing}); err != nil {
 				t.Fatal(err)
 			}
-			for _, item := range []struct {
-				table string
-				id    uuid.UUID
-				name  string
-			}{
-				{departments.Name, callCenter, "КоллЦентр"},
-				{departments.Name, otherDept, "Склад"},
-				{jobs.Name, employee, "Сотрудник"},
-				{jobs.Name, supervisorJob, "Руководитель"},
-			} {
-				d := db.Dialect()
-				query := "INSERT INTO " + metadata.TableName(item.table) + " (id, _is_predefined, _predefined_name) VALUES (" +
-					d.Placeholder(1) + ", TRUE, " + d.Placeholder(2) + ")"
-				if _, err := db.Exec(ctx, query, item.id.String(), item.name); err != nil {
+			if err := db.SyncAllPredefined(ctx, []*metadata.Entity{departments, jobs}); err != nil {
+				t.Fatal(err)
+			}
+			predefined := func(entity *metadata.Entity, name string) uuid.UUID {
+				t.Helper()
+				id, err := db.GetPredefinedID(ctx, entity.Name, name)
+				if err != nil {
 					t.Fatal(err)
 				}
+				return id
 			}
+			callCenter = predefined(departments, "КоллЦентр")
+			otherDept = predefined(departments, "Склад")
+			employee = predefined(jobs, "Сотрудник")
+			supervisorJob = predefined(jobs, "Руководитель")
 		}
 		s.cfg.UIExceptRoles = []string{op.Name, messenger.Name}
 		s.cfg.UIListFilterAccountPriority = &metadata.ListFilterAccountPriority{

@@ -74,6 +74,7 @@ func (db *DB) listStaffingOrder(table, account, name string, staffing *ListStaff
 	order := fmt.Sprintf(
 		"CASE WHEN COALESCE(%[1]s.deletion_mark, FALSE) THEN 2 "+
 			"WHEN (SELECT dep._predefined_name = %[2]s AND job._predefined_name = %[3]s "+
+			"AND dep._is_predefined AND job._is_predefined "+
 			"AND NOT COALESCE(dep.deletion_mark, FALSE) AND NOT COALESCE(job.deletion_mark, FALSE) "+
 			"FROM %[4]s staff "+
 			"LEFT JOIN %[5]s dep ON dep.id = staff.%[6]s "+
