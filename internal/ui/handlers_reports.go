@@ -323,7 +323,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 			}
 			if err := s.runTabularReport(w, r.WithContext(opCtx), rep, queryValues, nil); err != nil {
 				opStatus = "error"
-				http.Error(w, s.errText(r, err), reportResultErrorStatus(err))
+				s.writeTabularReportError(w, r, err)
 			}
 			return
 		}
@@ -430,7 +430,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		resultContext := s.withReportSourceFilters(opCtx, compiled, settings)
 		if err := s.runTabularReport(w, r.WithContext(resultContext), rep, queryValues, rows); err != nil {
 			opStatus = "error"
-			http.Error(w, s.errText(r, err), reportResultErrorStatus(err))
+			s.writeTabularReportError(w, r, err)
 		}
 		return
 	}

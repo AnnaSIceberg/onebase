@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 )
@@ -16,6 +17,30 @@ func (e *querySourceAccessDenied) Error() string {
 	return fmt.Sprintf("нет доступа к объекту: %s", e.source)
 }
 func (e *querySourceAccessDenied) Unwrap() error { return interpreter.ErrRowAccessDenied }
+
+type reportAccessRefused struct{ message string }
+
+func (e *reportAccessRefused) Error() string { return e.message }
+
+func refuseReportAccess(args []any, _ string, _ int) (any, error) {
+	if len(args) != 1 {
+		return nil, errors.New("ОтказатьВДоступеКОтчету: ожидается текст отказа")
+	}
+	message, ok := args[0].(string)
+	if !ok || strings.TrimSpace(message) == "" {
+		return nil, errors.New("ОтказатьВДоступеКОтчету: ожидается непустой текст отказа")
+	}
+	return nil, &reportAccessRefused{message: strings.TrimSpace(message)}
+}
+
+func (s *Server) writeTabularReportError(w http.ResponseWriter, r *http.Request, err error) {
+	var refused *reportAccessRefused
+	if errors.As(err, &refused) {
+		http.Error(w, refused.message, http.StatusForbidden)
+		return
+	}
+	http.Error(w, s.errText(r, err), reportResultErrorStatus(err))
+}
 
 func reportResultErrorStatus(err error) int {
 	if errors.Is(err, errReportFilterProducerUnproven) {
