@@ -346,9 +346,8 @@ func xlsxCellStyle(cell *Cell) (*excelize.Style, bool) {
 		Alignment: &excelize.Alignment{
 			Horizontal: xlsxHAlign(cell.Align),
 			Vertical:   xlsxVAlign(cell.Vertical),
-			// Перенос по словам — как в HTML/PDF, где текст переносится в
-			// границах колонки.
-			WrapText: true,
+			// Preserve the export default when a template or script leaves wrapping unset.
+			WrapText: !cell.XLSXWrapExplicit || cell.WrapText,
 		},
 	}
 	if st.Font.Size <= 0 {
@@ -449,6 +448,10 @@ func xlsxVAlign(a string) string {
 // xlsxBorders — та же логика, что у PDF: рамки по сторонам главнее пресета;
 // пресет all/thin — тонкая со всех сторон, thick — толстая, ""/none — без рамки.
 func xlsxBorders(cell *Cell) []excelize.Border {
+	color := xlsxColor(cell.BorderColor)
+	if color == "" {
+		color = "000000"
+	}
 	side := func(kind, v string) (excelize.Border, bool) {
 		style := 0
 		switch strings.ToLower(strings.TrimSpace(v)) {
@@ -463,7 +466,7 @@ func xlsxBorders(cell *Cell) []excelize.Border {
 		default:
 			style = 1
 		}
-		return excelize.Border{Type: kind, Color: "000000", Style: style}, true
+		return excelize.Border{Type: kind, Color: color, Style: style}, true
 	}
 	var out []excelize.Border
 	if hasPerSideBorders(cell) {

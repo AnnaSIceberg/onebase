@@ -83,7 +83,7 @@ type LayoutCell struct {
 	Parameter   string       `yaml:"parameter,omitempty"`
 	Bold        bool         `yaml:"bold,omitempty"`
 	Italic      bool         `yaml:"italic,omitempty"`
-	WrapText    bool         `yaml:"wrap,omitempty"`
+	WrapText    *bool        `yaml:"wrap,omitempty"`
 	Underline   bool         `yaml:"underline,omitempty"`
 	Align       string       `yaml:"align,omitempty"`  // left/center/right
 	VAlign      string       `yaml:"valign,omitempty"` // top/middle/bottom

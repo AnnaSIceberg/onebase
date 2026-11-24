@@ -1,8 +1,11 @@
 package interpreter_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/base64"
+	"io"
+	"path/filepath"
 	"testing"
 
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
@@ -147,5 +150,120 @@ func TestSpreadsheetXLSXFromLayoutKeepsTemplate(t *testing.T) {
 	for col, want := range map[string]float64{"A": (90 - 5) / 7.0, "B": (250 - 5) / 7.0, "C": (100 - 5) / 7.0} {
 		w, _ := f.GetColWidth(sh, col)
 		assert.InDelta(t, want, w, 0.5, "ширина колонки %s из макета", col)
+	}
+}
+
+// Layout and runtime cell styles must survive both paths of the shared workbook writer.
+func TestSpreadsheetXLSXStyleAndNestedOutlineOnReplace(t *testing.T) {
+	layout, err := printform.ParseLayoutBytes([]byte(`name: Отчёт
+areas:
+  Строка:
+    rows:
+      - cells:
+          - {text: "Строка", fontFamily: Calibri, fontSize: 11, border: thin, borderColor: "#B3AC86", wrap: false}
+          - {text: "Обычный текст"}
+`))
+	require.NoError(t, err)
+	vars := withSpreadsheet(map[string]any{})
+	interpreter.InjectMaket(vars, layout)
+	value := runHTTPSrc(t, `Функция Тест()
+    ТабДок = Новый ТабличныйДокумент;
+    ТабДок.ФиксацияСверху = 3;
+    ТабДок.ФиксацияСлева = 2;
+    Обл = Макет.Область("Строка");
+    ТабДок.Вывести(Обл);
+    ТабДок.Вывести(Обл);
+    ТабДок.Вывести(Обл);
+    ТабДок.Вывести(Обл, 1, "Итог", Ложь);
+    ТабДок.Вывести(Обл, 2, "Раздел", Истина);
+    ТабДок.Вывести(Обл);
+    ТабДок.ЗакончитьАвтогруппировкуСтрок(2);
+    ТабДок.Вывести(Обл);
+    ТабДок.ЗакончитьАвтогруппировкуСтрок();
+    ТабДок.Вывести(Обл);
+    Яч = ТабДок.Ячейка(8, 3);
+    Яч.Текст = "Без рамки";
+    Яч.ИмяШрифта = "Calibri";
+    Яч.Граница = "none";
+    Яч.Переносить = Ложь;
+    Книга = Новый КнигаТабличныхДокументов;
+    Книга.ДобавитьЛист("Данные", ТабДок);
+    Возврат Книга;
+КонецФункции`, vars)
+	book := value.(*interpreter.SpreadsheetWorkbook)
+
+	fresh, err := book.XLSX()
+	require.NoError(t, err)
+	dir := t.TempDir()
+	filename := filepath.Join(dir, "архив.xlsx")
+	old := excelize.NewFile()
+	require.NoError(t, old.SetSheetName("Sheet1", "Архив"))
+	_, err = old.NewSheet("Данные")
+	require.NoError(t, err)
+	require.NoError(t, old.SetCellStr("Архив", "A1", "2010"))
+	require.NoError(t, old.SaveAs(filename))
+	require.NoError(t, old.Close())
+	replaced, err := book.UpdateXLSXFile(t.Context(), dir, filename)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name, worksheet string
+		data            []byte
+	}{
+		{"new", "xl/worksheets/sheet1.xml", fresh},
+		{"replace", "xl/worksheets/sheet2.xml", replaced},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const sh = "Данные"
+			f, err := excelize.OpenReader(bytes.NewReader(tc.data))
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, f.Close()) })
+			panes, err := f.GetPanes(sh)
+			require.NoError(t, err)
+			require.Equal(t, "C4", panes.TopLeftCell)
+			for i, want := range []uint8{0, 0, 0, 0, 1, 2, 1, 0} {
+				level, err := f.GetRowOutlineLevel(sh, i+1)
+				require.NoError(t, err)
+				require.Equal(t, want, level, "row %d", i+1)
+				visible, err := f.GetRowVisible(sh, i+1)
+				require.NoError(t, err)
+				require.Equal(t, want == 0, visible, "row %d", i+1)
+			}
+			style := func(ref string) *excelize.Style {
+				id, err := f.GetCellStyle(sh, ref)
+				require.NoError(t, err)
+				st, err := f.GetStyle(id)
+				require.NoError(t, err)
+				return st
+			}
+			st := style("A1")
+			require.Equal(t, "Calibri", st.Font.Family)
+			require.Equal(t, 11.0, st.Font.Size)
+			require.False(t, st.Alignment.WrapText)
+			require.Len(t, st.Border, 4)
+			for _, edge := range st.Border {
+				require.Equal(t, 1, edge.Style)
+				require.Equal(t, "B3AC86", edge.Color)
+			}
+			require.True(t, style("B1").Alignment.WrapText)
+			require.Equal(t, "Calibri", style("C8").Font.Family)
+			require.Empty(t, style("C8").Border)
+			require.False(t, style("C8").Alignment.WrapText)
+
+			z, err := zip.NewReader(bytes.NewReader(tc.data), int64(len(tc.data)))
+			require.NoError(t, err)
+			part, err := z.Open(tc.worksheet)
+			require.NoError(t, err)
+			data, err := io.ReadAll(part)
+			require.NoError(t, err)
+			require.NoError(t, part.Close())
+			require.Regexp(t, `<row\b[^>]*(?:\br="4"[^>]*\bcollapsed="1"|\bcollapsed="1"[^>]*\br="4")`, string(data))
+			require.Contains(t, string(data), `outlineLevelRow="2"`)
+			if tc.name == "replace" {
+				archived, err := f.GetCellValue("Архив", "A1")
+				require.NoError(t, err)
+				require.Equal(t, "2010", archived)
+			}
+		})
 	}
 }
