@@ -252,6 +252,8 @@ type FormPresentation struct {
 	Height     int               `yaml:"height,omitempty"`
 	Background string            `yaml:"background,omitempty"`
 	DateOnly   bool              `yaml:"date_only,omitempty"`
+	Rows       int               `yaml:"rows,omitempty"`       // visual rows of an existing multiline input
+	FitWindow  bool              `yaml:"fit_window,omitempty"` // table viewport takes the available height
 }
 
 type FormElement struct {

@@ -19,6 +19,9 @@ var audioJS []byte
 //go:embed static/managed.js
 var managedJS []byte
 
+//go:embed static/managed-table-paper.js
+var managedTablePaperJS []byte
+
 //go:embed static/list-controls.js
 var listControlsJS []byte
 
@@ -48,10 +51,11 @@ var reportParamsJS []byte
 
 // ETag'и приложенческого JS считаются один раз при старте по содержимому.
 var (
-	audioJSETag        = assetETag(audioJS)
-	uiJSETag           = assetETag(uiJS)
-	managedJSETag      = assetETag(managedJS)
-	listControlsJSETag = assetETag(listControlsJS)
+	audioJSETag             = assetETag(audioJS)
+	uiJSETag                = assetETag(uiJS)
+	managedJSETag           = assetETag(managedJS)
+	managedTablePaperJSETag = assetETag(managedTablePaperJS)
+	listControlsJSETag      = assetETag(listControlsJS)
 
 	dateInputJSETag          = assetETag(dateInputJS)
 	reportControlsJSETag     = assetETag(reportControlsJS)
@@ -105,6 +109,9 @@ func mountStatic(r chi.Router) {
 	})
 	r.Get("/static/tabular.js", func(w http.ResponseWriter, r *http.Request) { serveAppJS(w, r, tabularJS, tabularJSETag) })
 	mountNavigationTree(r)
+	r.Get("/static/managed-table-paper.js", func(w http.ResponseWriter, req *http.Request) {
+		serveAppJS(w, req, managedTablePaperJS, managedTablePaperJSETag)
+	})
 	r.Get("/static/object-form-layout.js", func(w http.ResponseWriter, req *http.Request) {
 		serveAppJS(w, req, objectFormLayoutJS, objectFormLayoutJSETag)
 	})

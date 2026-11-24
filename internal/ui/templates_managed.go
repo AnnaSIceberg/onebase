@@ -55,12 +55,25 @@ func formDateOnly(el *metadata.FormElement, legacy any) bool {
 	return legacy != true && el.Enhanced != nil && el.Enhanced.DateOnly
 }
 
+func formTextareaRows(el *metadata.FormElement, legacy any) int {
+	if legacy != true && el.Enhanced != nil && el.Enhanced.Rows > 0 {
+		return el.Enhanced.Rows
+	}
+	if el.Rows > 0 {
+		return el.Rows
+	}
+	return 5
+}
+
 func enhancedTableLayout(el *metadata.FormElement, legacy any) *metadata.FormElement {
-	if legacy == true || el.Enhanced == nil || el.Enhanced.Height <= 0 || el.Enhanced.Height > metadata.FormLayoutMaxSize {
+	if legacy == true || el.Enhanced == nil {
 		return el
 	}
 	layout := *el
-	layout.Height = el.Enhanced.Height
+	if el.Enhanced.Height > 0 && el.Enhanced.Height <= metadata.FormLayoutMaxSize {
+		layout.Height = el.Enhanced.Height
+	}
+	layout.FitWindow = layout.FitWindow || el.Enhanced.FitWindow
 	return &layout
 }
 
@@ -337,7 +350,7 @@ const tplManagedForm = `
           {{end}}
         </div>
       {{else if $el.Multiline}}
-        <textarea name="{{$fn}}"{{elHintAttrs $ctx $el ""}} autocomplete="off" rows="{{if gt $el.Rows 0}}{{$el.Rows}}{{else}}5{{end}}" style="width:100%"{{if $el.Conceal}} disabled data-ob-concealed{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>{{index $ctx.Values $fn}}</textarea>
+        <textarea name="{{$fn}}"{{elHintAttrs $ctx $el ""}} autocomplete="off" rows="{{formTextareaRows $el $ctx.LegacyEntityUI}}" style="width:100%"{{if $el.Conceal}} disabled data-ob-concealed{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>{{index $ctx.Values $fn}}</textarea>
       {{else}}
         <input type="text" autocomplete="{{inputAutocomplete $el}}" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if $el.Mask}} pattern="{{$el.Mask}}" data-ob-form-mask{{end}}{{if gt $el.DeadlineWarn 0}} data-ob-deadline="{{$el.DeadlineWarn}}"{{end}}{{if $el.Conceal}} disabled data-ob-concealed{{end}}{{if $el.InputMask}} data-ob-input-mask="{{$el.InputMask}}" placeholder="{{inputMaskHint $el.InputMask}}"{{if inputMaskDigitsOnly $el.InputMask}} inputmode="numeric"{{end}}{{end}}{{elHintAttrs $ctx $el ""}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{end}}
@@ -404,7 +417,7 @@ const tplManagedForm = `
              Объект.<Реквизит>), и предупреждать о нём не о чем. */}}
         {{if $el.Multiline}}
         {{/* multiline: true у реквизита формы — многострочное поле, как у реквизита объекта. */}}
-        <textarea name="{{$fn}}"{{elHintAttrs $ctx $el ""}} autocomplete="off" rows="{{if gt $el.Rows 0}}{{$el.Rows}}{{else}}5{{end}}" style="width:100%"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if $el.Conceal}} disabled data-ob-concealed{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>{{index $ctx.Values $fn}}</textarea>
+        <textarea name="{{$fn}}"{{elHintAttrs $ctx $el ""}} autocomplete="off" rows="{{formTextareaRows $el $ctx.LegacyEntityUI}}" style="width:100%"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if $el.Conceal}} disabled data-ob-concealed{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>{{index $ctx.Values $fn}}</textarea>
         {{else}}
         <input type="text" autocomplete="{{inputAutocomplete $el}}" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{if and $ctx.ProtectedFields (index $ctx.ProtectedFields $fn)}} data-ob-protected{{end}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if $el.Mask}} pattern="{{$el.Mask}}" data-ob-form-mask{{end}}{{if gt $el.DeadlineWarn 0}} data-ob-deadline="{{$el.DeadlineWarn}}"{{end}}{{if $el.Conceal}} disabled data-ob-concealed{{end}}{{if $el.InputMask}} data-ob-input-mask="{{$el.InputMask}}" placeholder="{{inputMaskHint $el.InputMask}}"{{if inputMaskDigitsOnly $el.InputMask}} inputmode="numeric"{{end}}{{end}}{{elHintAttrs $ctx $el ""}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
         {{end}}
@@ -543,7 +556,7 @@ const tplManagedForm = `
        родительской группой, клиент включил бы добавление строк там, где сервер
        его запретил. Каскад от группы табличную часть достаёт, но на отрисовке:
        $ro уже содержит условие предка (#1184). */}}
-  <div class="managed-tp" data-ob-tp="{{$el.Name}}"{{if hasHandler $el "ПослеОткрытия"}} data-ob-after-open="{{$el.Name}}"{{end}}>
+  <div class="managed-tp{{if not $ctx.LegacyEntityUI}} ob-managed-table{{end}}{{if and (not $ctx.LegacyEntityUI) $tableLayout.FitWindow}} ob-managed-table-fit{{end}}" data-ob-tp="{{$el.Name}}"{{if hasHandler $el "ПослеОткрытия"}} data-ob-after-open="{{$el.Name}}"{{end}}>
   {{if $tpMeta}}
   {{if not $el.TitleHidden}}<h3 class="ob-table-title" style="margin:18px 0 8px;font-size:14px;{{tableTitleStyle $ctx.Form}}">{{fieldTitleRU $el.TitleMap (or (tablePartTitle $tpMeta) $tpName)}}</h3>{{end}}
   {{$tpVirtualCols := managedTPVirtualColumns $tpMeta.Fields $el.VirtualColumns}}
@@ -570,7 +583,7 @@ const tplManagedForm = `
        её перебивает — «покажи 15 строк» иначе задать нечем. */}}
   <div id="sg-{{$tpName}}" class="ob-grid{{tableHeaderClass $el}}" style="{{tpGridCSS $tableLayout (len $tpRows)}}{{tableHeaderVars $el}}"
        data-sg-tp="{{$tpName}}"
-       data-sg-el="{{$el.Name}}"{{if $el.FitWindow}}
+       data-sg-el="{{$el.Name}}"{{if $tableLayout.FitWindow}}
        data-ob-fit-grid="1"{{end}}
        data-sg-path="{{elPath $ctx $el}}"
        {{with gridLayoutAttr $ctx $el.Name}}data-sg-layout="{{.}}"{{end}}
@@ -598,7 +611,7 @@ const tplManagedForm = `
        {{if $tpHasCommands}}data-sg-cmd="1"{{end}}
        {{if and $rowActions (not $tpReadOnly)}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}></div>
   {{if not $tpReadOnly}}<input type="hidden" name="tp_json.{{$tpName}}" id="tp-json-{{$tpName}}" value="">{{end}}
-  <div style="display:flex;gap:6px;margin-top:4px">
+  <div{{if not $ctx.LegacyEntityUI}} class="ob-table-row-toolbar"{{end}} style="display:flex;gap:6px;margin-top:4px">
     {{/* У таблицы «только показать» (результаты поиска, итоги) кнопок правки
          строк нет вовсе: раньше они рисовались серыми и занимали место,
          обещая действие, которого нет. Такая таблица — закрытая целиком или
@@ -620,7 +633,7 @@ const tplManagedForm = `
      и удалив их все, браузер шлёт то же самое, что и форма, где таблицы вовсе
      не было (скрыта hidden_when). Различает эти случаи только маркер. */}}
 {{if not $tpReadOnly}}<input type="hidden" name="tp_present.{{$tpName}}" value="1">{{end}}
-{{if $ctx.ObjectFormLayout}}<div class="ob-object-table-scroll">{{end}}
+{{if or $ctx.ObjectFormLayout (not $ctx.LegacyEntityUI)}}<div class="ob-object-table-scroll{{if not $ctx.LegacyEntityUI}} ob-table-rows{{end}}"{{if and (not $ctx.LegacyEntityUI) $tableLayout.FitWindow}} data-ob-fit-grid="1"{{end}}{{if and (not $ctx.LegacyEntityUI) (gt $tableLayout.Height 0)}} style="height:{{$tableLayout.Height}}px"{{end}}>{{end}}
 <table class="tp-table{{tableHeaderClass $el}}" data-tp="{{$tpName}}" data-ob-dom-table="{{$tpName}}"{{if $el.FixedRows}} data-ob-fixed-rows="1"{{end}} data-ob-readonly="{{if $tpReadOnly}}1{{else}}0{{end}}"{{$thLay := elLayout $el}}{{$thVars := tableHeaderVars $el}}{{if or $thLay $thVars}} style="{{$thLay}}{{$thVars}}"{{end}}
   data-ob-element="{{$el.Name}}"{{if and $rowActions (not $tpReadOnly) (hasHandler $el "ПриДобавленииСтроки")}} data-ob-rowadd="1"{{end}}{{if and $rowActions (not $tpReadOnly) (hasHandler $el "ПриУдаленииСтроки")}} data-ob-rowdel="1"{{end}}
   {{if and $rowActions (not $tpReadOnly)}}title="Insert; F9; Delete; Ctrl+↑/↓" aria-keyshortcuts="Insert F9 Delete Control+ArrowUp Control+ArrowDown"{{end}}>
@@ -690,9 +703,9 @@ const tplManagedForm = `
       {{range $c := $tpPlan}}{{$f := $c.Field}}{{if $c.Hidden}}<td style="display:none"></td>{{else if eq (str $f.Type) "number"}}<td class="tp-total" data-tp-total="{{$tpName}}.{{$f.Name}}" style="text-align:right;font-variant-numeric:tabular-nums">0</td>{{else}}<td></td>{{end}}{{end}}{{range $tpVirtualCols}}<td></td>{{end}}{{if $rowActions}}<td></td>{{end}}
     </tr></tfoot>
   </table>
-{{if $ctx.ObjectFormLayout}}</div>{{end}}
+{{if or $ctx.ObjectFormLayout (not $ctx.LegacyEntityUI)}}</div>{{end}}
   {{if $rowActions}}
-  <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569;margin:0 0 12px"{{if $tpReadOnly}} disabled{{else}}
+  <button type="button" class="btn btn-sm{{if not $ctx.LegacyEntityUI}} ob-table-row-toolbar{{end}}" style="background:#e2e8f0;color:#475569;margin:0 0 12px"{{if $tpReadOnly}} disabled{{else}}
     data-ob-add-tp="{{$tpName}}" data-ob-element="{{$el.Name}}" title="Insert" aria-keyshortcuts="Insert"{{end}}>
     + Добавить строку
   </button>
@@ -706,7 +719,7 @@ const tplManagedForm = `
   {{$vtCmds := tpCommandButtons $el}}
   {{$vtLayout := elLayout $tableLayout}}
   {{/* Заданная высота ограничивает весь блок ValueTable, включая строки и команды. */}}
-  {{if $vtLayout}}<div class="managed-vt-layout{{if elFill $tableLayout}} managed-vt-scroll{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{$vtLayout}}">{{end}}
+  {{if $vtLayout}}<div class="managed-vt-layout{{if and (elFill $tableLayout) $ctx.LegacyEntityUI}} managed-vt-scroll{{end}}{{if not $ctx.LegacyEntityUI}} ob-managed-vt{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{$vtLayout}}">{{end}}
   {{/* Заголовок ValueTable находится в том же контейнере высоты, что и таблица. */}}
   {{/* show_count — число записей в заголовке: «Заявки клиента (5)»; после событий
        формы его обновляет перерисовка таблицы (applyFormTables). */}}
@@ -733,7 +746,8 @@ const tplManagedForm = `
        таблица той же высоты). Высоту по реальным строкам досчитывает клиент
        (obFitVtRows), здесь — оценка, чтобы форма не прыгала при загрузке. */}}
   {{$vtRowsN := managedVTVisibleRows $el}}
-  {{if $vtRowsN}}<div class="managed-vt-rows" data-ob-vt-rows="{{$vtRowsN}}" style="height:{{managedVTRowsHeight $vtRowsN}}px">{{end}}
+  {{if and (not $ctx.LegacyEntityUI) $tableLayout.FitWindow}}{{$vtRowsN = 0}}{{end}}
+  {{if or $vtRowsN (not $ctx.LegacyEntityUI)}}<div class="{{if $vtRowsN}}managed-vt-rows{{end}}{{if not $ctx.LegacyEntityUI}} ob-table-rows ob-object-table-scroll{{end}}"{{if $vtRowsN}} data-ob-vt-rows="{{$vtRowsN}}" style="height:{{managedVTRowsHeight $vtRowsN}}px"{{else if and (not $ctx.LegacyEntityUI) $tableLayout.FitWindow}} data-ob-fit-grid="1"{{end}}>{{end}}
   <table class="tp-table{{tableHeaderClass $el}}" data-vt="{{$tpName}}"{{if $el.FixedRows}} data-ob-fixed-rows="1"{{end}}{{with tableHeaderVars $el}} style="{{.}}"{{end}}>
     <thead>
       <tr>
@@ -764,9 +778,9 @@ const tplManagedForm = `
     {{if and (not $vtRows) $el.EmptyText}}<tr class="ob-vt-empty"><td colspan="{{managedVTVisibleCount $vtPlan $vtEditable}}">{{$el.EmptyText}}</td></tr>{{end}}
     </tbody>
   </table>
-  {{if $vtRowsN}}</div>{{end}}
+  {{if or $vtRowsN (not $ctx.LegacyEntityUI)}}</div>{{end}}
   {{if $vtEditable}}
-  <button type="button" class="btn btn-sm" style="background:#e2e8f0;color:#475569;margin:0 0 12px"{{if $tpReadOnly}} disabled{{else}}
+  <button type="button" class="btn btn-sm{{if not $ctx.LegacyEntityUI}} ob-table-row-toolbar{{end}}" style="background:#e2e8f0;color:#475569;margin:0 0 12px"{{if $tpReadOnly}} disabled{{else}}
     data-ob-add-vt="{{$tpName}}"{{end}}>
     + Добавить строку
   </button>
@@ -849,6 +863,15 @@ const tplManagedForm = `
 {{/* Во всплывающей форме строки команд нет: там только кнопки, поля остаются в теле. */}}
 {{define "form-header-commands"}}{{$page := .}}{{if .IsPopup}}<span class="ob-header-commands">{{range formHeaderButtons .Form}}{{template "form-header-element" (dict "Item" . "Page" $page)}}{{end}}</span>{{else}}<span class="ob-header-commands">{{range formHeaderElements .Form "header"}}{{template "form-header-element" (dict "Item" . "Page" $page)}}{{end}}</span>{{template "context-help" .}}<span class="ob-header-commands">{{range formHeaderElements .Form "header_end"}}{{template "form-header-element" (dict "Item" . "Page" $page)}}{{end}}</span>
 {{/* Поля, перенесённые в строку команд, в теле формы не видны. */}}<style>{{range formHeaderElements .Form "header"}}{{if and (ne (str .Element.Kind) "Кнопка") (ne (str .Element.Kind) "Аудиоплеер")}}#main-form [data-ob-el="{{.Element.Name}}"]{display:none !important}{{end}}{{end}}{{range formHeaderElements .Form "header_end"}}{{if and (ne (str .Element.Kind) "Кнопка") (ne (str .Element.Kind) "Аудиоплеер")}}#main-form [data-ob-el="{{.Element.Name}}"]{display:none !important}{{end}}{{end}}</style>{{end}}{{end}}
+{{define "managed-form-notices"}}
+{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+{{if .RunError}}<div class="error">{{.RunError}}</div>{{end}}
+{{if .Messages}}{{range .Messages}}{{if msgError .}}<div class="error msg-important">{{msgText .}}</div>{{else}}<div class="msg-info">{{msgText .}}</div>{{end}}{{end}}{{end}}
+{{if .FormWarnings}}{{range .FormWarnings}}<div class="msg-info">{{.}}</div>{{end}}{{end}}
+
+{{if not .IsProcessor}}{{template "stage-route" .}}{{end}}
+{{end}}
+
 {{define "page-managed-form"}}
 {{template "head" .}}{{if not .IsPopup}}{{template "nav" .}}{{end}}
 {{if .TabTitle}}<meta name="ob-tab-title" content="{{.TabTitle}}">{{end}}
@@ -881,17 +904,18 @@ const tplManagedForm = `
 .ob-density-compact .ob-form-actions{margin-bottom:6px !important}
 .ob-density-compact main>.card{padding:8px}
 .ob-density-compact main{padding:8px}
-/* header_inline (form.header_inline): заголовок, строка команд и «×» — одной
-   строкой. Шапка раскладывается в общий поток main (display:contents), order
-   ставит строку команд между заголовком и «×»; всё остальное содержимое —
-   ниже, на всю ширину. */
-.ob-header-inline main{display:flex;flex-wrap:wrap;align-items:center;align-content:flex-start;column-gap:12px}
-.ob-header-inline main>*{flex:1 1 100%;order:3}
-.ob-header-inline main>.ob-form-head{display:contents !important}
-.ob-header-inline main>.ob-form-head>h2{flex:0 1 auto;order:0;margin-bottom:0}
-.ob-header-inline main>.ob-form-actions{flex:1 1 0;order:1;min-width:0;margin-bottom:0 !important}
-.ob-header-inline main>.ob-form-head>a{flex:0 0 auto;order:2;margin-left:auto}
-.ob-header-inline main>.ob-form-head~*:not(.ob-form-actions){margin-top:8px}
+/* Keep the heading and commands in one block, above the scrolling card. */
+.ob-header-inline main:not(.ob-object-form),
+.ob-object-inline-header{display:flex;flex-wrap:wrap;align-items:center;align-content:flex-start;column-gap:12px}
+.ob-header-inline main:not(.ob-object-form)>*{flex:1 1 100%;order:3}
+.ob-header-inline :is(main:not(.ob-object-form),.ob-object-inline-header)>.ob-form-head{display:contents !important}
+.ob-header-inline :is(main:not(.ob-object-form),.ob-object-inline-header)>.ob-form-head>h2{flex:0 1 auto;order:0;margin-bottom:0;min-width:0}
+.ob-header-inline :is(main:not(.ob-object-form),.ob-object-inline-header)>.ob-form-actions{flex:1 1 0;order:1;min-width:0;margin-bottom:0 !important}
+.ob-header-inline :is(main:not(.ob-object-form),.ob-object-inline-header)>.ob-form-head>a{flex:0 0 auto;order:2;margin-left:auto}
+.ob-header-inline main:not(.ob-object-form)>.ob-form-head~*:not(.ob-form-actions){margin-top:8px}
+.ob-object-inline-header{position:sticky;top:0;z-index:4;flex:0 0 auto;min-width:0;padding:4px 0;background:#f5f5f5}
+body[data-theme="dark"] .ob-object-inline-header{background:#111827}
+.ob-object-inline-header~.ob-object-form-card{margin-top:8px;min-width:0}
 .ob-density-compact .managed-control-row>button,.ob-density-compact .managed-control-row>a{height:28px;min-width:28px;padding:0 8px;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
 /* density: dense — ещё плотнее compact: поле 25px, шрифт 12.5px, подпись
    10.5px. На <html> стоят оба класса, поэтому всё, что dense не задаёт
@@ -952,6 +976,19 @@ input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#
 .managed-vt-rows{overflow-y:auto;margin-bottom:12px;border:1px solid #e2e8f0;border-radius:6px}
 .managed-vt-rows>.tp-table{overflow:visible;margin-bottom:0}
 .managed-vt-rows>.tp-table thead th{position:sticky;top:0;z-index:1}
+.ob-managed-table,.ob-managed-vt{display:flex;flex-direction:column;min-width:0;max-width:100%}
+.ob-managed-table{--ob-table-paper:#fff;--ob-table-rule:#cbd5e1}
+body[data-theme="dark"] .ob-managed-table{--ob-table-paper:#182336;--ob-table-rule:#475569}
+.ob-managed-table-fit{flex:1 0 100%;width:100%}
+.ob-managed-table :is(.ob-grid,.ob-table-rows){order:1;width:100%;box-sizing:border-box;background:var(--ob-table-paper)}
+.ob-managed-table .ob-table-rows{position:relative;min-height:120px;border:1px solid var(--ob-table-rule);border-radius:5px}
+.ob-managed-table .ob-table-rows[data-ob-vt-rows]{min-height:0}
+.ob-managed-vt>.ob-table-rows:not([data-ob-fit-grid]){flex:1 1 auto}
+.ob-managed-table .tp-table{display:table;margin-bottom:0;border:0;border-radius:0;overflow:visible}
+.ob-managed-table .tp-table :is(th,td),.ob-managed-table .slick-cell{border-right:1px solid var(--ob-table-rule);border-bottom:1px solid var(--ob-table-rule)}
+.ob-managed-table .ob-table-row-toolbar{align-self:flex-start;margin:0 0 4px!important}
+.ob-managed-table div.ob-table-row-toolbar:not(:has(button)){display:none!important}
+.ob-table-grid-paper{position:absolute;pointer-events:none}
 .tp-table .ob-vt-empty td{color:#94a3b8;font-style:italic;text-align:center;padding:10px}
 .tp-table input[readonly]{text-overflow:ellipsis}
 .ob-form-action-spacing .managed-group-horizontal:not(.ob-equal-columns)>.managed-group-body:has(>.managed-btn,>.managed-btn-layout){gap:4px;padding-block:2px}
@@ -1043,8 +1080,6 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 #main-form:has(.ob-equal-columns.ob-equal-columns-conditional)>:is(.form-group-box,.managed-tabs),
 .ob-equal-columns.ob-equal-columns-conditional>.managed-group-body :is(.form-group-box,.form-group,.managed-group-body){box-sizing:border-box;min-width:0;max-width:100%}
 @media (max-height:740px) {
-  .ob-header-inline main.ob-object-form:has(#main-form .ob-equal-columns.ob-equal-columns-conditional){flex-direction:row}
-  .ob-header-inline main.ob-object-form:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.ob-object-form-card{flex-basis:100%}
   .ob-density-compact main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional),
   .ob-density-compact main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card{padding:6px}
   .ob-density-compact main.ob-object-form:has(#main-form .ob-equal-columns.ob-equal-columns-conditional),
@@ -1096,6 +1131,8 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 {{if .FormConditionalCSS}}<style>{{.FormConditionalCSS}}</style>{{end}}
 {{template "object-form-layout" .}}
 <main{{if .ObjectFormLayout}} class="ob-object-form"{{end}}>
+{{$dockedHeader := and .ObjectFormLayout .Form.HeaderInline (not .IsResultForm)}}
+{{if $dockedHeader}}<div class="ob-object-inline-header">{{end}}
 {{/* В окне формы результата заголовок и крестик рисует оболочка (tabs.go):
      собственная шапка формы дала бы второй заголовок и второй ×. */}}
 <div class="ob-form-head" style="display:{{if .IsResultForm}}none{{else}}flex{{end}};justify-content:space-between;align-items:center;margin-bottom:20px;max-width:1400px">
@@ -1112,12 +1149,7 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
   <a href="{{if .IsProcessor}}/ui/{{else}}/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}{{end}}" data-ob-close-tab title="Закрыть" style="font-size:22px;line-height:1;color:#94a3b8;text-decoration:none;padding:2px 8px;border-radius:5px;background:#f1f5f9;font-weight:300">×</a>
   {{end}}
 </div>
-{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
-{{if .RunError}}<div class="error">{{.RunError}}</div>{{end}}
-{{if .Messages}}{{range .Messages}}{{if msgError .}}<div class="error msg-important">{{msgText .}}</div>{{else}}<div class="msg-info">{{msgText .}}</div>{{end}}{{end}}{{end}}
-{{if .FormWarnings}}{{range .FormWarnings}}<div class="msg-info">{{.}}</div>{{end}}{{end}}
-
-{{if not .IsProcessor}}{{template "stage-route" .}}{{end}}
+{{if not $dockedHeader}}{{template "managed-form-notices" .}}{{end}}
 
 {{if not .IsPopup}}
 <div class="ob-form-actions" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
@@ -1218,6 +1250,7 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
   {{if or .IsNew .IsProcessor}}{{template "form-header-commands" .}}{{end}}
 </div>
 {{end}}{{/* end if not .IsPopup */}}
+{{if $dockedHeader}}</div>{{template "managed-form-notices" .}}{{end}}
 {{if and .IsPopup (formHeaderButtons .Form)}}<div class="ob-popup-commands" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">{{template "form-header-commands" .}}</div>{{end}}
 {{if and (not .IsNew) .Entity.Posting}}
 {{if eq (index .Values "posted") "true"}}
@@ -1393,6 +1426,8 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 {{else}}
 <script src="/static/managed.js"></script>
 {{end}}
+
+{{if not .LegacyEntityUI}}<script src="/static/managed-table-paper.js"></script>{{end}}
 
 {{if hasAudioPlayer .Form}}<script src="/static/audio.js"></script>{{end}}
 
