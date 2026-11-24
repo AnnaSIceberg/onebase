@@ -3157,10 +3157,10 @@ function listMenuItems(tr) {
   var items = [];
   if(obListActiveCell && obListActiveCell.closest('tr')===tr) {
     var cellButton=document.querySelector('[data-ob-cell-filter]');
-    items.push({label:cellButton?cellButton.textContent:'Filter by selected value',fn:obCellFilterApply});
+    items.push({label:cellButton?(cellButton.getAttribute('aria-label')||cellButton.textContent):'Filter by selected value',fn:obCellFilterApply});
   }
   var clearButton=typeof document!=='undefined' && document.querySelector ? document.querySelector('[data-ob-cell-filter-clear]') : null;
-  if(clearButton)items.push({label:clearButton.textContent,fn:obCellFiltersClear});
+  if(clearButton)items.push({label:clearButton.getAttribute('aria-label')||clearButton.textContent,fn:obCellFiltersClear});
 
   if (isFolder) {
     items.push({ label: labels.enterGroup || '▶ Войти в группу', fn: function () { window.location.href = obRowUrl(tr, 'folder'); } });

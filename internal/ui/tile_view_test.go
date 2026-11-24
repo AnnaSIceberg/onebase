@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/auth"
 
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/storage"
@@ -332,5 +334,75 @@ func TestPageList_TreeViewKeepsToggleWhenNameHiddenByTileFields(t *testing.T) {
 		if strings.Contains(visibleTree, unwanted) {
 			t.Errorf("дерево показало значение невыбранной колонки: %q", unwanted)
 		}
+	}
+}
+
+func TestListCardsShowOnlyFilledAndDisclosedFieldsHTTP(t *testing.T) {
+	entity := &metadata.Entity{
+		Name: "Карточка", Kind: metadata.KindCatalog,
+		Fields: []metadata.Field{
+			{Name: "Наименование", Type: metadata.FieldTypeString},
+			{Name: "АдресКвартира", Type: metadata.FieldTypeString},
+			{Name: "ГородАдресныйКлассификатор", Type: metadata.FieldTypeString, Title: "Город"},
+			{Name: "КонтактДляПроверки", Type: metadata.FieldTypeString, PII: true},
+			{Name: "ПустаяСтрока", Type: metadata.FieldTypeString},
+			{Name: "ЗаглушкаТире", Type: metadata.FieldTypeString},
+			{Name: "ЗаглушкаСимвол", Type: metadata.FieldTypeString},
+			{Name: "ЛожныйФлажок", Type: metadata.FieldTypeBool},
+			{Name: "ЗаполненныйФлажок", Type: metadata.FieldTypeBool, Title: "Подтверждено"},
+			{Name: "ПустаяДата", Type: metadata.FieldTypeDate},
+		},
+		Forms: []*metadata.FormModule{{Name: "ФормаКарточки", Kind: "object", LayoutKind: metadata.FormLayoutManaged,
+			Elements: []*metadata.FormElement{{Kind: metadata.FormElementField, Name: "ПолеКвартиры",
+				DataPath: "Объект.АдресКвартира", Title: "Квартира"}}}},
+	}
+	s, ctx := newSubmitTestServer(t, []*metadata.Entity{entity})
+	if err := s.store.Upsert(ctx, entity.Name, uuid.New(), map[string]any{
+		"Наименование":               "Строка проверки",
+		"АдресКвартира":              "Квартира22",
+		"ГородАдресныйКлассификатор": "Тестовый город",
+		"КонтактДляПроверки":         "Контакт-Синтетика-918",
+		"ПустаяСтрока":               "   ",
+		"ЗаглушкаТире":               "—",
+		"ЗаглушкаСимвол":             "_",
+		"ЛожныйФлажок":               false,
+		"ЗаполненныйФлажок":          true,
+		"ПустаяДата":                 "0001-01-01",
+	}, entity); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	s.Mount(router)
+	user := &auth.User{Login: "reader", Roles: []*auth.Role{{Name: "Reader", Permissions: auth.Permission{
+		Catalogs: map[string][]string{entity.Name: {"read"}},
+	}}}}
+	body := func(u *auth.User) string {
+		req := httptest.NewRequest(http.MethodGet, "/ui/catalog/карточка?view=tiles", nil)
+		req = req.WithContext(auth.ContextWithUser(req.Context(), u))
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+		}
+		_, tail, ok := strings.Cut(rec.Body.String(), `class="tile-card`)
+		if !ok {
+			t.Fatal("missing card")
+		}
+		card, _, _ := strings.Cut(tail, `class="tile-foot`)
+		return card
+	}
+	card := body(user)
+	for _, want := range []string{"Квартира:", "Город:", "Подтверждено:", "Квартира22"} {
+		if !strings.Contains(card, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	for _, unwanted := range []string{"АдресКвартира", "ГородАдресныйКлассификатор", "Контакт", "•••", "Пустая строка:", "Заглушка тире:", "Заглушка символ:", "Ложный флажок:", "Пустая дата:"} {
+		if strings.Contains(card, unwanted) {
+			t.Errorf("unexpected %q", unwanted)
+		}
+	}
+	if shown := body(&auth.User{Login: "admin", IsAdmin: true}); !strings.Contains(shown, "Контакт-Синтетика-918") {
+		t.Error("disclosed field was removed from the privileged card")
 	}
 }

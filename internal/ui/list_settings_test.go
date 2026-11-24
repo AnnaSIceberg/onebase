@@ -190,3 +190,44 @@ func elementByAttr(n *html.Node, tag, attr string) *html.Node {
 	}
 	return nil
 }
+
+func TestListToolbarFiltersAndSettingsHTTP(t *testing.T) {
+	entity := &metadata.Entity{Name: "Заявки", Kind: metadata.KindDocument, Fields: []metadata.Field{
+		{Name: "Тема", Type: metadata.FieldTypeString},
+	}}
+	s, _ := newSubmitTestServer(t, []*metadata.Entity{entity})
+	s.cfg.UIExceptRoles = []string{"ОператорКЦ", "ОператорМессенджера"}
+	router := chi.NewRouter()
+	s.Mount(router)
+	for _, tc := range []struct {
+		name   string
+		legacy bool
+	}{
+		{"ОТКРуководитель", false},
+		{"ОператорКЦ", true},
+		{"ОператорМессенджера", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u := &auth.User{Login: "reader", Roles: []*auth.Role{{Name: tc.name, Permissions: auth.Permission{
+				Documents: map[string][]string{entity.Name: {"read"}},
+			}}}}
+			req := httptest.NewRequest(http.MethodGet, "/ui/document/заявки", nil)
+			req = req.WithContext(auth.ContextWithUser(req.Context(), u))
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			body := rec.Body.String()
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status %d: %s", rec.Code, body)
+			}
+			hasActions := strings.Contains(body, `id="list-actions-btn"`)
+			hasScrollPanel := strings.Contains(body, `class="ob-list-settings-scroll"`)
+			hasFilterIcon := strings.Contains(body, "btn-command btn-list-cell-filter") && strings.Contains(body, "btn-command btn-list-clear-filter")
+			if hasActions != tc.legacy || hasScrollPanel == tc.legacy || hasFilterIcon == tc.legacy {
+				t.Fatalf("unexpected toolbar: old actions=%t, scroll panel=%t, filter icons=%t", hasActions, hasScrollPanel, hasFilterIcon)
+			}
+			if strings.Count(body, "data-ob-cell-filter disabled") != 1 || strings.Count(body, "data-ob-cell-filter-clear") != 1 {
+				t.Fatal("filter controls missing or duplicated")
+			}
+		})
+	}
+}

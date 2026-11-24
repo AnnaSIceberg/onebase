@@ -35,11 +35,38 @@ test('list header resize and drag are kept per user', async ({ page }) => {
   expect(await heads()).toEqual(['Комментарий', 'Клиент', 'Сумма']);
 
   // Окно настройки: скрыть «Сумма», сохранить; затем «Стандартные настройки».
-  await page.locator('details[data-block="list-settings"] > summary').click();
+  await page.locator('[aria-controls="ob-list-settings-panel"]').click();
   await page.locator('.ls-col-row[data-field="Сумма"] .ls-visible').uncheck();
   await page.locator('details[data-block="list-settings"] button[type="submit"]:not([formaction])').click();
   await expect.poll(heads).toEqual(['Комментарий', 'Клиент']);
   await page.locator('details[data-block="list-settings"]').evaluate((d) => { d.open = true; });
   await page.locator('details[data-block="list-settings"] button[formaction$="/reset"]').click();
   await expect.poll(heads).toEqual(['Клиент', 'Сумма', 'Комментарий']);
+});
+
+test('settings scroll inside the list and keep Save visible', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  expect((await page.request.post('/auth/login', { data: { login: 'admin', password: 'secret123' } })).ok()).toBe(true);
+  for (const entity of ['manyorders', 'manycalls', 'manytasks']) {
+    await page.goto('/ui/document/' + entity, { waitUntil: 'domcontentloaded' });
+    await page.locator('[aria-controls="ob-list-settings-panel"]').click();
+    const panel = page.locator('#ob-list-settings-panel');
+    const scroll = panel.locator('.ob-list-settings-scroll');
+    await expect(scroll).toBeVisible();
+    await expect(scroll.locator('tbody tr')).toHaveCount(46);
+    const dimensions = await scroll.evaluate(el => [el.clientHeight, el.scrollHeight, window.innerHeight, getComputedStyle(el).overflowY]);
+    expect(dimensions[0]).toBeLessThan(dimensions[1]);
+    expect(dimensions[0]).toBeLessThan(dimensions[2] / 2);
+    expect(dimensions[3]).toEqual('auto');
+
+    await scroll.hover();
+    await page.mouse.wheel(0, 420);
+    await expect.poll(() => scroll.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    await scroll.focus();
+    await page.keyboard.press('End');
+    await expect.poll(() => scroll.evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThan(2);
+    const last = scroll.locator('tbody tr').last();
+    await expect(last).toBeInViewport();
+    await expect(panel.locator('button[type="submit"]:not([formaction])')).toBeInViewport();
+  }
 });

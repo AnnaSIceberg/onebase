@@ -2,6 +2,9 @@ package ui
 
 import (
 	"strings"
+	"time"
+
+	"github.com/ivantit66/onebase/internal/access"
 
 	"github.com/ivantit66/onebase/internal/metadata"
 )
@@ -68,6 +71,51 @@ func resolveTileView(entity *metadata.Entity) tileViewRender {
 		out.Fields = append(out.Fields, f)
 	}
 	return out
+}
+
+// resolveDisplayTileView uses field synonyms, then captions from the object
+// form, before falling back to a readable form of the identifier.
+func resolveDisplayTileView(entity *metadata.Entity, lang string) tileViewRender {
+	view := resolveTileView(entity)
+	labels := make(map[string]string)
+	for _, field := range managedListColumns(entity, pickManagedForm(entity, "object")) {
+		labels[field.Name] = field.DisplayName(lang)
+	}
+	for i := range view.Fields {
+		field := &view.Fields[i]
+		if field.DisplayName(lang) != field.Name {
+			continue
+		}
+		title := labels[field.Name]
+		if title == "" || title == field.Name {
+			title = splitCamel(strings.ReplaceAll(field.Name, "_", " "))
+		}
+		field.Title = title
+		field.Titles = nil
+	}
+	return view
+}
+
+// tileValue receives the row after list field masking. Never render a mask,
+// including one which retains a prefix or tail.
+func tileValue(field metadata.Field, value any, labels map[string]map[string]string) string {
+	if value == nil || access.LooksMasked(value) {
+		return ""
+	}
+	if field.Type == metadata.FieldTypeDate {
+		if date, ok := value.(time.Time); ok && date.IsZero() {
+			return ""
+		}
+		if date, ok := value.(string); ok && strings.HasPrefix(strings.TrimSpace(date), "0001-01-01") {
+			return ""
+		}
+	}
+	text := fieldDisplayText(field, value, labels)
+	switch strings.TrimSpace(text) {
+	case "", "—", "-", "_":
+		return ""
+	}
+	return text
 }
 
 // resolveListColumns возвращает набор колонок для табличных режимов списка

@@ -439,7 +439,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		},
 		"isRef":              func(t any) bool { return strings.HasPrefix(fmt.Sprintf("%v", t), "reference:") },
 		"isEnum":             func(t any) bool { return strings.HasPrefix(fmt.Sprintf("%v", t), "enum:") },
-		"tileView":           resolveTileView,
+		"tileView":           resolveDisplayTileView,
+		"tileValue":          tileValue,
 		"listColumns":        resolveListColumns,
 		"listColumnFields":   listColumnFields,
 		"defaultListColumns": func(e *metadata.Entity) []listColumnUI { return listSettingsColumns(e, nil) },
@@ -455,15 +456,6 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return strings.Join(e.ListRefreshOn, " ")
 		},
 		"treeColumn": isTreeListColumn,
-		"hasValue": func(v any) bool {
-			if v == nil {
-				return false
-			}
-			if s, ok := v.(string); ok {
-				return s != ""
-			}
-			return true
-		},
 		"enumLabel": func(labels map[string]map[string]string, field, value string) string {
 			if m, ok := labels[field]; ok {
 				if lbl, ok := m[value]; ok && lbl != "" {
@@ -2238,6 +2230,8 @@ body:not([data-ob-legacy-entity-ui]) .btn:is(.btn-primary,.btn-app-primary):disa
 .btn-command.btn-command-create{border-radius:50%;background:#15803d;color:#fff}
 .btn-command.btn-command-create:hover{background:#166534}
 .btn-document-post{background:#dcfce7;color:#166534}.btn-document-post:hover{background:#bbf7d0}
+.btn-list-cell-filter{background:#dbeafe;color:#1d4ed8}.btn-list-cell-filter:hover{background:#bfdbfe}
+.btn-list-clear-filter{background:#ffedd5;color:#9a3412}.btn-list-clear-filter:hover{background:#fed7aa}
 .btn-document-unpost{background:#ffedd5;color:#9a3412}.btn-document-unpost:hover{background:#fed7aa}
 .btn-command-copy{background:#dbeafe;color:#1d4ed8}.btn-command-copy:hover{background:#bfdbfe}
 .btn-command-mark{background:#fee2e2;color:#b91c1c}.btn-command-mark:hover{background:#fecaca}
@@ -3045,8 +3039,15 @@ const tplList = `
     {{end}}
     {{/* На свежем списке строка не выбрана — кнопка приходит с сервера уже
          приглушённой, дальше её состояние ведёт ui.js по выделению. */}}
-    <button type="button" id="list-actions-btn" class="btn btn-secondary" data-ob-list-actions aria-disabled="true" title="{{t $.Lang "Сначала выберите строку списка"}}">⚙ {{t $.Lang "Действия"}} ▾</button>
+    {{if .LegacyEntityUI}}<button type="button" id="list-actions-btn" class="btn btn-secondary" data-ob-list-actions aria-disabled="true" title="{{t $.Lang "Сначала выберите строку списка"}}">⚙ {{t $.Lang "Действия"}} ▾</button>{{end}}
     {{range .ProcessorLinks}}<a class="btn btn-secondary" href="{{.URL}}">{{.Title}}</a>{{end}}
+    {{if and (not .LegacyEntityUI) (not .TreeView) (not .TilesView)}}
+    {{$apply := t $.Lang "Отбор по значению текущей ячейки"}}{{$clear := t $.Lang "Снять отбор"}}
+    <div class="entity-command-group">
+      <span class="entity-command" title="{{$apply}}"><button type="button" class="btn btn-command btn-list-cell-filter" aria-label="{{$apply}}" data-ob-cell-filter disabled>{{lucideIcon "funnel"}}</button></span>
+      <span class="entity-command" title="{{$clear}}"><button type="button" class="btn btn-command btn-list-clear-filter" aria-label="{{$clear}}" data-ob-cell-filter-clear>{{lucideIcon "funnel-x"}}</button></span>
+    </div>
+    {{end}}
     <a class="btn btn-sm" href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/excel{{listExcelSuffix .Params .ListFormOff .ListOrderQuery}}" style="background:#16a34a;color:#fff" title="{{t $.Lang "Скачать Excel"}}">{{t $.Lang "Excel ↓"}}</a>
   </div>
 </div>
@@ -3247,7 +3248,7 @@ const tplList = `
 {{else if .TilesView}}
 {{/* ===== TILES VIEW (плитка) ===== */}}
 {{if .Rows}}
-{{$tile := tileView .Entity}}
+{{$tile := tileView .Entity $.Lang}}
 <div class="tile-grid" role="listbox"{{if .StreamDir}} data-stream-rows{{end}}
   data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
   data-ob-row-subsystem="{{$.CurrentSubsystem}}"
@@ -3266,17 +3267,19 @@ const tplList = `
   data-marked="{{if index $row "deletion_mark"}}1{{end}}"
   data-activity-inactive="{{if index $row "_activity_inactive"}}1{{end}}"
 >
-  {{range $f := $tile.ImageFields}}{{$iv := index $row $f.Name}}
-  <div class="tile-img"{{if $iv}} style="background-image:url('/ui/_image/{{$iv}}')"{{end}}>{{if not $iv}}🖼{{end}}</div>
-  {{end}}
-  {{with $tile.TitleField}}
-    <div class="tile-title">{{if $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{fmtCell (index $row .Name)}}{{if index $row "_is_predefined"}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}{{if eq (str $.Entity.Kind) "document"}}{{if index $row "posted"}} <span class="tile-posted" title="{{t $.Lang "Проведён"}}">✓</span>{{end}}{{end}}</div>
-  {{end}}
-  {{with $tile.SubtitleField}}{{$v := index $row .Name}}{{if hasValue $v}}
-    <div class="tile-subtitle">{{if eq (str .Type) "date"}}{{fmtDate $v}}{{else if eq (str .Type) "bool"}}{{fmtBool $v}}{{else if isRichText (str .Type)}}{{richPlain $v}}{{else if isEnum (str .Type)}}{{enumLabel $.EnumLabels .Name (str $v)}}{{else}}{{fmtCell $v}}{{end}}</div>
+  {{range $f := $tile.ImageFields}}{{with tileValue $f (index $row $f.Name) $.EnumLabels}}
+  <div class="tile-img" style="background-image:url('/ui/_image/{{.}}')"></div>
   {{end}}{{end}}
-  {{range $f := $tile.Fields}}{{$v := index $row $f.Name}}{{if hasValue $v}}
-    <div class="tile-field"><span class="tile-label">{{$f.DisplayName $.Lang}}:</span> {{if eq (str $f.Type) "date"}}<span class="tile-val">{{fmtDate $v}}</span>{{else if eq (str $f.Type) "bool"}}<span class="tile-val">{{fmtBool $v}}</span>{{else if isRichText (str $f.Type)}}<span class="tile-val">{{richPlain $v}}</span>{{else if isEnum (str $f.Type)}}<span class="tile-val">{{enumLabel $.EnumLabels $f.Name (str $v)}}</span>{{else if isImage (str $f.Type)}}<span class="tile-val">{{if $v}}<img src="/ui/_image/{{$v}}" style="height:28px;width:28px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}—{{end}}</span>{{else}}<span class="tile-val">{{fmtCell $v}}</span>{{end}}</div>
+  {{with $tile.TitleField}}{{$v := tileValue . (index $row .Name) $.EnumLabels}}
+    {{if or $v $.Entity.Hierarchical (index $row "_is_predefined") (index $row "posted")}}
+    <div class="tile-title">{{if $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{$v}}{{if index $row "_is_predefined"}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}{{if eq (str $.Entity.Kind) "document"}}{{if index $row "posted"}} <span class="tile-posted" title="{{t $.Lang "Проведён"}}">✓</span>{{end}}{{end}}</div>
+    {{end}}
+  {{end}}
+  {{with $tile.SubtitleField}}{{with tileValue . (index $row .Name) $.EnumLabels}}
+    <div class="tile-subtitle">{{.}}</div>
+  {{end}}{{end}}
+  {{range $f := $tile.Fields}}{{with tileValue $f (index $row $f.Name) $.EnumLabels}}
+    <div class="tile-field"><span class="tile-label">{{$f.DisplayName $.Lang}}:</span> <span class="tile-val">{{if isImage (str $f.Type)}}<img src="/ui/_image/{{.}}" style="height:28px;width:28px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}{{.}}{{end}}</span></div>
   {{end}}{{end}}
   <div class="tile-foot">
     {{if and $isFolder $.Entity.Hierarchical}}
@@ -3292,10 +3295,12 @@ const tplList = `
 {{end}}
 {{else}}
 {{/* ===== LIST VIEW (default) ===== */}}
+{{if .LegacyEntityUI}}
 <div {{if .Cfg.UIEnhancements}}class="ob-list-cell-filters"{{end}} style="display:flex;gap:8px;margin-bottom:8px">
 <button type="button" class="btn btn-sm btn-secondary" data-ob-cell-filter disabled>{{t $.Lang "Отбор по значению текущей ячейки"}}</button>
 <button type="button" class="btn btn-sm btn-secondary" data-ob-cell-filter-clear>{{t $.Lang "Снять отбор"}}</button>
 </div>
+{{end}}
 {{if .Rows}}
 {{$fixed := listColumnsFixed $listCols}}
 <div{{if not .StreamDir}} style="overflow-x:auto"{{end}}>
