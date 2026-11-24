@@ -191,6 +191,7 @@ func DefaultPageSetup() PageSetup {
 // в interpreter.SpreadsheetDocument, делегирующем сюда.
 type Document struct {
 	Groups              []RowGroup
+	XLSXZoomScale       int // Zero leaves the workbook default.
 	FreezeRows          int
 	FreezeCols          int
 	HideGrid            bool

@@ -49,6 +49,10 @@ func TestSpreadsheetXLSXAttachmentIsWorkbook(t *testing.T) {
 	defer f.Close() //nolint:errcheck
 	v, _ := f.GetCellValue("Лист1", "A1")
 	assert.Equal(t, "Заявки бригаде", v)
+	view, err := f.GetSheetView("Лист1", 0)
+	require.NoError(t, err)
+	require.NotNil(t, view.ZoomScale)
+	require.Equal(t, 100.0, *view.ZoomScale)
 	id, _ := f.GetCellStyle("Лист1", "A1")
 	st, err := f.GetStyle(id)
 	require.NoError(t, err)
@@ -170,6 +174,7 @@ areas:
     ТабДок = Новый ТабличныйДокумент;
     ТабДок.ФиксацияСверху = 3;
     ТабДок.ФиксацияСлева = 2;
+    ТабДок.МасштабПросмотра = 90;
     Обл = Макет.Область("Строка");
     ТабДок.Вывести(Обл);
     ТабДок.Вывести(Обл);
@@ -221,6 +226,10 @@ areas:
 			panes, err := f.GetPanes(sh)
 			require.NoError(t, err)
 			require.Equal(t, "C4", panes.TopLeftCell)
+			view, err := f.GetSheetView(sh, 0)
+			require.NoError(t, err)
+			require.NotNil(t, view.ZoomScale)
+			require.Equal(t, 90.0, *view.ZoomScale)
 			for i, want := range []uint8{0, 0, 0, 0, 1, 2, 1, 0} {
 				level, err := f.GetRowOutlineLevel(sh, i+1)
 				require.NoError(t, err)
