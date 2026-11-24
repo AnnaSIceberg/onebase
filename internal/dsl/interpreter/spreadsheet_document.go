@@ -321,6 +321,13 @@ func (d *SpreadsheetDocument) Set(field string, v any) {
 		d.Doc.FileName = strArg([]any{v}, 0)
 	case "поляпечати", "printmargins", "margins":
 		d.setMargins(v)
+	case "масштабпросмотра", "zoomscale":
+		value := toFloatOr0(v)
+		zoom := int(value)
+		if float64(zoom) != value || (zoom != 0 && (zoom < 10 || zoom > 400)) {
+			RaiseUserError("МасштабПросмотра: требуется целое число от 10 до 400 или 0 для значения по умолчанию")
+		}
+		d.Doc.XLSXZoomScale = zoom
 	case "фиксациясверху", "fixedtop":
 		d.Doc.FreezeRows = int(toFloatOr0(v))
 	case "фиксацияслева", "fixedleft":

@@ -163,7 +163,12 @@ func (d *Document) writeXLSXSheet(f *excelize.File, sheetName string) (map[int]b
 // xlsxView keeps grouping as worksheet metadata; all cell values are retained.
 func (d *Document) xlsxView(f *excelize.File, sh string, maxRow int) (map[int]bool, int, error) {
 	grid := !d.HideGrid
-	if err := f.SetSheetView(sh, 0, &excelize.ViewOptions{ShowGridLines: &grid}); err != nil {
+	view := excelize.ViewOptions{ShowGridLines: &grid}
+	if d.XLSXZoomScale != 0 {
+		zoom := float64(d.XLSXZoomScale)
+		view.ZoomScale = &zoom
+	}
+	if err := f.SetSheetView(sh, 0, &view); err != nil {
 		return nil, 0, err
 	}
 	rows, cols := max(d.FreezeRows, 0), max(d.FreezeCols, 0)
