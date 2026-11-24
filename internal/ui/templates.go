@@ -2404,6 +2404,9 @@ th.ob-ls-th{position:relative}
 th.ob-ls-th.ob-ls-drop{box-shadow:inset 3px 0 0 #3b82f6}
 .ob-ls-resize{position:absolute;top:0;right:-3px;bottom:0;width:7px;cursor:col-resize;z-index:1}
 .ob-ls-resize:hover,.ob-ls-resize.dragging{background:rgba(59,130,246,.35)}
+.ob-list-settings-scroll{max-height:42vh;overflow:auto;overscroll-behavior:contain}
+.ob-list-settings-scroll thead th{position:sticky;top:0;z-index:1}
+.ob-stream-main>.ob-list-settings[open]{flex-shrink:0}
 .ob-list-settings tr.ls-col-row{cursor:grab}
 .ob-list-settings tr.ls-col-row.ob-ls-drop td{box-shadow:inset 0 2px 0 #3b82f6}
 .ls-grip{color:#94a3b8;cursor:grab;user-select:none}
@@ -3139,6 +3142,7 @@ const tplList = `
   <form method="POST" action="{{.ListSettingsURL}}/save" data-ob-ls-before-submit style="padding:0 16px 12px">
     <input type="hidden" name="__return" value="{{.RequestURI}}">
     <input type="hidden" name="__list_settings" data-ob-ls-json value="{{.ListSettingsJSON}}">
+    {{if not .LegacyEntityUI}}<div class="ob-list-settings-scroll" tabindex="0" role="region" aria-label="{{t $.Lang "Настройка списка"}}">{{end}}
     <table class="tbl-plain" style="width:auto;margin:8px 0 12px">
       <thead><tr>
         <th style="text-align:left">{{t $.Lang "Поле"}}</th>
@@ -3160,6 +3164,7 @@ const tplList = `
       {{end}}
       </tbody>
     </table>
+    {{if not .LegacyEntityUI}}</div>{{end}}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-primary" type="submit">{{t $.Lang "Сохранить"}}</button>
       <button class="btn" type="submit" formaction="{{.ListSettingsURL}}/reset">{{t $.Lang "Стандартные настройки"}}</button>
@@ -4928,6 +4933,7 @@ const tplJournal = `
   <form method="POST" action="/ui/journal/{{lower .Journal.Name}}/settings/save" data-ob-jl-before-submit>
     <input type="hidden" name="__return" value="{{.RequestURI}}">
     <input type="hidden" name="__journal_settings" id="jl-settings-json" value="{{.JournalSettingsJSON}}">
+    {{if .Cfg.UIEnhancements}}<div class="ob-list-settings-scroll" tabindex="0" role="region" aria-label="{{t $.Lang "Настройка списка"}}">{{end}}
     <table style="width:auto;margin-bottom:12px">
       <thead><tr>
         <th style="text-align:left">{{t $.Lang "Поле"}}</th>
@@ -4947,6 +4953,7 @@ const tplJournal = `
       {{end}}
       </tbody>
     </table>
+    {{if .Cfg.UIEnhancements}}</div>{{end}}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-primary" type="submit">{{t $.Lang "Сохранить"}}</button>
       <button class="btn" type="submit" formaction="/ui/journal/{{lower .Journal.Name}}/settings/reset"{{if not .JournalSettingsActive}} disabled{{end}}>{{t $.Lang "Стандартные настройки"}}</button>
