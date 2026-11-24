@@ -118,6 +118,12 @@ func CheckWidgetFilters(proj *project.Project) []Issue {
 					SuggestedFix: fmt.Sprintf("Добавьте в запрос условие с &%s (например, «&%s ЕСТЬ ПУСТО ИЛИ Поле = &%s»)", f.Param, f.Param, f.Param),
 				})
 			}
+			if f.PeriodEnd && f.Type != "date" {
+				issues = append(issues, Issue{
+					File: "widgets/" + w.Name + ".yaml", Object: w.Name, Kind: "Виджет (filters)",
+					Message: fmt.Sprintf("period_end у фильтра %q допустим только для даты", f.Name),
+				})
+			}
 			if err := checkFilterDefault(f); err != nil {
 				issues = append(issues, Issue{
 					File:    "widgets/" + w.Name + ".yaml",

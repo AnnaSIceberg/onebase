@@ -82,6 +82,9 @@ func ParseFilterValue(f metadata.WidgetFilter, raw string) (any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("значение фильтра %q не является датой (ГГГГ-ММ-ДД)", f.Name)
 		}
+		if f.PeriodEnd {
+			t = t.AddDate(0, 0, 1)
+		}
 		return t, nil
 	case "bool":
 		switch raw {
