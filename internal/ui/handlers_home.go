@@ -493,6 +493,11 @@ func homePageWidgetGroups(hp *metadata.HomePage, reg *runtime.Registry, honor bo
 		return out
 	}
 	if hp != nil {
+		// An explicit empty dashboard keeps the section's navigation without
+		// inheriting every registered widget as the unconfigured default.
+		if hp.Rows != nil && len(hp.Rows) == 0 && len(hp.Widgets) == 0 {
+			return nil, false
+		}
 		if honor {
 			if rg := hp.RowGroups(); len(rg) > 0 {
 				groups := make([][]*metadata.Widget, 0, len(rg))

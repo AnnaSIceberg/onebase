@@ -913,7 +913,8 @@ const tplManagedForm = `
 .ob-header-inline :is(main:not(.ob-object-form),.ob-object-inline-header)>.ob-form-actions{flex:1 1 0;order:1;min-width:0;margin-bottom:0 !important}
 .ob-header-inline :is(main:not(.ob-object-form),.ob-object-inline-header)>.ob-form-head>a{flex:0 0 auto;order:2;margin-left:auto}
 .ob-header-inline main:not(.ob-object-form)>.ob-form-head~*:not(.ob-form-actions){margin-top:8px}
-.ob-object-inline-header{position:sticky;top:0;z-index:4;flex:0 0 auto;min-width:0;padding:4px 0;background:#f5f5f5}
+.ob-object-inline-header{position:sticky;top:0;z-index:4;flex:0 0 auto;min-width:0;padding:4px 0;background:inherit}
+.ob-object-inline-header{background:#f5f5f5}
 body[data-theme="dark"] .ob-object-inline-header{background:#111827}
 .ob-object-inline-header~.ob-object-form-card{margin-top:8px;min-width:0}
 .ob-density-compact .managed-control-row>button,.ob-density-compact .managed-control-row>a{height:28px;min-width:28px;padding:0 8px;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
