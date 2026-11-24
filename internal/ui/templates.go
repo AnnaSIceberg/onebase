@@ -2423,6 +2423,7 @@ th.ob-ls-th.ob-ls-drop{box-shadow:inset 3px 0 0 #3b82f6}
 .tile-field{font-size:12.5px;color:#475569;margin-bottom:3px;display:flex;gap:5px;flex-wrap:wrap}
 .tile-label{color:#94a3b8;flex-shrink:0}
 .tile-val{color:#334155;word-break:break-word}
+.tile-foot{margin-top:auto;padding-top:10px}
 /* Глобальный поиск (план 82): строка в шапке и страница результатов */
 .topbar-search{display:flex;align-items:center;margin:0 6px}
 .topbar-search input{width:210px;max-width:34vw;padding:5px 10px;border:1px solid #475569;border-radius:5px;font-size:13px;background:#334155;color:#f1f5f9}
@@ -3198,6 +3199,7 @@ const tplList = `
   data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
 ><thead><tr>
   {{range $treeCols}}<th>{{.DisplayName $.Lang}}</th>{{end}}
+  {{if and $.LegacyEntityUI (not $.Cfg.HideListRowActions)}}<th style="width:90px"></th>{{end}}
 </tr></thead><tbody>
 {{range .TreeRows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}{{$depth := index $row "_depth"}}
 {{$rowStyle := listRowStyle $row}}<tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer{{with $rowStyle}};{{.}}{{end}}"{{else}}style="cursor:pointer{{with $rowStyle}};{{.}}{{end}}"{{end}}{{if $rowStyle}} class="ob-row-styled"{{end}}
@@ -3228,6 +3230,15 @@ const tplList = `
     {{else if isRichText (str $col.Type)}}<td style="color:#64748b">{{richPlain (index $row $col.Name)}}</td>
     {{else if isEnum (str $col.Type)}}<td>{{enumLabel $.EnumLabels $col.Name (str (index $row $col.Name))}}</td>
     {{else}}<td>{{fmtCell (index $row $col.Name)}}</td>{{end}}
+  {{end}}
+  {{if and $.LegacyEntityUI (not $.Cfg.HideListRowActions)}}
+  <td>
+    {{if $isFolder}}
+      <a class="btn btn-sm btn-secondary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "view" "" "parent" (str (index $row "id"))}}">{{t $.Lang "▶ Войти"}}</a>
+    {{else}}
+      <a class="btn btn-sm btn-primary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}">{{t $.Lang "Открыть"}}</a>
+    {{end}}
+  </td>
   {{end}}
 </tr>{{end}}
 </tbody></table>
@@ -3271,6 +3282,13 @@ const tplList = `
   {{range $f := $tile.Fields}}{{with tileValue $f (index $row $f.Name) $.EnumLabels}}
     <div class="tile-field"><span class="tile-label">{{$f.DisplayName $.Lang}}:</span> <span class="tile-val">{{if isImage (str $f.Type)}}<img src="/ui/_image/{{.}}" style="height:28px;width:28px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}{{.}}{{end}}</span></div>
   {{end}}{{end}}
+  {{if $.LegacyEntityUI}}<div class="tile-foot">
+    {{if and $isFolder $.Entity.Hierarchical}}
+      <a class="btn btn-sm btn-secondary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}">{{t $.Lang "▶ Войти"}}</a>
+    {{else}}
+      <a class="btn btn-sm btn-primary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}">{{t $.Lang "Открыть"}}</a>
+    {{end}}
+  </div>{{end}}
 </div>{{end}}
 </div>
 {{else}}
@@ -3287,8 +3305,8 @@ const tplList = `
 {{if .Rows}}
 {{$fixed := listColumnsFixed $listCols}}
 <div{{if not .StreamDir}} style="overflow-x:auto"{{end}}>
-<table data-ob-list-table data-ob-ls-save="{{.ListSettingsURL}}/save" data-ob-ls-state="{{.ListSettingsJSON}}"{{if $fixed}} class="ob-list-fixed" style="width:{{listTableWidth $listCols (eq (str .Entity.Kind) "document") $.SearchAll}}px"{{end}}>
-{{if $fixed}}<colgroup>{{if eq (str .Entity.Kind) "document"}}<col style="width:36px">{{end}}{{range $listCols}}<col data-ob-ls-col="{{.Field.Name}}" style="width:{{listColumnWidth .}}px">{{end}}{{if $.SearchAll}}<col style="width:160px">{{end}}</colgroup>{{end}}
+<table data-ob-list-table data-ob-ls-save="{{.ListSettingsURL}}/save" data-ob-ls-state="{{.ListSettingsJSON}}"{{if $fixed}} class="ob-list-fixed" style="width:{{listTableWidth $listCols (eq (str .Entity.Kind) "document") $.SearchAll $.LegacyEntityUI}}px"{{end}}>
+{{if $fixed}}<colgroup>{{if eq (str .Entity.Kind) "document"}}<col style="width:36px">{{end}}{{range $listCols}}<col data-ob-ls-col="{{.Field.Name}}" style="width:{{listColumnWidth .}}px">{{end}}{{if $.SearchAll}}<col style="width:160px">{{end}}{{if $.LegacyEntityUI}}<col style="width:90px">{{end}}</colgroup>{{end}}
 <thead><tr>
   {{if eq (str .Entity.Kind) "document"}}<th style="width:36px">✓</th>{{end}}
   {{range $listCols}}
@@ -3299,6 +3317,7 @@ const tplList = `
   </th>
   {{end}}
   {{if $.SearchAll}}<th>{{t $.Lang "Группа"}}</th>{{end}}
+  {{if and $.LegacyEntityUI (not $.Cfg.HideListRowActions)}}<th style="width:90px"></th>{{end}}
 </tr></thead><tbody id="list-body"
   data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
   data-ob-row-subsystem="{{$.CurrentSubsystem}}"
@@ -3331,6 +3350,15 @@ const tplList = `
     {{else}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{if and (eq .Name "Наименование") $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{fmtCell (index $row .Name)}}{{if and (eq .Name "Наименование") (index $row "_is_predefined")}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}</td>{{end}}
   {{end}}
   {{if $.SearchAll}}<td style="white-space:nowrap" data-ob-list-group>{{with index $row "_group_id"}}<a href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}?parent={{.}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}">📁 {{index $row "_group_label"}}</a>{{else}}<span style="color:#94a3b8">{{t $.Lang "Корень"}}</span>{{end}}</td>{{end}}
+  {{if and $.LegacyEntityUI (not $.Cfg.HideListRowActions)}}
+  <td>
+    {{if and $isFolder $.Entity.Hierarchical}}
+      <a class="btn btn-sm btn-secondary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}">{{t $.Lang "▶ Войти"}}</a>
+    {{else}}
+      <a class="btn btn-sm btn-primary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}">{{t $.Lang "Открыть"}}</a>
+    {{end}}
+  </td>
+  {{end}}
 </tr>{{end}}
 </tbody></table>
 </div>
@@ -3363,6 +3391,7 @@ const tplList = `
 </div>
 </main>
 <script type="application/json" id="ob-list-config">{{jsJSON (dict
+  "hideRowActions" (or (not .LegacyEntityUI) .Cfg.HideListRowActions)
   "isAdmin" .IsAdmin
   "canWrite" .CanWrite
   "canDelete" .CanDelete
@@ -3379,6 +3408,7 @@ const tplList = `
     "open" (t $.Lang "Открыть")
     "copy" (t $.Lang "Скопировать")
     "basedOn" (t $.Lang "Ввести на основании")
+    "enter" (t $.Lang "▶ Войти")
     "activityShow" (t $.Lang "Вернуть в выбор")
     "activityShowConfirm" (t $.Lang "Вернуть в выбор?")
     "activityHide" (t $.Lang "Скрыть из выбора")
@@ -4945,6 +4975,7 @@ const tplJournal = `
 <div style="overflow-x:auto"{{if .StreamDir}} {{template "list-stream-attrs" .}}{{end}}>
 <table><thead><tr>
   {{range .JournalColumns}}<th>{{.DisplayLabel $.Lang}}</th>{{end}}
+  {{if and .LegacyEntityUI (not .Cfg.HideListRowActions)}}<th style="width:90px"></th>{{end}}
 </tr></thead>
 <tbody>
 {{range .Rows}}{{$row := .}}
@@ -4956,6 +4987,7 @@ const tplJournal = `
     {{if eq (index $fmts .Field) "date"}}<td style="{{journalCellStyle $row .Field}}">{{fmtDate $v}}</td>
     {{else}}<td style="{{journalCellStyle $row .Field}}">{{$v}}</td>{{end}}
   {{end}}
+  {{if and $.LegacyEntityUI (not $.Cfg.HideListRowActions)}}<td><a class="btn btn-sm btn-primary" href="/ui/document/{{lower (str (index . "_doc_kind"))}}/{{str (index . "id")}}">{{t $.Lang "Открыть"}}</a></td>{{end}}
 </tr>
 {{end}}
 </tbody></table>

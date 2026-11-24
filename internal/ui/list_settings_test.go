@@ -222,8 +222,9 @@ func TestListToolbarFiltersAndSettingsHTTP(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status %d: %s", rec.Code, body)
 			}
-			if strings.Contains(body, ">Открыть</a>") || strings.Contains(body, ">▶ Войти</a>") {
-				t.Fatal("row action shortcut remains in the list")
+			hasRowAction := strings.Contains(body, ">Открыть</a>")
+			if hasRowAction != tc.legacy {
+				t.Fatalf("row shortcut = %t, want the unchanged legacy renderer only", hasRowAction)
 			}
 			if !strings.Contains(body, "data-ob-list-row") {
 				t.Fatal("keyboard and mouse row activation lost")
