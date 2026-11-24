@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -30,11 +31,12 @@ type managedChoiceContext struct {
 	// FormKind различает владельца формы: пусто — документ или справочник,
 	// "processor" — обработка (#1840). Имена обработок и сущностей живут в
 	// разных пространствах, поэтому вид едет явно, а не угадывается по имени.
-	FormKind  string            `json:"form_kind,omitempty"`
-	Form      string            `json:"form"`
-	Element   string            `json:"element"`
-	TablePart string            `json:"table_part,omitempty"`
-	Sources   map[string]string `json:"sources,omitempty"` // full metadata path -> browser control name
+	FormKind             string            `json:"form_kind,omitempty"`
+	Form                 string            `json:"form"`
+	Element              string            `json:"element"`
+	TablePart            string            `json:"table_part,omitempty"`
+	Sources              map[string]string `json:"sources,omitempty"` // full metadata path -> browser control name
+	ExplicitEmptySources []string          `json:"explicit_empty_sources,omitempty"`
 }
 
 // choiceFormKindProcessor — значение form_kind для формы обработки.
@@ -164,6 +166,28 @@ func optionalHeaderChoiceSource(element *metadata.FormElement, path string) bool
 		}
 	}
 	return false
+}
+
+// A hidden or absent control is not an empty value on the initial form either.
+func choiceInitialSourceActive(data map[string]any, source string) bool {
+	paths, _ := data["ElPaths"].(map[*metadata.FormElement]string)
+	hidden, _ := data["ElHidden"].(map[string]bool)
+	active := 0
+	for element, path := range paths {
+		if element.Kind != metadata.FormElementField || element.Conceal ||
+			!strings.EqualFold(strings.TrimSpace(element.DataPath), source) {
+			continue
+		}
+		for path != "" && !hidden[path] {
+			index := strings.LastIndexByte(path, '.')
+			if index == -1 {
+				active++
+				break
+			}
+			path = path[:index]
+		}
+	}
+	return active == 1
 }
 
 func choiceSourceControls(element *metadata.FormElement) map[string]string {
@@ -1035,6 +1059,7 @@ func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity,
 		}
 		controls := choiceSourceControls(element)
 		sources := make(map[string]string, len(controls))
+		var explicitEmptySources []string
 		for path := range controls {
 			source, ok := metadata.ParseFormChoiceSource(path)
 			if !ok {
@@ -1042,7 +1067,15 @@ func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity,
 			}
 			// The form holds the leading reference, not the attribute behind it.
 			sources[path] = formValueForPath(data["Values"], source.Root+"."+source.Field)
-			if (element.KPIChoice != nil && path == element.KPIChoice.AllWhenEmpty) || optionalHeaderChoiceSource(element, path) {
+			optionalHeader := optionalHeaderChoiceSource(element, path)
+			if optionalHeader {
+				explicitEmptySources = append(explicitEmptySources, path)
+				if !choiceInitialSourceActive(data, path) {
+					delete(sources, path)
+					continue
+				}
+			}
+			if optionalHeader || (element.KPIChoice != nil && path == element.KPIChoice.AllWhenEmpty) {
 				value, valid := explicitChoiceInitialSource(data["Values"], source.Field)
 				if valid {
 					sources[path] = value
@@ -1066,12 +1099,14 @@ func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity,
 		if !filtered {
 			return true // the marked attribute alone is enough for later searches
 		}
+		slices.Sort(explicitEmptySources)
 		encoded, err := json.Marshal(managedChoiceContext{
-			FormEntity: owner.Name,
-			FormKind:   formKind,
-			Form:       form.Name,
-			Element:    element.ID,
-			Sources:    controls,
+			FormEntity:           owner.Name,
+			FormKind:             formKind,
+			Form:                 form.Name,
+			Element:              element.ID,
+			Sources:              controls,
+			ExplicitEmptySources: explicitEmptySources,
 		})
 		if err == nil {
 			contexts[element.ID] = string(encoded)

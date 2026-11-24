@@ -369,3 +369,26 @@ for (const [description, controls, expected] of [
     assert.equal(JSON.parse(requested.searchParams.get('sources'))['Объект.Склад'], expected);
   });
 }
+
+test('optional header source omits missing, disabled and ambiguous controls', () => {
+  const env = runtime(() => Promise.resolve(response({items: []})), '', false);
+  const context = JSON.parse(env.attrs['data-ref-choice-context']);
+  const source = 'Объект.Склад';
+  context.explicit_empty_sources = [source];
+  env.attrs['data-ref-choice-context'] = JSON.stringify(context);
+  function sent() {
+    return JSON.parse(decodeURIComponent(env.api.obRefChoiceSnapshot(env.select).query.split('&sources=')[1]));
+  }
+  env.sourceControl.value = '';
+  assert.deepEqual(sent(), {[source]: ''}, 'active blank control');
+  env.sourceControl.matches = selector => selector === ':disabled';
+  assert.deepEqual(sent(), {}, 'disabled fieldset');
+  delete env.sourceControl.matches;
+  env.sourceControl.value = null;
+  assert.deepEqual(sent(), {}, 'null value');
+  env.sourceControl.value = '';
+  env.sourceControls.push({value: ''});
+  assert.deepEqual(sent(), {}, 'ambiguous duplicate');
+  env.sourceControls.length = 0;
+  assert.deepEqual(sent(), {}, 'missing control');
+});

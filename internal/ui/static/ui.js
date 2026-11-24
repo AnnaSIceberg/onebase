@@ -5650,7 +5650,7 @@ function obRefFilterValues(sel) {
 // A hidden_when copy is disabled by its fieldset; a readonly select instead
 // submits its enabled hidden mirror. null means the source is absent, so the
 // legacy owner filter can still use the value supplied by the server.
-function obRefSourceValue(scope, name) {
+function obRefSourceValue(scope, name, requireActive) {
   if (!scope || !name) return null;
   var controls;
   if (scope.elements && scope.elements.namedItem) {
@@ -5676,14 +5676,15 @@ function obRefSourceValue(scope, name) {
     if ((type === 'radio' || type === 'checkbox') && !control.checked) continue;
     if (type === 'button' || type === 'submit' || type === 'reset' || type === 'file') continue;
     if (control.value == null) continue;
+    if (requireActive && control.tagName === 'SELECT' && control.selectedIndex < 0) continue;
     if (value !== null) {
       if (type === groupType && (type === 'radio' || type === 'checkbox')) continue;
-      return '';
+      return requireActive ? null : '';
     }
     value = String(control.value);
     groupType = type;
   }
-  return value === null ? '' : value;
+  return value === null && !requireActive ? '' : value;
 }
 
 // obRefFilterParam — тот же отбор строкой для запроса /ui/_ref-options.
@@ -6023,7 +6024,9 @@ function obRefChoiceSnapshot(sel) {
         values[path] = obChoiceRowValue(sel._obChoiceRow[key]); return; }
       name = "tp." + ctx.table_part + "." + rowID + "." + name;
     }
-    values[path] = obRefSourceValue(form || document, name) || '';
+    var requireActive = (ctx.explicit_empty_sources || []).indexOf(path) !== -1;
+    var value = obRefSourceValue(form || document, name, requireActive);
+    if (value !== null || !requireActive) values[path] = value || '';
   });
   var query = '&form_entity=' + encodeURIComponent(ctx.form_entity) +
     // Форма обработки (#1840): вид владельца — из серверного контекста.

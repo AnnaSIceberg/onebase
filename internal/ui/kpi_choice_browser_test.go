@@ -118,4 +118,14 @@ func testManagedBranchChoiceBrowser(t *testing.T, ordinary bool) {
 	assert(fmt.Sprintf(`direction.value===%q && direction.selectedOptions[0].textContent===%q`, f.d3.String(), other))
 	change("")
 	assert(fmt.Sprintf(`direction.options.length===4 && direction.value===%q && document.querySelector('select[name="Branch"]')===branch`, f.d3.String()))
+
+	if ordinary {
+		eval(`window.branchHolder = document.createElement('fieldset'); branch.before(branchHolder); branchHolder.appendChild(branch); branchHolder.disabled = true;`)
+		wait(`window.obRefChoiceSnapshot && !decodeURIComponent(window.obRefChoiceSnapshot(direction).query).includes('Объект.Branch')`)
+		eval(`(async()=>{await window.obRefreshChoiceFilters();return true})()`)
+		assert(`direction.options.length===1 && direction.value===''`)
+		eval(`window.branchHolder.disabled=false`)
+		change("")
+		assert(`direction.options.length===4`)
+	}
 }

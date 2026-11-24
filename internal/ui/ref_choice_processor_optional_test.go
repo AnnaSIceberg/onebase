@@ -106,6 +106,12 @@ func TestProcessorOptionalChoiceHTTP(t *testing.T) {
 		if _, ok := htmlAttribute(selectField, "data-ref-choice-context"); !ok || !strings.Contains(initial.Body.String(), "Other") {
 			t.Fatal("initial empty source did not render the office picker")
 		}
+
+		f.proc.Forms[0].Elements[0].HiddenWhen = "Истина"
+		hidden := f.serve(t, f.user, "/ui/processor/"+f.proc.Name)
+		if hidden.Code != http.StatusOK || strings.Contains(hidden.Body.String(), "Other") {
+			t.Fatal("initial hidden source rendered choices for every branch")
+		}
 		permissions.Processors[f.proc.Name] = nil
 		if w := f.picker(t, f.user, f.query("")); w.Code != http.StatusBadRequest {
 			t.Fatalf("processor run denial bypassed: %d", w.Code)
