@@ -195,7 +195,10 @@ func TestListToolbarFiltersAndSettingsHTTP(t *testing.T) {
 	entity := &metadata.Entity{Name: "Заявки", Kind: metadata.KindDocument, Fields: []metadata.Field{
 		{Name: "Тема", Type: metadata.FieldTypeString},
 	}}
-	s, _ := newSubmitTestServer(t, []*metadata.Entity{entity})
+	s, ctx := newSubmitTestServer(t, []*metadata.Entity{entity})
+	if err := s.store.Upsert(ctx, entity.Name, uuid.New(), map[string]any{"Тема": "Строка в списке"}, entity); err != nil {
+		t.Fatal(err)
+	}
 	s.cfg.UIExceptRoles = []string{"ОператорКЦ", "ОператорМессенджера"}
 	router := chi.NewRouter()
 	s.Mount(router)
@@ -218,6 +221,12 @@ func TestListToolbarFiltersAndSettingsHTTP(t *testing.T) {
 			body := rec.Body.String()
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status %d: %s", rec.Code, body)
+			}
+			if strings.Contains(body, ">Открыть</a>") || strings.Contains(body, ">▶ Войти</a>") {
+				t.Fatal("row action shortcut remains in the list")
+			}
+			if !strings.Contains(body, "data-ob-list-row") {
+				t.Fatal("keyboard and mouse row activation lost")
 			}
 			hasActions := strings.Contains(body, `id="list-actions-btn"`)
 			hasScrollPanel := strings.Contains(body, `class="ob-list-settings-scroll"`)

@@ -388,7 +388,7 @@ func TestListCardsShowOnlyFilledAndDisclosedFieldsHTTP(t *testing.T) {
 		if !ok {
 			t.Fatal("missing card")
 		}
-		card, _, _ := strings.Cut(tail, `class="tile-foot`)
+		card, _, _ := strings.Cut(tail, `id="ob-list-config"`)
 		return card
 	}
 	card := body(user)
