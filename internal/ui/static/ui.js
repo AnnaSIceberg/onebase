@@ -1262,12 +1262,16 @@ window.obRefreshWidgetCard = function (card) {
     var out = [];
     var nodes = filterNodes(card);
     for (var i = 0; i < nodes.length; i++) {
-      out.push({ key: nodes[i].getAttribute('data-ob-filter'), value: nodes[i].value || '' });
+      out.push({
+        key: nodes[i].getAttribute('data-ob-filter'),
+        value: nodes[i].value || '',
+        hasDefault: !!nodes[i].getAttribute('data-ob-filter-default')
+      });
     }
     return out;
   }
 
-  // Адрес карточки: subsystem + только её собственные непустые ключи.
+  // В адресе сохраняем явную очистку для фильтров с умолчанием.
   function rebuildEndpoint(card, filters) {
     var base = (card.getAttribute('data-widget-url') || '').split('?')[0];
     var params = new URLSearchParams(window.location.search);
@@ -1276,7 +1280,7 @@ window.obRefreshWidgetCard = function (card) {
     var own = new URLSearchParams();
     if (sub) own.set('subsystem', sub);
     for (var i = 0; i < filters.length; i++) {
-      if (filters[i].value !== '') own.set(filters[i].key, filters[i].value);
+      if (filters[i].value !== '' || filters[i].hasDefault) own.set(filters[i].key, filters[i].value);
     }
     var qs = own.toString();
     return qs ? base + '?' + qs : base;
@@ -1287,7 +1291,7 @@ window.obRefreshWidgetCard = function (card) {
   function mergedSearch(filters) {
     var params = new URLSearchParams(window.location.search);
     for (var i = 0; i < filters.length; i++) {
-      if (filters[i].value !== '') params.set(filters[i].key, filters[i].value);
+      if (filters[i].value !== '' || filters[i].hasDefault) params.set(filters[i].key, filters[i].value);
       else params.delete(filters[i].key);
     }
     return params.toString();
@@ -1332,7 +1336,9 @@ window.obRefreshWidgetCard = function (card) {
     var card = filterCard(el);
     if (!card) return;
     var nodes = filterNodes(card);
-    for (var i = 0; i < nodes.length; i++) nodes[i].value = '';
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].value = nodes[i].tagName === 'SELECT' ? nodes[i].getAttribute('data-ob-filter-default') || '' : '';
+    }
     var filters = collectFilters(card);
     applyEndpoint(card, rebuildEndpoint(card, filters), mergedSearch(filters));
   });
@@ -1347,7 +1353,8 @@ window.obRefreshWidgetCard = function (card) {
       if (!filterNodes(card).length) continue;
       var nodes = filterNodes(card);
       for (var j = 0; j < nodes.length; j++) {
-        nodes[j].value = params.get(nodes[j].getAttribute('data-ob-filter')) || '';
+        var key = nodes[j].getAttribute('data-ob-filter');
+        nodes[j].value = params.has(key) ? params.get(key) : nodes[j].getAttribute('data-ob-filter-default') || '';
       }
       var endpoint = rebuildEndpoint(card, collectFilters(card));
       if ((card.getAttribute('data-widget-url') || '') !== endpoint) {
@@ -3089,13 +3096,15 @@ function makeTreeRow(row) {
     }
     tr.appendChild(td);
   }
-  var action = document.createElement('td');
-  var a = document.createElement('a');
-  a.className = row.is_folder ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-primary';
-  a.href = row.is_folder ? (row.folder_url || '#') : (row.open_url || '#');
-  a.textContent = row.is_folder ? obListLabel('enter', '▶ Войти') : obListLabel('open', 'Открыть');
-  action.appendChild(a);
-  tr.appendChild(action);
+  if (!obListConfig().hideRowActions) {
+    var action = document.createElement('td');
+    var a = document.createElement('a');
+    a.className = row.is_folder ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-primary';
+    a.href = row.is_folder ? (row.folder_url || '#') : (row.open_url || '#');
+    a.textContent = row.is_folder ? obListLabel('enter', '▶ Войти') : obListLabel('open', 'Открыть');
+    action.appendChild(a);
+    tr.appendChild(action);
+  }
   return tr;
 }
 
@@ -3150,10 +3159,10 @@ function listMenuItems(tr) {
   var items = [];
   if(obListActiveCell && obListActiveCell.closest('tr')===tr) {
     var cellButton=document.querySelector('[data-ob-cell-filter]');
-    items.push({label:cellButton?cellButton.textContent:'Filter by selected value',fn:obCellFilterApply});
+    items.push({label:cellButton?(cellButton.getAttribute('aria-label')||cellButton.textContent):'Filter by selected value',fn:obCellFilterApply});
   }
   var clearButton=typeof document!=='undefined' && document.querySelector ? document.querySelector('[data-ob-cell-filter-clear]') : null;
-  if(clearButton)items.push({label:clearButton.textContent,fn:obCellFiltersClear});
+  if(clearButton)items.push({label:clearButton.getAttribute('aria-label')||clearButton.textContent,fn:obCellFiltersClear});
 
   if (isFolder) {
     items.push({ label: labels.enterGroup || '▶ Войти в группу', fn: function () { window.location.href = obRowUrl(tr, 'folder'); } });

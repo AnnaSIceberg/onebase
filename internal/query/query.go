@@ -31,6 +31,10 @@ type CompileOpts struct {
 	// Dialect selects the SQL flavour. nil = PgDialect (default).
 	Dialect storage.Dialect
 
+	// NormalizeEntityDateComparisons applies the precise UTC key used for
+	// register dates to direct entity date comparisons in SQLite period filters.
+	NormalizeEntityDateComparisons bool
+
 	// tablePartSources — табличные части, встреченные в запросе как
 	// источники, по синтетическому имени источника (rewriteTablePartSources).
 	tablePartSources map[string]tablePartSource
@@ -4772,9 +4776,9 @@ func (tr *translator) dateBoundaryParamAt(idx int) bool {
 	return err == nil
 }
 
-func (tr *translator) addSQLiteDateParam(name string, register bool) string {
+func (tr *translator) addSQLiteDateParam(name string, normalize bool) string {
 	layout := time.RFC3339
-	if register {
+	if normalize {
 		layout = time.RFC3339Nano
 	}
 	var value any
@@ -4790,7 +4794,7 @@ func (tr *translator) addSQLiteDateParam(name string, register bool) string {
 	}
 	tr.args = append(tr.args, value)
 	placeholder := dialectOrDefault(tr.opts.Dialect).Placeholder(len(tr.args))
-	if register {
+	if normalize {
 		return "ob_utc_datetime(" + placeholder + ")"
 	}
 	return placeholder
@@ -4968,10 +4972,14 @@ func (tr *translator) dateFieldAt(idx int) bool {
 	return tr.colTypes[lowerFast(tr.tokens[idx].val)] == metadata.FieldTypeDate
 }
 
-// Оборачиваем только поле того же прямого сравнения, чей параметр получил
-// ob_utc_datetime. SELECT/ORDER BY и сравнения строк не меняют представление.
-func (tr *translator) sqliteRegisterDateComparisonAt(idx int) bool {
-	if !tr.dateFieldAt(idx) || !tr.registerFieldAt(idx) {
+func (tr *translator) useSQLiteUTCDateKey(idx int) bool {
+	return tr.opts.NormalizeEntityDateComparisons || tr.registerFieldAt(idx)
+}
+
+// Use the same UTC ordering key on both sides of direct typed comparisons.
+// SELECT/ORDER BY and string-only comparisons keep their original representation.
+func (tr *translator) sqliteUTCDateComparisonAt(idx int) bool {
+	if !tr.dateFieldAt(idx) || !tr.useSQLiteUTCDateKey(idx) {
 		return false
 	}
 	start := idx
@@ -5105,7 +5113,7 @@ func isReferenceName(lower string) bool {
 // emitOwnColumn эмитит неквалифицированную собственную колонку с учётом п.48/п.49.
 func (tr *translator) emitOwnColumn(col, lower string) {
 	col = tr.qualifyOwn(col, lower)
-	if tr.sqliteRegisterDateComparisonAt(tr.pos - 1) {
+	if tr.sqliteUTCDateComparisonAt(tr.pos - 1) {
 		tr.emit("ob_utc_datetime(" + col + ")")
 		return
 	}
@@ -5224,7 +5232,7 @@ func (tr *translator) equalityOpAt(idx int) bool {
 // обязателен.
 func (tr *translator) emitQualifiedColumn(col, lower string) {
 	if len(tr.parts) >= 2 && tr.parts[len(tr.parts)-1] == "." {
-		if tr.sqliteRegisterDateComparisonAt(tr.pos - 1) {
+		if tr.sqliteUTCDateComparisonAt(tr.pos - 1) {
 			tr.emit("ob_utc_datetime(" + tr.takeQualifier() + col + ")")
 			return
 		}
@@ -5280,7 +5288,7 @@ func (tr *translator) emitDerivedReferenceAlias(col, lower string) {
 }
 
 func (tr *translator) emitRefAttrColumn(col string, fieldType metadata.FieldType) {
-	if len(tr.parts) >= 2 && tr.parts[len(tr.parts)-1] == "." && tr.sqliteRegisterDateComparisonAt(tr.pos-1) {
+	if len(tr.parts) >= 2 && tr.parts[len(tr.parts)-1] == "." && tr.sqliteUTCDateComparisonAt(tr.pos-1) {
 		tr.emit("ob_utc_datetime(" + tr.takeQualifier() + col + ")")
 		return
 	}
@@ -6535,10 +6543,10 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 		if t.kind == tParam {
 			tr.prevWasDot = false
 			normalizeDate := tr.sqliteDateParamComparedToField(tr.pos)
-			registerDate := normalizeDate && tr.registerFieldAt(tr.sqliteDateParamField(tr.pos))
+			utcDate := normalizeDate && tr.useSQLiteUTCDateKey(tr.sqliteDateParamField(tr.pos))
 			tr.advance()
 			if normalizeDate {
-				tr.emit(tr.addSQLiteDateParam(t.val, registerDate))
+				tr.emit(tr.addSQLiteDateParam(t.val, utcDate))
 			} else if tr.emptyRefParamAt(tr.pos - 1) {
 				tr.emit("NULL")
 			} else if tr.uuidParamComparedToStringField(tr.pos - 1) {

@@ -1,11 +1,5 @@
 /* Optional enhanced list controls. Loaded only by the configured UI role scope. */
 (function () {
-  var baseMakeTreeRow = window.makeTreeRow;
-  if (typeof baseMakeTreeRow === 'function') window.makeTreeRow = function (row) {
-    var tr = baseMakeTreeRow(row);
-    if (obListConfig().hideRowActions && tr.lastElementChild) tr.removeChild(tr.lastElementChild);
-    return tr;
-  };
 window.obInitReportBlocks = function() {
   try {
     document.querySelectorAll('details.report-block').forEach(function (el) {

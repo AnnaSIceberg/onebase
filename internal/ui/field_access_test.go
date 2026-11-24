@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/dbtest"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/query"
 	"github.com/ivantit66/onebase/internal/runtime"
@@ -398,6 +399,91 @@ func TestUI_EntityList_ExplicitDetailPanelCannotBypassFieldAccess(t *testing.T) 
 	if got, ok := detailPanelValueByLabel(panel, "Адрес"); !ok || got != "••••••" {
 		t.Fatalf("явно перечисленное маскируемое поле = %q, %v; panel=%+v", got, ok, panel)
 	}
+}
+
+func TestUI_PrivateFieldsDoNotAffectListSearchOrExcel(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		cat := uiClientEntity()
+		s := newSubmitTestServerOn(t, db, []*metadata.Entity{cat})
+		const public = "CustomerForListSearch"
+		const address = "SyntheticPrivateAddress"
+		const phone = "00000010001"
+		if err := s.store.Upsert(ctx, cat.Name, uuid.New(), map[string]any{
+			"Наименование": public, "Адрес": address, "Телефон": phone,
+		}, cat); err != nil {
+			t.Fatal(err)
+		}
+		noDisclosure := false
+		restricted := uiMaskUser([]string{"read"}, auth.FieldPolicies{
+			"Адрес":   {Read: "mask_all", Disclose: &noDisclosure},
+			"Телефон": {Read: "hide"},
+		})
+		full := uiMaskUser([]string{"read"}, auth.FieldPolicies{
+			"Адрес": {Read: "full"},
+		})
+		for _, tc := range []struct {
+			name    string
+			user    *auth.User
+			values  url.Values
+			visible bool
+		}{
+			{"masked search", restricted, url.Values{"q": {address}}, false},
+			{"hidden search", restricted, url.Values{"q": {phone}}, false},
+			{"protected filter", restricted, url.Values{"f.Адрес.eq": {address}}, false},
+			{"public search", restricted, url.Values{"q": {public}}, true},
+			{"full search", full, url.Values{"q": {address}}, true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				path := "/ui/catalog/" + cat.Name
+				request := func(route string, handler http.HandlerFunc) *httptest.ResponseRecorder {
+					req := reqWithChi(http.MethodGet, route+"?"+tc.values.Encode(), nil,
+						map[string]string{"kind": "catalog", "entity": cat.Name})
+					req = req.WithContext(auth.ContextWithUser(req.Context(), tc.user))
+					rec := httptest.NewRecorder()
+					handler(rec, req)
+					if rec.Code != http.StatusOK {
+						t.Fatalf("list request returned %d: %s", rec.Code, rec.Body.String())
+					}
+					return rec
+				}
+				list := request(path, s.list)
+				if got := strings.Contains(list.Body.String(), ">"+public+"<"); got != tc.visible {
+					t.Fatalf("list row visibility = %v, want %v", got, tc.visible)
+				}
+				export := request(path+"/excel", s.listExcel)
+				workbook, err := excelize.OpenReader(bytes.NewReader(export.Body.Bytes()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer workbook.Close()
+				rows, err := workbook.GetRows(workbook.GetSheetName(0))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := len(rows) == 2; got != tc.visible {
+					t.Fatalf("export has data = %v, want %v", got, tc.visible)
+				}
+				if tc.values.Has("q") {
+					rec := serveRefOptions(t, s, cat.Name, tc.values.Encode(), tc.user)
+					var result struct {
+						Items []map[string]any
+						Total int
+					}
+					if err := json.Unmarshal(rec.Body.Bytes(), &result); rec.Code != http.StatusOK || err != nil {
+						t.Fatalf("picker: status=%d error=%v", rec.Code, err)
+					}
+					want := 0
+					if tc.visible {
+						want = 1
+					}
+					if len(result.Items) != want || result.Total != want {
+						t.Fatalf("picker has %d rows and total %d, want %d", len(result.Items), result.Total, want)
+					}
+				}
+			})
+		}
+	})
 }
 
 // План 88E: защищённое поле в простой колонке выборки маскируется в результате

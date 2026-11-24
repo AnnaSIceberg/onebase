@@ -9,11 +9,11 @@ import (
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
-// TestPageList_HasActionsButton — smoke-тест плана 41: страница списка
+// TestPageList_LegacyHasActionsButton — smoke-тест плана 41: страница списка
 // рендерится и содержит кнопку «Действия» на панели (id="list-actions-btn"),
 // а JS-runtime списка живёт в /static/ui.js, читает JSON-конфиг страницы и
 // вызывается через data-ob-* вместо inline handlers.
-func TestPageList_HasActionsButton(t *testing.T) {
+func TestPageList_LegacyHasActionsButton(t *testing.T) {
 	ent := &metadata.Entity{
 		Name: "Контрагент",
 		Kind: metadata.KindCatalog,
@@ -27,6 +27,7 @@ func TestPageList_HasActionsButton(t *testing.T) {
 	}
 
 	data := map[string]any{
+		"LegacyEntityUI":   true,
 		"Entity":           ent,
 		"Rows":             rows,
 		"Params":           storage.ListParams{},
@@ -85,14 +86,14 @@ func TestPageList_HasActionsButton(t *testing.T) {
 	}
 }
 
-// TestPageList_ActionsButtonStartsInactive — на только что открытом списке
+// TestPageList_LegacyActionsButtonStartsInactive — на только что открытом списке
 // строка не выбрана, поэтому кнопка «Действия» приходит с сервера уже
 // приглушённой (aria-disabled) и с подсказкой-причиной в title. Именно
 // серверная разметка, а не JS: если состояние ставить только скриптом, кнопка
 // успевает мигнуть активной. Прятать кнопку нельзя — тогда её не было бы на
 // каждом первом открытии списка и о ней бы просто не узнали, поэтому тест
 // заодно следит, что кнопка в разметке ЕСТЬ.
-func TestPageList_ActionsButtonStartsInactive(t *testing.T) {
+func TestPageList_LegacyActionsButtonStartsInactive(t *testing.T) {
 	ent := &metadata.Entity{
 		Name: "Контрагент",
 		Kind: metadata.KindCatalog,
@@ -101,6 +102,7 @@ func TestPageList_ActionsButtonStartsInactive(t *testing.T) {
 		},
 	}
 	data := map[string]any{
+		"LegacyEntityUI":   true,
 		"Entity":           ent,
 		"Rows":             []map[string]any{{"id": "11111111-1111-1111-1111-111111111111", "Наименование": "ООО Ромашка"}},
 		"Params":           storage.ListParams{},

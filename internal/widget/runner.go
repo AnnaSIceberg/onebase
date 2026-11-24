@@ -90,6 +90,7 @@ type FilterControl struct {
 	Kind    string // string | number | date | bool | select | reference
 	Current string
 	Options []FilterOption
+	Default string
 }
 
 // FilterOption — вариант select-контрола (bool/select/reference).
@@ -762,14 +763,22 @@ func (r *Runner) runQuery(ctx context.Context, w *metadata.Widget, params map[st
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	usePeriodBoundary := false
+	for _, filter := range w.Filters {
+		if filter.Type == "date" && filter.PeriodEnd {
+			usePeriodBoundary = true
+			break
+		}
+	}
 	compiled, err := query.Compile(w.Query, query.CompileOpts{
-		Params:      params,
-		Entities:    r.Reg.Entities(),
-		Registers:   r.Reg.Registers(),
-		InfoRegs:    r.Reg.InfoRegisters(),
-		AccountRegs: r.Reg.AccountRegisters(),
-		RowFilters:  rowFilters,
-		Dialect:     r.Store.Dialect(),
+		Params:                         params,
+		Entities:                       r.Reg.Entities(),
+		Registers:                      r.Reg.Registers(),
+		InfoRegs:                       r.Reg.InfoRegisters(),
+		AccountRegs:                    r.Reg.AccountRegisters(),
+		RowFilters:                     rowFilters,
+		Dialect:                        r.Store.Dialect(),
+		NormalizeEntityDateComparisons: usePeriodBoundary,
 	})
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("compile: %w", err)

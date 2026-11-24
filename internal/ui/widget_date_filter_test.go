@@ -152,3 +152,62 @@ func TestWidgetDateFilterLocalMidnightBothDialects(t *testing.T) {
 		}
 	})
 }
+
+func TestWidgetDateDefaultAndExplicitClearHTTP(t *testing.T) {
+	loc := withMoscowLocal(t)
+	ctx := context.Background()
+	db, err := storage.ConnectSQLite(ctx, filepath.Join(t.TempDir(), "widget-period.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	entity, w := dateFilterWidget()
+	w.Filters[0].Default = "{{year_start}}"
+	w.Filters[1].PeriodEnd = true
+	w.Query = strings.Replace(w.Query, "Срок = &Ровно", "Срок < &Ровно", 1)
+	if err := db.Migrate(ctx, []*metadata.Entity{entity}); err != nil {
+		t.Fatal(err)
+	}
+	year := time.Now().Year()
+	for title, date := range map[string]time.Time{
+		"new-year-order":       time.Date(year, time.January, 1, 0, 0, 0, 0, loc),
+		"first-fraction-order": time.Date(year, time.January, 1, 0, 0, 0, 1000, loc),
+		"next-fraction-order":  time.Date(year, time.January, 2, 0, 0, 0, 1000, loc),
+		"old-year-order":       time.Date(year-1, time.December, 31, 23, 0, 0, 0, loc),
+		"last-of-day-order":    time.Date(year, time.January, 1, 23, 59, 59, 999999000, loc),
+		"next-midnight-order":  time.Date(year, time.January, 2, 0, 0, 0, 0, loc),
+	} {
+		if err := db.Upsert(ctx, entity.Name, uuid.New(), map[string]any{"Тема": title, "Срок": date.UTC().Format("2006-01-02T15:04:05.000000Z")}, entity); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reg := runtime.NewRegistry()
+	reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{entity}})
+	reg.LoadWidgets([]*metadata.Widget{w})
+	s := &Server{reg: reg, store: db, widgetCache: widget.NewCache(time.Minute), messages: NewMessageStore()}
+	router := chi.NewRouter()
+	s.Mount(router)
+	for _, tc := range []struct {
+		name, suffix                 string
+		wantOld, excludeNextMidnight bool
+	}{
+		{name: "omitted uses start of current year"},
+		{name: "empty clears the start of current year", suffix: "?" + widgetFilterKey(w.Name, "С") + "=", wantOld: true},
+		{name: "period end includes whole day", suffix: "?" + widgetFilterKey(w.Name, "Ровно") + "=" + time.Date(year, time.January, 1, 0, 0, 0, 0, loc).Format("2006-01-02"), excludeNextMidnight: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/ui/_widget/"+urlEscape(w.Name)+tc.suffix, nil)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			body := rec.Body.String()
+			if rec.Code != http.StatusOK || !strings.Contains(body, "new-year-order") ||
+				strings.Contains(body, "old-year-order") != tc.wantOld ||
+				!strings.Contains(body, "last-of-day-order") ||
+				!strings.Contains(body, "first-fraction-order") ||
+				strings.Contains(body, "next-fraction-order") == tc.excludeNextMidnight ||
+				strings.Contains(body, "next-midnight-order") == tc.excludeNextMidnight {
+				t.Fatalf("unexpected period result: status=%d body=%s", rec.Code, body)
+			}
+		})
+	}
+}

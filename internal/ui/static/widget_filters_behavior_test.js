@@ -140,3 +140,23 @@ test('popstate восстанавливает значение контрола 
   assert.equal(app.__selectA.value, 'abc');
   assert.equal(app.__cardA.getAttribute('data-widget-url'), '/ui/_widget/A?' + KEY_A + '=abc');
 });
+
+test('period reset keeps explicit empty dates and back restores the default', () => {
+  const app = setup('');
+  const date = app.__selectA;
+  date.tagName = 'INPUT';
+  date.setAttribute('data-ob-filter-default', '2026-01-01');
+  date.value = '2026-07-01';
+  const reset = element('button', { 'data-ob-filter-reset': '' }, app.__cardA);
+  app.__fire('click', { target: reset });
+  assert.equal(date.value, '');
+  assert.equal(new URLSearchParams(app.location.search).get(KEY_A), '');
+  assert.equal(app.__cardA.getAttribute('data-widget-url'), '/ui/_widget/A?' + KEY_A + '=');
+
+  app.__fireWindow('popstate');
+  assert.equal(date.value, '');
+  app.location = {search: '', pathname: '/ui/'};
+  app.__fireWindow('popstate');
+  assert.equal(date.value, '2026-01-01');
+  assert.equal(app.__cardA.getAttribute('data-widget-url'), '/ui/_widget/A?' + KEY_A + '=2026-01-01');
+});

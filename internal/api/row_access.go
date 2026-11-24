@@ -36,6 +36,9 @@ func (h *handler) applyRowFilter(ctx context.Context, entity *metadata.Entity, o
 		params.RowFilter = dec.Predicate
 	}
 	params.RowFilterEvaluated = true // план 79F: строковый доступ вычислен
+	if op == "read" && (params.Search != "" || len(params.Filters) > 0) {
+		params.PrivateListFields = access.ListPrivateFields(auth.UserFromContext(ctx), entity)
+	}
 	return params, nil
 }
 

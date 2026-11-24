@@ -183,6 +183,24 @@ func FieldDecisions(u *auth.User, kind, entity string, meta *metadata.Entity) ma
 	return out
 }
 
+// ListPrivateFields names masked fields that must not participate in list search.
+func ListPrivateFields(u *auth.User, entity *metadata.Entity) map[string]bool {
+	if entity == nil {
+		return nil
+	}
+	kind := string(entity.Kind)
+	var protected map[string]bool
+	for field, decision := range FieldDecisions(u, kind, entity.Name, entity) {
+		if decision.Hidden() || (decision.Masked() && FieldDiscloseDenied(u, kind, entity.Name, field)) {
+			if protected == nil {
+				protected = make(map[string]bool)
+			}
+			protected[fieldKey(field)] = true
+		}
+	}
+	return protected
+}
+
 // HasFieldPolicy reports whether reading entity would mask or hide any field for
 // this user. Used by the fail-closed report/AI gate and the storage chokepoint.
 func HasFieldPolicy(u *auth.User, kind, entity string, meta *metadata.Entity) bool {

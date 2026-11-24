@@ -393,6 +393,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"ownFormCloseButton":             ownFormCloseButton,
 		"appFormButtonClass":             appFormButtonClass,
 		"formButtonPrimary":              formButtonPrimary,
+		"formTextareaRows":               formTextareaRows,
 		"enhancedTableLayout":            enhancedTableLayout,
 		"effectiveFormElementReadOnly":   effectiveFormElementReadOnly,
 		"effectiveFormElementRequired":   effectiveFormElementRequired,
@@ -439,7 +440,8 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		},
 		"isRef":              func(t any) bool { return strings.HasPrefix(fmt.Sprintf("%v", t), "reference:") },
 		"isEnum":             func(t any) bool { return strings.HasPrefix(fmt.Sprintf("%v", t), "enum:") },
-		"tileView":           resolveTileView,
+		"tileView":           resolveDisplayTileView,
+		"tileValue":          tileValue,
 		"listColumns":        resolveListColumns,
 		"listColumnFields":   listColumnFields,
 		"defaultListColumns": func(e *metadata.Entity) []listColumnUI { return listSettingsColumns(e, nil) },
@@ -455,15 +457,6 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 			return strings.Join(e.ListRefreshOn, " ")
 		},
 		"treeColumn": isTreeListColumn,
-		"hasValue": func(v any) bool {
-			if v == nil {
-				return false
-			}
-			if s, ok := v.(string); ok {
-				return s != ""
-			}
-			return true
-		},
 		"enumLabel": func(labels map[string]map[string]string, field, value string) string {
 			if m, ok := labels[field]; ok {
 				if lbl, ok := m[value]; ok && lbl != "" {
@@ -2238,6 +2231,8 @@ body:not([data-ob-legacy-entity-ui]) .btn:is(.btn-primary,.btn-app-primary):disa
 .btn-command.btn-command-create{border-radius:50%;background:#15803d;color:#fff}
 .btn-command.btn-command-create:hover{background:#166534}
 .btn-document-post{background:#dcfce7;color:#166534}.btn-document-post:hover{background:#bbf7d0}
+.btn-list-cell-filter{background:#dbeafe;color:#1d4ed8}.btn-list-cell-filter:hover{background:#bfdbfe}
+.btn-list-clear-filter{background:#ffedd5;color:#9a3412}.btn-list-clear-filter:hover{background:#fed7aa}
 .btn-document-unpost{background:#ffedd5;color:#9a3412}.btn-document-unpost:hover{background:#fed7aa}
 .btn-command-copy{background:#dbeafe;color:#1d4ed8}.btn-command-copy:hover{background:#bfdbfe}
 .btn-command-mark{background:#fee2e2;color:#b91c1c}.btn-command-mark:hover{background:#fecaca}
@@ -2404,6 +2399,9 @@ th.ob-ls-th{position:relative}
 th.ob-ls-th.ob-ls-drop{box-shadow:inset 3px 0 0 #3b82f6}
 .ob-ls-resize{position:absolute;top:0;right:-3px;bottom:0;width:7px;cursor:col-resize;z-index:1}
 .ob-ls-resize:hover,.ob-ls-resize.dragging{background:rgba(59,130,246,.35)}
+.ob-list-settings-scroll{max-height:42vh;overflow:auto;overscroll-behavior:contain}
+.ob-list-settings-scroll thead th{position:sticky;top:0;z-index:1}
+.ob-stream-main>.ob-list-settings[open]{flex-shrink:0}
 .ob-list-settings tr.ls-col-row{cursor:grab}
 .ob-list-settings tr.ls-col-row.ob-ls-drop td{box-shadow:inset 0 2px 0 #3b82f6}
 .ls-grip{color:#94a3b8;cursor:grab;user-select:none}
@@ -2705,6 +2703,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 /* List-widget filters share a row by default and wrap only when it is full. */
 .w-card-list .w-filters{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:flex-end;margin-bottom:8px}
 .w-card-list .w-filter{display:flex;flex-direction:column;flex:1 1 110px;gap:2px;min-width:0;max-width:220px;margin:0;font-size:12px;line-height:16px}
+.w-card-list .w-filter-date{flex:0 1 120px;max-width:120px}
 .w-card-list .w-filter>span{min-width:0;overflow-wrap:anywhere}
 .w-card-list .w-filter input,.w-card-list .w-filter select{box-sizing:border-box;min-width:0;width:100%;max-width:100%;height:30px;padding:4px 6px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px}
 .w-card-list .w-filter-reset{flex:0 0 auto;max-width:100%;min-height:30px;padding:4px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#f1f5f9;color:#334155;cursor:pointer}
@@ -2777,10 +2776,10 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
   {{if .Filters}}
   <div class="w-filters">
     {{range .Filters}}{{$f := .}}
-    <label class="w-filter"><span>{{$f.Label}}</span>
-    {{if or (eq $f.Kind "bool") (eq $f.Kind "select") (eq $f.Kind "reference")}}<select data-ob-filter="{{$f.Key}}">
+    <label class="w-filter{{if eq $f.Kind "date"}} w-filter-date{{end}}"><span>{{$f.Label}}</span>
+    {{if or (eq $f.Kind "bool") (eq $f.Kind "select") (eq $f.Kind "reference")}}<select data-ob-filter="{{$f.Key}}"{{if $f.Default}} data-ob-filter-default="{{$f.Default}}"{{end}}>
       {{range $f.Options}}<option value="{{.Value}}"{{if eq .Value $f.Current}} selected{{end}}>{{.Label}}</option>{{end}}
-    </select>{{else}}<input type="{{if eq $f.Kind "date"}}date{{else}}text{{end}}"{{if eq $f.Kind "number"}} inputmode="decimal"{{end}} data-ob-filter="{{$f.Key}}" value="{{$f.Current}}">{{end}}
+    </select>{{else}}<input type="{{if eq $f.Kind "date"}}date{{else}}text{{end}}"{{if eq $f.Kind "number"}} inputmode="decimal"{{end}} data-ob-filter="{{$f.Key}}"{{if $f.Default}} data-ob-filter-default="{{$f.Default}}"{{end}} value="{{$f.Current}}">{{end}}
     </label>
     {{end}}
     <button type="button" class="w-filter-reset" data-ob-filter-reset>{{.ResetLabel}}</button>
@@ -3041,8 +3040,15 @@ const tplList = `
     {{end}}
     {{/* На свежем списке строка не выбрана — кнопка приходит с сервера уже
          приглушённой, дальше её состояние ведёт ui.js по выделению. */}}
-    <button type="button" id="list-actions-btn" class="btn btn-secondary" data-ob-list-actions aria-disabled="true" title="{{t $.Lang "Сначала выберите строку списка"}}">⚙ {{t $.Lang "Действия"}} ▾</button>
+    {{if .LegacyEntityUI}}<button type="button" id="list-actions-btn" class="btn btn-secondary" data-ob-list-actions aria-disabled="true" title="{{t $.Lang "Сначала выберите строку списка"}}">⚙ {{t $.Lang "Действия"}} ▾</button>{{end}}
     {{range .ProcessorLinks}}<a class="btn btn-secondary" href="{{.URL}}">{{.Title}}</a>{{end}}
+    {{if and (not .LegacyEntityUI) (not .TreeView) (not .TilesView)}}
+    {{$apply := t $.Lang "Отбор по значению текущей ячейки"}}{{$clear := t $.Lang "Снять отбор"}}
+    <div class="entity-command-group">
+      <span class="entity-command" title="{{$apply}}"><button type="button" class="btn btn-command btn-list-cell-filter" aria-label="{{$apply}}" data-ob-cell-filter disabled>{{lucideIcon "funnel"}}</button></span>
+      <span class="entity-command" title="{{$clear}}"><button type="button" class="btn btn-command btn-list-clear-filter" aria-label="{{$clear}}" data-ob-cell-filter-clear>{{lucideIcon "funnel-x"}}</button></span>
+    </div>
+    {{end}}
     <a class="btn btn-sm" href="/ui/{{lower (str .Entity.Kind)}}/{{lower .Entity.Name}}/excel{{listExcelSuffix .Params .ListFormOff .ListOrderQuery}}" style="background:#16a34a;color:#fff" title="{{t $.Lang "Скачать Excel"}}">{{t $.Lang "Excel ↓"}}</a>
   </div>
 </div>
@@ -3138,6 +3144,7 @@ const tplList = `
   <form method="POST" action="{{.ListSettingsURL}}/save" data-ob-ls-before-submit style="padding:0 16px 12px">
     <input type="hidden" name="__return" value="{{.RequestURI}}">
     <input type="hidden" name="__list_settings" data-ob-ls-json value="{{.ListSettingsJSON}}">
+    {{if not .LegacyEntityUI}}<div class="ob-list-settings-scroll" tabindex="0" role="region" aria-label="{{t $.Lang "Настройка списка"}}">{{end}}
     <table class="tbl-plain" style="width:auto;margin:8px 0 12px">
       <thead><tr>
         <th style="text-align:left">{{t $.Lang "Поле"}}</th>
@@ -3159,6 +3166,7 @@ const tplList = `
       {{end}}
       </tbody>
     </table>
+    {{if not .LegacyEntityUI}}</div>{{end}}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-primary" type="submit">{{t $.Lang "Сохранить"}}</button>
       <button class="btn" type="submit" formaction="{{.ListSettingsURL}}/reset">{{t $.Lang "Стандартные настройки"}}</button>
@@ -3191,7 +3199,7 @@ const tplList = `
   data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
 ><thead><tr>
   {{range $treeCols}}<th>{{.DisplayName $.Lang}}</th>{{end}}
-  {{if not $.Cfg.HideListRowActions}}<th style="width:90px"></th>{{end}}
+  {{if and $.LegacyEntityUI (not $.Cfg.HideListRowActions)}}<th style="width:90px"></th>{{end}}
 </tr></thead><tbody>
 {{range .TreeRows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}{{$depth := index $row "_depth"}}
 {{$rowStyle := listRowStyle $row}}<tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer{{with $rowStyle}};{{.}}{{end}}"{{else}}style="cursor:pointer{{with $rowStyle}};{{.}}{{end}}"{{end}}{{if $rowStyle}} class="ob-row-styled"{{end}}
@@ -3223,7 +3231,7 @@ const tplList = `
     {{else if isEnum (str $col.Type)}}<td>{{enumLabel $.EnumLabels $col.Name (str (index $row $col.Name))}}</td>
     {{else}}<td>{{fmtCell (index $row $col.Name)}}</td>{{end}}
   {{end}}
-  {{if not $.Cfg.HideListRowActions}}
+  {{if and $.LegacyEntityUI (not $.Cfg.HideListRowActions)}}
   <td>
     {{if $isFolder}}
       <a class="btn btn-sm btn-secondary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "view" "" "parent" (str (index $row "id"))}}">{{t $.Lang "▶ Войти"}}</a>
@@ -3241,7 +3249,7 @@ const tplList = `
 {{else if .TilesView}}
 {{/* ===== TILES VIEW (плитка) ===== */}}
 {{if .Rows}}
-{{$tile := tileView .Entity}}
+{{$tile := tileView .Entity $.Lang}}
 <div class="tile-grid" role="listbox"{{if .StreamDir}} data-stream-rows{{end}}
   data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
   data-ob-row-subsystem="{{$.CurrentSubsystem}}"
@@ -3260,25 +3268,27 @@ const tplList = `
   data-marked="{{if index $row "deletion_mark"}}1{{end}}"
   data-activity-inactive="{{if index $row "_activity_inactive"}}1{{end}}"
 >
-  {{range $f := $tile.ImageFields}}{{$iv := index $row $f.Name}}
-  <div class="tile-img"{{if $iv}} style="background-image:url('/ui/_image/{{$iv}}')"{{end}}>{{if not $iv}}🖼{{end}}</div>
-  {{end}}
-  {{with $tile.TitleField}}
-    <div class="tile-title">{{if $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{fmtCell (index $row .Name)}}{{if index $row "_is_predefined"}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}{{if eq (str $.Entity.Kind) "document"}}{{if index $row "posted"}} <span class="tile-posted" title="{{t $.Lang "Проведён"}}">✓</span>{{end}}{{end}}</div>
-  {{end}}
-  {{with $tile.SubtitleField}}{{$v := index $row .Name}}{{if hasValue $v}}
-    <div class="tile-subtitle">{{if eq (str .Type) "date"}}{{fmtDate $v}}{{else if eq (str .Type) "bool"}}{{fmtBool $v}}{{else if isRichText (str .Type)}}{{richPlain $v}}{{else if isEnum (str .Type)}}{{enumLabel $.EnumLabels .Name (str $v)}}{{else}}{{fmtCell $v}}{{end}}</div>
+  {{range $f := $tile.ImageFields}}{{with tileValue $f (index $row $f.Name) $.EnumLabels}}
+  <div class="tile-img" style="background-image:url('/ui/_image/{{.}}')"></div>
   {{end}}{{end}}
-  {{range $f := $tile.Fields}}{{$v := index $row $f.Name}}{{if hasValue $v}}
-    <div class="tile-field"><span class="tile-label">{{$f.DisplayName $.Lang}}:</span> {{if eq (str $f.Type) "date"}}<span class="tile-val">{{fmtDate $v}}</span>{{else if eq (str $f.Type) "bool"}}<span class="tile-val">{{fmtBool $v}}</span>{{else if isRichText (str $f.Type)}}<span class="tile-val">{{richPlain $v}}</span>{{else if isEnum (str $f.Type)}}<span class="tile-val">{{enumLabel $.EnumLabels $f.Name (str $v)}}</span>{{else if isImage (str $f.Type)}}<span class="tile-val">{{if $v}}<img src="/ui/_image/{{$v}}" style="height:28px;width:28px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}—{{end}}</span>{{else}}<span class="tile-val">{{fmtCell $v}}</span>{{end}}</div>
+  {{with $tile.TitleField}}{{$v := tileValue . (index $row .Name) $.EnumLabels}}
+    {{if or $v $.Entity.Hierarchical (index $row "_is_predefined") (index $row "posted")}}
+    <div class="tile-title">{{if $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{$v}}{{if index $row "_is_predefined"}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}{{if eq (str $.Entity.Kind) "document"}}{{if index $row "posted"}} <span class="tile-posted" title="{{t $.Lang "Проведён"}}">✓</span>{{end}}{{end}}</div>
+    {{end}}
+  {{end}}
+  {{with $tile.SubtitleField}}{{with tileValue . (index $row .Name) $.EnumLabels}}
+    <div class="tile-subtitle">{{.}}</div>
   {{end}}{{end}}
-  <div class="tile-foot">
+  {{range $f := $tile.Fields}}{{with tileValue $f (index $row $f.Name) $.EnumLabels}}
+    <div class="tile-field"><span class="tile-label">{{$f.DisplayName $.Lang}}:</span> <span class="tile-val">{{if isImage (str $f.Type)}}<img src="/ui/_image/{{.}}" style="height:28px;width:28px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}{{.}}{{end}}</span></div>
+  {{end}}{{end}}
+  {{if $.LegacyEntityUI}}<div class="tile-foot">
     {{if and $isFolder $.Entity.Hierarchical}}
       <a class="btn btn-sm btn-secondary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}">{{t $.Lang "▶ Войти"}}</a>
     {{else}}
       <a class="btn btn-sm btn-primary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}/{{index $row "id"}}{{if $.CurrentSubsystem}}?subsystem={{$.CurrentSubsystem}}{{end}}">{{t $.Lang "Открыть"}}</a>
     {{end}}
-  </div>
+  </div>{{end}}
 </div>{{end}}
 </div>
 {{else}}
@@ -3286,15 +3296,17 @@ const tplList = `
 {{end}}
 {{else}}
 {{/* ===== LIST VIEW (default) ===== */}}
+{{if .LegacyEntityUI}}
 <div {{if .Cfg.UIEnhancements}}class="ob-list-cell-filters"{{end}} style="display:flex;gap:8px;margin-bottom:8px">
 <button type="button" class="btn btn-sm btn-secondary" data-ob-cell-filter disabled>{{t $.Lang "Отбор по значению текущей ячейки"}}</button>
 <button type="button" class="btn btn-sm btn-secondary" data-ob-cell-filter-clear>{{t $.Lang "Снять отбор"}}</button>
 </div>
+{{end}}
 {{if .Rows}}
 {{$fixed := listColumnsFixed $listCols}}
 <div{{if not .StreamDir}} style="overflow-x:auto"{{end}}>
-<table data-ob-list-table data-ob-ls-save="{{.ListSettingsURL}}/save" data-ob-ls-state="{{.ListSettingsJSON}}"{{if $fixed}} class="ob-list-fixed" style="width:{{listTableWidth $listCols (eq (str .Entity.Kind) "document") $.SearchAll}}px"{{end}}>
-{{if $fixed}}<colgroup>{{if eq (str .Entity.Kind) "document"}}<col style="width:36px">{{end}}{{range $listCols}}<col data-ob-ls-col="{{.Field.Name}}" style="width:{{listColumnWidth .}}px">{{end}}{{if $.SearchAll}}<col style="width:160px">{{end}}<col style="width:90px"></colgroup>{{end}}
+<table data-ob-list-table data-ob-ls-save="{{.ListSettingsURL}}/save" data-ob-ls-state="{{.ListSettingsJSON}}"{{if $fixed}} class="ob-list-fixed" style="width:{{listTableWidth $listCols (eq (str .Entity.Kind) "document") $.SearchAll $.LegacyEntityUI}}px"{{end}}>
+{{if $fixed}}<colgroup>{{if eq (str .Entity.Kind) "document"}}<col style="width:36px">{{end}}{{range $listCols}}<col data-ob-ls-col="{{.Field.Name}}" style="width:{{listColumnWidth .}}px">{{end}}{{if $.SearchAll}}<col style="width:160px">{{end}}{{if $.LegacyEntityUI}}<col style="width:90px">{{end}}</colgroup>{{end}}
 <thead><tr>
   {{if eq (str .Entity.Kind) "document"}}<th style="width:36px">✓</th>{{end}}
   {{range $listCols}}
@@ -3305,7 +3317,7 @@ const tplList = `
   </th>
   {{end}}
   {{if $.SearchAll}}<th>{{t $.Lang "Группа"}}</th>{{end}}
-  {{if not $.Cfg.HideListRowActions}}<th style="width:90px"></th>{{end}}
+  {{if and $.LegacyEntityUI (not $.Cfg.HideListRowActions)}}<th style="width:90px"></th>{{end}}
 </tr></thead><tbody id="list-body"
   data-ob-row-base="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}"
   data-ob-row-subsystem="{{$.CurrentSubsystem}}"
@@ -3338,7 +3350,7 @@ const tplList = `
     {{else}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{if and (eq .Name "Наименование") $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{fmtCell (index $row .Name)}}{{if and (eq .Name "Наименование") (index $row "_is_predefined")}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}</td>{{end}}
   {{end}}
   {{if $.SearchAll}}<td style="white-space:nowrap" data-ob-list-group>{{with index $row "_group_id"}}<a href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}?parent={{.}}{{if $.CurrentSubsystem}}&subsystem={{$.CurrentSubsystem}}{{end}}">📁 {{index $row "_group_label"}}</a>{{else}}<span style="color:#94a3b8">{{t $.Lang "Корень"}}</span>{{end}}</td>{{end}}
-  {{if not $.Cfg.HideListRowActions}}
+  {{if and $.LegacyEntityUI (not $.Cfg.HideListRowActions)}}
   <td>
     {{if and $isFolder $.Entity.Hierarchical}}
       <a class="btn btn-sm btn-secondary" href="/ui/{{lower (str $.Entity.Kind)}}/{{lower $.Entity.Name}}{{listURL $.Query "parent" (str (index $row "id"))}}">{{t $.Lang "▶ Войти"}}</a>
@@ -3379,7 +3391,7 @@ const tplList = `
 </div>
 </main>
 <script type="application/json" id="ob-list-config">{{jsJSON (dict
-  "hideRowActions" .Cfg.HideListRowActions
+  "hideRowActions" (or (not .LegacyEntityUI) .Cfg.HideListRowActions)
   "isAdmin" .IsAdmin
   "canWrite" .CanWrite
   "canDelete" .CanDelete
@@ -4927,6 +4939,7 @@ const tplJournal = `
   <form method="POST" action="/ui/journal/{{lower .Journal.Name}}/settings/save" data-ob-jl-before-submit>
     <input type="hidden" name="__return" value="{{.RequestURI}}">
     <input type="hidden" name="__journal_settings" id="jl-settings-json" value="{{.JournalSettingsJSON}}">
+    {{if .Cfg.UIEnhancements}}<div class="ob-list-settings-scroll" tabindex="0" role="region" aria-label="{{t $.Lang "Настройка списка"}}">{{end}}
     <table style="width:auto;margin-bottom:12px">
       <thead><tr>
         <th style="text-align:left">{{t $.Lang "Поле"}}</th>
@@ -4946,6 +4959,7 @@ const tplJournal = `
       {{end}}
       </tbody>
     </table>
+    {{if .Cfg.UIEnhancements}}</div>{{end}}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-primary" type="submit">{{t $.Lang "Сохранить"}}</button>
       <button class="btn" type="submit" formaction="/ui/journal/{{lower .Journal.Name}}/settings/reset"{{if not .JournalSettingsActive}} disabled{{end}}>{{t $.Lang "Стандартные настройки"}}</button>
@@ -4961,7 +4975,7 @@ const tplJournal = `
 <div style="overflow-x:auto"{{if .StreamDir}} {{template "list-stream-attrs" .}}{{end}}>
 <table><thead><tr>
   {{range .JournalColumns}}<th>{{.DisplayLabel $.Lang}}</th>{{end}}
-  {{if not .Cfg.HideListRowActions}}<th style="width:90px"></th>{{end}}
+  {{if and .LegacyEntityUI (not .Cfg.HideListRowActions)}}<th style="width:90px"></th>{{end}}
 </tr></thead>
 <tbody>
 {{range .Rows}}{{$row := .}}
@@ -4973,7 +4987,7 @@ const tplJournal = `
     {{if eq (index $fmts .Field) "date"}}<td style="{{journalCellStyle $row .Field}}">{{fmtDate $v}}</td>
     {{else}}<td style="{{journalCellStyle $row .Field}}">{{$v}}</td>{{end}}
   {{end}}
-  {{if not $.Cfg.HideListRowActions}}<td><a class="btn btn-sm btn-primary" href="/ui/document/{{lower (str (index . "_doc_kind"))}}/{{str (index . "id")}}">{{t $.Lang "Открыть"}}</a></td>{{end}}
+  {{if and $.LegacyEntityUI (not $.Cfg.HideListRowActions)}}<td><a class="btn btn-sm btn-primary" href="/ui/document/{{lower (str (index . "_doc_kind"))}}/{{str (index . "id")}}">{{t $.Lang "Открыть"}}</a></td>{{end}}
 </tr>
 {{end}}
 </tbody></table>

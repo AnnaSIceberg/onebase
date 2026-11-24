@@ -112,13 +112,14 @@ func (v WidgetFilterValue) DisplayLabel(lang string) string {
 // перечитывает из метаданных. Пустое значение передаётся в запрос типизированным
 // nil — семантику «пустого отбора» задаёт сам запрос (&Параметр ЕСТЬ ПУСТО).
 type WidgetFilter struct {
-	Name    string              `yaml:"name"`
-	Label   string              `yaml:"label"`
-	Labels  map[string]string   `yaml:"labels"`
-	Type    string              `yaml:"type"` // string | number | date | bool | select | reference:<Сущность>
-	Param   string              `yaml:"param"`
-	Values  []WidgetFilterValue `yaml:"values,omitempty"` // select
-	Default any                 `yaml:"default,omitempty"`
+	Name      string              `yaml:"name"`
+	Label     string              `yaml:"label"`
+	Labels    map[string]string   `yaml:"labels"`
+	Type      string              `yaml:"type"` // string | number | date | bool | select | reference:<Сущность>
+	Param     string              `yaml:"param"`
+	Values    []WidgetFilterValue `yaml:"values,omitempty"` // select
+	Default   any                 `yaml:"default,omitempty"`
+	PeriodEnd bool                `yaml:"period_end,omitempty"` // date: exclusive next local midnight
 }
 
 // DisplayLabel возвращает подпись фильтра с учётом языка.

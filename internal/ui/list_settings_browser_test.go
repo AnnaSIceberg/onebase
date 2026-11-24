@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -32,7 +33,15 @@ func TestListSettingsBrowserAcceptance(t *testing.T) {
 		{Name: "Сумма", Type: metadata.FieldTypeNumber},
 		{Name: "Комментарий", Type: metadata.FieldTypeString},
 	}}
-	if err := db.Migrate(ctx, []*metadata.Entity{e}); err != nil {
+	entities := []*metadata.Entity{e}
+	for _, name := range []string{"ManyOrders", "ManyCalls", "ManyTasks"} {
+		w := &metadata.Entity{Name: name, Kind: metadata.KindDocument}
+		for i := 1; i <= 46; i++ {
+			w.Fields = append(w.Fields, metadata.Field{Name: fmt.Sprintf("Поле%02d", i), Type: metadata.FieldTypeString})
+		}
+		entities = append(entities, w)
+	}
+	if err := db.Migrate(ctx, entities); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Upsert(ctx, e.Name, uuid.New(), map[string]any{"Клиент": "Ромашка", "Сумма": 100, "Комментарий": "срочно"}, e); err != nil {
@@ -46,8 +55,8 @@ func TestListSettingsBrowserAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg := runtime.NewRegistry()
-	reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{e}})
-	s := New(reg, db, interpreter.New(), repo, Config{}, nil)
+	reg.Load(runtime.LoadOptions{Entities: entities})
+	s := New(reg, db, interpreter.New(), repo, Config{UIEnhancements: true}, nil)
 	router := chi.NewRouter()
 	h := &auth.Handlers{Repo: repo}
 	router.Post("/auth/login", h.LoginJSON)

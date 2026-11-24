@@ -90,8 +90,8 @@ func (h HomeHideOnHome) Hides(name, panelWidget string) bool {
 type HomePage struct {
 	Title   string            `yaml:"title"`
 	Titles  map[string]string `yaml:"titles"`
-	Layout  string            `yaml:"layout"` // grid | rows (default rows)
-	Rows    []HomePageRow     `yaml:"rows"`
+	Layout  string            `yaml:"layout"`  // grid | rows (default rows)
+	Rows    []HomePageRow     `yaml:"rows"`    // explicit [] suppresses the default widget set
 	Widgets []HomePageWidget  `yaml:"widgets"` // flat list, used when layout=grid
 	// Nav опционально ограничивает левое меню глобальной «Главной» так же, как
 	// contents подсистемы. nil/пусто = плоский список всех читаемых объектов.

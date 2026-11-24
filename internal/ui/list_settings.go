@@ -244,8 +244,11 @@ func listColumnWidth(c listColumnUI) int {
 
 // listTableWidth — ширина таблицы при фиксированной раскладке: сумма колонок
 // и служебных (✓ документа, «Группа» поиска, кнопка «Открыть»).
-func listTableWidth(cols []listColumnUI, document, group bool) int {
-	w := 90
+func listTableWidth(cols []listColumnUI, document, group, rowActions bool) int {
+	w := 0
+	if rowActions {
+		w += 90
+	}
 	if document {
 		w += 36
 	}
