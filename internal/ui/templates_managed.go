@@ -979,14 +979,21 @@ input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#
 .managed-vt-rows>.tp-table thead th{position:sticky;top:0;z-index:1}
 .ob-managed-table,.ob-managed-vt{display:flex;flex-direction:column;min-width:0;max-width:100%}
 .ob-managed-table{--ob-table-paper:#fff;--ob-table-rule:#cbd5e1}
-body[data-theme="dark"] .ob-managed-table{--ob-table-paper:#182336;--ob-table-rule:#475569}
+/* The enhanced table header follows the application-list widget palette. */
+body .ob-managed-table .tp-table th,
+body .ob-managed-table .ob-grid :is(.slick-header-columns,.slick-header-column){background:#dbeafe}
+.ob-managed-table .tp-table th,.ob-managed-table .ob-grid .slick-header-column{color:#0f172a;font-weight:700}
+body .ob-managed-table .tp-table th,
+body .ob-managed-table .ob-grid .slick-header-columns{border-bottom-color:#93c5fd}
 .ob-managed-table-fit{flex:1 0 100%;width:100%}
 .ob-managed-table :is(.ob-grid,.ob-table-rows){order:1;width:100%;box-sizing:border-box;background:var(--ob-table-paper)}
+.ob-managed-table :is(.tp-table tbody,.slick-viewport){background:var(--ob-table-paper);color:#0f172a}
 .ob-managed-table .ob-table-rows{position:relative;min-height:120px;border:1px solid var(--ob-table-rule);border-radius:5px}
 .ob-managed-table .ob-table-rows[data-ob-vt-rows]{min-height:0}
 .ob-managed-vt>.ob-table-rows:not([data-ob-fit-grid]){flex:1 1 auto}
 .ob-managed-table .tp-table{display:table;margin-bottom:0;border:0;border-radius:0;overflow:visible}
-.ob-managed-table .tp-table :is(th,td),.ob-managed-table .slick-cell{border-right:1px solid var(--ob-table-rule);border-bottom:1px solid var(--ob-table-rule)}
+.ob-managed-table .tp-table :is(th,td),.ob-managed-table .slick-cell{border-right:1px solid var(--ob-table-rule)}
+.ob-managed-table .tp-table td,.ob-managed-table .slick-cell{border-bottom:1px solid var(--ob-table-rule)}
 .ob-managed-table .ob-table-row-toolbar{align-self:flex-start;margin:0 0 4px!important}
 .ob-managed-table div.ob-table-row-toolbar:not(:has(button)){display:none!important}
 .ob-table-grid-paper{position:absolute;pointer-events:none}
