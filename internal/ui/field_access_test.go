@@ -464,6 +464,23 @@ func TestUI_PrivateFieldsDoNotAffectListSearchOrExcel(t *testing.T) {
 				if got := len(rows) == 2; got != tc.visible {
 					t.Fatalf("export has data = %v, want %v", got, tc.visible)
 				}
+				if tc.values.Has("q") {
+					rec := serveRefOptions(t, s, cat.Name, tc.values.Encode(), tc.user)
+					var result struct {
+						Items []map[string]any
+						Total int
+					}
+					if err := json.Unmarshal(rec.Body.Bytes(), &result); rec.Code != http.StatusOK || err != nil {
+						t.Fatalf("picker: status=%d error=%v", rec.Code, err)
+					}
+					want := 0
+					if tc.visible {
+						want = 1
+					}
+					if len(result.Items) != want || result.Total != want {
+						t.Fatalf("picker has %d rows and total %d, want %d", len(result.Items), result.Total, want)
+					}
+				}
 			})
 		}
 	})

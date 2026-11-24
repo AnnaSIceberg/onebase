@@ -35,19 +35,12 @@ func (s *Server) rowDecisionFor(ctx context.Context, kind, name, op string, meta
 }
 
 func (s *Server) applyRowFilter(w http.ResponseWriter, r *http.Request, entity *metadata.Entity, op string, params storage.ListParams) (storage.ListParams, bool) {
-	dec, err := s.rowDecision(r.Context(), entity, op)
-	if err != nil || !dec.Allowed {
+	filtered, err := s.rowFilterFor(r.Context(), entity, op, params)
+	if err != nil {
 		s.renderForbidden(w, r)
 		return params, false
 	}
-	if !dec.Unrestricted {
-		params.RowFilter = dec.Predicate
-	}
-	params.RowFilterEvaluated = true // план 79F: строковый доступ вычислен
-	if op == "read" && (params.Search != "" || len(params.Filters) > 0) {
-		params.PrivateListFields = access.ListPrivateFields(auth.UserFromContext(r.Context()), entity)
-	}
-	return params, true
+	return filtered, true
 }
 
 // applyListFormFilter добавляет к отбору списка постоянные условия формы
@@ -605,6 +598,9 @@ func (s *Server) rowFilterFor(ctx context.Context, entity *metadata.Entity, op s
 		params.RowFilter = dec.Predicate
 	}
 	params.RowFilterEvaluated = true // план 79F: строковый доступ вычислен
+	if op == "read" && (params.Search != "" || len(params.Filters) > 0) {
+		params.PrivateListFields = access.ListPrivateFields(auth.UserFromContext(ctx), entity)
+	}
 	return params, nil
 }
 
