@@ -6518,14 +6518,24 @@ function obFitSetGridHeight(div, h) {
   var g = (window._obGrids || {})[div.getAttribute('data-sg-tp') || ''];
   if (g && g.grid && g.div === div && div.offsetParent !== null) g.grid.resizeCanvas();
 }
+// Вложенная страница может иметь естественную высоту, хотя внешняя уже
+// подогнана к окну. Ищем ближайшую страницу с выделенной высотой.
+function obFitGridPage(div) {
+  var page = div.closest ? div.closest('.managed-tab-content') : null;
+  while (page) {
+    if (parseFloat(page.style.height) > 0) return page;
+    var parent = page.parentElement;
+    page = parent ? parent.closest('.managed-tab-content') : null;
+  }
+  return null;
+}
 // obFitGridToWindow — fit_window у ТабличнаяЧасть: сетка занимает остаток
 // высоты окна (main), а на подогнанной странице (fit_window у СтраницыФормы) —
 // остаток этой страницы. Шапка колонок у SlickGrid своя и стоит на месте,
 // строки прокручиваются внутри. Не меньше 120px, как у страниц.
 function obFitGridToWindow(div) {
   if (!div || div.offsetParent === null || !div.closest) return;
-  var page = div.closest('.managed-tab-content');
-  var box = page && page.style.height ? page : div.closest('main');
+  var box = obFitGridPage(div) || div.closest('main');
   if (!box) return;
   var other = obFitNaturalHeight(box) - div.offsetHeight;
   obFitSetGridHeight(div, Math.max(120, Math.floor(box.clientHeight - other)));
@@ -6555,8 +6565,15 @@ function obEqualizeAllTabs() {
     obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(function (c) { c.style.height = ''; c.style.overflowY = ''; });
   });
   fitGroups.forEach(obFitGroupToWindow);
-  document.querySelectorAll('[data-ob-fit-grid="1"]').forEach(obFitGridToWindow);
+  var pageGrids = [];
+  document.querySelectorAll('[data-ob-fit-grid="1"]').forEach(function (div) {
+    if (obFitGridPage(div)) pageGrids.push(div);
+    else obFitGridToWindow(div);
+  });
   if (window.obTrimFitOverflow) window.obTrimFitOverflow(fitGroups);
+  // Pages now have their final height. Fit their grids once, without resizing
+  // the canvas to a temporary height that the overflow pass would undo.
+  pageGrids.forEach(obFitGridToWindow);
 }
 window.obEqualizeAllTabs = obEqualizeAllTabs;
 // obTrimFitOverflow — сверка подгонки с тем, что видит браузер. Подгонка
@@ -6582,10 +6599,8 @@ function obTrimFitOverflow(groups) {
   };
   fitted.forEach(function (tabs) { obManagedOwnTabParts(tabs, '.managed-tab-content').forEach(shrink); });
   if (groups) groups.forEach(shrink);
-  // Сетка на остатке main (не на подогнанной странице — её ужали выше).
   document.querySelectorAll('[data-ob-fit-grid="1"]').forEach(function (div) {
-    var page = div.closest ? div.closest('.managed-tab-content') : null;
-    if (page && page.style.height) return;
+    if (obFitGridPage(div)) return;
     var h = parseFloat(div.style.height);
     if (h > 0) obFitSetGridHeight(div, Math.max(120, Math.floor(h - over)));
   });
