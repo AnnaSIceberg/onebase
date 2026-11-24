@@ -38,6 +38,7 @@ type Cell struct {
 	Bold             bool
 	Italic           bool
 	Underline        bool
+	XLSXWrapExplicit bool
 	WrapText         bool
 	FontSize         int
 	FontFamily       string
@@ -46,7 +47,8 @@ type Cell struct {
 	// Border — legacy-пресет рамки ("all"/""/"thin"/"thick"/"none"). Если задана
 	// хотя бы одна из per-side границ (BorderLeft/Top/Right/Bottom), она имеет
 	// приоритет над этим пресетом при рендере (html.go/pdf.go).
-	Border string
+	Border      string
+	BorderColor string
 	// BorderLeft/Top/Right/Bottom — per-side рамки ("" = не задана, иначе
 	// none/thin/medium/thick). Заполняет декларативный движок из LayoutCell.Borders.
 	BorderLeft   string

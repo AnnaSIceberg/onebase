@@ -97,7 +97,8 @@ func workbookDocumentBudget(doc *Document) (cells, objects, text int64, err erro
 		}
 		text += int64(len(cell.Text)) + int64(len(cell.DisplayText())) + int64(len(cell.RichHTML)) +
 			int64(len(cell.FontFamily)) + int64(len(cell.Format)) + int64(len(cell.Picture)) +
-			int64(len(cell.TextColor)) + int64(len(cell.BackColor))
+			int64(len(cell.TextColor)) + int64(len(cell.BackColor)) +
+			int64(len(cell.Border)) + int64(len(cell.BorderColor))
 		if text > MaxWorkbookTextBytes {
 			return 0, 0, 0, fmt.Errorf("XLSX document exceeds the text byte budget")
 		}

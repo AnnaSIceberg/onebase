@@ -231,7 +231,10 @@ func layoutCellToSheet(ld LayoutCell) *sheet.Cell {
 	cell.Bold = ld.Bold
 	cell.Italic = ld.Italic
 	cell.Underline = ld.Underline
-	cell.WrapText = ld.WrapText
+	if ld.WrapText != nil {
+		cell.WrapText = *ld.WrapText
+		cell.XLSXWrapExplicit = true
+	}
 	if ld.Align != "" {
 		cell.Align = strings.ToLower(ld.Align)
 	}
@@ -262,6 +265,7 @@ func layoutCellToSheet(ld LayoutCell) *sheet.Cell {
 	if ld.Picture != "" {
 		cell.Picture = ld.Picture
 	}
+	cell.BorderColor = ld.BorderColor
 	// Границы: per-side приоритетнее legacy-пресета.
 	if !ld.Borders.IsZero() {
 		cell.Border = ""

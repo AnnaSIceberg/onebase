@@ -130,6 +130,13 @@ func (a *SpreadsheetDocumentArea) setProperty(field string, v any) {
 				w.Set("расшифровка", v)
 			}
 		}
+	case "имяшрифта", "fontfamily", "граница", "border", "цветграницы", "bordercolor", "переносить", "wraptext":
+		for r := 0; r < rows; r++ {
+			for c := 0; c < cols; c++ {
+				w := &SpreadsheetDocumentCellWrapper{cell: a.Area.GetOrCreateCell(r, c)}
+				w.Set(field, v)
+			}
+		}
 	case "формат", "format":
 		for r := 0; r < rows; r++ {
 			for c := 0; c < cols; c++ {
@@ -363,8 +370,16 @@ func (d *SpreadsheetDocument) CallMethod(name string, args []any) any {
 	case "начатьавтогруппировкустрок", "startautogroupingrows":
 		return nil // Output levels define the hierarchy.
 	case "закончитьавтогруппировкустрок", "endautogroupingrows":
+		level := 1
+		if len(args) > 0 {
+			value := toFloatOr0(args[0])
+			level = int(value)
+			if level < 1 || level > 7 || float64(level) != value {
+				RaiseUserError("ЗакончитьАвтогруппировкуСтрок: уровень должен быть целым числом от 1 до 7")
+			}
+		}
 		for i := range d.Doc.Groups {
-			if !d.Doc.Groups[i].Closed {
+			if !d.Doc.Groups[i].Closed && d.Doc.Groups[i].Level >= level {
 				d.Doc.Groups[i].End = d.Doc.CurrentRow - 1
 				d.Doc.Groups[i].Closed = true
 			}
@@ -706,6 +721,12 @@ func (w *SpreadsheetDocumentCellWrapper) Get(field string) any {
 		return w.cell.Italic
 	case "размершрифта", "fontsize":
 		return float64(w.cell.FontSize)
+	case "имяшрифта", "fontfamily":
+		return w.cell.FontFamily
+	case "граница", "border":
+		return w.cell.Border
+	case "цветграницы", "bordercolor":
+		return w.cell.BorderColor
 	case "цветфона", "backcolor":
 		return w.cell.BackColor
 	case "цветтекста", "textcolor":
@@ -720,6 +741,7 @@ func (w *SpreadsheetDocumentCellWrapper) Set(field string, v any) {
 	switch strings.ToLower(field) {
 	case "переносить", "wraptext":
 		w.cell.WrapText = truthy(v)
+		w.cell.XLSXWrapExplicit = true
 	case "формат", "format":
 		w.cell.Format = strArg([]any{v}, 0)
 	case "расшифровка", "drilldown":
@@ -750,6 +772,13 @@ func (w *SpreadsheetDocumentCellWrapper) Set(field string, v any) {
 		w.cell.Underline = truthy(v)
 	case "размершрифта", "fontsize":
 		w.cell.FontSize = int(toFloatOr0(v))
+	case "имяшрифта", "fontfamily":
+		w.cell.FontFamily = strArg([]any{v}, 0)
+	case "граница", "border":
+		w.cell.Border = strArg([]any{v}, 0)
+		w.cell.BorderLeft, w.cell.BorderTop, w.cell.BorderRight, w.cell.BorderBottom = "", "", "", ""
+	case "цветграницы", "bordercolor":
+		w.cell.BorderColor = strArg([]any{v}, 0)
 	case "цветфона", "backcolor":
 		w.cell.BackColor = strArg([]any{v}, 0)
 	case "цветтекста", "textcolor":
