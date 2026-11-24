@@ -25,7 +25,10 @@ type ListParams struct {
 	// ChoiceSearchIDs limits a configuration search independently of the eight
 	// form conditions. nil means unrestricted; a non-nil empty slice denies all.
 	ChoiceSearchIDs []uuid.UUID
-	RowFilter       *Predicate // additional SQL-side row-level access predicate
+	// PrivateListFields are canonical lower-case field paths computed by access
+	// checks. They do not participate in client-supplied list search or filters.
+	PrivateListFields map[string]bool
+	RowFilter         *Predicate // additional SQL-side row-level access predicate
 	// RowFilterEvaluated — строковый доступ был вычислен для этого списка (план
 	// 79F): хендлер прошёл через applyRowFilter/rowFilterFor (даже если политика
 	// неограничивающая — RowFilter при этом nil). Используется strict-RLS
@@ -769,6 +772,10 @@ func (db *DB) listWhere(entityName string, entity *metadata.Entity, params ListP
 		if !ok {
 			continue
 		}
+		if params.PrivateListFields[strings.ToLower(field.Name)] {
+			whereParts = append(whereParts, "1=0")
+			continue
+		}
 		column := metadata.ColumnName(field)
 		switch {
 		case field.Type == metadata.FieldTypeDate:
@@ -864,6 +871,9 @@ func (db *DB) listWhere(entityName string, entity *metadata.Entity, params ListP
 		var tables []tableSearch
 		tableIndex := make(map[string]int)
 		for _, path := range paths {
+			if params.PrivateListFields[strings.ToLower(path.Path)] {
+				continue
+			}
 			if path.TablePart == nil {
 				column := metadata.ColumnName(path.Field)
 				searchParts = append(searchParts, db.listSearchFold(column, params.AccountPriority)+" LIKE "+db.listSearchFold(d.Placeholder(argIdx), params.AccountPriority))

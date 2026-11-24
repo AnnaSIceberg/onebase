@@ -84,6 +84,31 @@ func TestAPI_FieldMask_GetAndList(t *testing.T) {
 	}
 }
 
+func TestAPI_ListSearchDoesNotMatchHiddenFields(t *testing.T) {
+	cat := clientEntityAPI()
+	h, ctx := newAPITestHandler(t, []*metadata.Entity{cat}, nil)
+	if err := h.store.Upsert(ctx, cat.Name, uuid.New(), map[string]any{
+		"Наименование": "PublicListCustomer", "Паспорт": "SyntheticPrivateValue",
+	}, cat); err != nil {
+		t.Fatal(err)
+	}
+	user := maskUser([]string{"read"}, auth.FieldPolicies{"Паспорт": {Read: "hide"}})
+	for _, handler := range []http.HandlerFunc{
+		h.listObjects(metadata.KindCatalog), h.listObjectsV2(metadata.KindCatalog),
+	} {
+		for q, want := range map[string]string{"SyntheticPrivateValue": "0", "PublicListCustomer": "1"} {
+			path := "/catalogs/Клиент?q=" + url.QueryEscape(q)
+			req := withUser(reqWithEntity(http.MethodGet, path, nil,
+				map[string]string{"entity": cat.Name, "name": cat.Name}, nil), user)
+			out := httptest.NewRecorder()
+			handler.ServeHTTP(out, req)
+			if got := out.Header().Get("X-Total-Count"); out.Code != http.StatusOK || got != want {
+				t.Fatalf("list %q: HTTP %d count %s, want %s: %s", q, out.Code, got, want, out.Body.String())
+			}
+		}
+	}
+}
+
 func TestAPI_FieldMask_AdminAndPlainRoleSeeFull(t *testing.T) {
 	cat := clientEntityAPI()
 	h, ctx := newAPITestHandler(t, []*metadata.Entity{cat}, nil)
