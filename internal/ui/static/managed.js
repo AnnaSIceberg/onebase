@@ -2011,6 +2011,10 @@ window.obManagedApplyHints = obManagedApplyHints;
           window.obApplyUIResponse(data.uiCommands || [], !!data.refreshLive);
         },0);
       }
+      if (res.ok && data.ok && data.activePage &&
+          formEditState.revision === snapshot.editRevision) {
+        obManagedActivatePage(form, data.activePage, snapshot.eventName === 'ПослеОткрытия');
+      }
       if (navigationBlocked) flash(closeMessage('navigationDirty', 'Форма содержит несохранённые изменения — переход не выполнен'), 'err');
       // Apply the response, including disclosed values, before opening a
       // question. Dismissing it must leave the same valid form as no question.
@@ -6296,6 +6300,34 @@ function obManagedOwnTabParts(tabs, selector) {
   return own;
 }
 
+function obManagedActivatePage(form, name, initial) {
+  if (!form) return;
+  var buttons = form.querySelectorAll('.managed-tab-btn');
+  var page = null;
+  for (var i = 0; i < buttons.length; i++) {
+    if (buttons[i].getAttribute('data-tab-page') === name) {
+      page = buttons[i];
+      break;
+    }
+  }
+  if (!page) return;
+  var path = [];
+  for (var btn = page; btn;) {
+    if (btn.style.display === 'none') return;
+    var tabs = btn.closest('.managed-tabs');
+    if (!tabs || (initial && tabs._obUserSelectedPage)) return;
+    path.push(btn);
+    var parent = tabs.parentElement && tabs.parentElement.closest('.managed-tab-content');
+    if (!parent) break;
+    var parentTabs = parent.closest('.managed-tabs');
+    var index = parent.getAttribute('data-tab-content');
+    if (!parentTabs || !index) return;
+    btn = obManagedOwnTabParts(parentTabs, '.managed-tab-btn[data-tab-idx="' + index + '"]')[0];
+    if (!btn) return;
+  }
+  for (var j = path.length - 1; j >= 0; j--) obManagedSwitchTab(path[j]);
+}
+
 function obManagedSwitchTab(btn) {
   var tabs = btn && btn.closest ? btn.closest('.managed-tabs') : null;
   if (!tabs || btn.style.display === 'none') return;
@@ -6662,6 +6694,7 @@ obManagedReady(function () {
     // восстановление запомненной закладки и переход к невалидному полю
     // пользовательской сменой не являются.
     var tabs = btn.closest ? btn.closest('.managed-tabs') : null;
+    if (tabs) tabs._obUserSelectedPage = true;
     var owner = tabs ? tabs.getAttribute('data-ob-fire-pagechange') : '';
     if (!wasActive && owner && window.obFire) {
       obFire(owner, 'ПриСменеСтраницы', { _page: btn.getAttribute('data-tab-page') || '' });
