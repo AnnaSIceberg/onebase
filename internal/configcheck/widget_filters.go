@@ -3,6 +3,7 @@ package configcheck
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/project"
@@ -133,17 +134,6 @@ func CheckWidgetFilters(proj *project.Project) []Issue {
 // checkFilterDefault проверяет умолчание фильтра тем же парсером, что и
 // рантайм: подходит — пройдёт и в URL.
 func checkFilterDefault(f metadata.WidgetFilter) error {
-	if f.Default == nil {
-		return nil
-	}
-	if f.Type == "bool" {
-		if b, ok := f.Default.(bool); ok {
-			if b {
-				return widget.ValidateFilterSample(f, "true")
-			}
-			return widget.ValidateFilterSample(f, "false")
-		}
-		return fmt.Errorf("умолчание фильтра %q должно быть булевым", f.Name)
-	}
-	return widget.ValidateFilterSample(f, fmt.Sprintf("%v", f.Default))
+	_, err := widget.ResolveFilterDefault(f, time.Now())
+	return err
 }

@@ -152,3 +152,50 @@ func TestWidgetDateFilterLocalMidnightBothDialects(t *testing.T) {
 		}
 	})
 }
+
+func TestWidgetDateDefaultAndExplicitClearHTTP(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.ConnectSQLite(ctx, filepath.Join(t.TempDir(), "widget-period.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	entity, w := dateFilterWidget()
+	w.Filters[0].Default = "{{year_start}}"
+	if err := db.Migrate(ctx, []*metadata.Entity{entity}); err != nil {
+		t.Fatal(err)
+	}
+	year := time.Now().Year()
+	for title, date := range map[string]time.Time{
+		"new-year-order": time.Date(year, time.January, 1, 0, 0, 0, 0, time.Local),
+		"old-year-order": time.Date(year-1, time.December, 31, 23, 0, 0, 0, time.Local),
+	} {
+		if err := db.Upsert(ctx, entity.Name, uuid.New(), map[string]any{"Тема": title, "Срок": date}, entity); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reg := runtime.NewRegistry()
+	reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{entity}})
+	reg.LoadWidgets([]*metadata.Widget{w})
+	s := &Server{reg: reg, store: db, widgetCache: widget.NewCache(time.Minute), messages: NewMessageStore()}
+	router := chi.NewRouter()
+	s.Mount(router)
+	for _, tc := range []struct {
+		name, suffix string
+		wantOld      bool
+	}{
+		{name: "omitted uses start of current year"},
+		{name: "empty clears the start of current year", suffix: "?" + widgetFilterKey(w.Name, "С") + "=", wantOld: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/ui/_widget/"+urlEscape(w.Name)+tc.suffix, nil)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			body := rec.Body.String()
+			if rec.Code != http.StatusOK || !strings.Contains(body, "new-year-order") ||
+				strings.Contains(body, "old-year-order") != tc.wantOld {
+				t.Fatalf("unexpected period result: status=%d body=%s", rec.Code, body)
+			}
+		})
+	}
+}

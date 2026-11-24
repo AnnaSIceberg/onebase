@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -39,10 +40,16 @@ func widgetFilterKeys(w *metadata.Widget) map[string]metadata.WidgetFilter {
 // значений фильтров неотличимо для клиента.
 var errWidgetFilter = errors.New("unsupported widget parameter")
 
-// parseWidgetFilterParams разбирает значения фильтров виджета из запроса.
-// Отсутствующий и пустой ключ одинаково дают типизированный nil. Ошибка
-// возвращается на лишний (для этого виджета) именаосванный ключ и на значение,
-// не прошедшее типовую проверку.
+func widgetFilterDefaultRaw(f metadata.WidgetFilter) string {
+	raw, err := widget.ResolveFilterDefault(f, time.Now())
+	if err != nil {
+		return ""
+	}
+	return raw
+}
+
+// parseWidgetFilterParams разбирает URL карточки. Пропущенный ключ получает
+// умолчание, явно пустой снимает отбор. Неизвестные ключи и значения дают 400.
 func parseWidgetFilterParams(r *http.Request, w *metadata.Widget) (map[string]any, error) {
 	keys := widgetFilterKeys(w)
 	if len(keys) == 0 {
@@ -73,7 +80,7 @@ func parseWidgetFilterParams(r *http.Request, w *metadata.Widget) (map[string]an
 	}
 	for key, f := range keys {
 		if !seen[key] {
-			out[f.Param] = nil
+			out[f.Param], _ = widget.ParseFilterValue(f, widgetFilterDefaultRaw(f))
 		}
 	}
 	return out, nil
@@ -86,15 +93,23 @@ func parseWidgetFilterParams(r *http.Request, w *metadata.Widget) (map[string]an
 func widgetFilterRawValues(r *http.Request, w *metadata.Widget) map[string]string {
 	keys := widgetFilterKeys(w)
 	out := make(map[string]string, len(keys))
+	query := r.URL.Query()
 	for key, f := range keys {
-		vals := r.URL.Query()[key]
-		if len(vals) == 0 || vals[0] == "" {
+		values := query[key]
+		fallback := widgetFilterDefaultRaw(f)
+		if len(values) == 0 {
+			if fallback != "" {
+				out[key] = fallback
+			}
 			continue
 		}
-		if _, err := widget.ParseFilterValue(f, vals[0]); err != nil {
-			continue
+		raw := values[0]
+		if _, err := widget.ParseFilterValue(f, raw); err != nil {
+			raw = ""
 		}
-		out[key] = vals[0]
+		if raw != "" || fallback != "" {
+			out[key] = raw
+		}
 	}
 	return out
 }
@@ -115,6 +130,7 @@ func (s *Server) filterControls(ctx context.Context, lang string, w *metadata.Wi
 			Name:    f.Name,
 			Label:   f.DisplayLabel(lang),
 			Current: current[key],
+			Default: widgetFilterDefaultRaw(f),
 		}
 		switch {
 		case f.ReferenceEntity() != "":
@@ -213,8 +229,8 @@ func widgetPartialURL(name string, w *metadata.Widget, subsystem string, rawValu
 // lenientWidgetFilterParams возвращает типизированные значения фильтров виджета
 // из запроса для ПОЛНОЙ страницы: мусорное значение трактуется как пустой
 // отбор (в отличие от partial-endpoint, где контракт строгий и даёт 400).
-// Отсутствующие фильтры получают типизированный nil — канонический шаблон
-// «&Параметр ЕСТЬ ПУСТО ИЛИ ...» ожидает параметр всегда.
+// Пропущенный фильтр без умолчания и явная пустая строка дают nil.
+// Запрос «&Параметр ЕСТЬ ПУСТО ИЛИ ...» получает параметр всегда.
 func lenientWidgetFilterParams(r *http.Request, w *metadata.Widget) map[string]any {
 	if len(w.Filters) == 0 {
 		return nil

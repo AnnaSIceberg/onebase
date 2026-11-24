@@ -117,6 +117,24 @@ func (r *Runner) ReferenceAllowed(ctx context.Context, entityName, id string) bo
 	return r.rowAllowedID(ctx, entity, "read", uid)
 }
 
+// ResolveFilterDefault returns the URL representation of a declared filter default.
+func ResolveFilterDefault(f metadata.WidgetFilter, now time.Time) (string, error) {
+	if f.Default == nil {
+		return "", nil
+	}
+	if f.Type == "bool" {
+		if _, ok := f.Default.(bool); !ok {
+			return "", fmt.Errorf("умолчание фильтра %q должно быть булевым", f.Name)
+		}
+	}
+	raw := fmt.Sprint(f.Default)
+	if f.Type == "date" && raw == "{{year_start}}" {
+		local := now.In(time.Local)
+		raw = time.Date(local.Year(), time.January, 1, 0, 0, 0, 0, time.Local).Format("2006-01-02")
+	}
+	return raw, ValidateFilterSample(f, raw)
+}
+
 // ValidateFilterSample проверяет, что строковое представление (значение из URL
 // или умолчание из YAML) допустимо для фильтра. Используется и рантаймом, и
 // onebase check.

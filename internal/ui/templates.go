@@ -2705,6 +2705,7 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
 /* List-widget filters share a row by default and wrap only when it is full. */
 .w-card-list .w-filters{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:flex-end;margin-bottom:8px}
 .w-card-list .w-filter{display:flex;flex-direction:column;flex:1 1 110px;gap:2px;min-width:0;max-width:220px;margin:0;font-size:12px;line-height:16px}
+.w-card-list .w-filter-date{flex:0 1 120px;max-width:120px}
 .w-card-list .w-filter>span{min-width:0;overflow-wrap:anywhere}
 .w-card-list .w-filter input,.w-card-list .w-filter select{box-sizing:border-box;min-width:0;width:100%;max-width:100%;height:30px;padding:4px 6px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px}
 .w-card-list .w-filter-reset{flex:0 0 auto;max-width:100%;min-height:30px;padding:4px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#f1f5f9;color:#334155;cursor:pointer}
@@ -2777,10 +2778,10 @@ a.w-kpi-link:hover{color:#1a4a80;text-decoration:underline}
   {{if .Filters}}
   <div class="w-filters">
     {{range .Filters}}{{$f := .}}
-    <label class="w-filter"><span>{{$f.Label}}</span>
-    {{if or (eq $f.Kind "bool") (eq $f.Kind "select") (eq $f.Kind "reference")}}<select data-ob-filter="{{$f.Key}}">
+    <label class="w-filter{{if eq $f.Kind "date"}} w-filter-date{{end}}"><span>{{$f.Label}}</span>
+    {{if or (eq $f.Kind "bool") (eq $f.Kind "select") (eq $f.Kind "reference")}}<select data-ob-filter="{{$f.Key}}"{{if $f.Default}} data-ob-filter-default="{{$f.Default}}"{{end}}>
       {{range $f.Options}}<option value="{{.Value}}"{{if eq .Value $f.Current}} selected{{end}}>{{.Label}}</option>{{end}}
-    </select>{{else}}<input type="{{if eq $f.Kind "date"}}date{{else}}text{{end}}"{{if eq $f.Kind "number"}} inputmode="decimal"{{end}} data-ob-filter="{{$f.Key}}" value="{{$f.Current}}">{{end}}
+    </select>{{else}}<input type="{{if eq $f.Kind "date"}}date{{else}}text{{end}}"{{if eq $f.Kind "number"}} inputmode="decimal"{{end}} data-ob-filter="{{$f.Key}}"{{if $f.Default}} data-ob-filter-default="{{$f.Default}}"{{end}} value="{{$f.Current}}">{{end}}
     </label>
     {{end}}
     <button type="button" class="w-filter-reset" data-ob-filter-reset>{{.ResetLabel}}</button>

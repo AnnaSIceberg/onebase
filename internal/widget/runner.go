@@ -90,6 +90,7 @@ type FilterControl struct {
 	Kind    string // string | number | date | bool | select | reference
 	Current string
 	Options []FilterOption
+	Default string
 }
 
 // FilterOption — вариант select-контрола (bool/select/reference).
