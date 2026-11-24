@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -147,6 +148,24 @@ func formChoiceShowDeleted(owner *metadata.Entity, form *metadata.FormModule, el
 	return nil
 }
 
+func hasOptionalHeaderChoice(element *metadata.FormElement) bool {
+	for _, condition := range element.ChoiceFilter {
+		if condition.SkipWhenEmpty {
+			return true
+		}
+	}
+	return false
+}
+
+func optionalHeaderChoiceSource(element *metadata.FormElement, path string) bool {
+	for _, condition := range element.ChoiceFilter {
+		if condition.SkipWhenEmpty && strings.TrimSpace(condition.From) == path {
+			return true
+		}
+	}
+	return false
+}
+
 func choiceSourceControls(element *metadata.FormElement) map[string]string {
 	if element == nil {
 		return nil
@@ -246,10 +265,34 @@ func (s *Server) choicePredicates(ctx context.Context, owner *metadata.Entity, f
 	for _, condition := range element.ChoiceFilter {
 		if condition.SkipWhenEmpty {
 			source, ok := condition.OptionalChoiceSource()
-			if !ok || tpName == "" {
-				return nil, false, fmt.Errorf("skip_when_empty requires a table-part column with a direct object reference")
+			if !ok {
+				return nil, false, fmt.Errorf("skip_when_empty requires a direct object reference")
 			}
 			field, found := entityFieldByName(owner, source.Field)
+			if tpName == "" {
+				proc, _ := ctx.Value(choiceProcessorKey{}).(*processorpkg.Processor)
+				if proc == nil || proc.External || proc.Kind == "kpi" || proc.Name != owner.Name ||
+					element.Kind != metadata.FormElementField || auth.UserFromContext(ctx) == nil {
+					return nil, false, fmt.Errorf("skip_when_empty requires a table-part column or an internal processor field")
+				}
+				targetField, direct := entityFieldByName(target, strings.TrimSpace(condition.Field))
+				if !direct && strings.EqualFold(strings.TrimSpace(condition.Field), metadata.FormChoiceParentField) {
+					if parent := metadata.FormChoiceParentFieldOf(target); parent != nil {
+						targetField, direct = *parent, true
+					}
+				}
+				if !found || !direct || field.RefEntity == "" || !strings.EqualFold(field.RefEntity, targetField.RefEntity) {
+					return nil, false, fmt.Errorf("skip_when_empty requires compatible reference fields")
+				}
+				reference := s.reg.GetEntity(field.RefEntity)
+				if reference == nil || reference.Kind != metadata.KindCatalog {
+					return nil, false, fmt.Errorf("unknown choice source catalog")
+				}
+				decision, err := s.rowDecision(ctx, reference, "read")
+				if err != nil || !decision.Allowed {
+					return nil, true, err
+				}
+			}
 			if !found || field.RefEntity == "" || choiceAttrMasked(s.fieldDecisions(ctx, owner), field.Name) {
 				return nil, true, nil
 			}
@@ -598,6 +641,68 @@ func choiceAttrMasked(decisions map[string]access.FieldDecision, name string) bo
 	return false
 }
 
+type choiceProcessorKey struct{}
+
+// The initial page supplies declared blank defaults itself, but must not turn
+// a nonempty whitespace value into the opt-in ALL sentinel.
+func explicitChoiceInitialSource(values any, name string) (string, bool) {
+	switch values := values.(type) {
+	case map[string]string:
+		return values[name], true
+	case map[string]any:
+		value, present := values[name]
+		if !present {
+			return "", true // server-supplied declared blank default
+		}
+		if text, ok := value.(string); ok {
+			return text, true
+		}
+		if id, ok := value.(uuid.UUID); ok && id != uuid.Nil {
+			return id.String(), true
+		}
+		return "", false
+	default:
+		return "", false
+	}
+}
+
+// The ordinary decoder is deliberately unchanged. For this opt-in, JSON null
+// must not be converted to an empty string and duplicate keys are ambiguous.
+func validateExplicitChoiceSources(raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return nil // absent sources remain absent, never an explicit empty value
+	}
+	d := json.NewDecoder(strings.NewReader(raw))
+	start, err := d.Token()
+	if err != nil || start != json.Delim('{') {
+		return fmt.Errorf("invalid explicit choice sources")
+	}
+	seen := map[string]bool{}
+	for d.More() {
+		key, err := d.Token()
+		name, ok := key.(string)
+		if err != nil || !ok || seen[name] {
+			return fmt.Errorf("invalid or duplicate choice source")
+		}
+		seen[name] = true
+		value, err := d.Token()
+		if _, ok := value.(string); err != nil || !ok {
+			return fmt.Errorf("choice source must be a string")
+		}
+	}
+	if end, err := d.Token(); err != nil || end != json.Delim('}') {
+		return fmt.Errorf("invalid explicit choice sources")
+	}
+	if _, err := d.Token(); err != io.EOF {
+		return fmt.Errorf("invalid trailing choice sources")
+	}
+	return nil
+}
+
+func withChoiceProcessor(ctx context.Context, proc *processorpkg.Processor) context.Context {
+	return context.WithValue(ctx, choiceProcessorKey{}, proc)
+}
+
 func decodeChoiceSources(raw string) (map[string]string, error) {
 	if strings.TrimSpace(raw) == "" {
 		return map[string]string{}, nil
@@ -721,14 +826,14 @@ func (s *Server) resolveChoiceRequest(r *http.Request, target *metadata.Entity) 
 	if err != nil {
 		return nil, err
 	}
-	if element.KPIChoice != nil {
-		if err := validateKPIChoiceSources(rawSources); err != nil {
+	if element.KPIChoice != nil || (tpName == "" && hasOptionalHeaderChoice(element)) {
+		if err := validateExplicitChoiceSources(rawSources); err != nil {
 			return nil, err
 		}
 	}
 	choiceCtx := r.Context()
 	if formKind == choiceFormKindProcessor {
-		choiceCtx = withKPIChoiceOwner(choiceCtx, s.reg.GetProcessor(ownerName))
+		choiceCtx = withChoiceProcessor(choiceCtx, s.reg.GetProcessor(ownerName))
 	}
 	predicates, empty, err := s.choicePredicates(choiceCtx, owner, form, target, element, sources)
 	if err != nil {
@@ -901,7 +1006,7 @@ func (s *Server) applyProcessorChoiceFilters(ctx context.Context, proc *processo
 	if proc == nil {
 		return
 	}
-	s.applyChoiceFilters(withKPIChoiceOwner(ctx, proc), processorVirtualEntity(proc), pickProcessorManagedFormCtx(ctx, proc), choiceFormKindProcessor, data)
+	s.applyChoiceFilters(withChoiceProcessor(ctx, proc), processorVirtualEntity(proc), pickProcessorManagedFormCtx(ctx, proc), choiceFormKindProcessor, data)
 }
 
 func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity, form *metadata.FormModule, formKind string, data map[string]any) {
@@ -937,8 +1042,8 @@ func (s *Server) applyChoiceFilters(ctx context.Context, owner *metadata.Entity,
 			}
 			// The form holds the leading reference, not the attribute behind it.
 			sources[path] = formValueForPath(data["Values"], source.Root+"."+source.Field)
-			if element.KPIChoice != nil && path == element.KPIChoice.AllWhenEmpty {
-				value, valid := kpiChoiceInitialSource(data["Values"], source.Field)
+			if (element.KPIChoice != nil && path == element.KPIChoice.AllWhenEmpty) || optionalHeaderChoiceSource(element, path) {
+				value, valid := explicitChoiceInitialSource(data["Values"], source.Field)
 				if valid {
 					sources[path] = value
 				} else {

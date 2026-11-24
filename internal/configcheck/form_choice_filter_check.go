@@ -151,23 +151,24 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 	// виртуальная сущность из параметров, та же, что видит рендер формы
 	// обработки. Без них choice_filter формы обработки проходил молча.
 	type choiceFormOwner struct {
-		entity *metadata.Entity
-		forms  []*metadata.FormModule
-		label  func(*metadata.FormModule) string
+		entity         *metadata.Entity
+		forms          []*metadata.FormModule
+		label          func(*metadata.FormModule) string
+		optionalHeader bool
 	}
 	var owners []choiceFormOwner
 	for _, entity := range proj.Entities {
 		if entity != nil {
 			owners = append(owners, choiceFormOwner{entity, entity.Forms, func(form *metadata.FormModule) string {
 				return formFileLabel(entity, form)
-			}})
+			}, false})
 		}
 	}
 	for _, proc := range proj.Processors {
 		if proc != nil {
 			owners = append(owners, choiceFormOwner{proc.VirtualEntity(), proc.Forms, func(form *metadata.FormModule) string {
 				return procFormFileLabel(proc.Name, form)
-			}})
+			}, !proc.External && proc.Kind != "kpi"})
 		}
 	}
 
@@ -238,8 +239,8 @@ func CheckFormChoiceFilter(proj *project.Project) []Issue {
 				for i, cond := range el.ChoiceFilter {
 					where := fmt.Sprintf("choice_filter[%d]", i)
 					if cond.SkipWhenEmpty {
-						if _, ok := cond.OptionalChoiceSource(); !ok || tpName == "" {
-							add("%s: skip_when_empty допускается у колонки ТЧ для eq с прямой ссылкой from: Объект.<Реквизит>", where)
+						if _, ok := cond.OptionalChoiceSource(); !ok || (tpName == "" && !item.optionalHeader) {
+							add("%s: skip_when_empty допускается у колонки ТЧ или поля внутренней обработки для eq с прямой ссылкой from: Объект.<Реквизит>", where)
 							continue
 						}
 					}

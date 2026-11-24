@@ -16,6 +16,15 @@ import (
 )
 
 func TestKPIManagedChoiceBrowser(t *testing.T) {
+	testManagedBranchChoiceBrowser(t, false)
+}
+
+func TestProcessorOptionalChoiceBrowser(t *testing.T) {
+	testManagedBranchChoiceBrowser(t, true)
+}
+
+func testManagedBranchChoiceBrowser(t *testing.T, ordinary bool) {
+	t.Helper()
 	browserPath := managedLayoutTestBrowser(t)
 	db, err := storage.ConnectSQLite(t.Context(), filepath.Join(t.TempDir(), "kpi.db"))
 	if err != nil {
@@ -23,6 +32,9 @@ func TestKPIManagedChoiceBrowser(t *testing.T) {
 	}
 	t.Cleanup(db.Close)
 	f := newKPIChoiceFixture(t, db)
+	if ordinary {
+		ordinaryOptionalChoice(f)
+	}
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -82,24 +94,28 @@ func TestKPIManagedChoiceBrowser(t *testing.T) {
 			t.Fatalf("browser assertion: %s", expr)
 		}
 	}
+	first, second, other := "Z first (Branch A)", "A second (Branch A)", "Other (Branch B)"
+	if ordinary {
+		first, second, other = "Z first", "A second", "Other"
+	}
 	wait(`document.querySelector('select[name="Direction"]') && window.obRefreshChoiceFilters`)
 	eval(`window.branch=document.querySelector('select[name="Branch"]');window.direction=document.querySelector('select[name="Direction"]')`)
-	assert(`branch && branch.value==='' && direction.options.length===4 && direction.options[1].textContent==='Z first (Branch A)' && direction.options[2].textContent==='A second (Branch A)'`)
+	assert(fmt.Sprintf(`branch && branch.value==='' && direction.options.length===4 && direction.options[1].textContent===%q && direction.options[2].textContent===%q`, first, second))
 	change := func(id string) {
 		t.Helper()
 		eval(fmt.Sprintf(`(async()=>{branch.value=%q;branch.dispatchEvent(new Event('change',{bubbles:true}));await window.obRefreshChoiceFilters();return true})()`, id))
 		assert(`!direction.hasAttribute('data-ob-choice-error')`)
 	}
 	change(f.b1.String())
-	assert(`direction.options.length===3 && direction.options[1].textContent==='Z first (Branch A)'`)
+	assert(fmt.Sprintf(`direction.options.length===3 && direction.options[1].textContent===%q`, first))
 	eval(fmt.Sprintf(`direction.value=%q;direction.dispatchEvent(new Event('change',{bubbles:true}))`, f.d2.String()))
 	change(f.b2.String())
-	assert(`direction.value==='' && direction.options.length===2 && direction.options[1].textContent==='Other (Branch B)'`)
+	assert(fmt.Sprintf(`direction.value==='' && direction.options.length===2 && direction.options[1].textContent===%q`, other))
 	eval(`direction.parentElement.querySelector('[data-ob-ref-picker]').click()`)
 	wait(`document.querySelectorAll('#_rp-list [data-id]').length===1`)
-	assert(`document.querySelector('#_rp-list [data-id]').getAttribute('data-label')==='Other (Branch B)'`)
+	assert(fmt.Sprintf(`document.querySelector('#_rp-list [data-id]').getAttribute('data-label')===%q`, other))
 	eval(`document.querySelector('#_rp-list [data-id]').click()`)
-	assert(fmt.Sprintf(`direction.value===%q && direction.selectedOptions[0].textContent==='Other (Branch B)'`, f.d3.String()))
+	assert(fmt.Sprintf(`direction.value===%q && direction.selectedOptions[0].textContent===%q`, f.d3.String(), other))
 	change("")
 	assert(fmt.Sprintf(`direction.options.length===4 && direction.value===%q && document.querySelector('select[name="Branch"]')===branch`, f.d3.String()))
 }

@@ -628,7 +628,8 @@ type FormChoiceCondition struct {
 func (c FormChoiceCondition) IsQuery() bool { return strings.TrimSpace(c.Query) != "" }
 
 // OptionalChoiceSource recognizes the direct object reference supported by
-// skip_when_empty. The caller also verifies that this is a table-part column.
+// skip_when_empty. The caller also verifies that this is a table-part column
+// or a header field of an internal managed processor.
 func (c FormChoiceCondition) OptionalChoiceSource() (FormChoiceSource, bool) {
 	source, ok := ParseFormChoiceSource(c.From)
 	return source, ok && strings.EqualFold(source.Root, "Объект") && !source.Deep() &&
