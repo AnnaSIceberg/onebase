@@ -3691,8 +3691,11 @@ function obManagedInitDelegates() {
   }
 
   function obManagedEventHotkey(e) {
-    if (!e || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return '';
-    return obManagedNormalizeHotkey(e.key || e.code || '');
+    if (!e || e.defaultPrevented || e.altKey || e.metaKey) return '';
+    var key = e.key || e.code || '';
+    if (e.ctrlKey && e.shiftKey && key.toUpperCase() === 'F4') return obManagedNormalizeHotkey('Ctrl+Shift+F4');
+    if (e.ctrlKey || e.shiftKey) return '';
+    return obManagedNormalizeHotkey(key);
   }
 
   document.addEventListener('keydown', function (e) {
@@ -3936,7 +3939,15 @@ function obGridParseOrder(raw) {
 function obGridApplyOrder(columns, order) {
   if (!columns || !order || !order.length) return false;
   var byId = Object.create(null), used = Object.create(null), out = [], i;
-  for (i = 0; i < columns.length; i++) byId[columns[i].id] = columns[i];
+  for (i = 0; i < columns.length; i++) {
+    var column = columns[i];
+    if (column.obRowNumber) {
+      out.push(column);
+      used[column.id] = true;
+    } else {
+      byId[column.id] = column;
+    }
+  }
   for (i = 0; i < order.length; i++) {
     var id = order[i];
     if (Object.prototype.hasOwnProperty.call(byId, id) && !used[id]) { out.push(byId[id]); used[id] = true; }
@@ -3981,13 +3992,14 @@ function obGridSetColumnHidden(state, path, on) {
   // Активная ячейка в скрытой колонке — на первую видимую той же строки:
   // строка не меняется, ПриАктивизацииСтроки не повторяется.
   if (active && state.columns[active.cell] && state.columns[active.cell].hidden) {
-    var first = obGridVisibleToIndex(state.columns, 0);
+    var first = state.columns.findIndex(function (col) { return col && !col.hidden && !col.obRowNumber; });
     if (first >= 0 && grid.setActiveCell) grid.setActiveCell(active.row, first);
   }
   return result;
 }
 function obGridMoveColumn(columns, from, to) {
   if (!columns || from === to || from < 0 || to < 0 || from >= columns.length || to >= columns.length) return false;
+  if (columns[from].obRowNumber || columns[to].obRowNumber) return false;
   var col = columns.splice(from, 1)[0];
   columns.splice(to, 0, col);
   return true;
@@ -4037,7 +4049,7 @@ function obGridAutosize(grid) {
 }
 
 function obGridColumnIds(columns) {
-  return (columns || []).map(function(c) { return c.id; });
+  return (columns || []).filter(function(c) { return !c.obRowNumber; }).map(function(c) { return c.id; });
 }
 
 // Ширины колонок, заданные пользователем мышью и сохранённые за ним
@@ -4055,7 +4067,7 @@ function obGridApplyWidths(columns, widths) {
   for (var i = 0; i < columns.length; i++) {
     // Только собственные ключи: колонка «constructor» не должна получить
     // функцию из Object.prototype вместо ширины.
-    if (!Object.prototype.hasOwnProperty.call(widths, columns[i].id)) continue;
+    if (columns[i].obRowNumber || !Object.prototype.hasOwnProperty.call(widths, columns[i].id)) continue;
     var px = Math.round(Number(widths[columns[i].id]));
     if (px >= OB_GRID_WIDTH_MIN && px <= OB_GRID_WIDTH_MAX) { columns[i].width = px; columns[i].obWidth = px; }
   }
@@ -4071,6 +4083,7 @@ function obGridColumnWidths(columns) {
   // доезжает до JSON, а не теряется в сеттере Object.prototype.
   var out = Object.create(null);
   for (var i = 0; i < columns.length; i++) {
+    if (columns[i].obRowNumber) continue;
     var px = Math.round(Number(columns[i].width));
     out[columns[i].id] = obGridClampWidth(px);
   }
@@ -4244,7 +4257,12 @@ function obGridColumnWidths(columns) {
       for (var m = 0; m < cols.length; m++) metaById[cols[m].id] = cols[m];
       // Подпись — в первой ВИДИМОЙ колонке: первая по описанию бывает скрыта.
       var labelId = null, shown = g.grid.getColumns ? g.grid.getColumns() : [];
-      for (var v = 0; v < shown.length; v++) if (shown[v] && !shown[v].hidden) { labelId = shown[v].id; break; }
+      for (var v = 0; v < shown.length; v++) {
+        if (shown[v] && !shown[v].hidden && !shown[v].obRowNumber) {
+          labelId = shown[v].id;
+          break;
+        }
+      }
       // SlickGrid создаёт footer только для видимых колонок, но поиск по id
       // использует полный индекс. Передаём индекс ячейки в видимом порядке,
       // включая пользовательскую перестановку колонок.
@@ -5829,6 +5847,13 @@ function obGridColumnWidths(columns) {
     // алфавитный, а список должен идти в порядке объявления values:.
     var enumOrder = (window._tpEnumOrder && window._tpEnumOrder[tpName]) || {};
     var columns = buildColumns(colsRaw, refOpts, enumLabels, enumOrder, embeddedRefChoices);
+    if (div.getAttribute('data-sg-row-numbers') === '1' && !columns.some(function (c) { return c.id === '__ob_row_number'; })) {
+      columns.unshift({
+        id: '__ob_row_number', field: '__ob_row_number', name: 'N', cssClass: 'ob-row-number',
+        width: 30, minWidth: 30, obWidth: 30, obRowNumber: true, resizable: false, focusable: false, selectable: false,
+        formatter: function (row) { return String(row + 1); }
+      });
+    }
     var choiceContexts={};
     try { choiceContexts=JSON.parse(div.getAttribute('data-sg-choice') || '{}') || {}; } catch(e) {}
     columns.forEach(function(col){col.choiceContext=choiceContexts[col.field] || '';});

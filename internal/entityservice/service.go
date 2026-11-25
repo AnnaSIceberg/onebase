@@ -720,7 +720,7 @@ func (s *Service) Save(ctx context.Context, req SaveRequest) (SaveResult, error)
 			}
 		}
 		if err := s.writeMovements(txCtx, req.Entity.Name, req.ID, mc); err != nil {
-			return err
+			return postingPeriodRefusal(err)
 		}
 		// Регистрация изменения для планов обмена (план 86): объект из состава
 		// плана → строки очереди каждому узлу-получателю. В той же транзакции —
@@ -880,6 +880,14 @@ func postedFlag(v any) bool {
 func (e *hookRunError) Error() string { return e.err.Error() }
 func (e *hookRunError) Unwrap() error { return e.err }
 
+func postingPeriodRefusal(err error) error {
+	var frozen *storage.PostingPeriodError
+	if errors.As(err, &frozen) {
+		return &hookRunError{err: err}
+	}
+	return err
+}
+
 func (s *Service) unpostInTx(
 	txCtx context.Context,
 	entity *metadata.Entity,
@@ -889,7 +897,7 @@ func (s *Service) unpostInTx(
 	lockCollector *runtime.LockCollector,
 ) error {
 	if err := s.clearMovements(txCtx, entity.Name, id); err != nil {
-		return err
+		return postingPeriodRefusal(err)
 	}
 	if err := s.Store.SetPosted(txCtx, entity.Name, id, false); err != nil {
 		return err
@@ -1686,6 +1694,11 @@ func (s *Service) replaceMovements(ctx context.Context, docType string, docID uu
 				return err
 			}
 			continue
+		}
+		for _, row := range rows {
+			if _, ok := row[metadata.ExplicitMovementPeriodKey]; ok {
+				return fmt.Errorf("%s: явный период в Добавить применяется только к регистру накопления", regName)
+			}
 		}
 		if ar := s.Reg.GetAccountRegister(regName); ar != nil {
 			if err := s.Store.WriteAccountMovements(ctx, regName, docType, docID, rows, ar, mc.Period); err != nil {

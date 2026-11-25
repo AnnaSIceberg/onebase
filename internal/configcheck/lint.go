@@ -286,8 +286,8 @@ func lintFormHotkeyElements(label string, node *yaml.Node, seen map[string]formH
 					Code:         "form.unsupported-hotkey",
 					Line:         hotkeyNode.Line,
 					Column:       hotkeyNode.Column,
-					Message:      fmt.Sprintf("hotkey %q у кнопки %q не поддержан runtime: доступны F2, F4, F5, F7, F8, F9, F10, F11", hotkey, name),
-					SuggestedFix: "Выберите одну из поддержанных F-клавиш: F2, F4, F5, F7, F8, F9, F10, F11.",
+					Message:      fmt.Sprintf("hotkey %q у кнопки %q не поддержан runtime: доступны F2, F4, F5, F7, F8, F9, F10, F11 и Ctrl+Shift+F4", hotkey, name),
+					SuggestedFix: "Выберите поддержанную клавишу или Ctrl+Shift+F4.",
 				})
 			} else if prev, ok := seen[normalized]; ok {
 				*issues = append(*issues, Issue{
@@ -309,7 +309,7 @@ func lintFormHotkeyElements(label string, node *yaml.Node, seen map[string]formH
 
 func normalizeFormHotkey(value string) string {
 	switch strings.ToUpper(strings.TrimSpace(value)) {
-	case "F2", "F4", "F5", "F7", "F8", "F9", "F10", "F11":
+	case "F2", "F4", "F5", "F7", "F8", "F9", "F10", "F11", "CTRL+SHIFT+F4":
 		return strings.ToUpper(strings.TrimSpace(value))
 	default:
 		return ""

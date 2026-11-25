@@ -60,7 +60,8 @@
       if (!viewport.clientWidth) return;
       const rowHeight = grid.getOptions().rowHeight;
       const top = state.dataView.getLength() * rowHeight;
-      showPaper(viewport, top, viewport.clientHeight - top, grid.getColumns().map(column => column.width), rowHeight);
+      const widths = grid.getColumns().filter(column => !column.hidden).map(column => column.width);
+      showPaper(viewport, top, viewport.clientHeight - top, widths, rowHeight);
     }
     const resize = new ResizeObserver(draw);
     resize.observe(viewport);

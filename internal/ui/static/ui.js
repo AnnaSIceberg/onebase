@@ -2456,7 +2456,7 @@ window.obElementVisible = obElementVisible;
 
 function obNormalizeFormHotkey(value) {
   var key = String(value || '').trim().toUpperCase();
-  if (key === 'F2' || key === 'F4' || key === 'F5' || key === 'F7' || key === 'F8' || key === 'F9' || key === 'F10' || key === 'F11') return key;
+  if (key === 'F2' || key === 'F4' || key === 'F5' || key === 'F7' || key === 'F8' || key === 'F9' || key === 'F10' || key === 'F11' || key === 'CTRL+SHIFT+F4') return key;
   return '';
 }
 window.obNormalizeFormHotkey = obNormalizeFormHotkey;

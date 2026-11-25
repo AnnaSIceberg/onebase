@@ -325,9 +325,11 @@ type FormElement struct {
 	// (flex:1 1 0): рядом с соседями, а не отдельной строкой, как stretch.
 	Grow bool `yaml:"grow,omitempty"`
 	// TitleHidden hides the heading of a table, the visible label of a
-	// numeric input, or the text of a label used as a layout spacer.
+	// numeric or reference input, or the text of a label used as a layout spacer.
 	TitleHidden bool `yaml:"title_hidden,omitempty"`
 	// TotalsCaption replaces the managed grid’s default label in its totals row.
+	RowNumbers    bool   `yaml:"row_numbers,omitempty"`
+	WrapHeaders   bool   `yaml:"wrap_headers,omitempty"`
 	TotalsCaption string `yaml:"totals_caption,omitempty"`
 	// TextColor — цвет текста поля ввода или надписи (подпись и значение,
 	// у нередактируемого поля тоже); цвет проверяет csssafe.Color, как у
@@ -400,7 +402,7 @@ type FormElement struct {
 	// буква; остальные символы литеральные.
 	InputMask string `yaml:"input_mask,omitempty"`
 	AccessKey string `yaml:"accesskey,omitempty"` // HTML accesskey для браузерной активации (Alt/Option+клавиша)
-	HotKey    string `yaml:"hotkey,omitempty"`    // runtime shortcut для кнопок формы (F2/F4/F5/F7/F8/F9/F10/F11)
+	HotKey    string `yaml:"hotkey,omitempty"`    // runtime shortcut для кнопок формы (F2/F4/F5/F7/F8/F9/F10/F11, Ctrl+Shift+F4)
 	Multiline bool   `yaml:"multiline,omitempty"` // обычное поле ввода рендерится как textarea
 	// ChoiceContext — что вызывающая форма передаёт в подбор: «имя параметра» →
 	// «путь к значению на форме» (Объект.Филиал, реквизит формы). Аналог

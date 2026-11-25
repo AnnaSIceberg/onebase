@@ -322,3 +322,188 @@ func TestMovementPeriodDSLAccessMatrix(t *testing.T) {
 		}
 	})
 }
+
+func TestDocumentMovementExplicitRowPeriodMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		f, _ := movementPeriodServer(t, db, false)
+		documentDate := time.Date(2026, 11, 20, 9, 0, 0, 0, time.Local)
+		movementDate := documentDate.Add(48 * time.Hour)
+
+		write := func(dsl string, vars map[string]any) error {
+			t.Helper()
+			mc := runtime.NewMovementsCollector(f.doc.Name, f.recorderID).WillPersist()
+			proc := mustParse(t, "Процедура Заполнение()\n"+dsl+"\nКонецПроцедуры")
+			vars["Движения"] = mc
+			if err := f.s.interp.Run(proc.Procedures[0], nil, vars); err != nil {
+				t.Fatal(err)
+			}
+			for name, rows := range mc.All() {
+				if strings.EqualFold(name, f.reg.Name) {
+					return db.WriteMovements(f.ctx, f.reg.Name, f.doc.Name, f.recorderID, rows, f.reg, &documentDate)
+				}
+			}
+			t.Fatal("DSL did not collect rows for the register")
+			return nil
+		}
+		check := func() {
+			t.Helper()
+			rows, err := db.GetMovements(f.ctx, f.reg.Name, f.reg, storage.RegFilter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 2 {
+				t.Fatalf("got %d movement rows, want 2", len(rows))
+			}
+			want := []time.Time{documentDate, movementDate}
+			for i, row := range rows {
+				got := storage.ParseDBTime(row["period"])
+				if !got.Equal(want[i]) {
+					t.Fatalf("row %d period = %v, want %v", i, row["period"], want[i])
+				}
+			}
+		}
+		if err := write("А = Движения.PeriodMovements.Добавить();\nБ = Движения.PeriodMovements.Добавить(ДатаРасхода);", map[string]any{"ДатаРасхода": movementDate}); err != nil {
+			t.Fatal(err)
+		}
+		check()
+
+		if err := write("А = Движения.PeriodMovements.Добавить(\"ошибка\");", map[string]any{}); err == nil {
+			t.Fatal("invalid period was accepted")
+		}
+		check()
+
+		if err := db.SavePostingLockDate(f.ctx, documentDate.AddDate(0, 0, -1)); err != nil {
+			t.Fatal(err)
+		}
+		if err := write("А = Движения.PeriodMovements.Добавить(ЗакрытыйДень);", map[string]any{"ЗакрытыйДень": documentDate.Add(-24 * time.Hour)}); err == nil {
+			t.Fatal("explicit period bypassed posting lock")
+		}
+		check()
+	})
+}
+
+func TestDocumentMovementReplacementClosedPeriodMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		f, _ := movementPeriodServer(t, db, false)
+		closed := time.Date(2026, 9, 30, 23, 59, 59, 0, time.Local)
+		open := time.Date(2026, 10, 1, 0, 0, 0, 0, time.Local)
+		if storage.PostingFrozen(closed, open.UTC()) || !storage.PostingFrozen(closed, closed.UTC()) {
+			t.Fatal("posting lock must use the local calendar boundary")
+		}
+		f.doc.Fields = append(f.doc.Fields, metadata.Field{Name: "Дата", Type: metadata.FieldTypeDate})
+		if err := db.Migrate(f.ctx, []*metadata.Entity{f.doc}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Upsert(f.ctx, f.doc.Name, f.recorderID, map[string]any{"Дата": open}, f.doc); err != nil {
+			t.Fatal(err)
+		}
+		before := []map[string]any{
+			{metadata.ExplicitMovementPeriodKey: closed, "Количество": 1},
+			{metadata.ExplicitMovementPeriodKey: open, "Количество": 2},
+		}
+		if err := db.WriteMovements(f.ctx, f.reg.Name, f.doc.Name, f.recorderID, before, f.reg, &open); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.SavePostingLockDate(f.ctx, closed); err != nil {
+			t.Fatal(err)
+		}
+		assertUnchanged := func() {
+			t.Helper()
+			rows, err := db.GetMovements(f.ctx, f.reg.Name, f.reg, storage.RegFilter{})
+			if err != nil || len(rows) != 2 {
+				t.Fatalf("saved movements lost on refusal: %#v, %v", rows, err)
+			}
+			row, err := db.GetByID(f.ctx, f.doc.Name, f.recorderID, f.doc)
+			if err != nil || fmt.Sprint(row["posted"]) == "false" || fmt.Sprint(row["posted"]) == "0" {
+				t.Fatalf("posted header lost on refusal: %#v, %v", row, err)
+			}
+		}
+		result, err := f.s.entitySvc.Unpost(f.ctx, f.doc, f.recorderID)
+		if err != nil || !strings.Contains(result.DSLError, "свёрнутому периоду") {
+			t.Fatalf("unpost must report closed movement: %+v, %v", result, err)
+		}
+		assertUnchanged()
+		if err := f.s.entitySvc.Repost(f.ctx, f.doc.Name, f.recorderID); err == nil || !strings.Contains(err.Error(), "свёрнутому периоду") {
+			t.Fatalf("repost of open header must check the previous, closed movement: %v", err)
+		}
+		assertUnchanged()
+		if err := db.WriteMovements(f.ctx, f.reg.Name, f.doc.Name, f.recorderID, []map[string]any{
+			{metadata.ExplicitMovementPeriodKey: open, "Количество": 99},
+		}, f.reg, &open); err == nil || !strings.Contains(err.Error(), "свёрнутому периоду") {
+			t.Fatalf("replacement must check the previous, closed movement: %v", err)
+		}
+		assertUnchanged()
+	})
+}
+
+func TestWarehouseRollupDocumentMovementBoundaryMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		doc := &metadata.Entity{Name: "WorkshopRollupDocument", Kind: metadata.KindDocument, Posting: true,
+			Fields: []metadata.Field{{Name: "Дата", Type: metadata.FieldTypeDate}}}
+		stock := &metadata.Register{Name: "WorkshopRollupStock",
+			Resources: []metadata.Field{{Name: "Количество", Type: metadata.FieldTypeNumber}}}
+		debts := &metadata.Register{Name: "WorkshopRollupDebts",
+			Resources: []metadata.Field{{Name: "Количество", Type: metadata.FieldTypeNumber}}}
+		regs := []*metadata.Register{stock, debts}
+		docs := []*metadata.Entity{doc}
+		if err := db.Migrate(ctx, docs); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.MigrateRegisters(ctx, regs); err != nil {
+			t.Fatal(err)
+		}
+		cutoff := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+		early := cutoff.Add(-time.Hour)
+		late := cutoff
+		id := uuid.New()
+		if err := db.Upsert(ctx, doc.Name, id, map[string]any{"Дата": early}, doc); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.SetPosted(ctx, doc.Name, id, true); err != nil {
+			t.Fatal(err)
+		}
+		write := func(reg *metadata.Register, dates ...time.Time) {
+			t.Helper()
+			rows := make([]map[string]any, 0, len(dates))
+			for _, date := range dates {
+				rows = append(rows, map[string]any{metadata.ExplicitMovementPeriodKey: date, "Количество": 1})
+			}
+			if err := db.WriteMovements(ctx, reg.Name, doc.Name, id, rows, reg, &early); err != nil {
+				t.Fatal(err)
+			}
+		}
+		assertBlocked := func(opts storage.RollupOptions, want int) {
+			t.Helper()
+			if _, err := db.RollupPreview(ctx, regs, docs, nil, nil, opts); err == nil || !strings.Contains(err.Error(), doc.Name) {
+				t.Fatalf("unsafe rollup preview must identify recorder: %v", err)
+			}
+			if _, err := db.Rollup(ctx, regs, docs, nil, nil, opts); err == nil || !strings.Contains(err.Error(), doc.Name) {
+				t.Fatalf("unsafe rollup must identify recorder: %v", err)
+			}
+			row, err := db.GetByID(ctx, doc.Name, id, doc)
+			if err != nil || fmt.Sprint(row["posted"]) == "false" || fmt.Sprint(row["posted"]) == "0" {
+				t.Fatalf("posted header lost on refusal: %#v, %v", row, err)
+			}
+			rows, err := db.GetMovements(ctx, stock.Name, stock, storage.RegFilter{})
+			if err != nil || len(rows) != want {
+				t.Fatalf("refusal changed the movement set: %#v, %v", rows, err)
+			}
+			if _, set := db.GetPostingLockDate(ctx); set {
+				t.Fatal("refused rollup must not close the period")
+			}
+		}
+		write(stock, early, late)
+		for _, del := range []bool{false, true} {
+			assertBlocked(storage.RollupOptions{Date: cutoff, Registers: []string{stock.Name}, DeleteDocuments: del}, 2)
+		}
+		write(stock, early)
+		write(debts, early)
+		assertBlocked(storage.RollupOptions{Date: cutoff, Registers: []string{stock.Name}}, 1)
+		if _, err := db.Rollup(ctx, regs, docs, nil, nil, storage.RollupOptions{
+			Date: cutoff, Registers: []string{stock.Name, debts.Name},
+		}); err != nil {
+			t.Fatalf("complete rollup should succeed: %v", err)
+		}
+	})
+}

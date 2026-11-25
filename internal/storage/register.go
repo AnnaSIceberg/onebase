@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -405,6 +407,40 @@ func (db *DB) writeMovementsInTx(ctx context.Context, regName, recorderType stri
 	// после записи их итоги пересчитываются (в этой же транзакции). Так строка
 	// итогов затронутого набора измерений остаётся согласованной с движениями.
 	var oldTuples [][]any
+	postingLock, havePostingLock := db.GetPostingLockDate(ctx)
+	if havePostingLock && recorderType != RollupRecorderType {
+		// Даже пустой набор при отмене проведения заменяет сохранённые строки.
+		var raw any
+		err := db.QueryRow(ctx, fmt.Sprintf(
+			"SELECT period FROM %s WHERE recorder = %s AND recorder_type = %s ORDER BY period LIMIT 1",
+			table, d.Placeholder(1), d.Placeholder(2)), idArg(d, recorderID), recorderType).Scan(&raw)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return fmt.Errorf("check old movement period %s: %w", regName, err)
+		default:
+			moment, ok := parseTimeValue(raw)
+			if !ok {
+				return fmt.Errorf("не удалось определить период сохранённого движения регистра %s", regName)
+			}
+			if PostingFrozen(postingLock, moment) {
+				return PostingFrozenError(postingLock)
+			}
+		}
+	}
+	for i, row := range rows {
+		explicit, ok := row[metadata.ExplicitMovementPeriodKey]
+		if !ok {
+			continue
+		}
+		moment, ok := explicit.(time.Time)
+		if !ok || moment.IsZero() {
+			return fmt.Errorf("%s, строка %d: Добавить принимает одну дату периода движения", regName, i+1)
+		}
+		if havePostingLock && PostingFrozen(postingLock, moment) {
+			return PostingFrozenError(postingLock)
+		}
+	}
 	if reg.TotalsUsable() {
 		var err error
 		if oldTuples, err = db.distinctDimTuples(ctx, reg, recorderType, idArg(d, recorderID)); err != nil {
@@ -428,7 +464,9 @@ func (db *DB) writeMovementsInTx(ctx context.Context, regName, recorderType stri
 		cols := []string{"id", "recorder", "recorder_type", "line_number", "period", "вид_движения"}
 		phs := []string{d.Placeholder(1), d.Placeholder(2), d.Placeholder(3), d.Placeholder(4), d.Placeholder(5), d.Placeholder(6)}
 		periodVal := any(time.Now())
-		if period != nil {
+		if explicit, ok := row[metadata.ExplicitMovementPeriodKey].(time.Time); ok {
+			periodVal = explicit
+		} else if period != nil {
 			periodVal = *period
 		}
 		args := []any{idArg(d, uuid.New()), idArg(d, recorderID), recorderType, i + 1, periodVal, vidDvizh}
