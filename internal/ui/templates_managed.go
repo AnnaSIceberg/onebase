@@ -246,9 +246,9 @@ const tplManagedForm = `
        как поля прежнего диалога сообщения 1С. Только чтение; значение уходит
        с формой без изменений (скрытый input), ответ события обновляет текст. */}}
   {{$fn := dpField $el.DataPath}}{{$v := index $ctx.Values $fn}}
-  <div class="form-group ob-view-text" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{$lay := elLayoutEx $ctx $el}}{{if $lay}} style="{{$lay}}"{{end}}>
-    <div class="ob-view-text-label" style="font-size:12px;color:#64748b;margin-bottom:2px">{{fieldTitleRU $el.TitleMap $fn}}</div>
-    <div class="ob-view-text-value" data-ob-value="{{$fn}}" style="font-size:{{if eq $el.View "text-strong"}}16px;font-weight:700{{else}}14px{{end}};color:#1e293b;white-space:pre-wrap;overflow-wrap:anywhere">{{$v}}</div>
+  <div class="form-group ob-view-text{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{with cssJoin (elLayoutEx $ctx $el) (elTextColor $el)}} style="{{.}}"{{end}}>
+    <div class="ob-view-text-label"{{with fieldLabelStyle $el}} style="{{.}}"{{end}}>{{fieldTitleRU $el.TitleMap $fn}}</div>
+    <div class="ob-view-text-value" data-ob-value="{{$fn}}" style="font-size:{{if eq $el.View "text-strong"}}16px;font-weight:700{{else}}14px{{end}}">{{$v}}</div>
     <input type="hidden" name="{{$fn}}" value="{{$v}}">
   </div>
 {{else if eq (str $el.Kind) "ПолеТабличногоДокумента"}}
@@ -263,7 +263,8 @@ const tplManagedForm = `
   {{$hChg := hasHandler $el "ПриИзменении"}}
   {{$choiceCtx := managedChoiceContext $ctx $el}}
   {{$fcVars := elFieldColorVars $el}}{{if $el.HiddenWhen}}<fieldset class="form-group ob-managed-control{{if elFill $el}} ob-el-fill{{end}}{{if $el.TextBold}} ob-text-bold{{end}}{{elFieldColorClass $el}}{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}" data-ob-control-fieldset="1"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{if elHiddenStyle $ctx $el}} disabled{{end}}{{$lay := elLayoutEx $ctx $el}}{{$tc := elTextColor $el}}{{if or $lay $fcVars $tc}} style="{{$lay}}{{$fcVars}}{{$tc}}"{{end}}>{{else}}<div class="form-group{{if elFill $el}} ob-el-fill{{end}}{{if $el.TextBold}} ob-text-bold{{end}}{{elFieldColorClass $el}}{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{$lay := elLayout $el}}{{$tc := elTextColor $el}}{{if or $lay $fcVars $tc}} style="{{$lay}}{{$fcVars}}{{$tc}}"{{end}}>{{end}}
-    <label{{with fieldLabelStyle $el}} style="{{.}}"{{end}}>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}{{if and $el.Hint (not $el.HintInline)}} <span class="ob-hint" title="{{$el.Hint}}" aria-label="{{$el.Hint}}">ⓘ</span>{{end}}</label>
+    {{$numberWithoutTitle := and $el.TitleHidden $f (eq (str $f.Type) "number")}}
+    <label{{if $numberWithoutTitle}} class="ob-field-label-hidden" for="managed-number-{{$el.Name}}"{{end}}{{with fieldLabelStyle $el}} style="{{.}}"{{end}}>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}{{if and $el.Hint (not $el.HintInline)}} <span class="ob-hint" title="{{$el.Hint}}" aria-label="{{$el.Hint}}">ⓘ</span>{{end}}</label>
     {{if $f}}
       {{if isRef (str $f.Type)}}
         <div class="managed-control-row" style="display:flex;gap:6px;align-items:center">
@@ -310,7 +311,7 @@ const tplManagedForm = `
         </select>
         {{if or $ro $el.ReadOnlyWhen}}<input type="hidden" name="{{$fn}}" value="{{index $ctx.Values $fn}}" id="ro-mirror-{{$fn}}" data-ob-ro-mirror="1"{{if not $ro}} disabled{{end}}>{{end}}
       {{else if eq (str $f.Type) "number"}}
-        <input type="text" autocomplete="off" inputmode="decimal" pattern="[+-]?([0-9]+([.,][0-9]+)?|[.,][0-9]+)" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{elHintAttrsOr $ctx $el "Введите число; десятичный разделитель — запятая или точка"}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+        <input type="text" autocomplete="off" inputmode="decimal" pattern="[+-]?([0-9]+([.,][0-9]+)?|[.,][0-9]+)"{{if $numberWithoutTitle}} id="managed-number-{{$el.Name}}"{{end}} name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{elHintAttrsOr $ctx $el "Введите число; десятичный разделитель — запятая или точка"}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{else if isRichText (str $f.Type)}}
         {{/* textarea — скрытое form-backing поле; Quill (этап 2) монтируется на
              .richtext-editor и синхронизирует HTML обратно перед submit. Без JS
@@ -480,7 +481,7 @@ const tplManagedForm = `
   </div>
 {{else if eq (str $el.Kind) "Надпись"}}
   <div class="form-decoration{{if $el.TextBold}} ob-text-bold{{end}}{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{elHintAttrs $ctx $el ""}} style="padding:6px 0;color:#475569;font-size:13px;{{elLayout $el}}{{elTextColor $el}}">
-    {{fieldTitleRU $el.TitleMap $el.Name}}
+    {{if not $el.TitleHidden}}{{fieldTitleRU $el.TitleMap $el.Name}}{{end}}
   </div>
 {{else if eq (str $el.Kind) "Кнопка"}}
   {{/* placement: header — кнопка рисуется в строке команд формы (form-header-commands), а не в теле. */}}
@@ -935,7 +936,19 @@ body[data-theme="dark"] .ob-object-inline-header{background:#111827}
 .ob-density-dense .managed-group-horizontal>.managed-group-body>.form-group>label{line-height:12px}
 .ob-density-dense .managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn,.ob-density-dense .managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn-layout{margin-top:13px}
 .ob-density-dense .managed-group-horizontal>.managed-group-body>.form-group.managed-checkbox{margin-top:19px}
+.form-group>label.ob-field-label-hidden{
+  position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap
+}
+.ob-view-text-label{font-size:12px;color:#64748b;margin-bottom:2px}
+.ob-view-text-value{color:#1e293b;white-space:pre-wrap;overflow-wrap:anywhere}
+.ob-view-text.ob-text-colored>.ob-view-text-value{color:var(--ob-text-color)}
 /* Opt-in compact layout for forms with short controls and tightly spaced rows. */
+main.ob-object-form:has(#main-form[data-ob-compact-labels]){
+  box-sizing:border-box;width:fit-content;max-width:100%;min-width:0
+}
+#main-form[data-ob-compact-labels] .ob-view-text{display:flex;align-items:baseline;gap:5px;margin:0;min-width:0}
+#main-form[data-ob-compact-labels] .ob-view-text-label{margin:0}
+#main-form[data-ob-compact-labels] .ob-view-text-value{white-space:nowrap}
 #main-form[data-ob-compact-labels] .form-group:has(>label):not(.managed-checkbox,.ob-el-fill){
   display:flex;align-items:center;gap:5px;margin:0;min-width:0
 }

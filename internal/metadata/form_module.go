@@ -324,9 +324,8 @@ type FormElement struct {
 	// Grow — элемент горизонтальной группы занимает остаток её строки
 	// (flex:1 1 0): рядом с соседями, а не отдельной строкой, как stretch.
 	Grow bool `yaml:"grow,omitempty"`
-	// TitleHidden — у ТабличнаяЧасть не рисовать заголовок над таблицей: без
-	// title платформа подставляет имя таблицы, а таблице-выдаче (результат
-	// поиска) подпись не нужна и стоит строки высоты формы.
+	// TitleHidden hides the heading of a table, the visible label of a
+	// numeric input, or the text of a label used as a layout spacer.
 	TitleHidden bool `yaml:"title_hidden,omitempty"`
 	// TotalsCaption replaces the managed grid’s default label in its totals row.
 	TotalsCaption string `yaml:"totals_caption,omitempty"`
