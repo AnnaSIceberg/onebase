@@ -461,6 +461,9 @@ func tabularAttribute(form *metadata.FormModule, entity *metadata.Entity, name s
 type reportDSLQueryReadsKey struct{}
 
 func reportDSLQueryContext(ctx context.Context, rep *reportpkg.Report) context.Context {
+	if _, inherited := ctx.Value(reportDSLQueryReadsKey{}).(map[string]bool); inherited {
+		ctx = context.WithValue(ctx, reportDSLQueryReadsKey{}, map[string]bool(nil))
+	}
 	user := auth.UserFromContext(ctx)
 	if rep.External || len(rep.SourceRead) == 0 || user == nil || user.IsAdmin {
 		return ctx
