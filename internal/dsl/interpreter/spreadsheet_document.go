@@ -736,6 +736,14 @@ func (w *SpreadsheetDocumentCellWrapper) Get(field string) any {
 		return w.cell.FontFamily
 	case "граница", "border":
 		return w.cell.Border
+	case "границаслева", "borderleft":
+		return w.cell.BorderLeft
+	case "границасверху", "bordertop":
+		return w.cell.BorderTop
+	case "границасправа", "borderright":
+		return w.cell.BorderRight
+	case "границаснизу", "borderbottom":
+		return w.cell.BorderBottom
 	case "цветграницы", "bordercolor":
 		return w.cell.BorderColor
 	case "цветфона", "backcolor":
@@ -794,15 +802,40 @@ func (w *SpreadsheetDocumentCellWrapper) Set(field string, v any) {
 	case "граница", "border":
 		w.cell.Border = strArg([]any{v}, 0)
 		w.cell.BorderLeft, w.cell.BorderTop, w.cell.BorderRight, w.cell.BorderBottom = "", "", "", ""
+	case "границаслева", "borderleft":
+		w.inheritBorderPreset()
+		w.cell.BorderLeft = strArg([]any{v}, 0)
+	case "границасверху", "bordertop":
+		w.inheritBorderPreset()
+		w.cell.BorderTop = strArg([]any{v}, 0)
+	case "границасправа", "borderright":
+		w.inheritBorderPreset()
+		w.cell.BorderRight = strArg([]any{v}, 0)
+	case "границаснизу", "borderbottom":
+		w.inheritBorderPreset()
+		w.cell.BorderBottom = strArg([]any{v}, 0)
 	case "цветграницы", "bordercolor":
 		w.cell.BorderColor = strArg([]any{v}, 0)
 	case "цветфона", "backcolor":
 		w.cell.BackColor = strArg([]any{v}, 0)
 	case "цветтекста", "textcolor":
 		w.cell.TextColor = strArg([]any{v}, 0)
+		w.cell.TextColorSet = true
 	case "рисунок", "picture":
 		w.cell.Picture = strArg([]any{v}, 0)
 	}
+}
+
+func (w *SpreadsheetDocumentCellWrapper) inheritBorderPreset() {
+	cell := w.cell
+	if cell.BorderLeft != "" || cell.BorderTop != "" || cell.BorderRight != "" || cell.BorderBottom != "" {
+		return
+	}
+	preset := cell.Border
+	if preset == "all" {
+		preset = "thin"
+	}
+	cell.BorderLeft, cell.BorderTop, cell.BorderRight, cell.BorderBottom = preset, preset, preset, preset
 }
 
 func (w *SpreadsheetDocumentCellWrapper) CallMethod(name string, args []any) any {

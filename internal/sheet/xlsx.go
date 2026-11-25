@@ -371,6 +371,9 @@ func xlsxCellStyle(cell *Cell) (*excelize.Style, bool) {
 	}
 	if c := xlsxColor(cell.TextColor); c != "" {
 		st.Font.Color = c
+	} else if cell.TextColorSet && cell.TextColor == "" {
+		// Excelize otherwise serializes the zero index as its black palette entry.
+		st.Font.ColorIndexed = -1
 	}
 	if c := xlsxColor(cell.BackColor); c != "" {
 		st.Fill = excelize.Fill{Type: "pattern", Pattern: 1, Color: []string{c}}

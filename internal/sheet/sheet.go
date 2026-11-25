@@ -45,6 +45,7 @@ type Cell struct {
 	FontFamily       string
 	BackColor        string
 	TextColor        string
+	TextColorSet     bool // An explicit empty color uses Excel's automatic text color.
 	// Border — legacy-пресет рамки ("all"/""/"thin"/"thick"/"none"). Если задана
 	// хотя бы одна из per-side границ (BorderLeft/Top/Right/Bottom), она имеет
 	// приоритет над этим пресетом при рендере (html.go/pdf.go).

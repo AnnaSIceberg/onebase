@@ -310,3 +310,36 @@ areas:
 		})
 	}
 }
+
+func TestSpreadsheetXLSXExplicitCellAppearance(t *testing.T) {
+	const src = `
+Функция Тест()
+    Док = Новый ТабличныйДокумент;
+    Я = Док.Ячейка(1, 1);
+    Я.Текст = " ";
+    Я.ИмяШрифта = "Arial";
+    Я.ЦветТекста = "";
+    Я.Граница = "all";
+    Я.ЦветГраницы = "#CCC085";
+    Я.ГраницаСправа = "none";
+    Возврат Док.Записать("границы.xlsx", "xlsx");
+КонецФункции
+`
+	value := runHTTPSrc(t, src, withSpreadsheet(map[string]any{}))
+	data, err := base64.StdEncoding.DecodeString(value.(string))
+	require.NoError(t, err)
+	book, err := excelize.OpenReader(bytes.NewReader(data))
+	require.NoError(t, err)
+	defer book.Close() //nolint:errcheck
+	id, err := book.GetCellStyle("Лист1", "A1")
+	require.NoError(t, err)
+	style, err := book.GetStyle(id)
+	require.NoError(t, err)
+	assert.Equal(t, "Arial", style.Font.Family)
+	assert.Empty(t, style.Font.Color)
+	assert.ElementsMatch(t, []excelize.Border{
+		{Type: "left", Color: "CCC085", Style: 1},
+		{Type: "top", Color: "CCC085", Style: 1},
+		{Type: "bottom", Color: "CCC085", Style: 1},
+	}, style.Border)
+}
