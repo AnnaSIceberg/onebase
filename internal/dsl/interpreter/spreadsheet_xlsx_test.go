@@ -68,6 +68,40 @@ func TestSpreadsheetXLSXAttachmentIsWorkbook(t *testing.T) {
 	assert.InDelta(t, 20, w, 1)
 }
 
+func TestSpreadsheetXLSXPreciseWidthsAndIndent(t *testing.T) {
+	const src = `
+Функция Тест()
+    Док = Новый ТабличныйДокумент;
+    Док.ТочныеШириныExcel = Настройка;
+    Док.ШиринаКолонки(1, 8.5);
+    Док.Ячейка(1, 1).Текст = "Деталь группы";
+    Док.Ячейка(1, 1).Выравнивание = "left";
+    Док.Ячейка(1, 1).ОтступExcel = 4;
+    Возврат Док.Записать("размеры.xlsx", "xlsx");
+КонецФункции
+`
+	for _, tc := range []struct {
+		precise bool
+		width   float64
+	}{{false, 1}, {true, 0.5}} {
+		value := runHTTPSrc(t, src, withSpreadsheet(map[string]any{"Настройка": tc.precise}))
+		data, err := base64.StdEncoding.DecodeString(value.(string))
+		require.NoError(t, err)
+		f, err := excelize.OpenReader(bytes.NewReader(data))
+		require.NoError(t, err)
+		width, err := f.GetColWidth("Лист1", "A")
+		require.NoError(t, err)
+		assert.Equal(t, tc.width, width)
+		id, err := f.GetCellStyle("Лист1", "A1")
+		require.NoError(t, err)
+		style, err := f.GetStyle(id)
+		require.NoError(t, err)
+		require.NotNil(t, style.Alignment)
+		assert.Equal(t, 4, style.Alignment.Indent)
+		require.NoError(t, f.Close())
+	}
+}
+
 // withSpreadsheet добавляет фабрику Новый ТабличныйДокумент — как её
 // подмешивает исполнение модулей (ui/handlers_dsl.go).
 func withSpreadsheet(vars map[string]any) map[string]any {
@@ -275,4 +309,43 @@ areas:
 			}
 		})
 	}
+}
+
+func TestSpreadsheetXLSXExplicitCellAppearance(t *testing.T) {
+	const src = `
+Функция Тест()
+    Док = Новый ТабличныйДокумент;
+    Док.БазовыйШрифтExcel("Arial", 8);
+    Я = Док.Ячейка(1, 1);
+    Я.Текст = " ";
+    Я.ИмяШрифта = "Arial";
+    Я.ЦветТекста = "";
+    Я.Граница = "all";
+    Я.ЦветГраницы = "#CCC085";
+    Я.ГраницаСправа = "none";
+    Возврат Док.Записать("границы.xlsx", "xlsx");
+КонецФункции
+`
+	value := runHTTPSrc(t, src, withSpreadsheet(map[string]any{}))
+	data, err := base64.StdEncoding.DecodeString(value.(string))
+	require.NoError(t, err)
+	book, err := excelize.OpenReader(bytes.NewReader(data))
+	require.NoError(t, err)
+	defer book.Close() //nolint:errcheck
+	base, err := book.GetStyle(0)
+	require.NoError(t, err)
+	require.NotNil(t, base.Font)
+	assert.Equal(t, "Arial", base.Font.Family)
+	assert.Equal(t, 8.0, base.Font.Size)
+	id, err := book.GetCellStyle("Лист1", "A1")
+	require.NoError(t, err)
+	style, err := book.GetStyle(id)
+	require.NoError(t, err)
+	assert.Equal(t, "Arial", style.Font.Family)
+	assert.Empty(t, style.Font.Color)
+	assert.ElementsMatch(t, []excelize.Border{
+		{Type: "left", Color: "CCC085", Style: 1},
+		{Type: "top", Color: "CCC085", Style: 1},
+		{Type: "bottom", Color: "CCC085", Style: 1},
+	}, style.Border)
 }

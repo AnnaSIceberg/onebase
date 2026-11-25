@@ -27,6 +27,15 @@ import (
 func (d *Document) XLSX() ([]byte, error) {
 	f := excelize.NewFile()
 	defer f.Close() //nolint:errcheck
+	if name := strings.TrimSpace(d.XLSXDefaultFont); name != "" {
+		if err := f.SetDefaultFont(name); err != nil {
+			return nil, err
+		}
+		font := f.Styles.Fonts.Font[0]
+		*font.Sz.Val = d.XLSXDefaultFontSize
+		font.Color = nil
+		font.Scheme = nil
+	}
 	const sheetName = "Лист1"
 	if err := f.SetSheetName("Sheet1", sheetName); err != nil {
 		return nil, err
@@ -65,7 +74,7 @@ func (d *Document) writeXLSXSheet(f *excelize.File, sheetName string) (map[int]b
 		if err != nil {
 			continue
 		}
-		if err := f.SetColWidth(sheetName, name, name, pxToExcelWidth(px)); err != nil {
+		if err := f.SetColWidth(sheetName, name, name, d.xlsxColumnWidth(px)); err != nil {
 			return nil, 0, err
 		}
 	}
@@ -331,6 +340,13 @@ func xlsxWorkbookOutlineXML(data []byte, outlines map[string]xlsxSheetOutline) (
 	return output.Bytes(), nil
 }
 
+func (d *Document) xlsxColumnWidth(px float64) float64 {
+	if d.XLSXPreciseWidths && px > 5 {
+		return (px - 5) / 7
+	}
+	return pxToExcelWidth(px)
+}
+
 func pxToExcelWidth(px float64) float64 {
 	w := (px - 5) / 7
 	if w < 1 {
@@ -351,6 +367,7 @@ func xlsxCellStyle(cell *Cell) (*excelize.Style, bool) {
 		Alignment: &excelize.Alignment{
 			Horizontal: xlsxHAlign(cell.Align),
 			Vertical:   xlsxVAlign(cell.Vertical),
+			Indent:     cell.XLSXIndent,
 			// Preserve the export default when a template or script leaves wrapping unset.
 			WrapText: !cell.XLSXWrapExplicit || cell.WrapText,
 		},
@@ -363,6 +380,9 @@ func xlsxCellStyle(cell *Cell) (*excelize.Style, bool) {
 	}
 	if c := xlsxColor(cell.TextColor); c != "" {
 		st.Font.Color = c
+	} else if cell.TextColorSet && cell.TextColor == "" {
+		// Excelize otherwise serializes the zero index as its black palette entry.
+		st.Font.ColorIndexed = -1
 	}
 	if c := xlsxColor(cell.BackColor); c != "" {
 		st.Fill = excelize.Fill{Type: "pattern", Pattern: 1, Color: []string{c}}

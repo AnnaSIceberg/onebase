@@ -3,6 +3,7 @@ package interpreter
 import (
 	"encoding/base64"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -321,6 +322,8 @@ func (d *SpreadsheetDocument) Set(field string, v any) {
 		d.Doc.FileName = strArg([]any{v}, 0)
 	case "поляпечати", "printmargins", "margins":
 		d.setMargins(v)
+	case "точныешириныexcel", "preciseexcelwidths":
+		d.Doc.XLSXPreciseWidths = truthy(v)
 	case "масштабпросмотра", "zoomscale":
 		value := toFloatOr0(v)
 		zoom := int(value)
@@ -434,6 +437,20 @@ func (d *SpreadsheetDocument) CallMethod(name string, args []any) any {
 		if len(args) >= 2 {
 			d.setAreaName(args[0], strArg(args, 1))
 		}
+	case "базовыйшрифтexcel", "exceldefaultfont":
+		name := strings.TrimSpace(strArg(args, 0))
+		if len(args) != 2 || name == "" {
+			RaiseUserError("БазовыйШрифтExcel: укажите имя шрифта и размер")
+			return nil
+		}
+		size := toFloatOr0(args[1])
+		if size < 1 || size > 409 || math.IsNaN(size) {
+			RaiseUserError("БазовыйШрифтExcel: размер от 1 до 409")
+			return nil
+		}
+		d.Doc.XLSXDefaultFont = name
+		d.Doc.XLSXDefaultFontSize = size
+		return nil
 	case "ширинаколонки", "columnwidth":
 		if len(args) >= 2 {
 			d.Doc.SetColumnWidth(int(floatArg(args, 0)), toFloatOr0(args[1]))
@@ -728,10 +745,20 @@ func (w *SpreadsheetDocumentCellWrapper) Get(field string) any {
 		return w.cell.Italic
 	case "размершрифта", "fontsize":
 		return float64(w.cell.FontSize)
+	case "отступexcel", "excelindent":
+		return float64(w.cell.XLSXIndent)
 	case "имяшрифта", "fontfamily":
 		return w.cell.FontFamily
 	case "граница", "border":
 		return w.cell.Border
+	case "границаслева", "borderleft":
+		return w.cell.BorderLeft
+	case "границасверху", "bordertop":
+		return w.cell.BorderTop
+	case "границасправа", "borderright":
+		return w.cell.BorderRight
+	case "границаснизу", "borderbottom":
+		return w.cell.BorderBottom
 	case "цветграницы", "bordercolor":
 		return w.cell.BorderColor
 	case "цветфона", "backcolor":
@@ -779,20 +806,51 @@ func (w *SpreadsheetDocumentCellWrapper) Set(field string, v any) {
 		w.cell.Underline = truthy(v)
 	case "размершрифта", "fontsize":
 		w.cell.FontSize = int(toFloatOr0(v))
+	case "отступexcel", "excelindent":
+		value := toFloatOr0(v)
+		if value < 0 || value > 250 || float64(int(value)) != value {
+			RaiseUserError("ОтступExcel: требуется целое число от 0 до 250")
+		}
+		w.cell.XLSXIndent = int(value)
 	case "имяшрифта", "fontfamily":
 		w.cell.FontFamily = strArg([]any{v}, 0)
 	case "граница", "border":
 		w.cell.Border = strArg([]any{v}, 0)
 		w.cell.BorderLeft, w.cell.BorderTop, w.cell.BorderRight, w.cell.BorderBottom = "", "", "", ""
+	case "границаслева", "borderleft":
+		w.inheritBorderPreset()
+		w.cell.BorderLeft = strArg([]any{v}, 0)
+	case "границасверху", "bordertop":
+		w.inheritBorderPreset()
+		w.cell.BorderTop = strArg([]any{v}, 0)
+	case "границасправа", "borderright":
+		w.inheritBorderPreset()
+		w.cell.BorderRight = strArg([]any{v}, 0)
+	case "границаснизу", "borderbottom":
+		w.inheritBorderPreset()
+		w.cell.BorderBottom = strArg([]any{v}, 0)
 	case "цветграницы", "bordercolor":
 		w.cell.BorderColor = strArg([]any{v}, 0)
 	case "цветфона", "backcolor":
 		w.cell.BackColor = strArg([]any{v}, 0)
 	case "цветтекста", "textcolor":
 		w.cell.TextColor = strArg([]any{v}, 0)
+		w.cell.TextColorSet = true
 	case "рисунок", "picture":
 		w.cell.Picture = strArg([]any{v}, 0)
 	}
+}
+
+func (w *SpreadsheetDocumentCellWrapper) inheritBorderPreset() {
+	cell := w.cell
+	if cell.BorderLeft != "" || cell.BorderTop != "" || cell.BorderRight != "" || cell.BorderBottom != "" {
+		return
+	}
+	preset := cell.Border
+	if preset == "all" {
+		preset = "thin"
+	}
+	cell.BorderLeft, cell.BorderTop, cell.BorderRight, cell.BorderBottom = preset, preset, preset, preset
 }
 
 func (w *SpreadsheetDocumentCellWrapper) CallMethod(name string, args []any) any {

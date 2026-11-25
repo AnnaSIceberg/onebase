@@ -38,12 +38,14 @@ type Cell struct {
 	Bold             bool
 	Italic           bool
 	Underline        bool
+	XLSXIndent       int // Excel alignment indentation in character units.
 	XLSXWrapExplicit bool
 	WrapText         bool
 	FontSize         int
 	FontFamily       string
 	BackColor        string
 	TextColor        string
+	TextColorSet     bool // An explicit empty color uses Excel's automatic text color.
 	// Border — legacy-пресет рамки ("all"/""/"thin"/"thick"/"none"). Если задана
 	// хотя бы одна из per-side границ (BorderLeft/Top/Right/Bottom), она имеет
 	// приоритет над этим пресетом при рендере (html.go/pdf.go).
@@ -191,7 +193,10 @@ func DefaultPageSetup() PageSetup {
 // в interpreter.SpreadsheetDocument, делегирующем сюда.
 type Document struct {
 	Groups              []RowGroup
-	XLSXZoomScale       int // Zero leaves the workbook default.
+	XLSXZoomScale       int  // Zero leaves the workbook default.
+	XLSXPreciseWidths   bool // Export explicit widths below one Excel character.
+	XLSXDefaultFont     string
+	XLSXDefaultFontSize float64
 	FreezeRows          int
 	FreezeCols          int
 	HideGrid            bool
