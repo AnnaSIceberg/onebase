@@ -31,6 +31,8 @@ type FieldPolicy struct {
 	// Disclose=false forbids revealing this field even with object-level
 	// disclose. nil preserves the existing disclosure contract.
 	Disclose *bool `yaml:"disclose,omitempty" json:"disclose,omitempty"`
+	// FormDisclose enables disclosure inside an audited managed form instance only.
+	FormDisclose bool `yaml:"form_disclose,omitempty" json:"form_disclose,omitempty"`
 }
 
 // Policies returns the field policies declared for (kind, entity), or nil.

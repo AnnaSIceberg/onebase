@@ -1349,6 +1349,10 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	instanceSchema := func() string { return entityFormCloseSchema(entity, form) }
 	instanceFn := s.managedFormInstanceBuiltin(r, form, existingFormID, instanceSchema)
 	vars["ИдЭкземпляраФормы"], vars["ManagedFormInstanceID"] = instanceFn, instanceFn
+	if closeInv == nil && eventName == string(metadata.FormEventOnAnswer) {
+		revealFn := s.managedFormDisclosureBuiltin(r, entity, form)
+		vars["РаскрытьПоляТекущейКарточки"], vars["DiscloseCurrentFormFields"] = revealFn, revealFn
+	}
 	openContextFn := s.formOpenContextBuiltin(r, entity, form, existingFormID, instanceSchema)
 	vars["КонтекстОткрытияФормы"], vars["FormOpeningContext"] = openContextFn, openContextFn
 	rebindInstance := func(savedID string) string {
@@ -2476,6 +2480,7 @@ func (s *Server) serializeManagedFormEventValues(ctx context.Context, form *meta
 	values := normalizeFormAttrKeys(fields, form, entity)
 	// conceal: true — выдача требует действующего серверного разрешения.
 	revealed := s.concealEventValues(ctx, form, values)
+	s.restoreAuditedFormFields(ctx, form, entity, obj.ID, values, revealed)
 	// Псевдо-реквизит «Ссылка» — контекст обработчика, а не значение формы:
 	// в ответ он не едет, чтобы applyValues не искал под него элемент.
 	for _, k := range []string{"ссылка", "reference", "_version"} {
