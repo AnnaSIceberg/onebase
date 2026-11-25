@@ -173,3 +173,50 @@ func TestReportResultFilterUnaliasedNativeColumns(t *testing.T) {
 		}
 	})
 }
+
+func TestReportFilterOuterReferenceWithSubquery(t *testing.T) {
+	request := &metadata.Entity{Name: "Request", Kind: metadata.KindDocument}
+	other := &metadata.Entity{Name: "Other", Kind: metadata.KindDocument}
+	opts := query.CompileOpts{Entities: []*metadata.Entity{request, other}}
+	lookup := func(_, name string) *metadata.Entity {
+		for _, entity := range opts.Entities {
+			if name == entity.Name {
+				return entity
+			}
+		}
+		return nil
+	}
+	allow := func(source query.SourceRef, _ *metadata.Entity, field string, uuid bool) bool {
+		return source.Name == request.Name && field == "Ссылка" && uuid
+	}
+	cases := []struct {
+		name string
+		text string
+		want int
+	}{
+		{"outer alias overrides an unrelated inner alias", "ВЫБРАТЬ А.Ссылка КАК request ИЗ Документ.Request КАК А ГДЕ А.Ссылка В (ВЫБРАТЬ А.Ссылка ИЗ Документ.Other КАК А)", 1},
+		{"physical join alongside a derived source", "ВЫБРАТЬ З.Ссылка КАК request ИЗ (ВЫБРАТЬ А.Ссылка КАК request ИЗ Документ.Request КАК А) КАК Св ВНУТРЕННЕЕ СОЕДИНЕНИЕ Документ.Request КАК З ПО З.Ссылка = Св.request", 1},
+		{"permission rejected", "ВЫБРАТЬ А.Ссылка КАК request ИЗ Документ.Other КАК А ГДЕ А.Ссылка В (ВЫБРАТЬ А.Ссылка ИЗ Документ.Request КАК А)", 0},
+		{"derived output", "ВЫБРАТЬ А.request КАК request ИЗ (ВЫБРАТЬ А.Ссылка КАК request ИЗ Документ.Request КАК А) КАК А", 0},
+		{"compound result", "ВЫБРАТЬ А.Ссылка КАК request ИЗ Документ.Request КАК А ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ А.Ссылка ИЗ Документ.Request КАК А", 0},
+		{"duplicate output alias", "ВЫБРАТЬ А.Ссылка КАК request, А.Ссылка КАК request ИЗ Документ.Request КАК А ГДЕ А.Ссылка В (ВЫБРАТЬ А.Ссылка ИЗ Документ.Other КАК А)", 0},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := query.Compile(tt.text, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Projection.Simple {
+				t.Fatal("expected a complex projection")
+			}
+			fields := resultfilter.Schema(res, lookup, allow)
+			if len(fields) != tt.want {
+				t.Fatalf("fields = %+v, want %d; sources = %+v", fields, tt.want, res.SourceOccurrences)
+			}
+			if tt.want == 1 && (fields[0].Name != "request" || fields[0].RefEntity != request.Name) {
+				t.Fatalf("unexpected reference descriptor: %+v", fields[0])
+			}
+		})
+	}
+}

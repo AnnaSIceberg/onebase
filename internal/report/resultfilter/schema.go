@@ -32,8 +32,11 @@ type Field struct {
 // Virtual tables, wildcards and reference presentations need further compiler
 // proof and deliberately do not become filterable here.
 func Schema(res query.Result, lookup Lookup, allowed Allowed) []Field {
-	if res.Limited || !res.Projection.Simple || lookup == nil || allowed == nil {
+	if res.Limited || lookup == nil || allowed == nil {
 		return nil
+	}
+	if !res.Projection.Simple {
+		return outerReferenceSchema(res, lookup, allowed)
 	}
 	counts := map[string]int{}
 	for _, col := range res.Projection.Columns {
@@ -122,6 +125,65 @@ func Schema(res query.Result, lookup Lookup, allowed Allowed) []Field {
 		}
 	}
 	return out
+}
+
+// outerReferenceSchema proves explicit UUID columns of physical sources in
+// a single outer SELECT. Derived sources and compound result branches stay
+// outside this contract; predicates and nested SELECTs do not change the
+// provenance of a direct outer reference.
+func outerReferenceSchema(res query.Result, lookup Lookup, allowed Allowed) []Field {
+	var columns []query.ProjectionLineage
+	counts := map[string]int{}
+	for _, line := range res.Projection.Lineage {
+		if !line.Result {
+			continue
+		}
+		if line.Branch != 0 || line.Star || line.Output == "" {
+			return nil
+		}
+		columns = append(columns, line)
+		counts[strings.ToLower(line.Output)]++
+	}
+
+	var outer []query.SourceOccurrence
+	for _, source := range res.SourceOccurrences {
+		if source.SelectScope == 0 {
+			outer = append(outer, source)
+		}
+	}
+
+	var fields []Field
+	for _, line := range columns {
+		name := strings.ToLower(line.Alias)
+		if name == "" || !line.Plain || len(line.Paths) != 1 || len(line.Paths[0]) != 2 || counts[name] != 1 {
+			continue
+		}
+		path := line.Paths[0]
+		if !strings.EqualFold(path[1], "Ссылка") && !strings.EqualFold(path[1], "Ref") {
+			continue
+		}
+		source, _, ok := sourcePath(outer, path)
+		if !ok || !strings.EqualFold(source.Qualifier, path[0]) || source.Virtual || source.TablePart != "" ||
+			(source.Kind != "document" && source.Kind != "catalog") {
+			continue
+		}
+		meta := lookup(source.Kind, source.Name)
+		if meta == nil || !allowed(source.SourceRef, meta, "Ссылка", true) {
+			continue
+		}
+		f := Field{
+			Name: name, Type: "reference:" + source.Name, RefEntity: source.Name,
+			Source: source.SourceRef, SourceField: "Ссылка",
+		}
+		for _, occurrence := range res.SourceOccurrences {
+			if occurrence.SourceRef == source.SourceRef {
+				f.SourceCount++
+			}
+		}
+		f.Operators = operators(f)
+		fields = append(fields, f)
+	}
+	return fields
 }
 
 func operators(f Field) []string {
