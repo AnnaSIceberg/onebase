@@ -169,10 +169,11 @@ const tplManagedForm = `
 {{else if and (elHidden $ctx $el) (ne (str $el.Kind) "Кнопка") (ne (str $el.Kind) "Аудиоплеер")}}
 {{else if and $el.WorkbookSavePicker (eq (str $el.Kind) "ПолеФормы")}}
   {{if $ctx.WorkbookPickerID}}
-  <div class="form-group" data-ob-workbook-picker="{{$ctx.WorkbookPickerID}}" style="{{elLayout $el}}">
+  {{$suggestionField := dpField $el.DataPath}}
+  <div class="form-group" data-ob-workbook-picker="{{$ctx.WorkbookPickerID}}"{{if $suggestionField}} data-ob-workbook-field="{{$suggestionField}}"{{end}} style="{{elLayout $el}}">
     <label for="ob-workbook-name">{{fieldTitleRU $el.TitleMap $el.Name}}</label>
     <div style="display:flex;align-items:center;gap:4px">
-      <input id="ob-workbook-name" type="text" data-ob-workbook-name value="{{$el.WorkbookSavePicker}}" readonly>
+      <input id="ob-workbook-name" type="text" data-ob-workbook-name value="{{if $suggestionField}}{{index $ctx.Values $suggestionField}}{{else}}{{$el.WorkbookSavePicker}}{{end}}" readonly>
       <button type="button" class="btn btn-secondary" data-ob-workbook-choose title="{{t $ctx.Lang "Выбрать файл"}}" aria-label="{{t $ctx.Lang "Выбрать файл"}}"{{if $ro}} disabled{{end}}>…</button>
     </div>
   </div>
@@ -494,7 +495,7 @@ const tplManagedForm = `
   {{$buttonLayout := elLayout $el}}
   {{$buttonHidden := elHidden $ctx $el}}
   {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{if $buttonHidden}}display:none;{{end}}{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn {{appFormButtonClass $el.Name (fieldTitleRU $el.TitleMap $el.Name) (formButtonPrimary $el $ctx.LegacyEntityUI) $ctx.LegacyEntityUI}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}}"{{else}}{{with elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{if and $ctx.WorkbookPickerID $el.WorkbookSave}} data-ob-workbook-save{{end}}{{with $el.TabularProgress}} data-ob-tabular-progress="{{.}}"{{end}}{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
+  <button type="button" class="btn {{appFormButtonClass $el.Name (fieldTitleRU $el.TitleMap $el.Name) (formButtonPrimary $el $ctx.LegacyEntityUI) $ctx.LegacyEntityUI}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}}"{{else}}{{with elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{if and $ctx.WorkbookPickerID $el.WorkbookSave}} data-ob-workbook-save{{with $el.WorkbookSavePicker}} data-ob-workbook-filename="{{.}}"{{end}}{{end}}{{with $el.TabularProgress}} data-ob-tabular-progress="{{.}}"{{end}}{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
   {{if and $ctx.WorkbookPickerID $el.WorkbookSave}}<span data-ob-workbook-progress role="status" hidden>⌛ <span data-ob-tabular-percent>0%</span></span>{{end}}

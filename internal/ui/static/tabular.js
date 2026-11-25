@@ -72,27 +72,63 @@
   if(error && error.name==='AbortError')return;
   flash('Не удалось выбрать файл: '+(error && error.message || error), 'err');
  }
- async function chooseWorkbook(state) {
+ async function chooseWorkbook(state, commandName) {
   // The call must be reached directly from the click that provided activation.
   const handle=await window.showSaveFilePicker({
    id:state.id,
-   suggestedName:state.name.value,
+   suggestedName:commandName||state.name.value,
    excludeAcceptAllOption:true,
    types:[{description:'Excel (.xlsx)',accept:{[xlsxType]:['.xlsx']}}]
   });
-  state.name.value=handle.name;
-  state.handle=handle;
-  try { localStorage.setItem(state.id, handle.name); } catch (_) {}
+  if(!commandName){
+   state.name.value=handle.name;
+   state.handle=handle;
+   try { localStorage.setItem(workbookPreferenceKey(state), handle.name); } catch (_) {}
+  }
   return handle;
  }
 
- window.obBindWorkbookPicker=function(form,flash) {
+ function workbookPreferenceKey(state) {
+  return state.field ? state.id+':'+state.suggestion : state.id;
+ }
+
+ function workbookApplyRememberedName(state) {
+  if(state.field && !state.suggestion)return;
+  try { state.name.value=localStorage.getItem(workbookPreferenceKey(state))||state.name.value; } catch (_) {}
+ }
+
+ function workbookPickerReady(state,flash,commandName) {
+  if(!state.field || commandName)return true;
+  if(state.formPending && state.formPending()){
+   flash('Подождите, пока обновится имя файла.', 'info');
+   return false;
+  }
+  if(!state.suggestion){
+   flash('Сначала заполните параметры файла.', 'info');
+   return false;
+  }
+  return true;
+ }
+
+ window.obApplyWorkbookSuggestion=function(form,values) {
+  const state=form && workbookPickers.get(form);
+  if(!state || !state.field || !Object.prototype.hasOwnProperty.call(values,state.field))return;
+  const suggestion=String(values[state.field]||'');
+  if(suggestion===state.suggestion)return;
+  state.suggestion=suggestion;
+  state.name.value=suggestion;
+  state.handle=null;
+  workbookApplyRememberedName(state);
+ };
+
+ window.obBindWorkbookPicker=function(form,flash,formPending) {
   const field=form && form.querySelector('[data-ob-workbook-picker]');
   if(!field || workbookPickers.has(form))return;
   const name=field.querySelector('[data-ob-workbook-name]');
   const choose=field.querySelector('[data-ob-workbook-choose]');
-  const state={id:field.dataset.obWorkbookPicker,name:name,handle:null,busy:false};
-  try { name.value=localStorage.getItem(state.id)||name.value; } catch (_) {}
+  const state={id:field.dataset.obWorkbookPicker,field:field.dataset.obWorkbookField,
+               suggestion:name.value,name:name,handle:null,busy:false,formPending:formPending};
+  workbookApplyRememberedName(state);
   workbookPickers.set(form,state);
   choose.addEventListener('click',async function(){
    if(state.busy)return;
@@ -100,8 +136,9 @@
     flash('Браузер предложит скачать XLSX после формирования.', 'info');
     return;
    }
+   if(!workbookPickerReady(state,flash,''))return;
    state.busy=true;
-   try { await chooseWorkbook(state); }
+   try { await chooseWorkbook(state,''); }
    catch(error) { workbookError(flash,error); }
    finally { state.busy=false; }
   });
@@ -115,12 +152,14 @@
   });
   if(!button)return null;
   if(state.busy || button.disabled)return Promise.resolve();
+  const commandName=button.getAttribute('data-ob-workbook-filename')||'';
+  if(typeof window.showSaveFilePicker==='function' && !workbookPickerReady(state,flash,commandName))return Promise.resolve();
   state.busy=true;
   return (async function(){
    let handle=null;
    if(typeof window.showSaveFilePicker==='function'){
     try {
-     handle=state.handle||await chooseWorkbook(state);
+     handle=commandName ? await chooseWorkbook(state,commandName) : state.handle||await chooseWorkbook(state,'');
      if(handle.requestPermission && await handle.requestPermission({mode:'readwrite'})!=='granted'){
       throw new Error('Браузер не разрешил запись в выбранный файл.');
      }

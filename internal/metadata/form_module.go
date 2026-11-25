@@ -274,7 +274,7 @@ type FormElement struct {
 	Props     map[string]any           `yaml:"props,omitempty"`
 
 	TabularProgress        string `yaml:"tabular_progress,omitempty"`          // result attribute for a processor button
-	WorkbookSavePicker     string `yaml:"workbook_save_picker,omitempty"`      // proposed XLSX filename for a processor field
+	WorkbookSavePicker     string `yaml:"workbook_save_picker,omitempty"`      // XLSX picker default for a field or an override on a save button
 	WorkbookUpdateOnAnswer bool   `yaml:"workbook_update_on_answer,omitempty"` // trusted processor button may replace workbook on its own answer
 	WorkbookSave           bool   `yaml:"workbook_save,omitempty"`             // processor button saves the returned book locally
 	TabularPlainRows       bool   `yaml:"tabular_plain_rows,omitempty"`

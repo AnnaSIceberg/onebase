@@ -611,6 +611,7 @@ window.obManagedApplyHints = obManagedApplyHints;
         }
       });
     });
+    if (window.obApplyWorkbookSuggestion) window.obApplyWorkbookSuggestion(form, values);
     if (typeof refreshPictureBindings === 'function') refreshPictureBindings(form, values);
     // Значения, присвоенные обработчиком, приходят без change: оформление
     // выбранного значения (choice_style_value) перерисовываем здесь.
@@ -2072,7 +2073,7 @@ window.obManagedApplyHints = obManagedApplyHints;
   }
 
   if(window.obBindTabularHost)window.obBindTabularHost(fireFormEvent);
-  if(window.obBindWorkbookPicker)window.obBindWorkbookPicker(document.getElementById('main-form'), flash);
+  if(window.obBindWorkbookPicker)window.obBindWorkbookPicker(document.getElementById('main-form'), flash, function(){ return formEventPending; });
   function fireFormEvent(elementName, eventName, extraParams, pickerRequest, beforePostOwner, workbookSave, vtEdit){
 	pickerRequest = pickerRequest || (window.obPickerRequest ? window.obPickerRequest() : null);
 	if (formEventWriteUnknown || manualReconcileRequired) {

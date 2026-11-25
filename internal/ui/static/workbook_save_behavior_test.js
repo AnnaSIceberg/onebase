@@ -10,14 +10,14 @@ const xlsx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 function fixture(options = {}) {
   const messages = [];
   const stored = options.stored || new Map();
-  const picker = {dataset: {obWorkbookPicker: 'xlsx-fixture'}};
-  const name = {value: 'Default.xlsx'};
+  const picker = {dataset: {obWorkbookPicker: 'xlsx-fixture', obWorkbookField: options.field}};
+  const name = {value: options.initial ?? 'Default.xlsx'};
   let chooseClick;
   const choose = {addEventListener: (_type, listener) => chooseClick = listener};
   const status = {hidden: true, querySelector: () => percent};
   const percent = {textContent: ''};
   const button = {
-    getAttribute: key => key === 'data-ob-fire-click' ? 'Build' : null,
+    getAttribute: key => key === 'data-ob-fire-click' ? 'Build' : key === 'data-ob-workbook-filename' ? options.commandFilename : null,
     hasAttribute: key => key === 'data-ob-workbook-save',
     nextElementSibling: status,
   };
@@ -30,8 +30,9 @@ function fixture(options = {}) {
     localStorage: {getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value)},
   });
   const flash = (message, type) => messages.push([message, type]);
-  window.obBindWorkbookPicker(form, flash);
+  window.obBindWorkbookPicker(form, flash, options.pending);
   return {window, messages, name, status, percent, choose: () => chooseClick(),
+    update: values => window.obApplyWorkbookSuggestion(form, values),
     build: run => window.obRunWorkbookSave(form, 'Build', flash, run)};
 }
 
@@ -82,4 +83,31 @@ test('write waits for close and aborts on failed write', async () => {
   writer.write = async () => {throw new Error('disk full');};
   await assert.rejects(f.window.obWriteWorkbook(handle, '/ui/tabular/id/xlsx'), /disk full/);
   assert.deepEqual(order, ['xlsx', 'close', 'abort']);
+});
+
+test('a branch suggestion replaces the prior branch handle and waits for the form event', async () => {
+  const calls = [];
+  let pending = true;
+  const f = fixture({field: 'WorkbookName', initial: '', pending: () => pending, choose: async options => {
+    calls.push(options.suggestedName);
+    return {name: options.suggestedName};
+  }});
+  await f.choose();
+  await f.build(() => assert.fail('started while the branch was changing'));
+  pending = false;
+  await f.choose();
+  assert.deepEqual(calls, []);
+  f.update({WorkbookName: 'Отчет408.xlsx'});
+  await f.choose();
+  f.update({WorkbookName: 'Отчет400.xlsx'});
+  await f.build(destination => assert.equal(destination.handle.name, 'Отчет400.xlsx'));
+  assert.deepEqual(calls, ['Отчет408.xlsx', 'Отчет400.xlsx']);
+});
+
+test('a summary command has its own suggestion and keeps the branch choice', async () => {
+  const f = fixture({field: 'WorkbookName', initial: 'Отчет408.xlsx', commandFilename: 'Отчет400Сводный.xlsx',
+    choose: async options => ({name: options.suggestedName})});
+  await f.choose();
+  await f.build(destination => assert.equal(destination.handle.name, 'Отчет400Сводный.xlsx'));
+  assert.equal(f.name.value, 'Отчет408.xlsx');
 });
