@@ -515,7 +515,8 @@ func reportYAMLSchema() *yamlLintSchema {
 		"appearance":          obj("lines", "zebra", "collapse_to"),
 		"chart":               obj("type", "category", "series"),
 		// detail_fields — поля детальной записи (аналог «Выбранных полей» 1С).
-		"detail_fields": seq(obj("field", "title")),
+		"detail_fields":         seq(obj("field", "title")),
+		"detail_required_field": nil,
 	})
 	return with(obj("name", "title", "query", "chart_proc", "result_proc", "compare_phone_field", "compare_request_phones", "output_format"), map[string]*yamlLintSchema{
 		"form_actions": obj("primary_background", "cancel"),

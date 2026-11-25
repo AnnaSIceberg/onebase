@@ -23,7 +23,7 @@ func Parse(f url.Values) (*report.Composition, bool) {
 	if f.Get("comp.present") == "" {
 		return nil, false
 	}
-	c := &report.Composition{}
+	c := &report.Composition{DetailRequiredField: strings.TrimSpace(f.Get("comp.detail_required_field"))}
 
 	// Группировки
 	for _, i := range rowIndexes(f, "comp.grouping.", "") {

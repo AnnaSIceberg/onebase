@@ -127,6 +127,8 @@ type Composition struct {
 	// колонки, которые в строке детализации показывают значения записи
 	// (номер, наименование, даты), а в строках групп и итогов пусты.
 	DetailFields []DetailField `yaml:"detail_fields,omitempty"`
+	// DetailRequiredField skips placeholder detail rows while retaining them in totals.
+	DetailRequiredField string `yaml:"detail_required_field,omitempty" json:"-"`
 	// Formats — формат подписи значения группировки или колонки кросс-таблицы,
 	// строкой Формат() 1С (как «Формат» поля схемы СКД): {Месяц: "ДФ='ММММ гг'"}
 	// → «Сентябрь 26». Меняет только подпись: группировка и сортировка — по

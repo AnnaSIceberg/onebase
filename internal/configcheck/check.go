@@ -830,6 +830,9 @@ func CheckReportComposition(proj *project.Project) []Issue {
 			groups[g] = true
 			groupNames[strings.ToLower(g)] = true
 		}
+		if name := strings.ToLower(strings.TrimSpace(c.DetailRequiredField)); name != "" && len(outputColumns) > 0 && !outputColumns[name] {
+			add(repName, prefix+fmt.Sprintf("detail_required_field: поле %q отсутствует в выборке отчёта", c.DetailRequiredField))
+		}
 		for _, field := range c.ReferenceGroupings {
 			if !groupNames[strings.ToLower(field)] {
 				add(repName, prefix+fmt.Sprintf("reference_groupings: поле %q отсутствует в groupings", field))

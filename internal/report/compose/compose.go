@@ -70,12 +70,14 @@ func (w *warnCollector) add(msg string) {
 }
 
 type Group struct {
-	Field          string         `json:"field"`
-	Key            any            `json:"key"`
-	ReferenceGroup bool           `json:"-"`
-	Subtotals      map[string]any `json:"subtotals"`
-	Count          int            `json:"count"`
-	Children       []*Group       `json:"children,omitempty"`
+	Field          string `json:"field"`
+	Key            any    `json:"key"`
+	ReferenceGroup bool   `json:"-"`
+	// ReferenceID is retained only when the caller resolved a visible label.
+	ReferenceID string         `json:"-"`
+	Subtotals   map[string]any `json:"subtotals"`
+	Count       int            `json:"count"`
+	Children    []*Group       `json:"children,omitempty"`
 	// sortValues — значения полей сортировки, которые не группировка и не
 	// показатель (sortFieldValues).
 	sortValues map[string]any
@@ -152,6 +154,7 @@ func alignRowKeys(rows []Row, spec report.Composition) []Row {
 	// DetailLink — колонка строки, из которой берётся UUID для ссылки на документ.
 	// DetailEntity — имя сущности (не поле строки), в alignRowKeys не добавляем.
 	add(spec.DetailLink)
+	add(spec.DetailRequiredField)
 	for _, d := range spec.DetailFields {
 		add(d.Field)
 	}
@@ -200,6 +203,9 @@ func buildGroups(rows []Row, spec report.Composition, level int, ev Evaluator, w
 			Count:          len(buckets[k]),
 			Subtotals:      aggregateContext(buckets[k], spec.Measures, ev, wc, measureContext{grand: grand, level: field}),
 			sortValues:     sortFieldValues(buckets[k], spec),
+		}
+		if reference && label != "" {
+			gr.ReferenceID = groupReferenceID(k)
 		}
 		// Условное оформление группы/подытога вычисляется по её подытогам плюс
 		// собственному полю группировки (field→Key) — чтобы правило вида
@@ -254,6 +260,9 @@ func evalStyles(row Row, spec report.Composition, ev Evaluator, wc *warnCollecto
 func buildDetails(rows []Row, spec report.Composition, ev Evaluator, wc *warnCollector) []DetailRow {
 	out := make([]DetailRow, 0, len(rows))
 	for _, r := range rows {
+		if field := spec.DetailRequiredField; field != "" && emptyDetailValue(r[field]) {
+			continue
+		}
 		values := r
 		groups, cloned := r[referenceGroupsKey].(referenceGroups)
 		var labels map[string]string
@@ -284,6 +293,18 @@ func buildDetails(rows []Row, spec report.Composition, ev Evaluator, wc *warnCol
 	}
 	sortDetails(out, spec)
 	return out
+}
+
+func emptyDetailValue(value any) bool {
+	switch v := normalizeGroupKey(value).(type) {
+	case nil:
+		return true
+	case string:
+		s := strings.TrimSpace(v)
+		return s == "" || s == "00000000-0000-0000-0000-000000000000"
+	default:
+		return false
+	}
 }
 
 func measureSet(spec report.Composition) map[string]bool {

@@ -42,6 +42,13 @@ func groupingKey(row Row, field string, value any) any {
 	return normalizeGroupKey(value)
 }
 
+func groupReferenceID(key any) string {
+	if id, ok := key.(referenceGroupID); ok {
+		return uuid.UUID(id).String()
+	}
+	return ""
+}
+
 func groupingDisplay(row Row, field string, key any) (any, bool) {
 	if _, ok := key.(referenceGroupID); ok {
 		groups, _ := row[referenceGroupsKey].(referenceGroups)
