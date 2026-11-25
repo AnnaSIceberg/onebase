@@ -246,8 +246,9 @@ func emailMimeByName(name string) string {
 
 // emailParams — четвёртый аргумент ОтправитьПисьмо.
 type emailParams struct {
-	profile *EmailProfile
-	msg     EmailMessage
+	profile      *EmailProfile
+	msg          EmailMessage
+	validateOnly bool
 }
 
 func parseEmailParams(v any, msg EmailMessage) (emailParams, error) {
@@ -258,6 +259,13 @@ func parseEmailParams(v any, msg EmailMessage) (emailParams, error) {
 	s, ok := v.(*Struct)
 	if !ok || s == nil {
 		return out, errors.New("параметры — Структура {HTML, Копия, Вложения, Профиль, Отправитель, ИмяОтправителя}")
+	}
+	if flag := firstNonNil(s.Get("толькопроверка"), s.Get("validateonly")); flag != nil {
+		value, ok := flag.(bool)
+		if !ok {
+			return out, errors.New("ТолькоПроверка — булево значение")
+		}
+		out.validateOnly = value
 	}
 	if h := firstNonNil(s.Get("html"), s.Get("htmlтело"), s.Get("htmlbody")); h != nil {
 		out.msg.HTML = fmt.Sprint(h)

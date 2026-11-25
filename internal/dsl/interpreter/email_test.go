@@ -45,6 +45,23 @@ func TestEmailShorthand(t *testing.T) {
 	assert.Equal(t, "Привет!", stub.text)
 }
 
+func TestEmailShorthandValidationDoesNotSend(t *testing.T) {
+	stub := &stubSender{}
+	src := `Процедура Тест()
+  Параметры = Новый Структура("ТолькоПроверка", Истина);
+  ОтправитьПисьмо("subscriber@example.test", "Письмо", "Проверка", Параметры);
+  Попытка
+    ОтправитьПисьмо("invalid-address", "Письмо", "Проверка", Параметры);
+  Исключение
+    Возврат ОписаниеОшибки();
+  КонецПопытки;
+  Возврат "";
+КонецПроцедуры`
+	result := runHTTPSrc(t, src, interpreter.NewEmailFunctions(stub, nil))
+	assert.Contains(t, result, "неверный адрес")
+	assert.Zero(t, stub.calls)
+}
+
 func TestEmailObject(t *testing.T) {
 	stub := &stubSender{}
 	src := `Процедура Тест()

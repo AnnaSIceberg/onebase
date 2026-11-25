@@ -309,6 +309,12 @@ func NewEmailFunctionsWithContext(sender EmailSender, guard NetGuard, ctxSource 
 		if err != nil {
 			panic(userError{Msg: "ОтправитьПисьмо: " + err.Error(), File: file, Line: line})
 		}
+		if params.validateOnly {
+			if err := ValidateEmailMessageFull(params.msg); err != nil {
+				panic(userError{Msg: "ОтправитьПисьмо: " + err.Error(), File: file, Line: line})
+			}
+			return nil, nil
+		}
 		if err := sendEmailMessage(sender, params.profile, params.msg); err != nil {
 			panic(userError{Msg: "ОтправитьПисьмо: " + err.Error(), File: file, Line: line})
 		}
