@@ -10,6 +10,8 @@ type ProjectionLineage struct {
 	// «КАК …», иначе последний идентификатор простой ссылки на поле. Для
 	// выражения без алиаса пусто.
 	Output string
+	// Alias is empty when the projection leaves the SQL column name implicit.
+	Alias string
 	// Uses — идентификаторы, чьё значение может попасть в колонку (поля, алиасы
 	// таблиц и колонок подзапросов). Не входят только условия «КОГДА … ТОГДА» и
 	// аргументы КОЛИЧЕСТВО(…): они дают признак или счётчик, а не само значение.
@@ -73,6 +75,7 @@ func projectionLineage(tokens []tok) []ProjectionLineage {
 			line := ProjectionLineage{Uses: uses, Paths: paths, Result: result, Star: col.Star, Branch: branch, Position: pos, Call: projectionCall(item)}
 			if !col.Star {
 				line.Output = col.Output
+				line.Alias = col.Alias
 				line.Plain = len(col.Fields) > 0
 			}
 			out = append(out, line)
