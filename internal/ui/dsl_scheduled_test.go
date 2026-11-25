@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/dsl/lexer"
@@ -87,6 +88,11 @@ func schedTestServer(t *testing.T, jobName, procBody string, enabled bool) *Serv
 // тесты глобала РегламентныеЗадания, и тесты методов менеджера документов.
 func runDSLBody(t *testing.T, s *Server, body string) ([]string, error) {
 	t.Helper()
+	return runDSLBodyWithContext(t, context.Background(), s, body)
+}
+
+func runDSLBodyWithContext(t *testing.T, ctx context.Context, s *Server, body string) ([]string, error) {
+	t.Helper()
 	prog, err := parser.New(lexer.New("Процедура Тест()\n"+body+"\nКонецПроцедуры", "тест.proc.os")).ParseProgram()
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +102,7 @@ func runDSLBody(t *testing.T, s *Server, body string) ([]string, error) {
 		proc = p
 	}
 	var msgs []string
-	vars, txState := s.buildDSLVarsWithMessagesTx(context.Background(), nil, &msgs)
+	vars, txState := s.buildDSLVarsWithMessagesTx(ctx, nil, &msgs)
 	defer interpreter.RollbackTxExecution(txState)
 	return msgs, s.interp.Run(proc, nil, vars)
 }
@@ -380,5 +386,45 @@ func TestРегламентныеЗадания_ЗапускВТранзакци
 	}
 	if len(runs) != 0 {
 		t.Fatalf("отказ оставил запись прогона: %+v", runs)
+	}
+}
+
+func TestScheduledPrivateResponseDSL(t *testing.T) {
+	s := schedTestServer(t, "Поиск", `
+Если НЕ РегламентныеЗадания.ОжидаетсяОтвет() Тогда ВызватьИсключение "нет запроса"; КонецЕсли;
+Сообщить("только внутри задания");
+РегламентныеЗадания.ВернутьОтвет("ответ");
+`, false)
+	s.sched.SetVarsBuilder(s.BuildScheduledJobDSLVars)
+	job := s.sched.GetJob("Поиск")
+	job.PrivateResponseRoles = []string{"Поиск"}
+	job.Schedule = ""
+	if err := s.sched.ReloadProjectJobs([]*metadata.ScheduledJob{job}); err != nil {
+		t.Fatal(err)
+	}
+	const call = `Сообщить(РегламентныеЗадания.ВыполнитьСОтветом("Поиск"));`
+	caller := &auth.User{ID: "requester", Roles: []*auth.Role{{Name: "Поиск"}}}
+	ctx := auth.ContextWithUser(context.Background(), caller)
+	got, err := runDSLBodyWithContext(t, ctx, s, call)
+	if err != nil || len(got) != 1 || got[0] != "ответ" {
+		t.Fatalf("response: %q, %v", got, err)
+	}
+	other := auth.ContextWithUser(context.Background(), &auth.User{ID: "other"})
+	if msgs, err := runDSLBodyWithContext(t, other, s, call); err == nil || len(msgs) != 0 {
+		t.Fatalf("unauthorized response: %q, %v", msgs, err)
+	}
+	if msgs, err := runDSLBody(t, s, call); err == nil || len(msgs) != 0 {
+		t.Fatalf("anonymous response: %q, %v", msgs, err)
+	}
+	if _, err := s.sched.ExecuteJobOnce(ctx, "Поиск", nil); err == nil {
+		t.Fatal("private job can be run without the response channel")
+	}
+	if _, err := runDSLBodyWithContext(t, ctx, s, `РегламентныеЗадания.ВернутьОтвет("ответ");`); err == nil {
+		t.Fatal("publisher accepted outside the job")
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if msgs, err := runDSLBodyWithContext(t, cancelled, s, call); err == nil || len(msgs) != 0 {
+		t.Fatalf("cancelled response: %q, %v", msgs, err)
 	}
 }

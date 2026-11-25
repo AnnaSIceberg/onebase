@@ -22,10 +22,12 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/scheduler"
 	"github.com/ivantit66/onebase/internal/storage"
@@ -49,9 +51,87 @@ func (r *scheduledJobsRoot) CallMethod(method string, args []any) any {
 		return r.start(args)
 	case "прогон", "runinfo":
 		return r.runInfo(args)
+	case "выполнитьсответом", "runwithresponse":
+		return r.runWithResponse(args)
+	case "ожидаетсяответ", "responseexpected":
+		if len(args) != 0 {
+			interpreter.RaiseUserError("ОжидаетсяОтвет: аргументы не допускаются")
+		}
+		return r.responseSlot() != nil
+	case "вернутьответ", "returnresponse":
+		return r.returnResponse(args)
 	}
 	interpreter.RaiseUserError("РегламентныеЗадания: неизвестный метод «" + method +
-		"» (доступны Запустить, Прогон)")
+		"» (доступны Запустить, Прогон, ВыполнитьСОтветом, ОжидаетсяОтвет, ВернутьОтвет)")
+	return nil
+}
+
+type scheduledResponseKey struct{}
+
+type scheduledResponse struct {
+	text string
+	sent bool
+}
+
+// runWithResponse uses no queue entry, run history, or storage for the result.
+// The reply exists only on the request's stack, and is used only if the
+// scheduled processor succeeds and the original request still exists.
+func (r *scheduledJobsRoot) runWithResponse(args []any) any {
+	if len(args) < 1 || len(args) > 2 {
+		interpreter.RaiseUserError("ВыполнитьСОтветом: ожидаются имя задания и необязательные параметры")
+	}
+	name, ok := args[0].(string)
+	if !ok || strings.TrimSpace(name) == "" {
+		interpreter.RaiseUserError("ВыполнитьСОтветом: имя задания должно быть непустой строкой")
+	}
+	ctx := r.ctx()
+	user := auth.UserFromContext(ctx)
+	if user == nil || user.ID == "" || scheduler.InJobExecution(ctx) || storage.HasTx(ctx) || ctx.Err() != nil {
+		interpreter.RaiseUserError("ВыполнитьСОтветом: нужен запрос пользователя вне транзакции")
+	}
+	params := make(map[string]any)
+	if len(args) == 2 && args[1] != nil {
+		for name, value := range taskParamsFromDSL(args[1]) {
+			if !strings.EqualFold(name, "ИдИнициатора") {
+				params[name] = value
+			}
+		}
+	}
+	params["ИдИнициатора"] = user.ID
+
+	sched := r.scheduler("ВыполнитьСОтветом")
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	slot := &scheduledResponse{}
+	jobCtx := context.WithValue(auth.ContextWithUser(ctx, nil), scheduledResponseKey{}, slot)
+	_, err := sched.ExecuteJobOnceWithResponse(jobCtx, strings.TrimSpace(name), params, user.HasAnyRole)
+	if err != nil || ctx.Err() != nil || !slot.sent {
+		// Scheduled code may have put sensitive values in its error text.
+		interpreter.RaiseUserError("ВыполнитьСОтветом: задание не вернуло ответ")
+	}
+	return slot.text
+}
+
+func (r *scheduledJobsRoot) responseSlot() *scheduledResponse {
+	ctx := r.ctx()
+	if !scheduler.InJobExecution(ctx) || auth.UserFromContext(ctx) != nil || ctx.Err() != nil {
+		return nil
+	}
+	slot, _ := ctx.Value(scheduledResponseKey{}).(*scheduledResponse)
+	return slot
+}
+
+func (r *scheduledJobsRoot) returnResponse(args []any) any {
+	slot := r.responseSlot()
+	if slot == nil || slot.sent || len(args) != 1 {
+		interpreter.RaiseUserError("ВернутьОтвет: нужен один ответ из задания, запущенного через ВыполнитьСОтветом")
+	}
+	text, ok := args[0].(string)
+	if !ok || len(text) > 64*1024 {
+		interpreter.RaiseUserError("ВернутьОтвет: ожидается строка до 64 КиБ")
+	}
+	slot.text = text
+	slot.sent = true
 	return nil
 }
 
