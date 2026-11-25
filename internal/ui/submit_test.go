@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/entityservice"
 	"github.com/ivantit66/onebase/internal/metadata"
@@ -385,6 +386,43 @@ func TestSubmit_NewDocumentPostChecksRowPolicy(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Fatalf("запись не должна была создаться: %#v", rows)
+	}
+}
+
+func TestSubmit_ObjectWriteHookUsesSaveOrigin(t *testing.T) {
+	doc := &metadata.Entity{
+		Name: "WriteOrigin", Kind: metadata.KindDocument,
+		Fields: []metadata.Field{{Name: "Origin", Type: metadata.FieldTypeString}},
+	}
+	s, ctx := newSubmitTestServer(t, []*metadata.Entity{doc})
+	s.entitySvc = s.newEntityService(nil)
+	s.reg.Load(runtime.LoadOptions{
+		Entities: []*metadata.Entity{doc},
+		Programs: map[string]*ast.Program{doc.Name: mustParse(t, `
+Процедура ПриЗаписи()
+    this.Origin = ?(this.ЭтоНовый(), "new", "stored");
+КонецПроцедуры`)},
+	})
+	w := httptest.NewRecorder()
+	s.submit(w, reqWithChi(http.MethodPost, "/ui/document/"+doc.Name+"/new",
+		url.Values{}, map[string]string{"kind": "document", "entity": doc.Name}))
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create: HTTP %d", w.Code)
+	}
+	rows, err := s.store.List(ctx, doc.Name, doc, storage.ListParams{})
+	if err != nil || len(rows) != 1 || rows[0]["Origin"] != "new" {
+		t.Fatalf("create hook: %+v, %v", rows, err)
+	}
+	id := fmt.Sprint(rows[0]["id"])
+	w = httptest.NewRecorder()
+	s.submitEdit(w, reqWithChi(http.MethodPost, "/ui/document/"+doc.Name+"/"+id,
+		url.Values{}, map[string]string{"kind": "document", "entity": doc.Name, "id": id}))
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("edit: HTTP %d", w.Code)
+	}
+	row, err := s.store.GetByID(ctx, doc.Name, uuid.MustParse(id), doc)
+	if err != nil || row["Origin"] != "stored" {
+		t.Fatalf("edit hook: %+v, %v", row, err)
 	}
 }
 

@@ -64,7 +64,7 @@ func DecideWithContext(ctx context.Context, u *auth.User, kind, entity, op strin
 			predicates = append(predicates, storage.Predicate{Deny: true})
 			continue
 		}
-		pred, err := compilePolicy(prepared, u, meta, lookup)
+		pred, err := compilePolicy(prepared, u, meta, lookup, linkedDocumentCompiler(ctx, u, dc, op, false))
 		if err != nil {
 			return Decision{}, err
 		}
@@ -128,7 +128,7 @@ func ValidatePolicyWithLookup(p auth.RowPolicy, meta *metadata.Entity, lookup En
 	if err != nil {
 		return err
 	}
-	pred, err := compilePolicy(prepared, lintUser(), meta, lookup)
+	pred, err := compilePolicy(prepared, lintUser(), meta, lookup, linkedDocumentCompiler(context.Background(), lintUser(), DecisionContext{Lookup: lookup}, "read", true))
 	if err != nil {
 		return err
 	}
@@ -149,11 +149,14 @@ func lintUser() *auth.User {
 	}
 }
 
-func compilePolicy(p auth.RowPolicy, u *auth.User, meta *metadata.Entity, lookup EntityLookup) (storage.Predicate, error) {
+func compilePolicy(p auth.RowPolicy, u *auth.User, meta *metadata.Entity, lookup EntityLookup, relate compileLinkedDocument) (storage.Predicate, error) {
+	if p.LinkedDocument != nil {
+		return relate(p, meta)
+	}
 	if len(p.All) > 0 {
 		out := storage.Predicate{All: make([]storage.Predicate, 0, len(p.All))}
 		for _, item := range p.All {
-			compiled, err := compilePolicy(item, u, meta, lookup)
+			compiled, err := compilePolicy(item, u, meta, lookup, relate)
 			if err != nil {
 				return storage.Predicate{}, err
 			}
@@ -164,7 +167,7 @@ func compilePolicy(p auth.RowPolicy, u *auth.User, meta *metadata.Entity, lookup
 	if len(p.Any) > 0 {
 		out := storage.Predicate{Any: make([]storage.Predicate, 0, len(p.Any))}
 		for _, item := range p.Any {
-			compiled, err := compilePolicy(item, u, meta, lookup)
+			compiled, err := compilePolicy(item, u, meta, lookup, relate)
 			if err != nil {
 				return storage.Predicate{}, err
 			}
@@ -173,7 +176,7 @@ func compilePolicy(p auth.RowPolicy, u *auth.User, meta *metadata.Entity, lookup
 		return out, nil
 	}
 	if p.Not != nil {
-		compiled, err := compilePolicy(*p.Not, u, meta, lookup)
+		compiled, err := compilePolicy(*p.Not, u, meta, lookup, relate)
 		if err != nil {
 			return storage.Predicate{}, err
 		}
@@ -184,7 +187,7 @@ func compilePolicy(p auth.RowPolicy, u *auth.User, meta *metadata.Entity, lookup
 		return storage.Predicate{}, fmt.Errorf("row policy has empty field")
 	}
 	if strings.Contains(field, ".") {
-		return compileReferencePolicy(p, u, meta, lookup, field)
+		return compileReferencePolicy(p, u, meta, lookup, field, relate)
 	}
 	if !fieldAllowed(meta, field) {
 		return storage.Predicate{}, fmt.Errorf("row policy references unknown field %q", field)
@@ -233,7 +236,7 @@ func validatePolicyNumberValues(field *metadata.Field, op string, value any, val
 	}
 }
 
-func compileReferencePolicy(p auth.RowPolicy, u *auth.User, meta *metadata.Entity, lookup EntityLookup, fieldPath string) (storage.Predicate, error) {
+func compileReferencePolicy(p auth.RowPolicy, u *auth.User, meta *metadata.Entity, lookup EntityLookup, fieldPath string, relate compileLinkedDocument) (storage.Predicate, error) {
 	parts := strings.Split(fieldPath, ".")
 	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
 		return storage.Predicate{}, fmt.Errorf("row policy reference field %q must use one-level path Ref.Field", fieldPath)
@@ -252,7 +255,7 @@ func compileReferencePolicy(p auth.RowPolicy, u *auth.User, meta *metadata.Entit
 	}
 	innerPolicy := p
 	innerPolicy.Field = strings.TrimSpace(parts[1])
-	inner, err := compilePolicy(innerPolicy, u, refEntity, lookup)
+	inner, err := compilePolicy(innerPolicy, u, refEntity, lookup, relate)
 	if err != nil {
 		return storage.Predicate{}, err
 	}

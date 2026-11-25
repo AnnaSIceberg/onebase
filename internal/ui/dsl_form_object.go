@@ -226,7 +226,7 @@ func (f *formObjectThis) CallMethod(method string, args []any) any {
 		}
 		return f.selfRef()
 	case "этоновый", "isnew":
-		return f.isNew && !f.saved
+		return !f.saved && (f.isNew || f.xdtoState != nil && !f.xdtoState.loaded)
 	}
 	return f.obj.CallMethod(method, args)
 }
