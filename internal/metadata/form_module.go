@@ -399,7 +399,7 @@ type FormElement struct {
 	// буква; остальные символы литеральные.
 	InputMask string `yaml:"input_mask,omitempty"`
 	AccessKey string `yaml:"accesskey,omitempty"` // HTML accesskey для браузерной активации (Alt/Option+клавиша)
-	HotKey    string `yaml:"hotkey,omitempty"`    // runtime shortcut для кнопок формы (F2/F4/F7/F8/F9/F10)
+	HotKey    string `yaml:"hotkey,omitempty"`    // runtime shortcut для кнопок формы (F2/F4/F5/F7/F8/F9/F10/F11)
 	Multiline bool   `yaml:"multiline,omitempty"` // обычное поле ввода рендерится как textarea
 	// ChoiceContext — что вызывающая форма передаёт в подбор: «имя параметра» →
 	// «путь к значению на форме» (Объект.Филиал, реквизит формы). Аналог
@@ -983,6 +983,9 @@ type FormModule struct {
 	// формам, которые обязаны поместиться в экран без прокрутки, не меняя
 	// остальные страницы системы.
 	Density string `yaml:"density,omitempty"`
+
+	// CompactLabels places labels alongside short controls in a managed form.
+	CompactLabels bool `yaml:"compact_labels,omitempty"`
 
 	// TabSkipReadonly — нередактируемые поля и ячейки таблиц не входят в порядок
 	// Tab: оператор переходит только по тому, что можно ввести.

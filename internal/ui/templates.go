@@ -1958,7 +1958,7 @@ func setQueryValue(vals url.Values, key, value string) {
 func normalizedFormHotkey(value string) string {
 	key := strings.ToUpper(strings.TrimSpace(value))
 	switch key {
-	case "F2", "F4", "F7", "F8", "F9", "F10":
+	case "F2", "F4", "F5", "F7", "F8", "F9", "F10", "F11":
 		return key
 	default:
 		return ""

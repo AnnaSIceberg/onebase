@@ -935,6 +935,29 @@ body[data-theme="dark"] .ob-object-inline-header{background:#111827}
 .ob-density-dense .managed-group-horizontal>.managed-group-body>.form-group>label{line-height:12px}
 .ob-density-dense .managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn,.ob-density-dense .managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn-layout{margin-top:13px}
 .ob-density-dense .managed-group-horizontal>.managed-group-body>.form-group.managed-checkbox{margin-top:19px}
+/* Opt-in compact layout for forms with short controls and tightly spaced rows. */
+#main-form[data-ob-compact-labels] .form-group:has(>label):not(.managed-checkbox,.ob-el-fill){
+  display:flex;align-items:center;gap:5px;margin:0;min-width:0
+}
+#main-form[data-ob-compact-labels] .form-group:has(>label):not(.managed-checkbox)>label{
+  flex:0 0 auto;max-width:66%;line-height:1.05;margin:0
+}
+#main-form[data-ob-compact-labels] .form-group:has(>label)>:is(input:not([type=checkbox]),select,textarea,.managed-control-row){
+  flex:1 1 0;min-width:0;max-width:100%;width:0;margin:0
+}
+#main-form[data-ob-compact-labels] .managed-control-row>select{min-width:0}
+#main-form[data-ob-compact-labels] :is(input[type=text],input[type=number],input[type=date],input[type=datetime-local],select,.managed-control-row>button){
+  min-height:20px;height:21px;padding-block:0
+}
+#main-form[data-ob-compact-labels] .managed-group-horizontal>.managed-group-body{
+  align-items:center;gap:4px
+}
+#main-form[data-ob-compact-labels] .managed-group-horizontal>.managed-group-body>:is(.managed-checkbox,.managed-btn,.managed-btn-layout){
+  align-self:center;margin-top:0
+}
+#main-form[data-ob-compact-labels] .managed-tabs{padding:5px!important;margin-bottom:5px!important}
+#main-form[data-ob-compact-labels] .managed-tab-buttons{margin-bottom:4px}
+#main-form[data-ob-compact-labels] .form-decoration{padding-block:1px!important}
 .ob-density-dense h3{margin:4px 0 2px !important}
 .ob-density-dense .ob-form-head{margin-bottom:4px !important}
 .ob-density-dense main>.card{padding:6px}
@@ -1296,7 +1319,7 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 {{end}}
 
 <div class="card{{if .ObjectFormLayout}} ob-object-form-card{{end}}">
-<form id="main-form"{{with .WriteActionsReadOnly}} data-ob-managed-write-readonly="{{.}}"{{end}}{{if not .LegacyEntityUI}} class="ob-form-action-spacing"{{end}} method="POST" autocomplete="off"{{with .FormInstance}} data-ob-form-instance="{{.}}"{{end}}{{if .ConcealContext}} data-ob-conceal-context="{{.ConcealContext}}" action="{{.ConcealAction}}"{{end}} data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}{{formKeyboardAttrs (index . "Form")}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
+<form id="main-form"{{if and .Form .Form.CompactLabels}} data-ob-compact-labels{{end}}{{with .WriteActionsReadOnly}} data-ob-managed-write-readonly="{{.}}"{{end}}{{if not .LegacyEntityUI}} class="ob-form-action-spacing"{{end}} method="POST" autocomplete="off"{{with .FormInstance}} data-ob-form-instance="{{.}}"{{end}}{{if .ConcealContext}} data-ob-conceal-context="{{.ConcealContext}}" action="{{.ConcealAction}}"{{end}} data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}{{formKeyboardAttrs (index . "Form")}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
 {{with .FormOpeningInstanceField}}<input type="hidden" name="{{.}}" value="{{$.FormInstance}}">{{end}}
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{if .IsPopup}}<input type="hidden" name="_popup" value="1">{{end}}
