@@ -400,6 +400,7 @@ func templateFuncs(bundle *i18n.Bundle) template.FuncMap {
 		"managedCommandBarElement":       managedCommandBarElement,
 		"nativeFormElementRequired":      nativeFormElementRequired,
 		"normalizedFormHotkey":           normalizedFormHotkey,
+		"formHotkeyARIA":                 formHotkeyARIA,
 		"str": func(v any) string {
 			if v == nil {
 				return ""
@@ -1958,11 +1959,18 @@ func setQueryValue(vals url.Values, key, value string) {
 func normalizedFormHotkey(value string) string {
 	key := strings.ToUpper(strings.TrimSpace(value))
 	switch key {
-	case "F2", "F4", "F5", "F7", "F8", "F9", "F10", "F11":
+	case "F2", "F4", "F5", "F7", "F8", "F9", "F10", "F11", "CTRL+SHIFT+F4":
 		return key
 	default:
 		return ""
 	}
+}
+
+func formHotkeyARIA(key string) string {
+	if key == "CTRL+SHIFT+F4" {
+		return "Control+Shift+F4"
+	}
+	return key
 }
 
 func templateSource() string {

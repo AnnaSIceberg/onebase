@@ -264,7 +264,8 @@ const tplManagedForm = `
   {{$choiceCtx := managedChoiceContext $ctx $el}}
   {{$fcVars := elFieldColorVars $el}}{{if $el.HiddenWhen}}<fieldset class="form-group ob-managed-control{{if elFill $el}} ob-el-fill{{end}}{{if $el.TextBold}} ob-text-bold{{end}}{{elFieldColorClass $el}}{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}" data-ob-control-fieldset="1"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{if elHiddenStyle $ctx $el}} disabled{{end}}{{$lay := elLayoutEx $ctx $el}}{{$tc := elTextColor $el}}{{if or $lay $fcVars $tc}} style="{{$lay}}{{$fcVars}}{{$tc}}"{{end}}>{{else}}<div class="form-group{{if elFill $el}} ob-el-fill{{end}}{{if $el.TextBold}} ob-text-bold{{end}}{{elFieldColorClass $el}}{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{$lay := elLayout $el}}{{$tc := elTextColor $el}}{{if or $lay $fcVars $tc}} style="{{$lay}}{{$fcVars}}{{$tc}}"{{end}}>{{end}}
     {{$numberWithoutTitle := and $el.TitleHidden $f (eq (str $f.Type) "number")}}
-    <label{{if $numberWithoutTitle}} class="ob-field-label-hidden" for="managed-number-{{$el.Name}}"{{end}}{{with fieldLabelStyle $el}} style="{{.}}"{{end}}>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}{{if and $el.Hint (not $el.HintInline)}} <span class="ob-hint" title="{{$el.Hint}}" aria-label="{{$el.Hint}}">ⓘ</span>{{end}}</label>
+    {{$refWithoutTitle := and $el.TitleHidden $f (isRef (str $f.Type))}}
+    <label{{if $numberWithoutTitle}} class="ob-field-label-hidden" for="managed-number-{{$el.Name}}"{{else if $refWithoutTitle}} class="ob-field-label-hidden" for="ref-{{$fn}}"{{end}}{{with fieldLabelStyle $el}} style="{{.}}"{{end}}>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}{{if and $el.Hint (not $el.HintInline)}} <span class="ob-hint" title="{{$el.Hint}}" aria-label="{{$el.Hint}}">ⓘ</span>{{end}}</label>
     {{if $f}}
       {{if isRef (str $f.Type)}}
         <div class="managed-control-row" style="display:flex;gap:6px;align-items:center">
@@ -496,7 +497,7 @@ const tplManagedForm = `
   {{$buttonLayout := elLayout $el}}
   {{$buttonHidden := elHidden $ctx $el}}
   {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{if $buttonHidden}}display:none;{{end}}{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn {{appFormButtonClass $el.Name (fieldTitleRU $el.TitleMap $el.Name) (formButtonPrimary $el $ctx.LegacyEntityUI) $ctx.LegacyEntityUI}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}}"{{else}}{{with elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{if and $ctx.WorkbookPickerID $el.WorkbookSave}} data-ob-workbook-save{{with $el.WorkbookSavePicker}} data-ob-workbook-filename="{{.}}"{{end}}{{end}}{{with $el.TabularProgress}} data-ob-tabular-progress="{{.}}"{{end}}{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
+  <button type="button" class="btn {{appFormButtonClass $el.Name (fieldTitleRU $el.TitleMap $el.Name) (formButtonPrimary $el $ctx.LegacyEntityUI) $ctx.LegacyEntityUI}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}}"{{else}}{{with elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{formHotkeyARIA $hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{if and $ctx.WorkbookPickerID $el.WorkbookSave}} data-ob-workbook-save{{with $el.WorkbookSavePicker}} data-ob-workbook-filename="{{.}}"{{end}}{{end}}{{with $el.TabularProgress}} data-ob-tabular-progress="{{.}}"{{end}}{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
   {{if and $ctx.WorkbookPickerID $el.WorkbookSave}}<span data-ob-workbook-progress role="status" hidden>⌛ <span data-ob-tabular-percent>0%</span></span>{{end}}
@@ -574,7 +575,7 @@ const tplManagedForm = `
     {{$clickAction := hasHandler . "Нажатие"}}
     {{$hotKey := ""}}{{if and (not $cmdRO) $clickAction}}{{$hotKey = normalizedFormHotkey .HotKey}}{{end}}
     <button type="button" class="btn btn-sm" style="background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;{{elLayout .}}"
-      {{if .AccessKey}}accesskey="{{.AccessKey}}" {{end}}{{if $hotKey}}data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}" {{end}}{{if $cmdRO}}disabled{{end}}{{if and (not $cmdRO) $clickAction}} data-ob-fire-click="{{.Name}}" data-ob-fire-tp="{{$tpName}}"{{end}}>
+      {{if .AccessKey}}accesskey="{{.AccessKey}}" {{end}}{{if $hotKey}}data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{formHotkeyARIA $hotKey}}" title="{{$hotKey}}" {{end}}{{if $cmdRO}}disabled{{end}}{{if and (not $cmdRO) $clickAction}} data-ob-fire-click="{{.Name}}" data-ob-fire-tp="{{$tpName}}"{{end}}>
       {{fieldTitleRU .TitleMap .Name}}
     </button>
     {{end}}
@@ -585,7 +586,7 @@ const tplManagedForm = `
        её перебивает — «покажи 15 строк» иначе задать нечем. */}}
   <div id="sg-{{$tpName}}" class="ob-grid{{tableHeaderClass $el}}" style="{{tpGridCSS $tableLayout (len $tpRows)}}{{tableHeaderVars $el}}"
        data-sg-tp="{{$tpName}}"
-       data-sg-el="{{$el.Name}}"{{with $el.TotalsCaption}} data-sg-totals-caption="{{.}}"{{end}}{{if $tableLayout.FitWindow}}
+       data-sg-el="{{$el.Name}}"{{if $el.RowNumbers}} data-sg-row-numbers="1"{{end}}{{if $el.WrapHeaders}} data-sg-wrap-headers="1"{{end}}{{with $el.TotalsCaption}} data-sg-totals-caption="{{.}}"{{end}}{{if $tableLayout.FitWindow}}
        data-ob-fit-grid="1"{{end}}
        data-sg-path="{{elPath $ctx $el}}"
        {{with gridLayoutAttr $ctx $el.Name}}data-sg-layout="{{.}}"{{end}}
@@ -737,7 +738,7 @@ const tplManagedForm = `
     {{$clickAction := hasHandler . "Нажатие"}}
     {{$hotKey := ""}}{{if and (not $cmdRO) $clickAction}}{{$hotKey = normalizedFormHotkey .HotKey}}{{end}}
     <button type="button" class="btn btn-sm" style="background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;{{elLayout .}}"
-      {{if .AccessKey}}accesskey="{{.AccessKey}}" {{end}}{{if $hotKey}}data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}" title="{{$hotKey}}" {{end}}{{if $cmdRO}}disabled{{else if $clickAction}}data-ob-fire-click="{{.Name}}" data-ob-fire-tp="{{$tpName}}"{{end}}>
+      {{if .AccessKey}}accesskey="{{.AccessKey}}" {{end}}{{if $hotKey}}data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{formHotkeyARIA $hotKey}}" title="{{$hotKey}}" {{end}}{{if $cmdRO}}disabled{{else if $clickAction}}data-ob-fire-click="{{.Name}}" data-ob-fire-tp="{{$tpName}}"{{end}}>
       {{fieldTitleRU .TitleMap .Name}}
     </button>
     {{end}}
@@ -1146,6 +1147,10 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 .ob-grid .slick-header-columns{background:#eef2f7;border-bottom:2px solid #cbd5e1}
 .ob-grid .slick-header-column{font-weight:600;color:#334155;background:#eef2f7;font-size:12px;padding:6px 8px;border-right:1px solid #cbd5e1}
 .ob-grid .slick-header-column:hover{background:#e2e8f0}
+.ob-grid[data-sg-wrap-headers] .slick-header-column{height:36px;padding:3px 4px;white-space:normal;line-height:13px}
+.ob-grid[data-sg-wrap-headers] .slick-column-name{white-space:normal;text-overflow:clip}
+.ob-grid .ob-row-number{color:#475569;text-align:right}
+#main-form[data-ob-compact-labels] .form-decoration.ob-text-colored{color:var(--ob-text-color)!important}
 /* header_background / header_border_color у ТабличнаяЧасть: шапка этой
    таблицы своим цветом — на цветном фоне формы серая шапка сливается со
    строками. SlickGrid, простая таблица и таблица значений. */

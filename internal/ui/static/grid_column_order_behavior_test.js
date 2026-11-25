@@ -9,7 +9,7 @@ const start = source.indexOf('function obGridParseOrder');
 const end = source.indexOf('\n(function(){', start);
 if (start < 0 || end < 0) throw new Error('grid column order helpers not found');
 const helpers = new Function(source.slice(start, end) +
-  '\nreturn {obGridParseOrder, obGridApplyOrder, obGridMoveColumn, obGridColumnIds};')();
+  '\nreturn {obGridParseOrder, obGridApplyOrder, obGridMoveColumn, obGridColumnIds, obGridColumnWidths, obGridApplyWidths};')();
 
 const cols = () => [{id: 'Номер'}, {id: 'Адрес'}, {id: 'Мастер'}];
 
@@ -48,6 +48,19 @@ test('перетаскивание переносит колонку на мес
   assert.deepEqual(helpers.obGridColumnIds(columns), ['Номер', 'Адрес', 'Мастер']);
   assert.equal(helpers.obGridMoveColumn(columns, 1, 1), false);
   assert.equal(helpers.obGridMoveColumn(columns, 0, 9), false);
+});
+
+test('synthetic row number stays outside saved grid preferences', () => {
+  const number = {id: '__ob_row_number', obRowNumber: true, width: 30};
+  const columns = [number, {id: 'Деталь', width: 140}, {id: 'Остаток', width: 55}];
+  helpers.obGridApplyOrder(columns, ['Остаток', number.id, 'Деталь']);
+  assert.equal(columns[0], number);
+  assert.deepEqual(helpers.obGridColumnIds(columns), ['Остаток', 'Деталь']);
+  assert.equal(helpers.obGridMoveColumn(columns, 1, 0), false);
+  assert.equal(helpers.obGridMoveColumn(columns, 0, 2), false);
+  helpers.obGridApplyWidths(columns, {[number.id]: 99, 'Остаток': 62});
+  assert.equal(number.width, 30);
+  assert.deepEqual({...helpers.obGridColumnWidths(columns)}, {'Деталь': 140, 'Остаток': 62});
 });
 
 // Штатный инициализатор подключает события DOM-host; тест не вызывает
