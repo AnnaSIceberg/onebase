@@ -24,15 +24,17 @@ func (e rowSourceError) Error() string { return "row access source is temporaril
 func (e rowSourceError) Unwrap() error { return e.cause }
 
 type DecisionContext struct {
-	Lookup   EntityLookup
-	Resolver UserCardResolver
+	Lookup          EntityLookup
+	Resolver        UserCardResolver
+	LinkedDocuments linkedDocumentResolver
 }
 
 // RuntimeContext also supports storage ports without the optional reader;
 // user_card then fails closed, while static policies continue to work.
 func RuntimeContext(lookup EntityLookup, store any) DecisionContext {
 	resolver, _ := store.(UserCardResolver)
-	return DecisionContext{Lookup: lookup, Resolver: resolver}
+	links, _ := store.(linkedDocumentResolver)
+	return DecisionContext{Lookup: lookup, Resolver: resolver, LinkedDocuments: links}
 }
 
 func userCardDescriptor(src *auth.UserCardSource, target *metadata.Entity, field string, lookup EntityLookup, op string) (storage.UserCardDescriptor, error) {

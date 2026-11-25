@@ -15,17 +15,18 @@ import (
 // It is intentionally not SQL text: callers provide field/op/value and storage
 // renders placeholders for the active dialect.
 type Predicate struct {
-	Deny         bool
-	Any          []Predicate
-	All          []Predicate
-	Not          *Predicate
-	Field        string
-	Op           string
-	Value        any
-	Values       []any
-	NumberField  *metadata.Field `json:"-" yaml:"-"`
-	RefEntity    *metadata.Entity
-	RefPredicate *Predicate
+	Deny           bool
+	Any            []Predicate
+	All            []Predicate
+	Not            *Predicate
+	Field          string
+	Op             string
+	Value          any
+	Values         []any
+	NumberField    *metadata.Field `json:"-" yaml:"-"`
+	RefEntity      *metadata.Entity
+	RefPredicate   *Predicate
+	LinkedDocument *LinkedDocument `json:"-" yaml:"-"`
 }
 
 // PredicateSQL compiles p to a SQL WHERE fragment and arguments. nextArg is
@@ -62,6 +63,13 @@ func predicateSQL(d Dialect, entity *metadata.Entity, p Predicate, nextArg int, 
 			return inner, args, next, err
 		}
 		return "NOT (" + inner + ")", args, next, nil
+	}
+	if p.LinkedDocument != nil {
+		col, field, ok := predicateColumn(entity, p.Field)
+		if !ok || field == nil || field.RefEntity == "" {
+			return "", nil, nextArg, fmt.Errorf("linked_document requires a reference field %q", p.Field)
+		}
+		return p.LinkedDocument.predicateSQL(d, qualifyPredicateColumn(qualifier, col), nil, nextArg)
 	}
 	if p.RefPredicate != nil {
 		return referencePredicateSQL(d, entity, p, nextArg, qualifier)
@@ -555,6 +563,21 @@ func matchPredicateTruth(row map[string]any, p Predicate, resolver PredicateRefR
 	}
 	if p.Not != nil {
 		return negatePredicateTruth(matchPredicateTruth(row, *p.Not, resolver))
+	}
+	if p.LinkedDocument != nil {
+		value, _ := rowValue(row, p.Field)
+		id, ok := parseAnyUUID(value)
+		if !ok || id == uuid.Nil {
+			return predicateFalse
+		}
+		if p.LinkedDocument.Match == nil {
+			return predicateUnknown
+		}
+		matches, err := p.LinkedDocument.Match(id)
+		if err != nil {
+			return predicateUnknown
+		}
+		return predicateTruthFromBool(matches)
 	}
 	if p.RefPredicate != nil {
 		if resolver == nil || p.RefEntity == nil {

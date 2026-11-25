@@ -19,13 +19,21 @@ func (ra RowAccess) IsZero() bool {
 type RowPolicies map[string]RowPolicy
 
 type RowPolicy struct {
-	All    []RowPolicy `yaml:"all,omitempty" json:"all,omitempty"`
-	Any    []RowPolicy `yaml:"any,omitempty" json:"any,omitempty"`
-	Not    *RowPolicy  `yaml:"not,omitempty" json:"not,omitempty"`
-	Field  string      `yaml:"field,omitempty" json:"field,omitempty"`
-	Op     string      `yaml:"op,omitempty" json:"op,omitempty"`
-	Value  RowValue    `yaml:"value,omitempty" json:"value,omitempty"`
-	SameAs string      `yaml:"same_as,omitempty" json:"same_as,omitempty"`
+	LinkedDocument *RowLinkedDocument `yaml:"linked_document,omitempty" json:"linked_document,omitempty"`
+	All            []RowPolicy        `yaml:"all,omitempty" json:"all,omitempty"`
+	Any            []RowPolicy        `yaml:"any,omitempty" json:"any,omitempty"`
+	Not            *RowPolicy         `yaml:"not,omitempty" json:"not,omitempty"`
+	Field          string             `yaml:"field,omitempty" json:"field,omitempty"`
+	Op             string             `yaml:"op,omitempty" json:"op,omitempty"`
+	Value          RowValue           `yaml:"value,omitempty" json:"value,omitempty"`
+	SameAs         string             `yaml:"same_as,omitempty" json:"same_as,omitempty"`
+}
+
+// RowLinkedDocument requires a visible, live document to reference the same
+// row as Field. Each path names a document field or TablePart.Field.
+type RowLinkedDocument struct {
+	Name   string   `yaml:"name" json:"name"`
+	Fields []string `yaml:"fields" json:"fields"`
 }
 
 type RowValue struct {
