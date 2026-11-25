@@ -86,6 +86,24 @@ func FieldDiscloseDenied(u *auth.User, kind, entity, field string) bool {
 	return reading
 }
 
+// FieldFormDiscloseAllowed checks the opt-in on a role that can read the record.
+// Interactive disclosure outside the form and ordinary DSL reads use their own policy.
+func FieldFormDiscloseAllowed(u *auth.User, kind, entity, field string) bool {
+	if u == nil {
+		return false
+	}
+	for _, role := range u.Roles {
+		if role == nil || !auth.PermissionHas(role.Permissions, kind, entity, "read") {
+			continue
+		}
+		policy, ok := lookupFieldPolicy(role.Permissions.FieldAccess.Policies(kind, entity), fieldKey(field))
+		if ok && policy.FormDisclose {
+			return true
+		}
+	}
+	return false
+}
+
 // FieldDecisions returns effective masking decisions per field for reading
 // entity. Only fields that must be masked or hidden appear in the result; a nil
 // or empty map means every field is returned in full. A nil user (no auth) or

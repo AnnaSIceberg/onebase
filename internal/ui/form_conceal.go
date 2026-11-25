@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/access"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/runtime"
@@ -46,6 +47,7 @@ type concealRequest struct {
 	entity  *metadata.Entity
 	close   *formCloseInvocation
 	native  bool
+	audited map[string]bool
 }
 
 // Conceal requests are serialized through validation, hooks, writes and response
@@ -373,6 +375,11 @@ func (s *Server) finishConcealEvent(r *http.Request, form *metadata.FormModule, 
 			continue
 		}
 		v, ok := obj.Get(rule.Controller).(bool)
+		if access.FieldFormDiscloseAllowed(auth.UserFromContext(r.Context()), string(entity.Kind), entity.Name, rule.Field) &&
+			!cr.audited[rule.Field] {
+			delete(e.grants, rule.Field)
+			continue
+		}
 		if ok && rule.Allows(v) {
 			e.grants[rule.Field] = s.concealNow().Add(concealTTL)
 			e.expires = s.concealNow().Add(concealInstanceTTL)
