@@ -406,3 +406,82 @@ func TestListCardsShowOnlyFilledAndDisclosedFieldsHTTP(t *testing.T) {
 		t.Error("disclosed field was removed from the privileged card")
 	}
 }
+
+func TestListTilesHideMarkedAndNumericZeroHTTP(t *testing.T) {
+	names := []string{"А_Заявка", "А_Задача", "А_ОрдерСкладской", "А_ОтчетМастера"}
+	var entities []*metadata.Entity
+	permissions := make(map[string][]string)
+	for _, name := range names {
+		entities = append(entities, &metadata.Entity{
+			Name: name, Kind: metadata.KindDocument,
+			Fields: []metadata.Field{
+				{Name: "Номер", Type: metadata.FieldTypeString},
+				{Name: "Дата", Type: metadata.FieldTypeDate},
+				{Name: "НулевоеЧисло", Title: "Нулевое число", Type: metadata.FieldTypeNumber},
+				{Name: "НенулевоеЧисло", Title: "Ненулевое число", Type: metadata.FieldTypeNumber},
+				{Name: "ТекстовыйНоль", Title: "Текстовый ноль", Type: metadata.FieldTypeString},
+			},
+		})
+		permissions[name] = []string{"read"}
+	}
+	s, ctx := newSubmitTestServer(t, entities)
+	s.cfg.UIExceptRoles = []string{"ОператорКЦ", "ОператорМессенджера"}
+	router := chi.NewRouter()
+	s.Mount(router)
+	fixture := func(entity *metadata.Entity, number, date string) uuid.UUID {
+		t.Helper()
+		id := uuid.New()
+		if err := s.store.Upsert(ctx, entity.Name, id, map[string]any{
+			"Номер": number, "Дата": date, "НулевоеЧисло": "0.00",
+			"НенулевоеЧисло": "-12.5", "ТекстовыйНоль": "0",
+		}, entity); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	get := func(entity *metadata.Entity, role, query string) string {
+		t.Helper()
+		u := &auth.User{Login: role, Roles: []*auth.Role{{Name: role, Permissions: auth.Permission{Documents: permissions}}}}
+		req := httptest.NewRequest(http.MethodGet, "/ui/document/"+entity.Name+query, nil)
+		req = req.WithContext(auth.ContextWithUser(req.Context(), u))
+		res := httptest.NewRecorder()
+		router.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("%s %s: HTTP %d", entity.Name, query, res.Code)
+		}
+		return res.Body.String()
+	}
+	for _, entity := range entities {
+		t.Run(entity.Name, func(t *testing.T) {
+			fixture(entity, "NormalCard1", "2026-11-01")
+			fixture(entity, "NormalCard2", "2026-11-02")
+			marked := fixture(entity, "MarkedCard3", "2026-11-03")
+			if err := s.store.MarkForDeletion(ctx, entity.Name, marked, true); err != nil {
+				t.Fatal(err)
+			}
+			last := get(entity, "Manager", "?view=tiles&limit=1")
+			if strings.Count(last, `class="tile-card`) != 1 || !strings.Contains(last, "NormalCard2") ||
+				strings.Contains(last, "MarkedCard3") || !strings.Contains(last, "Стр. 2 из 2 (2 записей)") {
+				t.Fatal("tiles must filter marked records before counting and fetching the last page")
+			}
+			if strings.Contains(last, "Нулевое число:") || !strings.Contains(last, "Ненулевое число:") ||
+				!strings.Contains(last, "Текстовый ноль:") {
+				t.Fatal("tiles must hide numeric zero while retaining other numbers and text")
+			}
+			restored := get(entity, "Manager", "")
+			if !strings.Contains(restored, `class="tile-card`) || strings.Contains(restored, "MarkedCard3") {
+				t.Fatal("restoring the saved tiles view changed its filter")
+			}
+			list := get(entity, "Manager", "?view=list")
+			if !strings.Contains(list, "MarkedCard3") || !strings.Contains(list, `data-marked="1"`) {
+				t.Fatal("regular list must still show the deletion mark")
+			}
+			for _, role := range s.cfg.UIExceptRoles {
+				old := get(entity, role, "?view=tiles")
+				if !strings.Contains(old, `class="tile-card tile-deleted"`) || !strings.Contains(old, "Нулевое число:") {
+					t.Fatalf("operator tiles changed for %s", role)
+				}
+			}
+		})
+	}
+}

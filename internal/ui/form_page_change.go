@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/metadata"
 )
 
@@ -30,4 +31,30 @@ func addPageChangeContext(eventName, page string, target browserFormEventTarget,
 		}
 	}
 	return fmt.Errorf("страница %q не входит в набор страниц %q", page, target.element.Name)
+}
+
+// installFormPageCommand limits navigation to a unique page of the open form.
+func installFormPageCommand(form *metadata.FormModule, vars map[string]any, page *string) {
+	activate := interpreter.BuiltinFunc(func(args []any, _ string, _ int) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("ОткрытьСтраницуФормы: укажите имя страницы")
+		}
+		name, ok := args[0].(string)
+		if !ok || strings.TrimSpace(name) == "" {
+			return nil, fmt.Errorf("ОткрытьСтраницуФормы: укажите имя страницы")
+		}
+		matches := 0
+		form.Walk(func(el *metadata.FormElement) bool {
+			if el.Kind == metadata.FormElementPage && el.Name == name {
+				matches++
+			}
+			return true
+		})
+		if matches != 1 {
+			return nil, fmt.Errorf("ОткрытьСтраницуФормы: страница %q отсутствует или её имя неоднозначно", name)
+		}
+		*page = name
+		return nil, nil
+	})
+	vars["ОткрытьСтраницуФормы"], vars["ActivateFormPage"] = activate, activate
 }

@@ -47,6 +47,7 @@ import (
 
 // formEventResponse — структура ответа JSON.
 type formEventResponse struct {
+	ActivePage          string                      `json:"activePage,omitempty"`
 	SavedPhoneLink      *savedPhoneLinkPayload      `json:"savedPhoneLink,omitempty"`
 	WorkbookDownloadURL string                      `json:"workbookDownloadUrl,omitempty"`
 	TabularDocuments    map[string]string           `json:"tabularDocuments,omitempty"`
@@ -1384,6 +1385,10 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	resultFn := newResultFormBuiltin(&requestedResult, closeInv == nil)
 	vars["ОткрытьФормуРезультата"], vars["OpenResultForm"] = resultFn, resultFn
 	var navigation *navigationPayload
+	var activePage string
+	if closeInv == nil {
+		installFormPageCommand(form, vars, &activePage)
+	}
 	var savedPhoneLink *savedPhoneLinkPayload
 	phoneLink.install(s, r, dslCtx, vars, &savedPhoneLink, &navigation)
 	if !savedPhoneClick {
@@ -1732,6 +1737,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 				resp.Dirty = boolPtr(false) // explicit handoff consumed only transient scalar view state
 			}
 		}
+	}
+	if resp.OK && !resp.Cancel && resp.Navigation == nil && resp.Question == nil && resp.ResultForm == nil {
+		resp.ActivePage = activePage
 	}
 	filterDeferredResponse(deferredBaseline, &resp)
 	if closeInv == nil && resp.OK {
@@ -3275,6 +3283,10 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		capabilityFn := s.resultCapabilityBuiltin(r, proc, txState, closeInv == nil && capabilityEvent)
 		vars["ВозможностьФормыРезультата"], vars["ResultFormCapability"] = capabilityFn, capabilityFn
 		var navigation *navigationPayload
+		var activePage string
+		if closeInv == nil {
+			installFormPageCommand(form, vars, &activePage)
+		}
 		if closeInv == nil {
 			navFn := newNavigationBuiltin(&navigation, s.reg, s.store, auth.UserFromContext(r.Context()))
 			vars["ОткрытьФорму"] = navFn
@@ -3415,6 +3427,9 @@ func (s *Server) handleProcessorFormEventMode(w http.ResponseWriter, r *http.Req
 		resp.CloseResultForm = closeResult && resp.OK
 		resp.ChoiceList = choiceItems
 		resp.Dirty = boolPtr(!formOpenEvent(elementName, eventName) && transientManagedFormDirty(obj, fieldsBefore, tablesBefore, audioViewFields))
+		if resp.OK && !resp.Cancel && resp.Navigation == nil && resp.Question == nil && resp.ResultForm == nil {
+			resp.ActivePage = activePage
+		}
 		filterDeferredResponse(deferredBaseline, &resp)
 		if closeInv == nil && resp.OK {
 			scope := tabularScope{Kind: "processor", Name: proc.Name, Form: form.Name}

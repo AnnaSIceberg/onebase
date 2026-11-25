@@ -13,7 +13,7 @@ import (
 func TestNormalizedFormHotkey(t *testing.T) {
 	tests := map[string]string{
 		" f2 ": "F2", "f4": "F4", " F7": "F7", "f8 ": "F8", "f9": "F9", " f10 ": "F10",
-		"": "", "F1": "", "F11": "", "Ctrl+F9": "", "Delete": "",
+		"": "", "F1": "", "f5": "F5", " f11 ": "F11", "Ctrl+F9": "", "Delete": "",
 	}
 	for input, want := range tests {
 		if got := normalizedFormHotkey(input); got != want {

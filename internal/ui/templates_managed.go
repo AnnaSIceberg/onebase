@@ -169,10 +169,11 @@ const tplManagedForm = `
 {{else if and (elHidden $ctx $el) (ne (str $el.Kind) "Кнопка") (ne (str $el.Kind) "Аудиоплеер")}}
 {{else if and $el.WorkbookSavePicker (eq (str $el.Kind) "ПолеФормы")}}
   {{if $ctx.WorkbookPickerID}}
-  <div class="form-group" data-ob-workbook-picker="{{$ctx.WorkbookPickerID}}" style="{{elLayout $el}}">
+  {{$suggestionField := dpField $el.DataPath}}
+  <div class="form-group" data-ob-workbook-picker="{{$ctx.WorkbookPickerID}}"{{if $suggestionField}} data-ob-workbook-field="{{$suggestionField}}"{{end}} style="{{elLayout $el}}">
     <label for="ob-workbook-name">{{fieldTitleRU $el.TitleMap $el.Name}}</label>
     <div style="display:flex;align-items:center;gap:4px">
-      <input id="ob-workbook-name" type="text" data-ob-workbook-name value="{{$el.WorkbookSavePicker}}" readonly>
+      <input id="ob-workbook-name" type="text" data-ob-workbook-name value="{{if $suggestionField}}{{index $ctx.Values $suggestionField}}{{else}}{{$el.WorkbookSavePicker}}{{end}}" readonly>
       <button type="button" class="btn btn-secondary" data-ob-workbook-choose title="{{t $ctx.Lang "Выбрать файл"}}" aria-label="{{t $ctx.Lang "Выбрать файл"}}"{{if $ro}} disabled{{end}}>…</button>
     </div>
   </div>
@@ -245,9 +246,9 @@ const tplManagedForm = `
        как поля прежнего диалога сообщения 1С. Только чтение; значение уходит
        с формой без изменений (скрытый input), ответ события обновляет текст. */}}
   {{$fn := dpField $el.DataPath}}{{$v := index $ctx.Values $fn}}
-  <div class="form-group ob-view-text" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{$lay := elLayoutEx $ctx $el}}{{if $lay}} style="{{$lay}}"{{end}}>
-    <div class="ob-view-text-label" style="font-size:12px;color:#64748b;margin-bottom:2px">{{fieldTitleRU $el.TitleMap $fn}}</div>
-    <div class="ob-view-text-value" data-ob-value="{{$fn}}" style="font-size:{{if eq $el.View "text-strong"}}16px;font-weight:700{{else}}14px{{end}};color:#1e293b;white-space:pre-wrap;overflow-wrap:anywhere">{{$v}}</div>
+  <div class="form-group ob-view-text{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{with cssJoin (elLayoutEx $ctx $el) (elTextColor $el)}} style="{{.}}"{{end}}>
+    <div class="ob-view-text-label"{{with fieldLabelStyle $el}} style="{{.}}"{{end}}>{{fieldTitleRU $el.TitleMap $fn}}</div>
+    <div class="ob-view-text-value" data-ob-value="{{$fn}}" style="font-size:{{if eq $el.View "text-strong"}}16px;font-weight:700{{else}}14px{{end}}">{{$v}}</div>
     <input type="hidden" name="{{$fn}}" value="{{$v}}">
   </div>
 {{else if eq (str $el.Kind) "ПолеТабличногоДокумента"}}
@@ -262,7 +263,8 @@ const tplManagedForm = `
   {{$hChg := hasHandler $el "ПриИзменении"}}
   {{$choiceCtx := managedChoiceContext $ctx $el}}
   {{$fcVars := elFieldColorVars $el}}{{if $el.HiddenWhen}}<fieldset class="form-group ob-managed-control{{if elFill $el}} ob-el-fill{{end}}{{if $el.TextBold}} ob-text-bold{{end}}{{elFieldColorClass $el}}{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}" data-ob-control-fieldset="1"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{if elHiddenStyle $ctx $el}} disabled{{end}}{{$lay := elLayoutEx $ctx $el}}{{$tc := elTextColor $el}}{{if or $lay $fcVars $tc}} style="{{$lay}}{{$fcVars}}{{$tc}}"{{end}}>{{else}}<div class="form-group{{if elFill $el}} ob-el-fill{{end}}{{if $el.TextBold}} ob-text-bold{{end}}{{elFieldColorClass $el}}{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{$lay := elLayout $el}}{{$tc := elTextColor $el}}{{if or $lay $fcVars $tc}} style="{{$lay}}{{$fcVars}}{{$tc}}"{{end}}>{{end}}
-    <label{{with fieldLabelStyle $el}} style="{{.}}"{{end}}>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}{{if and $el.Hint (not $el.HintInline)}} <span class="ob-hint" title="{{$el.Hint}}" aria-label="{{$el.Hint}}">ⓘ</span>{{end}}</label>
+    {{$numberWithoutTitle := and $el.TitleHidden $f (eq (str $f.Type) "number")}}
+    <label{{if $numberWithoutTitle}} class="ob-field-label-hidden" for="managed-number-{{$el.Name}}"{{end}}{{with fieldLabelStyle $el}} style="{{.}}"{{end}}>{{fieldTitleRU $el.TitleMap $fn}}{{if $effectiveReq}} <span style="color:#dc2626">*</span>{{end}}{{if and $el.Hint (not $el.HintInline)}} <span class="ob-hint" title="{{$el.Hint}}" aria-label="{{$el.Hint}}">ⓘ</span>{{end}}</label>
     {{if $f}}
       {{if isRef (str $f.Type)}}
         <div class="managed-control-row" style="display:flex;gap:6px;align-items:center">
@@ -309,7 +311,7 @@ const tplManagedForm = `
         </select>
         {{if or $ro $el.ReadOnlyWhen}}<input type="hidden" name="{{$fn}}" value="{{index $ctx.Values $fn}}" id="ro-mirror-{{$fn}}" data-ob-ro-mirror="1"{{if not $ro}} disabled{{end}}>{{end}}
       {{else if eq (str $f.Type) "number"}}
-        <input type="text" autocomplete="off" inputmode="decimal" pattern="[+-]?([0-9]+([.,][0-9]+)?|[.,][0-9]+)" name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{elHintAttrsOr $ctx $el "Введите число; десятичный разделитель — запятая или точка"}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
+        <input type="text" autocomplete="off" inputmode="decimal" pattern="[+-]?([0-9]+([.,][0-9]+)?|[.,][0-9]+)"{{if $numberWithoutTitle}} id="managed-number-{{$el.Name}}"{{end}} name="{{$fn}}" value="{{index $ctx.Values $fn}}"{{elHintAttrsOr $ctx $el "Введите число; десятичный разделитель — запятая или точка"}}{{if and $req (not $ro)}} required{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $ro}} readonly{{end}}{{if and $roUnlockable $hChg}} data-ob-fire-change="{{$el.Name}}"{{end}}>
       {{else if isRichText (str $f.Type)}}
         {{/* textarea — скрытое form-backing поле; Quill (этап 2) монтируется на
              .richtext-editor и синхронизирует HTML обратно перед submit. Без JS
@@ -479,7 +481,7 @@ const tplManagedForm = `
   </div>
 {{else if eq (str $el.Kind) "Надпись"}}
   <div class="form-decoration{{if $el.TextBold}} ob-text-bold{{end}}{{if elTextColor $el}} ob-text-colored{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{elHintAttrs $ctx $el ""}} style="padding:6px 0;color:#475569;font-size:13px;{{elLayout $el}}{{elTextColor $el}}">
-    {{fieldTitleRU $el.TitleMap $el.Name}}
+    {{if not $el.TitleHidden}}{{fieldTitleRU $el.TitleMap $el.Name}}{{end}}
   </div>
 {{else if eq (str $el.Kind) "Кнопка"}}
   {{/* placement: header — кнопка рисуется в строке команд формы (form-header-commands), а не в теле. */}}
@@ -494,7 +496,7 @@ const tplManagedForm = `
   {{$buttonLayout := elLayout $el}}
   {{$buttonHidden := elHidden $ctx $el}}
   {{if $buttonLayout}}<div class="managed-btn-layout" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{if $buttonHidden}}display:none;{{end}}{{$buttonLayout}}">{{end}}
-  <button type="button" class="btn {{appFormButtonClass $el.Name (fieldTitleRU $el.TitleMap $el.Name) (formButtonPrimary $el $ctx.LegacyEntityUI) $ctx.LegacyEntityUI}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}}"{{else}}{{with elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{if and $ctx.WorkbookPickerID $el.WorkbookSave}} data-ob-workbook-save{{end}}{{with $el.TabularProgress}} data-ob-tabular-progress="{{.}}"{{end}}{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
+  <button type="button" class="btn {{appFormButtonClass $el.Name (fieldTitleRU $el.TitleMap $el.Name) (formButtonPrimary $el $ctx.LegacyEntityUI) $ctx.LegacyEntityUI}} managed-btn"{{if and $buttonHidden (not $buttonLayout)}} style="display:none;{{elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}}"{{else}}{{with elBackground (formButtonBackground $el $ctx.LegacyEntityUI)}} style="{{.}}"{{end}}{{end}}{{if not $buttonLayout}} data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}}{{end}}{{if $el.AccessKey}} accesskey="{{$el.AccessKey}}"{{end}}{{if $hotKey}} data-ob-hotkey="{{$hotKey}}" aria-keyshortcuts="{{$hotKey}}"{{end}}{{elHintAttrs $ctx $el $hotKey}}{{if $ro}} disabled{{end}}{{if and (not $ro) $clickAction}} data-ob-fire-click="{{$el.Name}}"{{if and $ctx.WorkbookPickerID $el.WorkbookSave}} data-ob-workbook-save{{with $el.WorkbookSavePicker}} data-ob-workbook-filename="{{.}}"{{end}}{{end}}{{with $el.TabularProgress}} data-ob-tabular-progress="{{.}}"{{end}}{{with $.TableName}} data-ob-fire-tp="{{.}}"{{end}}{{end}}{{if $.HeaderPass}} form="main-form"{{end}}{{if $.TableWriteDenied}} data-ob-write-denied="1"{{end}}>
     {{fieldTitleRU $el.TitleMap $el.Name}}
   </button>
   {{if and $ctx.WorkbookPickerID $el.WorkbookSave}}<span data-ob-workbook-progress role="status" hidden>⌛ <span data-ob-tabular-percent>0%</span></span>{{end}}
@@ -583,7 +585,7 @@ const tplManagedForm = `
        её перебивает — «покажи 15 строк» иначе задать нечем. */}}
   <div id="sg-{{$tpName}}" class="ob-grid{{tableHeaderClass $el}}" style="{{tpGridCSS $tableLayout (len $tpRows)}}{{tableHeaderVars $el}}"
        data-sg-tp="{{$tpName}}"
-       data-sg-el="{{$el.Name}}"{{if $tableLayout.FitWindow}}
+       data-sg-el="{{$el.Name}}"{{with $el.TotalsCaption}} data-sg-totals-caption="{{.}}"{{end}}{{if $tableLayout.FitWindow}}
        data-ob-fit-grid="1"{{end}}
        data-sg-path="{{elPath $ctx $el}}"
        {{with gridLayoutAttr $ctx $el.Name}}data-sg-layout="{{.}}"{{end}}
@@ -934,6 +936,44 @@ body[data-theme="dark"] .ob-object-inline-header{background:#111827}
 .ob-density-dense .managed-group-horizontal>.managed-group-body>.form-group>label{line-height:12px}
 .ob-density-dense .managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn,.ob-density-dense .managed-group-horizontal>.managed-group-body:has(>.form-group:not([style*="display:none"]):not([style*="display: none"])>label)>.managed-btn-layout{margin-top:13px}
 .ob-density-dense .managed-group-horizontal>.managed-group-body>.form-group.managed-checkbox{margin-top:19px}
+.form-group>label.ob-field-label-hidden{
+  position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap
+}
+.ob-view-text-label{font-size:12px;color:#64748b;margin-bottom:2px}
+.ob-view-text-value{color:#1e293b;white-space:pre-wrap;overflow-wrap:anywhere}
+.ob-view-text.ob-text-colored>.ob-view-text-value{color:var(--ob-text-color)}
+/* Opt-in compact layout for forms with short controls and tightly spaced rows. */
+main.ob-object-form:has(#main-form[data-ob-compact-labels]){
+  box-sizing:border-box;width:750px;max-width:100%;min-width:0;
+  flex:none;align-self:flex-start;max-height:100%
+}
+main.ob-object-form:has(#main-form[data-ob-compact-labels])>.ob-object-form-card{flex:0 0 auto}
+.form-group>label.ob-field-label-hidden~input[inputmode=decimal]{text-align:right}
+#main-form[data-ob-compact-labels] .ob-view-text{display:flex;align-items:baseline;gap:5px;margin:0;min-width:0}
+#main-form[data-ob-compact-labels] .ob-view-text-label{margin:0}
+#main-form[data-ob-compact-labels] .ob-view-text-value{white-space:nowrap}
+#main-form[data-ob-compact-labels] .form-group:has(>label):not(.managed-checkbox,.ob-el-fill){
+  display:flex;align-items:center;gap:5px;margin:0;min-width:0
+}
+#main-form[data-ob-compact-labels] .form-group:has(>label):not(.managed-checkbox)>label{
+  flex:0 0 auto;max-width:66%;line-height:1.05;margin:0
+}
+#main-form[data-ob-compact-labels] .form-group:has(>label)>:is(input:not([type=checkbox]),select,textarea,.managed-control-row){
+  flex:1 1 0;min-width:0;max-width:100%;width:0;margin:0
+}
+#main-form[data-ob-compact-labels] .managed-control-row>select{min-width:0}
+#main-form[data-ob-compact-labels] :is(input[type=text],input[type=number],input[type=date],input[type=datetime-local],select,.managed-control-row>button){
+  min-height:20px;height:21px;padding-block:0
+}
+#main-form[data-ob-compact-labels] .managed-group-horizontal>.managed-group-body{
+  align-items:center;gap:4px
+}
+#main-form[data-ob-compact-labels] .managed-group-horizontal>.managed-group-body>:is(.managed-checkbox,.managed-btn,.managed-btn-layout){
+  align-self:center;margin-top:0
+}
+#main-form[data-ob-compact-labels] .managed-tabs{padding:5px!important;margin-bottom:5px!important}
+#main-form[data-ob-compact-labels] .managed-tab-buttons{margin-bottom:4px}
+#main-form[data-ob-compact-labels] .form-decoration{padding-block:1px!important}
 .ob-density-dense h3{margin:4px 0 2px !important}
 .ob-density-dense .ob-form-head{margin-bottom:4px !important}
 .ob-density-dense main>.card{padding:6px}
@@ -1295,7 +1335,7 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 {{end}}
 
 <div class="card{{if .ObjectFormLayout}} ob-object-form-card{{end}}">
-<form id="main-form"{{with .WriteActionsReadOnly}} data-ob-managed-write-readonly="{{.}}"{{end}}{{if not .LegacyEntityUI}} class="ob-form-action-spacing"{{end}} method="POST" autocomplete="off"{{with .FormInstance}} data-ob-form-instance="{{.}}"{{end}}{{if .ConcealContext}} data-ob-conceal-context="{{.ConcealContext}}" action="{{.ConcealAction}}"{{end}} data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}{{formKeyboardAttrs (index . "Form")}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
+<form id="main-form"{{if and .Form .Form.CompactLabels}} data-ob-compact-labels{{end}}{{with .WriteActionsReadOnly}} data-ob-managed-write-readonly="{{.}}"{{end}}{{if not .LegacyEntityUI}} class="ob-form-action-spacing"{{end}} method="POST" autocomplete="off"{{with .FormInstance}} data-ob-form-instance="{{.}}"{{end}}{{if .ConcealContext}} data-ob-conceal-context="{{.ConcealContext}}" action="{{.ConcealAction}}"{{end}} data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}{{formKeyboardAttrs (index . "Form")}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
 {{with .FormOpeningInstanceField}}<input type="hidden" name="{{.}}" value="{{$.FormInstance}}">{{end}}
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{if .IsPopup}}<input type="hidden" name="_popup" value="1">{{end}}

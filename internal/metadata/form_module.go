@@ -274,7 +274,7 @@ type FormElement struct {
 	Props     map[string]any           `yaml:"props,omitempty"`
 
 	TabularProgress        string `yaml:"tabular_progress,omitempty"`          // result attribute for a processor button
-	WorkbookSavePicker     string `yaml:"workbook_save_picker,omitempty"`      // proposed XLSX filename for a processor field
+	WorkbookSavePicker     string `yaml:"workbook_save_picker,omitempty"`      // XLSX picker default for a field or an override on a save button
 	WorkbookUpdateOnAnswer bool   `yaml:"workbook_update_on_answer,omitempty"` // trusted processor button may replace workbook on its own answer
 	WorkbookSave           bool   `yaml:"workbook_save,omitempty"`             // processor button saves the returned book locally
 	TabularPlainRows       bool   `yaml:"tabular_plain_rows,omitempty"`
@@ -324,10 +324,11 @@ type FormElement struct {
 	// Grow — элемент горизонтальной группы занимает остаток её строки
 	// (flex:1 1 0): рядом с соседями, а не отдельной строкой, как stretch.
 	Grow bool `yaml:"grow,omitempty"`
-	// TitleHidden — у ТабличнаяЧасть не рисовать заголовок над таблицей: без
-	// title платформа подставляет имя таблицы, а таблице-выдаче (результат
-	// поиска) подпись не нужна и стоит строки высоты формы.
+	// TitleHidden hides the heading of a table, the visible label of a
+	// numeric input, or the text of a label used as a layout spacer.
 	TitleHidden bool `yaml:"title_hidden,omitempty"`
+	// TotalsCaption replaces the managed grid’s default label in its totals row.
+	TotalsCaption string `yaml:"totals_caption,omitempty"`
 	// TextColor — цвет текста поля ввода или надписи (подпись и значение,
 	// у нередактируемого поля тоже); цвет проверяет csssafe.Color, как у
 	// background. Importance — смысловое выделение вместо конкретного цвета:
@@ -399,7 +400,7 @@ type FormElement struct {
 	// буква; остальные символы литеральные.
 	InputMask string `yaml:"input_mask,omitempty"`
 	AccessKey string `yaml:"accesskey,omitempty"` // HTML accesskey для браузерной активации (Alt/Option+клавиша)
-	HotKey    string `yaml:"hotkey,omitempty"`    // runtime shortcut для кнопок формы (F2/F4/F7/F8/F9/F10)
+	HotKey    string `yaml:"hotkey,omitempty"`    // runtime shortcut для кнопок формы (F2/F4/F5/F7/F8/F9/F10/F11)
 	Multiline bool   `yaml:"multiline,omitempty"` // обычное поле ввода рендерится как textarea
 	// ChoiceContext — что вызывающая форма передаёт в подбор: «имя параметра» →
 	// «путь к значению на форме» (Объект.Филиал, реквизит формы). Аналог
@@ -983,6 +984,9 @@ type FormModule struct {
 	// формам, которые обязаны поместиться в экран без прокрутки, не меняя
 	// остальные страницы системы.
 	Density string `yaml:"density,omitempty"`
+
+	// CompactLabels places labels alongside short controls in a managed form.
+	CompactLabels bool `yaml:"compact_labels,omitempty"`
 
 	// TabSkipReadonly — нередактируемые поля и ячейки таблиц не входят в порядок
 	// Tab: оператор переходит только по тому, что можно ввести.

@@ -219,6 +219,7 @@ type formYAMLDoc struct {
 		HeaderInline bool `yaml:"header_inline"`
 
 		WriteActionsReadOnlyWhen string `yaml:"write_actions_readonly_when"`
+		CompactLabels            bool   `yaml:"compact_labels"`
 	} `yaml:"form"`
 	Attributes            []*metadata.FormAttribute       `yaml:"attributes"`
 	Commands              []*metadata.FormCommand         `yaml:"commands"`
@@ -298,6 +299,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		OneCMeta:               doc.OneCMeta,
 
 		WriteActionsReadOnlyWhen: strings.TrimSpace(doc.Form.WriteActionsReadOnlyWhen),
+		CompactLabels:            doc.Form.CompactLabels,
 	}
 
 	if match := form.SavedPhoneMatch; match != nil {
