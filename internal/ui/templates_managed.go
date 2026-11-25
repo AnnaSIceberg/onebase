@@ -944,8 +944,11 @@ body[data-theme="dark"] .ob-object-inline-header{background:#111827}
 .ob-view-text.ob-text-colored>.ob-view-text-value{color:var(--ob-text-color)}
 /* Opt-in compact layout for forms with short controls and tightly spaced rows. */
 main.ob-object-form:has(#main-form[data-ob-compact-labels]){
-  box-sizing:border-box;width:fit-content;max-width:100%;min-width:0
+  box-sizing:border-box;width:750px;max-width:100%;min-width:0;
+  flex:none;align-self:flex-start;max-height:100%
 }
+main.ob-object-form:has(#main-form[data-ob-compact-labels])>.ob-object-form-card{flex:0 0 auto}
+.form-group>label.ob-field-label-hidden~input[inputmode=decimal]{text-align:right}
 #main-form[data-ob-compact-labels] .ob-view-text{display:flex;align-items:baseline;gap:5px;margin:0;min-width:0}
 #main-form[data-ob-compact-labels] .ob-view-text-label{margin:0}
 #main-form[data-ob-compact-labels] .ob-view-text-value{white-space:nowrap}

@@ -1,7 +1,7 @@
 (function () {
   const main = document.querySelector('main.ob-object-form');
   const form = main && main.querySelector('#main-form');
-  if (!form) return;
+  if (!form || form.hasAttribute("data-ob-compact-labels")) return;
 
   let table;
   let originalHeight = '';
