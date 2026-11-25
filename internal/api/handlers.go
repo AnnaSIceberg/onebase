@@ -724,7 +724,7 @@ func writeError(w http.ResponseWriter, code int, msg, file string, line int) {
 // REST, чтобы сырой текст драйвера БД не утекал в ответ по create/update/post.
 func writeSaveError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, errPartialUpdateDenied):
+	case errors.Is(err, errPartialUpdateDenied), errors.Is(err, entityservice.ErrCreatePermissionRequired):
 		writeError(w, http.StatusForbidden, "forbidden", "", 0)
 	case errors.Is(err, storage.ErrVersionConflict):
 		writeError(w, http.StatusConflict, "version conflict: object was modified by another client", "", 0)

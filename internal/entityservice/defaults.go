@@ -411,6 +411,9 @@ func (s *Service) NewObject(ctx context.Context, req NewObjectRequest) (NewObjec
 	if entity == nil {
 		return NewObjectResult{}, errBadRequest("entity is nil")
 	}
+	if !canInsert(ctx, entity) {
+		return NewObjectResult{}, ErrCreatePermissionRequired
+	}
 	obj := runtime.NewObject(entity.Name, entity.Kind)
 	obj.Presentation = entity.Presentation
 	for _, tp := range entity.TableParts {

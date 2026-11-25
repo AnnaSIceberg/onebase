@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -457,6 +458,28 @@ func tabularAttribute(form *metadata.FormModule, entity *metadata.Entity, name s
 	return false
 }
 
+type reportDSLQueryReadsKey struct{}
+
+func reportDSLQueryContext(ctx context.Context, rep *reportpkg.Report) context.Context {
+	user := auth.UserFromContext(ctx)
+	if rep.External || len(rep.SourceRead) == 0 || user == nil || user.IsAdmin {
+		return ctx
+	}
+	allowed := make(map[string]bool)
+	for role, sources := range rep.SourceRead {
+		if !user.HasAnyRole([]string{role}) {
+			continue
+		}
+		for _, source := range sources {
+			allowed[strings.ToLower(strings.TrimSpace(source))] = true
+		}
+	}
+	if len(allowed) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, reportDSLQueryReadsKey{}, allowed)
+}
+
 func (s *Server) buildTabularReportDocument(r *http.Request, rep *reportpkg.Report, params map[string]any, rows []map[string]any) (*sheet.Document, error) {
 	if _, filtered := r.Context().Value(reportSourceFilterKey{}).(*reportSourceFilterState); filtered {
 		// Filtered SQL inputs do not prove the returned document's lineage.
@@ -468,7 +491,8 @@ func (s *Server) buildTabularReportDocument(r *http.Request, rep *reportpkg.Repo
 	if decl == nil {
 		return nil, fmt.Errorf("процедура результата отчёта не найдена")
 	}
-	vars, tx := s.buildDSLVarsTx(r.Context(), runtime.NewMovementsCollector("report", uuid.Nil))
+	ctx := reportDSLQueryContext(r.Context(), rep)
+	vars, tx := s.buildDSLVarsTx(ctx, runtime.NewMovementsCollector("report", uuid.Nil))
 	defer rollbackDSLExecution(tx)
 	if !rep.External {
 		s.bindPhoneComparison(vars, tx.Ctx, rep.ComparePhoneField)
@@ -485,7 +509,7 @@ func (s *Server) buildTabularReportDocument(r *http.Request, rep *reportpkg.Repo
 	vars["Результат"] = resultRows
 	installTabularLayouts(vars, &tabularLayouts{s: s, owner: rep.Name})
 	var result any
-	profile := interpreter.SandboxProfile{Context: r.Context(), MaxWallClock: 30 * time.Second}
+	profile := interpreter.SandboxProfile{Context: ctx, MaxWallClock: 30 * time.Second}
 	err := s.interp.RunSandboxed(decl, &interpreter.MapThis{M: params}, profile, &result, vars)
 	if err = finishDSLExecution(tx, err); err != nil {
 		return nil, err

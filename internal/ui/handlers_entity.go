@@ -1341,7 +1341,8 @@ func (s *Server) canInteractiveCreate(r *http.Request, ent *metadata.Entity) boo
 	if !s.can(r, kind, ent.Name, "write") {
 		return false
 	}
-	return !ent.NoInteractiveCreate || s.can(r, kind, ent.Name, "create")
+	return (!ent.NoInteractiveCreate || s.can(r, kind, ent.Name, "create")) &&
+		!auth.UserFromContext(r.Context()).UpdateOnly(kind, ent.Name)
 }
 
 // refuseInteractiveCreate отклоняет создание объекта из интерфейса, если у
@@ -1349,8 +1350,17 @@ func (s *Server) canInteractiveCreate(r *http.Request, ent *metadata.Entity) boo
 // кнопки скрыты, но адрес /new можно набрать руками или открыть старой
 // закладкой. Программное создание (DSL, REST) этот путь не проходит.
 func (s *Server) refuseInteractiveCreate(w http.ResponseWriter, r *http.Request, ent *metadata.Entity) bool {
-	if ent == nil || !ent.NoInteractiveCreate || s.can(r, string(ent.Kind), ent.Name, "create") {
+	if ent == nil {
 		return false
+	}
+	kind := string(ent.Kind)
+	updateOnly := auth.UserFromContext(r.Context()).UpdateOnly(kind, ent.Name)
+	if !updateOnly && (!ent.NoInteractiveCreate || s.can(r, kind, ent.Name, "create")) {
+		return false
+	}
+	if updateOnly {
+		s.renderForbidden(w, r)
+		return true
 	}
 	lang := s.resolveLang(r)
 	w.WriteHeader(http.StatusForbidden)

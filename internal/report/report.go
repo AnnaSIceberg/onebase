@@ -65,9 +65,12 @@ type Report struct {
 	Query       string            `yaml:"query"`
 	ChartProc   string            `yaml:"chart_proc"`
 	ResultProc  string            `yaml:"result_proc,omitempty"`
-	Composition *Composition      `yaml:"composition"`          // nil = плоская таблица (старое поведение)
-	Variants    []ReportVariant   `yaml:"variants"`             // именованные компоновки и источники данных
-	Drilldowns  []Drilldown       `yaml:"drilldowns,omitempty"` // trusted root metadata, shared by variants
+	// SourceRead permits a built-in result procedure to query its listed sources
+	// for the named roles. It grants no direct object permission.
+	SourceRead  map[string][]string `yaml:"source_read,omitempty"`
+	Composition *Composition        `yaml:"composition"`          // nil = плоская таблица (старое поведение)
+	Variants    []ReportVariant     `yaml:"variants"`             // именованные компоновки и источники данных
+	Drilldowns  []Drilldown         `yaml:"drilldowns,omitempty"` // trusted root metadata, shared by variants
 
 	// ComparePhoneField opts a project report's result procedure into request-local comparison.
 	ComparePhoneField string `yaml:"compare_phone_field,omitempty"`

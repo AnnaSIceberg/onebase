@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/auth"
 
 	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
@@ -440,8 +441,19 @@ type SaveResult struct {
 // сам решает как показать ошибку. Технические ошибки (БД, network) возвращаются
 // как err != nil (включая storage.ErrVersionConflict при !IsNew с конфликтом
 // версий — caller должен проверить errors.Is).
+// ErrCreatePermissionRequired indicates an insertion without explicit create access.
+var ErrCreatePermissionRequired = errors.New("нет права создания объекта")
+
+func canInsert(ctx context.Context, ent *metadata.Entity) bool {
+	user := auth.UserFromContext(ctx)
+	return !user.UpdateOnly(string(ent.Kind), ent.Name)
+}
+
 func (s *Service) Save(ctx context.Context, req SaveRequest) (SaveResult, error) {
 	serverAssigned := req.ServerAssignments.Consume(req.Entity, req.ID)
+	if req.IsNew && !canInsert(ctx, req.Entity) {
+		return SaveResult{}, ErrCreatePermissionRequired
+	}
 	if err := storage.CheckWriteAllowed(ctx); err != nil {
 		return SaveResult{}, err
 	}
