@@ -1064,7 +1064,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		// право записи, а при `interactive_create: false` — ещё и `create`.
 		if _, ok := data["CanCreate"]; !ok {
 			canWrite, _ := data["CanWrite"].(bool)
-			data["CanCreate"] = canWrite && (!ent.NoInteractiveCreate || s.can(r, kind, ent.Name, "create"))
+			data["CanCreate"] = canWrite && s.canInteractiveCreate(r, ent)
 		}
 		if _, ok := data["CanDelete"]; !ok {
 			data["CanDelete"] = s.can(r, kind, ent.Name, "delete")

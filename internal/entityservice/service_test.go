@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/auth"
 
 	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
@@ -162,5 +163,26 @@ func TestSaveCleansBorrowedDSLTransactionScope(t *testing.T) {
 	var one int
 	if err := db.QueryRow(readCtx, "SELECT 1").Scan(&one); err != nil || one != 1 {
 		t.Fatalf("database unavailable after borrowed cleanup: one=%d err=%v", one, err)
+	}
+}
+
+func TestSaveUpdateOnlyCannotInsert(t *testing.T) {
+	ctx := context.Background()
+	entity := &metadata.Entity{Name: "Advert", Kind: metadata.KindCatalog}
+	updater := &auth.Role{Name: "Edit", Permissions: auth.Permission{Catalogs: map[string][]string{entity.Name: {"read", "update"}}}}
+	user := &auth.User{Roles: []*auth.Role{updater}}
+	if !user.Has("catalog", entity.Name, "write") || canInsert(auth.ContextWithUser(ctx, user), entity) {
+		t.Fatal("update should grant writing existing objects only")
+	}
+	s := &Service{}
+	if _, err := s.NewObject(auth.ContextWithUser(ctx, user), NewObjectRequest{Entity: entity}); err != ErrCreatePermissionRequired {
+		t.Fatalf("NewObject: %v", err)
+	}
+	if _, err := s.Save(auth.ContextWithUser(ctx, user), SaveRequest{Entity: entity, ID: uuid.New(), IsNew: true}); err != ErrCreatePermissionRequired {
+		t.Fatalf("Save: %v", err)
+	}
+	user.Roles = append(user.Roles, &auth.Role{Name: "Legacy", Permissions: auth.Permission{Catalogs: map[string][]string{entity.Name: {"write"}}}})
+	if !canInsert(auth.ContextWithUser(ctx, user), entity) {
+		t.Fatal("update-only role interferes with an existing write grant")
 	}
 }

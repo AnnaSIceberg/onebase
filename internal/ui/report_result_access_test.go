@@ -44,6 +44,8 @@ func TestReportResultQueryAccessStatusMatrix(t *testing.T) {
 		}
 		reports := []*reportpkg.Report{
 			{Name: "AccessDirect", Query: text},
+			{Name: "AccessScoped", ResultProc: "Build", SourceRead: map[string][]string{"Ads": {"catalog:" + source.Name}}},
+			{Name: "AccessScopedExternal", ResultProc: "Build", External: true, SourceRead: map[string][]string{"Ads": {"catalog:" + source.Name}}},
 			{Name: "AccessWithQuery", Query: `ВЫБРАТЬ 1 КАК Marker`, ResultProc: "Build"},
 			{Name: "AccessQueryless", ResultProc: "Build"},
 			{Name: "AccessRethrow", ResultProc: "Build"},
@@ -53,7 +55,9 @@ func TestReportResultQueryAccessStatusMatrix(t *testing.T) {
 			{Name: "AccessSQLFailure", ResultProc: "Build"},
 		}
 		programs := map[string]*ast.Program{
-			"AccessWithQuery": mustParse(t, body(text, false)), "AccessQueryless": mustParse(t, body(text, false)), "AccessRethrow": mustParse(t, body(text, true)),
+			"AccessScoped":         mustParse(t, body(text, false)),
+			"AccessScopedExternal": mustParse(t, body(text, false)),
+			"AccessWithQuery":      mustParse(t, body(text, false)), "AccessQueryless": mustParse(t, body(text, false)), "AccessRethrow": mustParse(t, body(text, true)),
 			"AccessPersonalDenied": mustParse(t, `Функция Build() ОтказатьВДоступеКОтчету("Нет личного права доступа к отчёту 400."); КонецФункции`),
 			"AccessFakeText":       mustParse(t, `Функция Build() ВызватьИсключение "нет доступа к объекту: ResultAccessSource"; КонецФункции`),
 			// PostgreSQL accepts a zero-column SELECT; an unmatched parenthesis is invalid on both dialects.
@@ -97,6 +101,19 @@ func TestReportResultQueryAccessStatusMatrix(t *testing.T) {
 					t.Fatalf("native viewer HTTP%d", view.Code)
 				}
 			})
+		}
+		ads := &auth.User{ID: uuid.NewString(), Roles: []*auth.Role{{Name: "Ads", Permissions: auth.Permission{Reports: runs}}}}
+		wScoped := tabularHTTP(s, ads, "session", "POST", "/ui/report/AccessScoped", nil)
+		if wScoped.Code != http.StatusSeeOther {
+			t.Fatalf("scope changed report: HTTP%d %s", wScoped.Code, wScoped.Body.String())
+		}
+		for _, name := range []string{"AccessDirect", "AccessQueryless", "AccessScopedExternal"} {
+			if w := tabularHTTP(s, ads, "session", "POST", "/ui/report/"+name, nil); w.Code != http.StatusForbidden {
+				t.Fatalf("scope escaped to %s: HTTP%d", name, w.Code)
+			}
+		}
+		if w := tabularHTTP(s, denied, "session", "POST", "/ui/report/AccessScoped", nil); w.Code != http.StatusForbidden {
+			t.Fatalf("scope granted to another role: HTTP%d", w.Code)
 		}
 		w := tabularHTTP(s, denied, "session", "POST", "/ui/report/AccessPersonalDenied", nil)
 		if w.Code != http.StatusForbidden || w.Header().Get("Location") != "" ||

@@ -314,11 +314,38 @@ func PermissionHas(p Permission, kind, entity, op string) bool {
 		return processorAllows(p, entity, op)
 	}
 	for _, allowed := range m[entity] {
-		if permissionOpMatches(allowed, op) {
+		if permissionOpMatches(allowed, op) ||
+			(op == "write" && (kind == "catalog" || kind == "document") && permissionOpMatches(allowed, "update")) {
 			return true
 		}
 	}
 	return false
+}
+
+// UpdateOnly reports whether the caller's write access is limited to stored
+// entries. An existing write or an explicit create grant from another role
+// retains its regular meaning.
+func (u *User) UpdateOnly(kind, entity string) bool {
+	if u == nil || u.IsAdmin || !u.Has(kind, entity, "update") || u.Has(kind, entity, "create") {
+		return false
+	}
+	for _, role := range u.Roles {
+		var ops []string
+		switch kind {
+		case "catalog":
+			ops = role.Permissions.Catalogs[entity]
+		case "document":
+			ops = role.Permissions.Documents[entity]
+		default:
+			return false
+		}
+		for _, op := range ops {
+			if permissionOpMatches(op, "write") {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // PermissionKindFromKey возвращает канонический вид объекта прав ("catalog",

@@ -659,10 +659,27 @@ func (s *Server) compileDSLQueryWithRowAccess(ctx context.Context, text string, 
 	if err != nil {
 		return query.Result{}, err
 	}
-	if denied := s.deniedQuerySource(ctx, res.Sources); denied != "" {
+	if denied := deniedDSLQuerySource(ctx, res.Sources); denied != "" {
 		return query.Result{}, &querySourceAccessDenied{source: denied}
 	}
 	return res, nil
+}
+
+func deniedDSLQuerySource(ctx context.Context, sources []query.SourceRef) string {
+	user := auth.UserFromContext(ctx)
+	reads, _ := ctx.Value(reportDSLQueryReadsKey{}).(map[string]bool)
+	if len(reads) == 0 {
+		return access.DeniedReadSource(user, sources)
+	}
+	for _, src := range sources {
+		if src.TablePart == "" && reads[strings.ToLower(src.Kind+":"+src.Name)] {
+			continue
+		}
+		if denied := access.DeniedReadSource(user, []query.SourceRef{src}); denied != "" {
+			return denied
+		}
+	}
+	return ""
 }
 
 func (s *Server) deniedQuerySource(ctx context.Context, sources []query.SourceRef) string {
