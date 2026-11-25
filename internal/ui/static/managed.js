@@ -3992,7 +3992,7 @@ function obGridSetColumnHidden(state, path, on) {
   // Активная ячейка в скрытой колонке — на первую видимую той же строки:
   // строка не меняется, ПриАктивизацииСтроки не повторяется.
   if (active && state.columns[active.cell] && state.columns[active.cell].hidden) {
-    var first = obGridVisibleToIndex(state.columns, 0);
+    var first = state.columns.findIndex(function (col) { return col && !col.hidden && !col.obRowNumber; });
     if (first >= 0 && grid.setActiveCell) grid.setActiveCell(active.row, first);
   }
   return result;
@@ -4257,7 +4257,12 @@ function obGridColumnWidths(columns) {
       for (var m = 0; m < cols.length; m++) metaById[cols[m].id] = cols[m];
       // Подпись — в первой ВИДИМОЙ колонке: первая по описанию бывает скрыта.
       var labelId = null, shown = g.grid.getColumns ? g.grid.getColumns() : [];
-      for (var v = 0; v < shown.length; v++) if (shown[v] && !shown[v].hidden) { labelId = shown[v].id; break; }
+      for (var v = 0; v < shown.length; v++) {
+        if (shown[v] && !shown[v].hidden && !shown[v].obRowNumber) {
+          labelId = shown[v].id;
+          break;
+        }
+      }
       // SlickGrid создаёт footer только для видимых колонок, но поиск по id
       // использует полный индекс. Передаём индекс ячейки в видимом порядке,
       // включая пользовательскую перестановку колонок.
