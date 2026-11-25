@@ -111,3 +111,46 @@ func TestPageChange_ProcessorForm(t *testing.T) {
 		t.Fatalf("чужая страница в форме обработки: ok=%v error=%q", resp.OK, resp.Error)
 	}
 }
+
+func TestActivateFormPageFromManagedEvents(t *testing.T) {
+	const program = `
+Процедура ПослеЗагрузки()
+	ОткрытьСтраницуФормы("СтрДеньги");
+КонецПроцедуры
+Процедура Перейти()
+	ActivateFormPage("СтрПервая");
+КонецПроцедуры
+Процедура Чужая()
+	ОткрытьСтраницуФормы("ЧужаяСтраница");
+КонецПроцедуры
+`
+	elements := append(pageChangeElements(),
+		&metadata.FormElement{
+			Kind: metadata.FormElementGroupBox, Name: "Открытие",
+			Handlers: map[metadata.FormEventType]string{metadata.FormEventAfterOpen: "ПослеЗагрузки"},
+		},
+		&metadata.FormElement{
+			Kind: metadata.FormElementButton, Name: "Возврат",
+			Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Перейти"},
+		},
+		&metadata.FormElement{
+			Kind: metadata.FormElementButton, Name: "ЧужойПереход",
+			Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Чужая"},
+		},
+	)
+	srv, ent := setupManagedEventsServer(t, program, nil, elements)
+	for _, tc := range []struct{ element, event, page string }{
+		{"Открытие", "ПослеОткрытия", "СтрДеньги"},
+		{"Возврат", "Нажатие", "СтрПервая"},
+		{"ЧужойПереход", "Нажатие", ""},
+	} {
+		t.Run(tc.element, func(t *testing.T) {
+			body := url.Values{"_element": {tc.element}, "_event": {tc.event}}
+			rec := executeFormEvent(t, srv, ent, body)
+			resp := decodeFormEventResponse(t, rec.Body.Bytes())
+			if resp.OK != (tc.page != "") || resp.ActivePage != tc.page {
+				t.Fatalf("ok=%v page=%q error=%q, want page %q", resp.OK, resp.ActivePage, resp.Error, tc.page)
+			}
+		})
+	}
+}
