@@ -1199,14 +1199,20 @@ func (db *DB) PostingLockViolation(ctx context.Context, entity *metadata.Entity,
 		return false, lock, nil
 	}
 	// Запрет включает саму дату запрета: документ этого дня и ранее «заморожен».
-	return !dayStart(docDate).After(lock), lock, nil
+	return PostingFrozen(lock, docDate), lock, nil
 }
 
 // PostingFrozen сообщает, попадает ли дата документа в свёрнутый («заморожённый»)
 // период: true, если date по дню <= даты запрета проведения. Используется
 // guard'ами проведения (план 151) в ui/entityservice.
 func PostingFrozen(lock, date time.Time) bool {
-	return !dayStart(date).After(lock)
+	// The configured lock is a calendar day. Drivers can return the same
+	// instant with different offsets; compare the operation's local day.
+	y, m, d := date.In(time.Local).Date()
+	day := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	ly, lm, ld := lock.Date()
+	lockDay := time.Date(ly, lm, ld, 0, 0, 0, 0, time.UTC)
+	return !day.After(lockDay)
 }
 
 // PostingFrozenError — единый текст ошибки запрета проведения с датой запрета.

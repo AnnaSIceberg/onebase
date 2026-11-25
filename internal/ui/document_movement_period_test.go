@@ -372,7 +372,7 @@ func TestDocumentMovementExplicitRowPeriodMatrix(t *testing.T) {
 		}
 		check()
 
-		if err := db.SavePostingLockDate(f.ctx, documentDate.Add(-time.Hour)); err != nil {
+		if err := db.SavePostingLockDate(f.ctx, documentDate.AddDate(0, 0, -1)); err != nil {
 			t.Fatal(err)
 		}
 		if err := write("А = Движения.PeriodMovements.Добавить(ЗакрытыйДень);", map[string]any{"ЗакрытыйДень": documentDate.Add(-24 * time.Hour)}); err == nil {
@@ -385,8 +385,11 @@ func TestDocumentMovementExplicitRowPeriodMatrix(t *testing.T) {
 func TestDocumentMovementReplacementClosedPeriodMatrix(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		f, _ := movementPeriodServer(t, db, false)
-		closed := time.Date(2026, 9, 30, 21, 30, 0, 0, time.UTC)
-		open := time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC)
+		closed := time.Date(2026, 9, 30, 23, 59, 59, 0, time.Local)
+		open := time.Date(2026, 10, 1, 0, 0, 0, 0, time.Local)
+		if storage.PostingFrozen(closed, open.UTC()) || !storage.PostingFrozen(closed, closed.UTC()) {
+			t.Fatal("posting lock must use the local calendar boundary")
+		}
 		f.doc.Fields = append(f.doc.Fields, metadata.Field{Name: "Дата", Type: metadata.FieldTypeDate})
 		if err := db.Migrate(f.ctx, []*metadata.Entity{f.doc}); err != nil {
 			t.Fatal(err)
