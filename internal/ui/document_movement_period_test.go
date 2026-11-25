@@ -322,3 +322,62 @@ func TestMovementPeriodDSLAccessMatrix(t *testing.T) {
 		}
 	})
 }
+
+func TestDocumentMovementExplicitRowPeriodMatrix(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		f, _ := movementPeriodServer(t, db, false)
+		documentDate := time.Date(2026, 11, 20, 9, 0, 0, 0, time.Local)
+		movementDate := documentDate.Add(48 * time.Hour)
+
+		write := func(dsl string, vars map[string]any) error {
+			t.Helper()
+			mc := runtime.NewMovementsCollector(f.doc.Name, f.recorderID).WillPersist()
+			proc := mustParse(t, "Процедура Заполнение()\n"+dsl+"\nКонецПроцедуры")
+			vars["Движения"] = mc
+			if err := f.s.interp.Run(proc.Procedures[0], nil, vars); err != nil {
+				t.Fatal(err)
+			}
+			for name, rows := range mc.All() {
+				if strings.EqualFold(name, f.reg.Name) {
+					return db.WriteMovements(f.ctx, f.reg.Name, f.doc.Name, f.recorderID, rows, f.reg, &documentDate)
+				}
+			}
+			t.Fatal("DSL did not collect rows for the register")
+			return nil
+		}
+		check := func() {
+			t.Helper()
+			rows, err := db.GetMovements(f.ctx, f.reg.Name, f.reg, storage.RegFilter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 2 {
+				t.Fatalf("got %d movement rows, want 2", len(rows))
+			}
+			want := []time.Time{documentDate, movementDate}
+			for i, row := range rows {
+				got := storage.ParseDBTime(row["period"])
+				if !got.Equal(want[i]) {
+					t.Fatalf("row %d period = %v, want %v", i, row["period"], want[i])
+				}
+			}
+		}
+		if err := write("А = Движения.PeriodMovements.Добавить();\nБ = Движения.PeriodMovements.Добавить(ДатаРасхода);", map[string]any{"ДатаРасхода": movementDate}); err != nil {
+			t.Fatal(err)
+		}
+		check()
+
+		if err := write("А = Движения.PeriodMovements.Добавить(\"ошибка\");", map[string]any{}); err == nil {
+			t.Fatal("invalid period was accepted")
+		}
+		check()
+
+		if err := db.SavePostingLockDate(f.ctx, documentDate.Add(-time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		if err := write("А = Движения.PeriodMovements.Добавить(ЗакрытыйДень);", map[string]any{"ЗакрытыйДень": documentDate.Add(-24 * time.Hour)}); err == nil {
+			t.Fatal("explicit period bypassed posting lock")
+		}
+		check()
+	})
+}

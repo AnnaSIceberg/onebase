@@ -1687,6 +1687,11 @@ func (s *Service) replaceMovements(ctx context.Context, docType string, docID uu
 			}
 			continue
 		}
+		for _, row := range rows {
+			if _, ok := row[metadata.ExplicitMovementPeriodKey]; ok {
+				return fmt.Errorf("%s: явный период в Добавить применяется только к регистру накопления", regName)
+			}
+		}
 		if ar := s.Reg.GetAccountRegister(regName); ar != nil {
 			if err := s.Store.WriteAccountMovements(ctx, regName, docType, docID, rows, ar, mc.Period); err != nil {
 				return err

@@ -296,6 +296,10 @@ type IndexSpec struct {
 	Normalizer string
 }
 
+// ExplicitMovementPeriodKey carries the optional typed date passed to
+// Movements.<accumulation register>.Add(date), outside register field names.
+const ExplicitMovementPeriodKey = "$movement_period"
+
 type Entity struct {
 	// AudioPlayer opts the object form into the audio-only attachment renderer.
 	AudioPlayer bool

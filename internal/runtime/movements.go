@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/metadata"
 )
 
 // MovementsCollector accumulates register movement records written by DSL during OnWrite.
@@ -155,6 +156,14 @@ func (rm *RegisterMovements) CallMethod(method string, args []any) any {
 	switch strings.ToLower(method) {
 	case "добавить", "add":
 		row := make(map[string]any)
+		switch len(args) {
+		case 0:
+		case 1:
+			row[metadata.ExplicitMovementPeriodKey] = args[0]
+		default:
+			// The write path rejects an invalid period atomically.
+			row[metadata.ExplicitMovementPeriodKey] = args
+		}
 		rm.collector.pending[rm.name] = append(rm.collector.pending[rm.name], row)
 		return &movementRow{m: row}
 	case "очистить", "clear":
