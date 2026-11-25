@@ -195,6 +195,8 @@ type Document struct {
 	Groups              []RowGroup
 	XLSXZoomScale       int  // Zero leaves the workbook default.
 	XLSXPreciseWidths   bool // Export explicit widths below one Excel character.
+	XLSXDefaultFont     string
+	XLSXDefaultFontSize float64
 	FreezeRows          int
 	FreezeCols          int
 	HideGrid            bool

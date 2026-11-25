@@ -3,6 +3,7 @@ package interpreter
 import (
 	"encoding/base64"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -436,6 +437,20 @@ func (d *SpreadsheetDocument) CallMethod(name string, args []any) any {
 		if len(args) >= 2 {
 			d.setAreaName(args[0], strArg(args, 1))
 		}
+	case "базовыйшрифтexcel", "exceldefaultfont":
+		name := strings.TrimSpace(strArg(args, 0))
+		if len(args) != 2 || name == "" {
+			RaiseUserError("БазовыйШрифтExcel: укажите имя шрифта и размер")
+			return nil
+		}
+		size := toFloatOr0(args[1])
+		if size < 1 || size > 409 || math.IsNaN(size) {
+			RaiseUserError("БазовыйШрифтExcel: размер от 1 до 409")
+			return nil
+		}
+		d.Doc.XLSXDefaultFont = name
+		d.Doc.XLSXDefaultFontSize = size
+		return nil
 	case "ширинаколонки", "columnwidth":
 		if len(args) >= 2 {
 			d.Doc.SetColumnWidth(int(floatArg(args, 0)), toFloatOr0(args[1]))

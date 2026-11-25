@@ -27,6 +27,15 @@ import (
 func (d *Document) XLSX() ([]byte, error) {
 	f := excelize.NewFile()
 	defer f.Close() //nolint:errcheck
+	if name := strings.TrimSpace(d.XLSXDefaultFont); name != "" {
+		if err := f.SetDefaultFont(name); err != nil {
+			return nil, err
+		}
+		font := f.Styles.Fonts.Font[0]
+		*font.Sz.Val = d.XLSXDefaultFontSize
+		font.Color = nil
+		font.Scheme = nil
+	}
 	const sheetName = "Лист1"
 	if err := f.SetSheetName("Sheet1", sheetName); err != nil {
 		return nil, err

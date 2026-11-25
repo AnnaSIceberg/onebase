@@ -315,6 +315,7 @@ func TestSpreadsheetXLSXExplicitCellAppearance(t *testing.T) {
 	const src = `
 Функция Тест()
     Док = Новый ТабличныйДокумент;
+    Док.БазовыйШрифтExcel("Arial", 8);
     Я = Док.Ячейка(1, 1);
     Я.Текст = " ";
     Я.ИмяШрифта = "Arial";
@@ -331,6 +332,11 @@ func TestSpreadsheetXLSXExplicitCellAppearance(t *testing.T) {
 	book, err := excelize.OpenReader(bytes.NewReader(data))
 	require.NoError(t, err)
 	defer book.Close() //nolint:errcheck
+	base, err := book.GetStyle(0)
+	require.NoError(t, err)
+	require.NotNil(t, base.Font)
+	assert.Equal(t, "Arial", base.Font.Family)
+	assert.Equal(t, 8.0, base.Font.Size)
 	id, err := book.GetCellStyle("Лист1", "A1")
 	require.NoError(t, err)
 	style, err := book.GetStyle(id)
