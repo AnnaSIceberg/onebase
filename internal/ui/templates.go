@@ -3268,18 +3268,18 @@ const tplList = `
   data-marked="{{if index $row "deletion_mark"}}1{{end}}"
   data-activity-inactive="{{if index $row "_activity_inactive"}}1{{end}}"
 >
-  {{range $f := $tile.ImageFields}}{{with tileValue $f (index $row $f.Name) $.EnumLabels}}
+  {{range $f := $tile.ImageFields}}{{with tileValue $f (index $row $f.Name) $.EnumLabels (not $.LegacyEntityUI)}}
   <div class="tile-img" style="background-image:url('/ui/_image/{{.}}')"></div>
   {{end}}{{end}}
-  {{with $tile.TitleField}}{{$v := tileValue . (index $row .Name) $.EnumLabels}}
+  {{with $tile.TitleField}}{{$v := tileValue . (index $row .Name) $.EnumLabels (not $.LegacyEntityUI)}}
     {{if or $v $.Entity.Hierarchical (index $row "_is_predefined") (index $row "posted")}}
     <div class="tile-title">{{if $.Entity.Hierarchical}}{{if $isFolder}}📁 {{else}}📄 {{end}}{{end}}{{$v}}{{if index $row "_is_predefined"}} <span title="{{t $.Lang "Предопределённый элемент"}}" style="color:#f59e0b;font-size:11px">★</span>{{end}}{{if eq (str $.Entity.Kind) "document"}}{{if index $row "posted"}} <span class="tile-posted" title="{{t $.Lang "Проведён"}}">✓</span>{{end}}{{end}}</div>
     {{end}}
   {{end}}
-  {{with $tile.SubtitleField}}{{with tileValue . (index $row .Name) $.EnumLabels}}
+  {{with $tile.SubtitleField}}{{with tileValue . (index $row .Name) $.EnumLabels (not $.LegacyEntityUI)}}
     <div class="tile-subtitle">{{.}}</div>
   {{end}}{{end}}
-  {{range $f := $tile.Fields}}{{with tileValue $f (index $row $f.Name) $.EnumLabels}}
+  {{range $f := $tile.Fields}}{{with tileValue $f (index $row $f.Name) $.EnumLabels (not $.LegacyEntityUI)}}
     <div class="tile-field"><span class="tile-label">{{$f.DisplayName $.Lang}}:</span> <span class="tile-val">{{if isImage (str $f.Type)}}<img src="/ui/_image/{{.}}" style="height:28px;width:28px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}{{.}}{{end}}</span></div>
   {{end}}{{end}}
   {{if $.LegacyEntityUI}}<div class="tile-foot">

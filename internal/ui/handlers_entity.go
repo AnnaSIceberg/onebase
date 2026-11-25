@@ -69,7 +69,8 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entity, hasFormOrder := entityForListQuery(r.Context(), entity)
-	chronological := entity.Kind == metadata.KindDocument && !s.legacyEntityUI(r)
+	legacy := s.legacyEntityUI(r)
+	chronological := entity.Kind == metadata.KindDocument && !legacy
 	pageSize := storage.DefaultListPageSize
 	if chronological {
 		pageSize = 50
@@ -104,6 +105,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	}
 	treeView := entity.Hierarchical && view == "tree"
 	tilesView := view == "tiles"
+	params.ExcludeMarked = tilesView && !legacy
 	stream := !treeView && s.continuousLists(r)
 	feed := !stream && !treeView && s.resolveListMode(w, r, entity)
 	chronological = chronological && !feed && !treeView

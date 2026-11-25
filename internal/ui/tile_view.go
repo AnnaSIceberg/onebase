@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/ivantit66/onebase/internal/access"
-
 	"github.com/ivantit66/onebase/internal/metadata"
+	"github.com/shopspring/decimal"
 )
 
 type tileViewRender struct {
@@ -98,9 +98,14 @@ func resolveDisplayTileView(entity *metadata.Entity, lang string) tileViewRender
 
 // tileValue receives the row after list field masking. Never render a mask,
 // including one which retains a prefix or tail.
-func tileValue(field metadata.Field, value any, labels map[string]map[string]string) string {
+func tileValue(field metadata.Field, value any, labels map[string]map[string]string, hideZero bool) string {
 	if value == nil || access.LooksMasked(value) {
 		return ""
+	}
+	if hideZero && field.Type == metadata.FieldTypeNumber {
+		if number, ok := value.(decimal.Decimal); ok && number.IsZero() {
+			return ""
+		}
 	}
 	if field.Type == metadata.FieldTypeDate {
 		if date, ok := value.(time.Time); ok && date.IsZero() {
