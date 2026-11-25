@@ -333,7 +333,7 @@ elements:
     hotkey: f7
   - kind: Кнопка
     name: КнопкаОбновить
-    hotkey: F5
+    hotkey: F12
   - kind: ПолеВвода
     name: ПолеНомер
     data_path: Объект.Номер
