@@ -38,6 +38,7 @@ type Cell struct {
 	Bold             bool
 	Italic           bool
 	Underline        bool
+	XLSXIndent       int // Excel alignment indentation in character units.
 	XLSXWrapExplicit bool
 	WrapText         bool
 	FontSize         int
@@ -191,7 +192,8 @@ func DefaultPageSetup() PageSetup {
 // в interpreter.SpreadsheetDocument, делегирующем сюда.
 type Document struct {
 	Groups              []RowGroup
-	XLSXZoomScale       int // Zero leaves the workbook default.
+	XLSXZoomScale       int  // Zero leaves the workbook default.
+	XLSXPreciseWidths   bool // Export explicit widths below one Excel character.
 	FreezeRows          int
 	FreezeCols          int
 	HideGrid            bool

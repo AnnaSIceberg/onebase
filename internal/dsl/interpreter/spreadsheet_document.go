@@ -321,6 +321,8 @@ func (d *SpreadsheetDocument) Set(field string, v any) {
 		d.Doc.FileName = strArg([]any{v}, 0)
 	case "поляпечати", "printmargins", "margins":
 		d.setMargins(v)
+	case "точныешириныexcel", "preciseexcelwidths":
+		d.Doc.XLSXPreciseWidths = truthy(v)
 	case "масштабпросмотра", "zoomscale":
 		value := toFloatOr0(v)
 		zoom := int(value)
@@ -728,6 +730,8 @@ func (w *SpreadsheetDocumentCellWrapper) Get(field string) any {
 		return w.cell.Italic
 	case "размершрифта", "fontsize":
 		return float64(w.cell.FontSize)
+	case "отступexcel", "excelindent":
+		return float64(w.cell.XLSXIndent)
 	case "имяшрифта", "fontfamily":
 		return w.cell.FontFamily
 	case "граница", "border":
@@ -779,6 +783,12 @@ func (w *SpreadsheetDocumentCellWrapper) Set(field string, v any) {
 		w.cell.Underline = truthy(v)
 	case "размершрифта", "fontsize":
 		w.cell.FontSize = int(toFloatOr0(v))
+	case "отступexcel", "excelindent":
+		value := toFloatOr0(v)
+		if value < 0 || value > 250 || float64(int(value)) != value {
+			RaiseUserError("ОтступExcel: требуется целое число от 0 до 250")
+		}
+		w.cell.XLSXIndent = int(value)
 	case "имяшрифта", "fontfamily":
 		w.cell.FontFamily = strArg([]any{v}, 0)
 	case "граница", "border":
