@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -168,6 +170,9 @@ func (db *DB) RollupPreview(ctx context.Context, regs []*metadata.Register, ents
 	if err != nil {
 		return rep, err
 	}
+	if err := db.checkRollupMovementPeriods(ctx, regs, included, ents, cutoff); err != nil {
+		return rep, err
+	}
 	for _, reg := range included {
 		folded, err := db.countMovementsBefore(ctx, reg.Name, cutoff)
 		if err != nil {
@@ -306,6 +311,9 @@ func (db *DB) Rollup(ctx context.Context, regs []*metadata.Register, ents []*met
 	rep := RollupReport{Cutoff: cutoff}
 
 	err = db.WithTx(ctx, func(ctx context.Context) error {
+		if err := db.checkRollupMovementPeriods(ctx, regs, included, ents, cutoff); err != nil {
+			return err
+		}
 		if opts.DeleteDocuments {
 			// Жёсткий гейт по повисшим ссылкам: отказываем, если на удаляемые
 			// документы ссылаются СОХРАНЯЕМЫЕ записи (иначе ссылки повиснут).
@@ -423,6 +431,80 @@ func (db *DB) Rollup(ctx context.Context, regs []*metadata.Register, ents []*met
 		return RollupReport{}, err
 	}
 	return rep, nil
+}
+
+// Проверка действует до свёртки и смены состояния шапок. Движения одного
+// документа нельзя частично сворачивать, оставляя другую часть у открытого
+// либо уже распроведённого регистратора.
+func (db *DB) checkRollupMovementPeriods(ctx context.Context, regs, included []*metadata.Register, ents []*metadata.Entity, cutoff time.Time) error {
+	docs := make(map[string]*metadata.Entity)
+	for _, ent := range ents {
+		if ent.Kind == metadata.KindDocument && documentDateColumn(ent) != "" {
+			docs[rollupNameKey(ent.Name)] = ent
+		}
+	}
+	if len(docs) == 0 {
+		return nil
+	}
+	folded := make(map[string]bool, len(included))
+	for _, reg := range included {
+		folded[rollupNameKey(reg.Name)] = true
+	}
+	d := db.dialect
+	for _, reg := range regs {
+		table := metadata.RegisterTableName(reg.Name)
+		types, err := db.rollupRecorderTypes(ctx, table)
+		if err != nil {
+			return fmt.Errorf("свёртка: типы регистраторов %s: %w", reg.Name, err)
+		}
+		for _, recorderType := range types {
+			doc := docs[rollupNameKey(recorderType)]
+			if doc == nil {
+				continue
+			}
+			date := "h." + documentDateColumn(doc)
+			bound := d.Placeholder(2)
+			condition := date + " < " + bound
+			if folded[rollupNameKey(reg.Name)] {
+				condition = fmt.Sprintf("((%s < %s AND m.period >= %s) OR (%s >= %s AND m.period < %s))",
+					date, bound, d.Placeholder(3), date, d.Placeholder(4), d.Placeholder(5))
+			}
+			args := []any{recorderType, cutoff}
+			if folded[rollupNameKey(reg.Name)] {
+				args = append(args, cutoff, cutoff, cutoff)
+			}
+			q := fmt.Sprintf("SELECT h.id FROM %s m JOIN %s h ON h.id = m.recorder WHERE m.recorder_type = %s AND %s LIMIT 1",
+				table, metadata.TableName(doc.Name), d.Placeholder(1), condition)
+			var id any
+			err := db.QueryRow(ctx, q, args...).Scan(&id)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("свёртка: проверка движений регистра %s: %w", reg.Name, err)
+			}
+			return fmt.Errorf("свёртка отменена: у документа %s %v движения регистра %s останутся по другую сторону границы или вне выбранных регистров. Измените дату или набор регистров",
+				doc.Name, id, reg.Name)
+		}
+	}
+	return nil
+}
+
+func (db *DB) rollupRecorderTypes(ctx context.Context, table string) ([]string, error) {
+	rows, err := db.Query(ctx, "SELECT DISTINCT recorder_type FROM "+table+" WHERE recorder_type IS NOT NULL")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var types []string
+	for rows.Next() {
+		var recorderType string
+		if err := rows.Scan(&recorderType); err != nil {
+			return nil, err
+		}
+		types = append(types, recorderType)
+	}
+	return types, rows.Err()
 }
 
 // countMovementsBefore — число движений регистра с period < cutoff.
@@ -1129,7 +1211,17 @@ func PostingFrozen(lock, date time.Time) bool {
 
 // PostingFrozenError — единый текст ошибки запрета проведения с датой запрета.
 func PostingFrozenError(lock time.Time) error {
-	return fmt.Errorf("проведение запрещено: документ относится к свёрнутому периоду (дата запрета — %s)", lock.Format("02.01.2006"))
+	return &PostingPeriodError{Lock: lock}
+}
+
+// PostingPeriodError represents a business refusal, including when it is
+// detected while replacing a register's saved movements.
+type PostingPeriodError struct {
+	Lock time.Time
+}
+
+func (e *PostingPeriodError) Error() string {
+	return fmt.Sprintf("проведение запрещено: документ относится к свёрнутому периоду (дата запрета — %s)", e.Lock.Format("02.01.2006"))
 }
 
 // ── мелкие помощники ─────────────────────────────────────────────────────────
