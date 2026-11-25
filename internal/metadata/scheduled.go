@@ -11,15 +11,16 @@ import (
 )
 
 type ScheduledJob struct {
-	Name      string            `yaml:"name"`
-	Title     string            `yaml:"title"`
-	Titles    map[string]string `yaml:"titles"`
-	Schedule  string            `yaml:"schedule"`
-	Processor string            `yaml:"processor"`
-	Params    map[string]any    `yaml:"params"`
-	Enabled   bool              `yaml:"enabled"`
-	OnError   string            `yaml:"on_error"`
-	Timeout   int               `yaml:"timeout"` // seconds
+	Name                 string            `yaml:"name"`
+	Title                string            `yaml:"title"`
+	Titles               map[string]string `yaml:"titles"`
+	Schedule             string            `yaml:"schedule"`
+	Processor            string            `yaml:"processor"`
+	Params               map[string]any    `yaml:"params"`
+	Enabled              bool              `yaml:"enabled"`
+	OnError              string            `yaml:"on_error"`
+	PrivateResponseRoles []string          `yaml:"private_response_roles,omitempty"`
+	Timeout              int               `yaml:"timeout"` // seconds
 }
 
 // DisplayName возвращает заголовок регламентного задания с учётом языка.
@@ -49,6 +50,9 @@ func LoadScheduledFile(path string) (*ScheduledJob, error) {
 	}
 	if job.Timeout == 0 {
 		job.Timeout = 3600
+	}
+	if len(job.PrivateResponseRoles) > 0 && (job.Enabled || strings.TrimSpace(job.Schedule) != "") {
+		return nil, fmt.Errorf("задание %s: private_response_roles требует enabled: false и пустого расписания", filepath.Base(path))
 	}
 	if err := ValidateSchedule(job.Schedule); err != nil {
 		// Имя файла, а не полный путь: `check` добавляет к сообщению свой

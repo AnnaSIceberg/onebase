@@ -32,7 +32,10 @@ var (
 // отказ был в момент ПОСТАНОВКИ: иначе опечатка в имени всплыла бы только после
 // исчерпания попыток, задачей в карантине и через минуты после вызова.
 func (s *Scheduler) QueueableJob(jobName string) error {
-	_, err := s.queueableJob(jobName)
+	job, err := s.queueableJob(jobName)
+	if err == nil && len(job.PrivateResponseRoles) > 0 {
+		return errors.New("private scheduled job requires a request-scoped response")
+	}
 	return err
 }
 
@@ -103,6 +106,21 @@ func (s *Scheduler) mergeTaskParams(job *metadata.ScheduledJob, params map[strin
 // Паника обработки перехватывается здесь, а не у вызывающего: исполнитель
 // очереди — обычная горутина, и паника в ней уронила бы весь процесс.
 func (s *Scheduler) ExecuteJobOnce(ctx context.Context, jobName string, params map[string]any) (output string, err error) {
+	return s.executeJobOnce(ctx, jobName, params, nil)
+}
+
+// ExecuteJobOnceWithResponse confines a request-scoped response to explicitly
+// opted-in jobs. Check the cloned definition used for the actual execution.
+func (s *Scheduler) ExecuteJobOnceWithResponse(ctx context.Context, jobName string, params map[string]any, hasRole func([]string) bool) (string, error) {
+	if hasRole == nil {
+		return "", errors.New("private scheduled job requires an authenticated caller")
+	}
+	return s.executeJobOnce(ctx, jobName, params, hasRole)
+}
+
+type privateScheduledExecutionKey struct{}
+
+func (s *Scheduler) executeJobOnce(ctx context.Context, jobName string, params map[string]any, hasRole func([]string) bool) (output string, err error) {
 	s.mu.Lock()
 	stopping := s.stopping || s.sealed
 	s.mu.Unlock()
@@ -113,6 +131,15 @@ func (s *Scheduler) ExecuteJobOnce(ctx context.Context, jobName string, params m
 	if err != nil {
 		return "", err
 	}
+	if hasRole != nil {
+		if len(job.PrivateResponseRoles) == 0 || job.Enabled || strings.TrimSpace(job.Schedule) != "" || !hasRole(job.PrivateResponseRoles) {
+			return "", errors.New("private scheduled job not available to caller")
+		}
+		ctx = context.WithValue(ctx, privateScheduledExecutionKey{}, true)
+	} else if len(job.PrivateResponseRoles) != 0 {
+		return "", errors.New("private scheduled job requires a request-scoped response")
+	}
+
 	if len(params) > 0 {
 		job.Params = s.mergeTaskParams(job, params)
 	}
@@ -124,6 +151,11 @@ func (s *Scheduler) ExecuteJobOnce(ctx context.Context, jobName string, params m
 
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			if hasRole != nil {
+				err = errors.New("private scheduled job failed")
+				s.log.Error("scheduler: private scheduled job panic", "job", jobName)
+				return
+			}
 			err = fmt.Errorf("panic: %v", recovered)
 			s.log.Error("scheduler: queued job panic", "job", jobName,
 				"panic", recovered, "stack", string(debug.Stack()))

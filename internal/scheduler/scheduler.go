@@ -444,6 +444,7 @@ func cloneScheduledJob(job *metadata.ScheduledJob) *metadata.ScheduledJob {
 		return nil
 	}
 	cloned := *job
+	cloned.PrivateResponseRoles = append([]string(nil), job.PrivateResponseRoles...)
 	if job.Titles != nil {
 		cloned.Titles = make(map[string]string, len(job.Titles))
 		for key, value := range job.Titles {
@@ -1058,9 +1059,14 @@ func (s *Scheduler) runProcessor(ctx context.Context, job *metadata.ScheduledJob
 	varsBuilder := s.varsBuilder
 	s.mu.Unlock()
 
+	private, _ := ctx.Value(privateScheduledExecutionKey{}).(bool)
+	if len(job.PrivateResponseRoles) > 0 && !private {
+		return "", errors.New("private scheduled job requires a request-scoped response")
+	}
+
 	var messages []string
 	msgFunc := interpreter.BuiltinFunc(func(args []any, file string, line int) (any, error) {
-		if text, ok := msgstatus.FromArgs(args); ok {
+		if text, ok := msgstatus.FromArgs(args); ok && !private {
 			messages = append(messages, text)
 			if msgSink != nil {
 				msgSink("", text)
@@ -1109,7 +1115,9 @@ func (s *Scheduler) runProcessor(ctx context.Context, job *metadata.ScheduledJob
 	// пустым — молча (#706). Тот же вызов, что в UI и procrun.
 	_, err := s.interp.Call(procDecl, paramsThis, interpreter.BindNamedArgs(procDecl, paramValues), dslVars)
 	err = interpreter.FinishTxExecution(txState, err)
-	output = strings.Join(msgstatus.StripAll(messages), "\n")
+	if !private {
+		output = strings.Join(msgstatus.StripAll(messages), "\n")
+	}
 	return output, err
 }
 
