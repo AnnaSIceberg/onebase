@@ -584,7 +584,7 @@ const tplManagedForm = `
        её перебивает — «покажи 15 строк» иначе задать нечем. */}}
   <div id="sg-{{$tpName}}" class="ob-grid{{tableHeaderClass $el}}" style="{{tpGridCSS $tableLayout (len $tpRows)}}{{tableHeaderVars $el}}"
        data-sg-tp="{{$tpName}}"
-       data-sg-el="{{$el.Name}}"{{if $tableLayout.FitWindow}}
+       data-sg-el="{{$el.Name}}"{{with $el.TotalsCaption}} data-sg-totals-caption="{{.}}"{{end}}{{if $tableLayout.FitWindow}}
        data-ob-fit-grid="1"{{end}}
        data-sg-path="{{elPath $ctx $el}}"
        {{with gridLayoutAttr $ctx $el.Name}}data-sg-layout="{{.}}"{{end}}

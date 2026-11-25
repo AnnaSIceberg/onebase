@@ -328,6 +328,8 @@ type FormElement struct {
 	// title платформа подставляет имя таблицы, а таблице-выдаче (результат
 	// поиска) подпись не нужна и стоит строки высоты формы.
 	TitleHidden bool `yaml:"title_hidden,omitempty"`
+	// TotalsCaption replaces the managed grid’s default label in its totals row.
+	TotalsCaption string `yaml:"totals_caption,omitempty"`
 	// TextColor — цвет текста поля ввода или надписи (подпись и значение,
 	// у нередактируемого поля тоже); цвет проверяет csssafe.Color, как у
 	// background. Importance — смысловое выделение вместо конкретного цвета:

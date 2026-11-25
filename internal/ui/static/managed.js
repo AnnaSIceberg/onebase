@@ -4263,7 +4263,13 @@ function obGridColumnWidths(columns) {
           node.innerHTML = '<span style="display:block;text-align:right;font-weight:600;font-variant-numeric:tabular-nums">' +
             sum.toLocaleString("ru-RU", {minimumFractionDigits: 0, maximumFractionDigits: 2}) + "</span>";
         } else {
-          node.innerHTML = (c.id === labelId) ? '<span style="color:#64748b">Итого</span>' : "";
+          node.textContent = "";
+          if (c.id === labelId) {
+            var caption = document.createElement("span");
+            caption.style.color = "#64748b";
+            caption.textContent = (g.div && g.div.getAttribute("data-sg-totals-caption")) || "Итого";
+            node.appendChild(caption);
+          }
         }
       }
     } catch (e) { if (window.console) console.warn("updateTotals:", e); }
