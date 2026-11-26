@@ -1853,6 +1853,12 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Заявка изменилась. Откройте задачу заново", http.StatusForbidden)
 		return
 	}
+	callProof := ""
+	if operatorCall(r.Context(), entity) {
+		if digest, ok := callBusinessDigest(entity, row); ok {
+			callProof = s.callFormProof(r, id, persistedEntityVersion(row), digest)
+		}
+	}
 	// Маскирование ПДн (план 88): значения строятся из row ниже, поэтому
 	// маскируем строку до сборки vals — на форме поле показывается замаскированным,
 	// а submitEdit защищает реальное значение от перезаписи маской.
@@ -2012,6 +2018,7 @@ func (s *Server) formEdit(w http.ResponseWriter, r *http.Request) {
 		// Тот же серверный фильтр используется списком источника.
 		"BasedOnActions": s.basedOnActions(r, entity, langEdit),
 	}
+	data["CallFormBusinessProof"] = callProof
 	if formInstance != "" {
 		data["FormInstance"] = formInstance
 		data["FormOpeningInstanceField"] = instanceField

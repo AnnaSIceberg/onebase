@@ -2522,6 +2522,16 @@ window.obManagedApplyHints = obManagedApplyHints;
         form.appendChild(verInput);
       }
       verInput.value = String(data.version);
+      if (data.callFormBusinessProof) {
+        var callProof = form.querySelector('[name="_ob_call_business"]');
+        if (!callProof) {
+          callProof = document.createElement('input');
+          callProof.type = 'hidden';
+          callProof.name = '_ob_call_business';
+          form.appendChild(callProof);
+        }
+        callProof.value = data.callFormBusinessProof;
+      }
     }
 	// URL/shell synchronization is deliberately last and guarded: even a host
 	// history shim that throws cannot prevent adoption of the durable id/version.

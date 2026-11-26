@@ -47,22 +47,23 @@ import (
 
 // formEventResponse — структура ответа JSON.
 type formEventResponse struct {
-	SavedPhoneLink      *savedPhoneLinkPayload      `json:"savedPhoneLink,omitempty"`
-	WorkbookDownloadURL string                      `json:"workbookDownloadUrl,omitempty"`
-	TabularDocuments    map[string]string           `json:"tabularDocuments,omitempty"`
-	AudioStops          []string                    `json:"audioStops,omitempty"`
-	UICommands          []uiResponseCommand         `json:"uiCommands,omitempty"`
-	RefreshLive         bool                        `json:"refreshLive,omitempty"`
-	ResultForm          *resultFormPayload          `json:"resultForm,omitempty"`
-	CloseResultForm     bool                        `json:"closeResultForm,omitempty"`
-	FormTitle           *string                     `json:"formTitle,omitempty"`
-	OK                  bool                        `json:"ok"`
-	Values              map[string]any              `json:"values,omitempty"`
-	Revealed            []string                    `json:"revealed,omitempty"`
-	Deferred            bool                        `json:"deferred,omitempty"`
-	TableParts          map[string][]map[string]any `json:"tableparts,omitempty"`
-	FormTables          map[string][]map[string]any `json:"formTables,omitempty"`
-	ConditionalCSS      string                      `json:"conditionalCss"`
+	CallFormBusinessProof string                      `json:"callFormBusinessProof,omitempty"`
+	SavedPhoneLink        *savedPhoneLinkPayload      `json:"savedPhoneLink,omitempty"`
+	WorkbookDownloadURL   string                      `json:"workbookDownloadUrl,omitempty"`
+	TabularDocuments      map[string]string           `json:"tabularDocuments,omitempty"`
+	AudioStops            []string                    `json:"audioStops,omitempty"`
+	UICommands            []uiResponseCommand         `json:"uiCommands,omitempty"`
+	RefreshLive           bool                        `json:"refreshLive,omitempty"`
+	ResultForm            *resultFormPayload          `json:"resultForm,omitempty"`
+	CloseResultForm       bool                        `json:"closeResultForm,omitempty"`
+	FormTitle             *string                     `json:"formTitle,omitempty"`
+	OK                    bool                        `json:"ok"`
+	Values                map[string]any              `json:"values,omitempty"`
+	Revealed              []string                    `json:"revealed,omitempty"`
+	Deferred              bool                        `json:"deferred,omitempty"`
+	TableParts            map[string][]map[string]any `json:"tableparts,omitempty"`
+	FormTables            map[string][]map[string]any `json:"formTables,omitempty"`
+	ConditionalCSS        string                      `json:"conditionalCss"`
 	// ElementStates — состояние элементов с условиями readonly_when/hidden_when,
 	// пересчитанное по полям записи ПОСЛЕ обработчика. Без него запрет,
 	// зависящий от состояния объекта, появлялся бы только после перезагрузки
@@ -211,7 +212,11 @@ func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, for
 			return hookMessages, 0, &managedCloseSaveError{status: http.StatusBadRequest, kind: managedSaveHook, message: hookErr.Error(), messages: hookMessages}
 		}
 	}
-	result, err := s.entitySvc.Save(r.Context(), entityservice.SaveRequest{
+	callMerge, _ := r.Context().Value(operatorCallFormKey{}).(*callFormMerge)
+	if callMerge == nil {
+		callMerge = s.prepareCallFormMerge(r, entity, obj.ID, expectedVersion)
+	}
+	request := entityservice.SaveRequest{
 		Entity: entity, ID: obj.ID, IsNew: isNew, Fields: obj.Fields,
 		ServerAssignments: obj.TakeServerFieldAssignments(),
 		TablePartRows:     obj.TablePartRows, Action: action, ExpectedVersion: expectedVersion,
@@ -265,7 +270,9 @@ func (s *Server) saveManagedObject(r *http.Request, entity *metadata.Entity, for
 				onCommitted(result.ID, result.Version)
 			}
 		},
-	})
+	}
+	callMerge.bind(&request, nil)
+	result, err := s.entitySvc.Save(r.Context(), request)
 	if err != nil {
 		switch {
 		case errors.Is(err, storage.ErrInfoRegOwnershipConflict):
@@ -918,6 +925,12 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			submittedVersion = &parsedVersion
 		}
 	}
+	var callMerge *callFormMerge
+	callMerge = s.prepareCallFormMerge(r, entity, obj.ID, submittedVersion)
+	if callMerge != nil {
+		r = r.WithContext(context.WithValue(r.Context(), operatorCallFormKey{}, callMerge))
+		dslCtx = context.WithValue(dslCtx, operatorCallFormKey{}, callMerge)
+	}
 	if closeInv != nil {
 		// Observe the entire close lifecycle, not only BeforeClose. In
 		// particular ПослеЗаписи may obtain another wrapper through a common
@@ -1158,7 +1171,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			closeInv.suppressState = true
 			closeInv.terminal = true
 		}
-		if persistedEntityVersion(persisted) != canonicalVersion {
+		if persistedEntityVersion(persisted) != canonicalVersion && !callMerge.acceptsCommitted(persisted) {
 			w.WriteHeader(http.StatusConflict)
 			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(false)
 			resp.Error = "объект изменён другим пользователем после записи"
@@ -1206,7 +1219,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			respondJSON(enc, resp)
 			return
 		}
-		if !exists || verifiedVersion != canonicalVersion {
+		if !exists || verifiedVersion != persistedEntityVersion(persisted) {
 			w.WriteHeader(http.StatusConflict)
 			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(false)
 			resp.Error = "объект изменён другим пользователем после записи"
@@ -1689,6 +1702,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 		resp.SavedID = savedFormID(thisObj)
 		attachInstance(&resp)
 		resp.Version = versionWrittenByHandler(thisObj)
+		resp.CallFormBusinessProof = callMerge.nextProof(resp.Version)
 		resp.Dirty = eventDirty
 		filterDeferredResponse(deferredBaseline, &resp)
 		compactFormCloseDelta(&resp, closeInv)
@@ -1716,6 +1730,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	resp.SavedID = savedFormID(thisObj)
 	attachInstance(&resp)
 	resp.Version = versionWrittenByHandler(thisObj)
+	resp.CallFormBusinessProof = callMerge.nextProof(resp.Version)
 	resp.Dirty = eventDirty
 	if requestedResult != nil && resp.OK && !resp.Cancel {
 		if navigation != nil || question.Variants != nil {

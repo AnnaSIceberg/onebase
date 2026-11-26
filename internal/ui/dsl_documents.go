@@ -603,6 +603,10 @@ func (p *docProxy) LoadObject(uuidStr string) (any, error) {
 		loaded:          true,
 		expectedVersion: &version,
 	}
+	if merge, _ := p.ctx().Value(operatorCallFormKey{}).(*callFormMerge); merge != nil &&
+		merge.id == id && merge.entity == p.entity {
+		w.callBaseline = row
+	}
 	w.setStandardAttrs(row)
 	return w, nil
 }
@@ -626,6 +630,7 @@ type docWriter struct {
 	loaded          bool
 	saved           bool
 	expectedVersion *int64
+	callBaseline    map[string]any
 	// assigned — реквизиты, присвоенные модулем в этой сессии: их чтение не
 	// маскируется, значение принадлежит текущей операции (план 88E).
 	assigned map[string]bool
@@ -976,6 +981,14 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 		}
 	}
 	isNew := !w.loaded && !w.saved
+	expected := w.expectedVersion
+	if !posting && w.callBaseline != nil {
+		var err error
+		expected, err = w.rebaseLoadedCall(ctx)
+		if err != nil {
+			return err
+		}
+	}
 	// Pre-образ живого списка (план 87): для существующего документа читаем строку
 	// ДО записи, чтобы прежний владелец убрал её из списка при смене прав.
 	var changeBefore map[string]any
@@ -1075,12 +1088,12 @@ func (w *docWriter) writeInContextForAction(ctx context.Context, posting bool) e
 		if err := w.s.store.UpsertPostingPreludeVersioned(ctx, w.entity.Name, w.obj.ID, w.obj.Fields, w.entity, w.expectedVersion); err != nil {
 			return err
 		}
-	case w.expectedVersion == nil:
+	case expected == nil:
 		if err := w.s.store.Upsert(ctx, w.entity.Name, w.obj.ID, w.obj.Fields, w.entity); err != nil {
 			return err
 		}
 	default:
-		if err := w.s.store.UpsertVersioned(ctx, w.entity.Name, w.obj.ID, w.obj.Fields, w.entity, w.expectedVersion); err != nil {
+		if err := w.s.store.UpsertVersioned(ctx, w.entity.Name, w.obj.ID, w.obj.Fields, w.entity, expected); err != nil {
 			return err
 		}
 	}
