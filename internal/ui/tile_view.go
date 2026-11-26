@@ -21,6 +21,12 @@ func resolveTileView(entity *metadata.Entity) tileViewRender {
 	if entity == nil {
 		return out
 	}
+	fields := listVisibleFields(entity.Fields)
+	if len(fields) != len(entity.Fields) {
+		visibleEntity := *entity
+		visibleEntity.Fields = fields
+		entity = &visibleEntity
+	}
 	cfg := entity.TileView
 	if cfg == nil {
 		for _, f := range entity.Fields {
@@ -129,6 +135,26 @@ func tileValue(field metadata.Field, value any, labels map[string]map[string]str
 // tile_view.fields, затем все поля. Так обычный конфигуратор и редактор
 // управляемой формы задают один и тот же состав и порядок колонок (#386).
 func resolveListColumns(entity *metadata.Entity) []metadata.Field {
+	return listVisibleFields(resolveConfiguredListColumns(entity))
+}
+
+func listVisibleFields(fields []metadata.Field) []metadata.Field {
+	for i, field := range fields {
+		if !field.ListHidden {
+			continue
+		}
+		visible := append([]metadata.Field(nil), fields[:i]...)
+		for _, remaining := range fields[i+1:] {
+			if !remaining.ListHidden {
+				visible = append(visible, remaining)
+			}
+		}
+		return visible
+	}
+	return fields
+}
+
+func resolveConfiguredListColumns(entity *metadata.Entity) []metadata.Field {
 	if entity == nil {
 		return nil
 	}

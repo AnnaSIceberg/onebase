@@ -25,6 +25,7 @@ type rawField struct {
 	// ChoiceShowDeleted — choice_show_deleted (см. Field.ChoiceShowDeleted).
 	ChoiceShowDeleted *bool `yaml:"choice_show_deleted"`
 	Required          bool  `yaml:"required"`
+	ListHidden        bool  `yaml:"list_hidden"`
 	// Default — значение по умолчанию при создании нового объекта (план 153).
 	// Читается строкой: и `сейчас`, и `12`, и `Истина` попадают сюда как есть,
 	// разбирает их metadata.ParseDefault.
@@ -771,7 +772,7 @@ func parseField(rf rawField) Field {
 	}
 	f := Field{ID: strings.TrimSpace(rf.ID), Name: rf.Name, Title: title, Titles: rf.Titles, Type: FieldType(rf.Type),
 		AllowInlineCreate: rf.AllowInlineCreate, ChoiceShowDeleted: rf.ChoiceShowDeleted, Required: rf.Required, Default: string(rf.Default), PII: rf.PII, ReportPII: rf.ReportPII,
-		PIIOpenWhen: strings.TrimSpace(rf.PIIOpenWhen)}
+		PIIOpenWhen: strings.TrimSpace(rf.PIIOpenWhen), ListHidden: rf.ListHidden}
 	if strings.HasPrefix(rf.Type, "reference:") {
 		f.RefEntity = strings.TrimPrefix(rf.Type, "reference:")
 	} else if strings.HasPrefix(rf.Type, "enum:") {

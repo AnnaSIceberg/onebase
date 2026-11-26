@@ -26,6 +26,7 @@ type RowPolicy struct {
 	Field          string             `yaml:"field,omitempty" json:"field,omitempty"`
 	Op             string             `yaml:"op,omitempty" json:"op,omitempty"`
 	Value          RowValue           `yaml:"value,omitempty" json:"value,omitempty"`
+	SoleRoleRead   *RowPolicy         `yaml:"sole_role_read,omitempty" json:"sole_role_read,omitempty"`
 	SameAs         string             `yaml:"same_as,omitempty" json:"same_as,omitempty"`
 }
 
@@ -88,6 +89,10 @@ func normalizeRowPolicy(p RowPolicy) RowPolicy {
 	}
 	for i := range p.Any {
 		p.Any[i] = normalizeRowPolicy(p.Any[i])
+	}
+	if p.SoleRoleRead != nil {
+		policy := normalizeRowPolicy(*p.SoleRoleRead)
+		p.SoleRoleRead = &policy
 	}
 	if p.Not != nil {
 		n := normalizeRowPolicy(*p.Not)

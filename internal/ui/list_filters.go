@@ -32,7 +32,7 @@ func listFilterPanelFields(data any) []metadata.Field {
 		return nil
 	}
 	if len(ent.ListFilters) == 0 {
-		return ent.Fields
+		return listVisibleFields(ent.Fields)
 	}
 	shown := map[string]bool{}
 	for _, name := range ent.ListFilters {
@@ -58,7 +58,7 @@ func listFilterPanelFields(data any) []metadata.Field {
 		basic[name] = true
 	}
 	for _, f := range ent.Fields {
-		if shown[f.Name] && !basic[f.Name] {
+		if !f.ListHidden && shown[f.Name] && !basic[f.Name] {
 			out = append(out, f)
 		}
 	}
@@ -83,7 +83,7 @@ func listFilterChoices(data any) []listFilterChoice {
 	}
 	var out []listFilterChoice
 	for _, f := range ent.Fields {
-		if basic[f.Name] || (ent.Activity != nil && f.Name == ent.Activity.Field) {
+		if f.ListHidden || basic[f.Name] || (ent.Activity != nil && f.Name == ent.Activity.Field) {
 			continue
 		}
 		out = append(out, listFilterChoice{Field: f, Checked: checked[f.Name]})
@@ -93,7 +93,7 @@ func listFilterChoices(data any) []listFilterChoice {
 
 func listFilterField(ent *metadata.Entity, name string) *metadata.Field {
 	for i := range ent.Fields {
-		if ent.Fields[i].Name == name {
+		if ent.Fields[i].Name == name && !ent.Fields[i].ListHidden {
 			return &ent.Fields[i]
 		}
 	}

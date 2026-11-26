@@ -38,6 +38,47 @@ func RuntimeContext(lookup EntityLookup, store any) DecisionContext {
 }
 
 func userCardDescriptor(src *auth.UserCardSource, target *metadata.Entity, field string, lookup EntityLookup, op string) (storage.UserCardDescriptor, error) {
+	desc, err := selectUserCardDescriptor(src, lookup)
+	if err != nil {
+		return storage.UserCardDescriptor{}, err
+	}
+	if desc.TablePart != nil {
+		if op != "in" && op != "not_in" {
+			return storage.UserCardDescriptor{}, fmt.Errorf("user_card: table-part sources require in or not_in")
+		}
+	} else if op != "eq" && op != "ne" && op != "" {
+		return storage.UserCardDescriptor{}, fmt.Errorf("user_card: scalar sources require eq or ne")
+	}
+	fail := func(msg string) (storage.UserCardDescriptor, error) {
+		return storage.UserCardDescriptor{}, fmt.Errorf("user_card: %s", msg)
+	}
+	// Dot navigation on the target is resolved independently of the source.
+	if strings.Contains(field, ".") {
+		parts := strings.Split(field, ".")
+		if len(parts) != 2 {
+			return fail("invalid target field")
+		}
+		ref, ok := referenceField(target, parts[0])
+		if !ok {
+			return fail("unknown target reference")
+		}
+		target = lookup.GetEntity(ref.RefEntity)
+		field = parts[1]
+	}
+	if target == nil {
+		return fail("unknown target")
+	}
+	tf, ok := concreteField(target, field)
+	if !ok {
+		return fail("target must be an ordinary field")
+	}
+	if !strings.EqualFold(string(tf.Type), string(desc.Field.Type)) || !strings.EqualFold(tf.RefEntity, desc.Field.RefEntity) {
+		return fail("source and target field types must match")
+	}
+	return desc, nil
+}
+
+func selectUserCardDescriptor(src *auth.UserCardSource, lookup EntityLookup) (storage.UserCardDescriptor, error) {
 	fail := func(msg string) (storage.UserCardDescriptor, error) {
 		return storage.UserCardDescriptor{}, fmt.Errorf("user_card: %s", msg)
 	}
@@ -67,47 +108,37 @@ func userCardDescriptor(src *auth.UserCardSource, target *metadata.Entity, field
 		}
 		account = f
 	}
-	value, tablePart, err := userCardSelection(src, catalog)
+
+	selector := *src
+	column, referencedField, projected := strings.Cut(src.Column, ".")
+	if projected {
+		selector.Column = column
+	}
+	value, tablePart, err := userCardSelection(&selector, catalog)
 	if err != nil {
 		return fail(err.Error())
 	}
-	if tablePart != nil {
-		if op != "in" && op != "not_in" {
-			return fail("table-part sources require in or not_in")
+	desc := storage.UserCardDescriptor{Catalog: catalog, AccountField: account, Field: value, TablePart: tablePart}
+	if projected {
+		entity := lookup.GetEntity(value.RefEntity)
+		if entity == nil || entity.Kind != metadata.KindCatalog || tablePart == nil {
+			return fail("projected column requires a table-part catalog reference")
 		}
-	} else if op != "eq" && op != "ne" && op != "" {
-		return fail("scalar sources require eq or ne")
-	}
-	// Dot navigation on the target is resolved independently of the source.
-	if strings.Contains(field, ".") {
-		parts := strings.Split(field, ".")
-		if len(parts) != 2 {
-			return fail("invalid target field")
-		}
-		ref, ok := referenceField(target, parts[0])
+		field, ok := concreteField(entity, referencedField)
 		if !ok {
-			return fail("unknown target reference")
+			return fail("unknown projected field")
 		}
-		target = lookup.GetEntity(ref.RefEntity)
-		field = parts[1]
-	}
-	if target == nil {
-		return fail("unknown target")
-	}
-	tf, ok := concreteField(target, field)
-	if !ok {
-		return fail("target must be an ordinary field")
-	}
-	if !strings.EqualFold(string(tf.Type), string(value.Type)) || !strings.EqualFold(tf.RefEntity, value.RefEntity) {
-		return fail("source and target field types must match")
+		desc.Through = &storage.UserCardReference{Catalog: entity, Column: value}
+		desc.Field = field
 	}
 	switch {
-	case value.RefEntity != "", metadata.IsEnum(value.Type):
-	case value.Type == metadata.FieldTypeString, value.Type == metadata.FieldTypeNumber, value.Type == metadata.FieldTypeBool, value.Type == metadata.FieldTypeDate:
+	case desc.Field.RefEntity != "", metadata.IsEnum(desc.Field.Type):
+	case desc.Field.Type == metadata.FieldTypeString, desc.Field.Type == metadata.FieldTypeNumber,
+		desc.Field.Type == metadata.FieldTypeBool, desc.Field.Type == metadata.FieldTypeDate:
 	default:
 		return fail("unsupported scalar type")
 	}
-	return storage.UserCardDescriptor{Catalog: catalog, AccountField: account, Field: value, TablePart: tablePart}, nil
+	return desc, nil
 }
 
 // Select only ordinary metadata fields. A partial or mixed selector must never
@@ -229,19 +260,7 @@ func CanonicalRowAccess(in auth.RowAccess, lookup EntityLookup) (auth.RowAccess,
 			if lookup == nil {
 				return p, fmt.Errorf("user_card requires metadata lookup")
 			}
-			catalog := lookup.GetEntity(src.Catalog)
-			if catalog == nil || catalog.Kind != metadata.KindCatalog {
-				return p, fmt.Errorf("user_card: unknown catalog")
-			}
-			value, tp, err := userCardSelection(src, catalog)
-			if err != nil {
-				return p, err
-			}
-			op := "eq"
-			if tp != nil {
-				op = "in"
-			}
-			desc, err := userCardDescriptor(src, &metadata.Entity{Fields: []metadata.Field{value}}, value.Name, lookup, op)
+			desc, err := selectUserCardDescriptor(src, lookup)
 			if err != nil {
 				return p, err
 			}
@@ -250,6 +269,9 @@ func CanonicalRowAccess(in auth.RowAccess, lookup EntityLookup) (auth.RowAccess,
 				p.Value.UserCard.Field = ""
 				p.Value.UserCard.TablePart = desc.TablePart.Name
 				p.Value.UserCard.Column = desc.Field.Name
+				if desc.Through != nil {
+					p.Value.UserCard.Column = desc.Through.Column.Name + "." + desc.Field.Name
+				}
 			}
 		}
 		p.All = append([]auth.RowPolicy(nil), p.All...)
@@ -274,6 +296,13 @@ func CanonicalRowAccess(in auth.RowAccess, lookup EntityLookup) (auth.RowAccess,
 				return p, err
 			}
 			p.Not = &n
+		}
+		if p.SoleRoleRead != nil {
+			n, err := canonical(*p.SoleRoleRead)
+			if err != nil {
+				return p, err
+			}
+			p.SoleRoleRead = &n
 		}
 		return p, nil
 	}

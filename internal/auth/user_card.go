@@ -156,6 +156,9 @@ func HasUserCardSource(u *User) bool {
 		for _, section := range []map[string]RowPolicies{role.Permissions.RowAccess.Catalogs, role.Permissions.RowAccess.Documents, role.Permissions.RowAccess.Registers, role.Permissions.RowAccess.InfoRegs} {
 			for _, policies := range section {
 				for _, p := range policies {
+					if len(u.Roles) != 1 {
+						p.SoleRoleRead = nil
+					}
 					if RowPolicyHasUserCard(p) {
 						return true
 					}
@@ -191,6 +194,9 @@ func RowPolicyHasUserCard(p RowPolicy) bool {
 		if RowPolicyHasUserCard(child) {
 			return true
 		}
+	}
+	if p.SoleRoleRead != nil && RowPolicyHasUserCard(*p.SoleRoleRead) {
+		return true
 	}
 	return p.Not != nil && RowPolicyHasUserCard(*p.Not)
 }

@@ -117,6 +117,8 @@ type Field struct {
 	// там же, где значения перечислений, — чтобы гарантия не зависела от того,
 	// какой дверью пришли данные.
 	Required bool
+	// ListHidden excludes a technical field from standard list columns and filter controls.
+	ListHidden bool
 }
 
 // InlineCreateEnabled — итоговое значение «показывать ли «+»» для поля.
