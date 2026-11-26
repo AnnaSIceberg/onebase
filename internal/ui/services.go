@@ -551,8 +551,6 @@ func (s *Server) writeServiceResult(w http.ResponseWriter, result any) {
 	}
 }
 
-const statusClientClosedRequest = 499
-
 func writeServiceError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
