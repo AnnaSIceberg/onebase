@@ -130,7 +130,7 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 					status = http.StatusOK
 				}
 				if closeResponse.Code != status || result.Close == nil || result.Close.Allowed || result.Close.Saved ||
-					!strings.Contains(result.Error, "объект изменён другим пользователем") {
+					!strings.Contains(result.Error, "изменён другим пользователем") {
 					t.Fatalf("unsafe rebase accepted: status=%d, result=%+v", closeResponse.Code, result)
 				}
 				expectedComment = second["Комментарий"].(string)
