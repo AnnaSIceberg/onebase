@@ -97,6 +97,43 @@ func count(t *testing.T, db *storage.DB, ctx context.Context, table string) int 
 	return n
 }
 
+func TestIngestCanceledDeliveryCanBeRetried(t *testing.T) {
+	eng, db, ctx := setup(t)
+	in := sampleIntake()
+	in.DLQ.On = []string{metadata.DLQHandlerError}
+	event := env(t, "E1", map[string]any{"phone": "111"})
+	request, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var calls int64
+	create := creatingHandler(db, &calls)
+	canceled := intake.HandlerFunc(func(tx context.Context, e intake.Envelope) (intake.HandlerResult, error) {
+		_, err := create.Handle(tx, e)
+		if err != nil {
+			return intake.HandlerResult{}, err
+		}
+		cancel()
+		return intake.HandlerResult{}, request.Err()
+	})
+
+	if _, err := eng.Ingest(request, in, canceled, event); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled delivery: %v", err)
+	}
+	for _, table := range []string{"_intake_log", "_intake_dlq", "zayavki"} {
+		if n := count(t, db, ctx, table); n != 0 {
+			t.Fatalf("canceled delivery left %d rows in %s", n, table)
+		}
+	}
+	for _, expected := range []intake.Status{intake.StatusAccepted, intake.StatusDuplicate} {
+		result, err := eng.Ingest(ctx, in, create, event)
+		if err != nil || result.Status != expected {
+			t.Fatalf("retry: status=%s, want %s, err=%v", result.Status, expected, err)
+		}
+	}
+	if n := count(t, db, ctx, "zayavki"); n != 1 || calls != 2 {
+		t.Fatalf("durable effects=%d, handler calls=%d", n, calls)
+	}
+}
+
 func TestIngest_HappyPath(t *testing.T) {
 	eng, db, ctx := setup(t)
 	var calls int64

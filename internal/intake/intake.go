@@ -234,6 +234,9 @@ func (e *Engine) onExisting(ctx context.Context, in *metadata.Intake, h Handler,
 	return resultFromLog(row, StatusDuplicate), nil
 }
 
+// ErrInFlight indicates that the sender should retry the same envelope.
+var ErrInFlight = errors.New("intake: обработка этого события ещё не завершена")
+
 func (e *Engine) waitForExisting(ctx context.Context, in *metadata.Intake, scope, key, hash string) (Result, error) {
 	intakeName := in.Name
 	timer := time.NewTimer(e.inFlightWait())
@@ -245,14 +248,14 @@ func (e *Engine) waitForExisting(ctx context.Context, in *metadata.Intake, scope
 		case <-ctx.Done():
 			return Result{}, ctx.Err()
 		case <-timer.C:
-			return Result{}, fmt.Errorf("intake %q: обработка ключа %q ещё не завершена", intakeName, key)
+			return Result{}, ErrInFlight
 		case <-ticker.C:
 			row, found, err := e.Store.GetIntakeLog(ctx, intakeName, scope, key)
 			if err != nil {
 				return Result{}, err
 			}
 			if !found {
-				return Result{}, fmt.Errorf("intake %q: строка ключа %q исчезла во время обработки", intakeName, key)
+				return Result{}, ErrInFlight
 			}
 			if row.PayloadHash != hash {
 				return Result{}, fmt.Errorf("intake %q: строка ключа %q была заменена во время обработки", intakeName, key)
@@ -303,9 +306,19 @@ func (e *Engine) process(ctx context.Context, in *metadata.Intake, h Handler, en
 		return e.Store.SetIntakeLogProcessed(txctx, in.Name, scope, key, r.Ref, marshalResult(r.BusinessResult))
 	})
 	if txErr != nil {
+		if ctx.Err() != nil {
+			return Result{}, errors.Join(txErr, e.releaseReceived(ctx, in.Name, scope, key))
+		}
 		return e.quarantine(ctx, in, env, key, scope, metadata.DLQHandlerError, txErr.Error(), true)
 	}
 	return Result{Status: StatusAccepted, ResultRef: hr.Ref, BusinessResult: hr.BusinessResult}, nil
+}
+
+// releaseReceived runs after rollback, even when the sender disconnected.
+func (e *Engine) releaseReceived(ctx context.Context, intake, scope, key string) error {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	return e.Store.DeleteIntakeLog(cleanup, intake, scope, key)
 }
 
 // quarantine отправляет событие в карантин. ourRow=true — сбой на нашей свежей
@@ -315,7 +328,7 @@ func (e *Engine) process(ctx context.Context, in *metadata.Intake, h Handler, en
 func (e *Engine) quarantine(ctx context.Context, in *metadata.Intake, env Envelope, key, scope, reason, errMsg string, ourRow bool) (Result, error) {
 	if !in.QuarantineOn(reason) {
 		if ourRow {
-			if err := e.Store.DeleteIntakeLog(ctx, in.Name, scope, key); err != nil {
+			if err := e.releaseReceived(ctx, in.Name, scope, key); err != nil {
 				return Result{}, err
 			}
 		}
@@ -346,7 +359,7 @@ func (e *Engine) quarantine(ctx context.Context, in *metadata.Intake, env Envelo
 		// Иначе транспорт получит 5xx, но его retry увидит вечную received-строку
 		// и будет ошибочно подтверждён как дубль без записи в DLQ.
 		if ourRow {
-			if cleanupErr := e.Store.DeleteIntakeLog(ctx, in.Name, scope, key); cleanupErr != nil {
+			if cleanupErr := e.releaseReceived(ctx, in.Name, scope, key); cleanupErr != nil {
 				return Result{}, errors.Join(err, cleanupErr)
 			}
 		}

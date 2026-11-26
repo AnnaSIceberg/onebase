@@ -387,7 +387,7 @@ func (s *Server) serviceDispatch(w http.ResponseWriter, r *http.Request) {
 			// status internally without treating the aborted read as a server error.
 			oblog.Component("http-service").Info("клиент отменил HTTP-запрос",
 				"service", svc.RootURL, "handler", handlerName, "request_id", middleware.GetReqID(r.Context()))
-			writeServiceError(w, 499, "Клиент отменил запрос")
+			writeServiceError(w, statusClientClosedRequest, "Клиент отменил запрос")
 			return
 		}
 		writeServiceError(w, http.StatusInternalServerError, err.Error())
@@ -550,6 +550,8 @@ func (s *Server) writeServiceResult(w http.ResponseWriter, result any) {
 		_, _ = w.Write(data) //nolint:gosec // G705: ответ уходит с инертным типом (text/plain или application/json), браузер его не исполняет
 	}
 }
+
+const statusClientClosedRequest = 499
 
 func writeServiceError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
