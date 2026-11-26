@@ -502,7 +502,7 @@ func widgetYAMLSchema() *yamlLintSchema {
 }
 
 func reportYAMLSchema() *yamlLintSchema {
-	measure := with(obj("field", "agg", "title", "align", "format", "expr", "null_when_empty"), map[string]*yamlLintSchema{"scope": seq(nil), "calculations": seq(obj("level", "agg", "expr", "group_by", "inner_agg"))})
+	measure := with(obj("field", "agg", "title", "align", "format", "expr", "null_when_empty"), map[string]*yamlLintSchema{"scope": seq(nil), "calculations": seq(obj("level", "agg", "expr", "group_by", "inner_agg", "source_field"))})
 	sortKey := obj("field", "dir")
 	style := obj("color", "background", "bold", "italic")
 	conditional := with(obj("when", "field"), map[string]*yamlLintSchema{"style": style})
@@ -533,7 +533,7 @@ func reportYAMLSchema() *yamlLintSchema {
 		// ключ разрешён: иначе линт ругался бы на работающую возможность.
 		"params":      seq(with(obj("name", "type", "label", "options", "default", "period_end", "choice_show_deleted", "choice_label_suffix"), map[string]*yamlLintSchema{"labels": freeMap(), "visible_when": obj("param", "equals"), "choice_filter": seq(obj("field", "param")), "enhanced": obj("date_only"), "context": with(obj("user"), map[string]*yamlLintSchema{"user_card": obj("catalog", "account_field", "field", "table_part", "column"), "catalog_name": obj("catalog", "name", "allow_missing")})})),
 		"composition": composition,
-		"variants":    seq(with(obj("name", "query"), map[string]*yamlLintSchema{"composition": composition, "filters": seq(obj("field", "op", "value"))})),
+		"variants":    seq(with(obj("name", "query", "result_proc"), map[string]*yamlLintSchema{"composition": composition, "filters": seq(obj("field", "op", "value"))})),
 	})
 }
 

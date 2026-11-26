@@ -108,7 +108,20 @@ type ReportVariant struct {
 	Name        string          `yaml:"name"`
 	Composition *Composition    `yaml:"composition"`
 	Query       string          `yaml:"query,omitempty"`
+	ResultProc  string          `yaml:"result_proc,omitempty"`
 	Filters     []VariantFilter `yaml:"filters,omitempty"`
+}
+
+// WithVariantRenderer selects a configured procedure without changing the shared report.
+func (r *Report) WithVariantRenderer(name string) *Report {
+	for _, variant := range r.Variants {
+		if name != "" && variant.Name == name && variant.ResultProc != "" {
+			selected := *r
+			selected.ResultProc = variant.ResultProc
+			return &selected
+		}
+	}
+	return r
 }
 
 // Composition описывает настройки компоновки данных отчёта.

@@ -265,7 +265,11 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 		return
 	}
 	settings := rs.Settings
-	if rep.ResultProc != "" {
+	resultVariant := variant
+	if settings != nil {
+		resultVariant = settings.Variant
+	}
+	if rep.WithVariantRenderer(resultVariant).ResultProc != "" {
 		if raw, present := requestFormValue(r, "__settings"); present {
 			explicit, err := reportpkg.ParseSourceSettings(raw)
 			if err != nil {
@@ -282,6 +286,7 @@ func (s *Server) runReport(w http.ResponseWriter, r *http.Request, rep *reportpk
 	if settings != nil {
 		variant = settings.Variant
 	}
+	rep = rep.WithVariantRenderer(variant)
 	comp := effectiveComposition(rep, settings)
 	settingsJSON := reportSettingsPanelJSON(rep, settings)
 	// Restore query parameter types after the form's text representation:

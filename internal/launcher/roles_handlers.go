@@ -141,7 +141,7 @@ func (h *handler) cfgAdminRoles(w http.ResponseWriter, r *http.Request) {
 			bg = ` style="background:#f9fafb"`
 		}
 		fmt.Fprintf(&sb, `<tr%s><td style="padding:5px 8px;font-weight:600">%s</td><td style="padding:5px 8px;color:#555">%s</td><td style="padding:5px 8px;color:#888">%s</td><td style="padding:5px 8px;white-space:nowrap"><button onclick="cfgRoleEdit('%s')" style="background:#2563eb;color:#fff;border:none;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;margin-right:4px">Изменить</button><button onclick="cfgRoleDel('%s')" style="color:#c00;background:none;border:none;cursor:pointer;font-size:11px" title="Удалить">✕</button></td></tr>`,
-			bg, escHTML(role.Name), escHTML(role.Description), escHTML(permSummary(role.Permissions)), escAttrJS(role.Name), escAttrJS(role.Name))
+			bg, escHTML(role.DisplayName()), escHTML(role.Description), escHTML(permSummary(role.Permissions)), escAttrJS(role.Name), escAttrJS(role.Name))
 	}
 	if len(roles) == 0 {
 		sb.WriteString(`<tr><td colspan="4" style="padding:20px;text-align:center;color:#999">Ролей пока нет</td></tr>`)
@@ -711,7 +711,7 @@ func (h *handler) cfgAdminUserRoles(w http.ResponseWriter, r *http.Request) {
 				chk = " checked"
 			}
 			fmt.Fprintf(&sb, `<tr%s><td style="padding:5px 8px;text-align:center"><input type="checkbox" name="role" value="%s"%s></td><td style="padding:5px 8px;font-weight:600">%s</td><td style="padding:5px 8px;color:#888">%s</td></tr>`,
-				bg, escHTML(role.ID), chk, escHTML(role.Name), escHTML(role.Description))
+				bg, escHTML(role.ID), chk, escHTML(role.DisplayName()), escHTML(role.Description))
 		}
 		sb.WriteString(`</table></form>
 		<div style="margin-top:12px;display:flex;gap:8px;align-items:center">
