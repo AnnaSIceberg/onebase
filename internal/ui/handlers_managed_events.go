@@ -1729,6 +1729,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	resp.ChoiceList = choiceItems
 	resp.SavedID = savedFormID(thisObj)
 	attachInstance(&resp)
+	if closeInv == nil && eventName == formIdleEvent && elementName == "" && resp.OK && !resp.Cancel && resp.FormInstance == "" {
+		resp.FormInstance = s.renewManagedFormInstance(r, form, existingFormID, instanceSchema, time.Now())
+	}
 	resp.Version = versionWrittenByHandler(thisObj)
 	resp.CallFormBusinessProof = callMerge.nextProof(resp.Version)
 	resp.Dirty = eventDirty

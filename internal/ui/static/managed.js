@@ -2511,6 +2511,14 @@ window.obManagedApplyHints = obManagedApplyHints;
 	  if (location.search && new URLSearchParams(location.search).get('_popup') === '1') {
 		savedURL += '?_popup=1';
 	  }
+    } else if (form && data.ok && !data.error && !data.cancel && data.formInstance && form.hasAttribute('data-ob-retain-instance')) {
+      var currentInstance = (form.getAttribute('data-ob-form-instance') || '').split('.');
+      var renewedInstance = data.formInstance.split('.');
+      if (renewedInstance.length === 3 && renewedInstance[0] === currentInstance[0] &&
+          Number(renewedInstance[1]) > Number(currentInstance[1])) {
+        form.setAttribute('data-ob-form-instance', data.formInstance);
+        obKeepFormInstance(form, false);
+      }
     }
     if (data.version && form) {
 	  var versionName = serviceField('_version');

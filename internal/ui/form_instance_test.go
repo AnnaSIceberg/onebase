@@ -21,6 +21,11 @@ func TestManagedFormInstanceThroughHTTP(t *testing.T) {
 	srv, fixture := setupManagedEventsServer(t, `
 Процедура ЗапомнитьЭкземпляр()
 	Объект.Наименование = ИдЭкземпляраФормы();
+	ПодключитьОбработчикОжидания("Пульс", 60);
+КонецПроцедуры
+
+Процедура Пульс()
+	Объект.Наименование = ИдЭкземпляраФормы();
 КонецПроцедуры
 
 Процедура ЗаписатьДокумент()
@@ -39,6 +44,7 @@ func TestManagedFormInstanceThroughHTTP(t *testing.T) {
 	})
 	form := fixture.Forms[0]
 	form.InstanceContext = true
+	form.RetainInstanceOnReload = true
 	ent := &metadata.Entity{Name: "CallInstance", Kind: metadata.KindDocument, Fields: fixture.Fields, Forms: fixture.Forms}
 	form.EntityName = ent.Name
 	srv.reg.Load(runtime.LoadOptions{Entities: []*metadata.Entity{ent}})
@@ -134,6 +140,55 @@ func TestManagedFormInstanceThroughHTTP(t *testing.T) {
 		}
 	}
 	checkSaved(save, id1, first)
+
+	t.Run("valid idle tick renews the same scoped instance", func(t *testing.T) {
+		now := time.Now()
+		schema := entityFormCloseSchema(ent, form)
+		expiry := now.Add(time.Minute)
+		get := request("GET", "/"+save.SavedID, "session-1", "", nil)
+		ticket := srv.signManagedFormInstance(get, schema, save.SavedID, id1, strconv.FormatInt(expiry.Unix(), 10))
+		open := postEvent(metadata.FormEventOnOpen, "", "session-1", ticket, save.SavedID, save.Version)
+		if len(open.Idle) != 1 || open.FormInstance != "" {
+			t.Fatal("only an accepted idle tick should return a renewal")
+		}
+
+		tick := func(session, instance, idleProof string) formEventResponse {
+			values := url.Values{
+				"_event": {formIdleEvent}, "_kind": {"object"},
+				"_id": {save.SavedID}, "_version": {strconv.FormatInt(save.Version, 10)},
+				"_idle_proc": {open.Idle[0].Proc}, "_idle_token": {idleProof},
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, request("POST", "/form-event", session, instance, values))
+			return decodeFormEventResponse(t, rec.Body.Bytes())
+		}
+
+		next := tick("session-1", ticket, open.Idle[0].Token)
+		if !next.OK || anyString(next.Values["Наименование"]) != id1 || next.FormInstance == "" {
+			t.Fatal("tick must use and renew the same identity")
+		}
+		if got, _ := srv.validManagedFormInstanceAt(request("POST", "/form-event", "session-1", next.FormInstance, nil),
+			save.SavedID, schema, expiry.Add(time.Second)); got != id1 {
+			t.Fatal("renewal must still validate after the original expiry")
+		}
+		for _, tc := range []struct {
+			name, session, instance, proof string
+		}{
+			{"fresh", "session-1", save.FormInstance, open.Idle[0].Token},
+			{"wrong session", "session-2", ticket, open.Idle[0].Token},
+			{"wrong record", "session-1", srv.signManagedFormInstance(get, schema, uuid.NewString(), id1, strconv.FormatInt(expiry.Unix(), 10)), open.Idle[0].Token},
+			{"tampered", "session-1", ticket + "a", open.Idle[0].Token},
+			{"expired", "session-1", srv.signManagedFormInstance(get, schema, save.SavedID, id1, strconv.FormatInt(now.Add(-time.Second).Unix(), 10)), open.Idle[0].Token},
+			{"saved-phone context", "session-1", srv.signManagedFormInstance(get, schema, save.SavedID, savedPhoneOpeningInstancePrefix+id1, strconv.FormatInt(expiry.Unix(), 10)), open.Idle[0].Token},
+			{"wrong idle proof", "session-1", ticket, "forged"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				if got := tick(tc.session, tc.instance, tc.proof); got.FormInstance != "" {
+					t.Fatal("unexpected renewal")
+				}
+			})
+		}
+	})
 
 	// A close request can save and keep the card open when BeforeClose cancels.
 	// Exact transport replay still returns the existing reload-only tombstone.

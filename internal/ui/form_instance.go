@@ -52,7 +52,11 @@ func (s *Server) newManagedFormInstance(r *http.Request, schema, scope string, n
 	if r.Method == http.MethodGet && r.URL.Query().Has(formOpenSavedPhoneQuery) {
 		nonce = savedPhoneOpeningInstancePrefix + nonce
 	}
-	payload := nonce + "." + strconv.FormatInt(now.Add(managedFormInstanceTTL).Unix(), 10)
+	return s.signManagedFormInstance(r, schema, scope, nonce, strconv.FormatInt(now.Add(managedFormInstanceTTL).Unix(), 10))
+}
+
+func (s *Server) signManagedFormInstance(r *http.Request, schema, scope, nonce, expiry string) string {
+	payload := nonce + "." + expiry
 	signature := s.managedFormInstanceSignature(r, schema, scope, payload)
 	if signature == "" {
 		return ""
@@ -80,6 +84,10 @@ func (s *Server) managedFormInstanceSignature(r *http.Request, schema, scope, pa
 }
 
 func (s *Server) validManagedFormInstance(r *http.Request, scope, schema string) (nonce, expiry string) {
+	return s.validManagedFormInstanceAt(r, scope, schema, time.Now())
+}
+
+func (s *Server) validManagedFormInstanceAt(r *http.Request, scope, schema string, now time.Time) (nonce, expiry string) {
 	tokens := r.Header.Values(managedFormInstanceHeader)
 	if len(tokens) != 1 || len(tokens[0]) > 128 {
 		return "", ""
@@ -87,7 +95,7 @@ func (s *Server) validManagedFormInstance(r *http.Request, scope, schema string)
 	nonce, rest, ok := strings.Cut(tokens[0], ".")
 	expiry, proof, hasProof := strings.Cut(rest, ".")
 	expires, err := strconv.ParseInt(expiry, 10, 64)
-	if !ok || !hasProof || err != nil || !time.Now().Before(time.Unix(expires, 0)) {
+	if !ok || !hasProof || err != nil || !now.Before(time.Unix(expires, 0)) {
 		return "", ""
 	}
 	want := s.managedFormInstanceSignature(r, schema, scope, nonce+"."+expiry)
@@ -95,6 +103,24 @@ func (s *Server) validManagedFormInstance(r *http.Request, scope, schema string)
 		return "", ""
 	}
 	return nonce, expiry
+}
+
+// Only opted-in forms renew a normal, unexpired instance on an accepted idle tick.
+func (s *Server) renewManagedFormInstance(r *http.Request, form *metadata.FormModule, scope string, schema func() string, now time.Time) string {
+	if form == nil || !form.InstanceContext || !form.RetainInstanceOnReload || r.Header.Get(managedFormInstanceHeader) == "" {
+		return ""
+	}
+	formSchema := schema()
+	nonce, expiry := s.validManagedFormInstanceAt(r, scope, formSchema, now)
+	// The saved-phone opening context is a separate, time-limited authorization.
+	if nonce == "" || strings.HasPrefix(nonce, savedPhoneOpeningInstancePrefix) {
+		return ""
+	}
+	expires, _ := strconv.ParseInt(expiry, 10, 64)
+	if time.Unix(expires, 0).Sub(now) > managedFormInstanceTTL/2 {
+		return ""
+	}
+	return s.signManagedFormInstance(r, formSchema, scope, nonce, strconv.FormatInt(now.Add(managedFormInstanceTTL).Unix(), 10))
 }
 
 func (s *Server) managedFormInstanceBuiltin(r *http.Request, form *metadata.FormModule, scope string, schema func() string) interpreter.BuiltinFunc {
@@ -124,10 +150,5 @@ func (s *Server) rebindManagedFormInstance(r *http.Request, form *metadata.FormM
 	if nonce == "" {
 		return ""
 	}
-	payload := nonce + "." + expiry
-	signature := s.managedFormInstanceSignature(r, formSchema, savedID, payload)
-	if signature == "" {
-		return ""
-	}
-	return payload + "." + signature
+	return s.signManagedFormInstance(r, formSchema, savedID, nonce, expiry)
 }
