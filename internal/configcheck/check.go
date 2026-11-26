@@ -843,6 +843,9 @@ func CheckReportComposition(proj *project.Project) []Issue {
 		for _, m := range c.Measures {
 			measures[m.Field] = true
 			for _, calculation := range m.Calculations {
+				if field := calculation.SourceField; field != "" && outputColumns != nil && !outputColumns[strings.ToLower(field)] {
+					add(repName, prefix+fmt.Sprintf("показатель %q: source_field %q отсутствует в результате запроса", m.Field, field))
+				}
 				if calculation.Expr != "" {
 					if err := parseReturnExpr(calculation.Expr); err != nil {
 						add(repName, prefix+"ошибка формулы уровня "+calculation.Level+": "+err.Error())

@@ -53,4 +53,17 @@ composition:
 	if !got.OK || len(got.Warnings) > 0 {
 		t.Fatalf("%+v", got)
 	}
+	mkFile(t, filepath.Join(dir, "reports", "levels.yaml"), `name: Levels
+query: SELECT 1 AS M, 3 AS X
+composition:
+  groupings: [M]
+  measures:
+  - field: X
+    calculations:
+    - {level: M, agg: max, source_field: Missing}
+`)
+	got = RunFullWithOptions(dir, Options{Lint: true})
+	if got.OK || !issuesContain(got.Issues, "source_field") {
+		t.Fatalf("unknown source_field: %+v", got)
+	}
 }
