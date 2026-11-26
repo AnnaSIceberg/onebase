@@ -389,7 +389,7 @@ func TestTabularResultProcedureForReportVariant(t *testing.T) {
 		nativeCell := "Кириллица <script>bad()</script>"
 		checkWorkbook(viewPath+"/xlsx", nativeCell)
 		checkWorkbook(path+"/excel?__variant=Layout", nativeCell)
-		checkWorkbook(path+"/excel", "Ordinary")
+		checkWorkbook(path+"/excel", "ordinary")
 		pdf := tabularHTTP(server, user, "own-session", "GET", path+"/pdf?__variant=Layout", nil)
 		if pdf.Code != http.StatusOK || !bytes.HasPrefix(pdf.Body.Bytes(), []byte("%PDF")) {
 			t.Fatalf("variant PDF: HTTP %d", pdf.Code)
