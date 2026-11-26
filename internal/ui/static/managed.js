@@ -2211,6 +2211,20 @@ window.obManagedApplyHints = obManagedApplyHints;
     return fireFormEvent(elementName, eventName, extraParams, pickerRequest);
   };
 
+  async function fireManagedClick(button) {
+    if (!window.obFire) return;
+    var singleFlight = button.hasAttribute('data-ob-single-flight');
+    if (singleFlight && button.getAttribute('aria-busy') === 'true') return;
+    var table = button.getAttribute('data-ob-fire-tp');
+    var params = table ? {_tp: table} : {};
+    if (singleFlight) button.setAttribute('aria-busy', 'true');
+    try {
+      await window.obFire(button.getAttribute('data-ob-fire-click') || '', 'Нажатие', params);
+    } finally {
+      if (singleFlight) button.removeAttribute('aria-busy');
+    }
+  }
+
   // One close controller for every managed-form adapter. It snapshots the
   // current form exactly like obFire, calls the dedicated lifecycle endpoint,
   // applies returned state/messages first and only then returns a decision.
@@ -3658,10 +3672,7 @@ function obManagedInitDelegates() {
     }
     if (btn.hasAttribute('data-ob-fire-click')) {
       e.preventDefault();
-      var params = {};
-      var tp = btn.getAttribute('data-ob-fire-tp') || '';
-      if (tp) params._tp = tp;
-      if (window.obFire) window.obFire(btn.getAttribute('data-ob-fire-click') || '', 'Нажатие', params);
+      fireManagedClick(btn);
       return;
     }
     if (btn.hasAttribute('data-ob-grid-add')) {

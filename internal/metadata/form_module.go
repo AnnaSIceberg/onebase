@@ -247,13 +247,14 @@ func (el *FormElement) FooterButton() bool {
 
 // FormPresentation overrides visual properties in the enhanced interface.
 type FormPresentation struct {
-	Primary    bool              `yaml:"primary,omitempty"`
-	Enhanced   *FormPresentation `yaml:"enhanced,omitempty"`
-	Height     int               `yaml:"height,omitempty"`
-	Background string            `yaml:"background,omitempty"`
-	DateOnly   bool              `yaml:"date_only,omitempty"`
-	Rows       int               `yaml:"rows,omitempty"`       // visual rows of an existing multiline input
-	FitWindow  bool              `yaml:"fit_window,omitempty"` // table viewport takes the available height
+	Primary      bool              `yaml:"primary,omitempty"`
+	SingleFlight bool              `yaml:"single_flight,omitempty"` // ignore another click until the first one settles
+	Enhanced     *FormPresentation `yaml:"enhanced,omitempty"`
+	Height       int               `yaml:"height,omitempty"`
+	Background   string            `yaml:"background,omitempty"`
+	DateOnly     bool              `yaml:"date_only,omitempty"`
+	Rows         int               `yaml:"rows,omitempty"`       // visual rows of an existing multiline input
+	FitWindow    bool              `yaml:"fit_window,omitempty"` // table viewport takes the available height
 }
 
 type FormElement struct {
