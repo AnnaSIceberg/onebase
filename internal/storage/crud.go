@@ -17,7 +17,11 @@ import (
 
 // ListParams controls filtering, search, sorting and pagination for List queries.
 type ListParams struct {
-	Filters map[string]FilterValue
+	// OutputFields is an optional trusted projection for a list renderer.
+	// A nil slice selects all fields. Predicates and ordering use the full
+	// entity metadata; the row identity and system fields are always selected.
+	OutputFields []metadata.Field
+	Filters      map[string]FilterValue
 	// AccountPriority is supplied by the configured UI list filter only.
 	AccountPriority *ListAccountPriority
 	// ChoicePredicates are trusted, metadata-derived choice_filter conditions.
@@ -976,7 +980,13 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 		}
 	}
 	table := metadata.TableName(entityName)
-	cols := ListEntityColumns(entity)
+	output := entity
+	if params.OutputFields != nil {
+		selected := *entity
+		selected.Fields = params.OutputFields
+		output = &selected
+	}
+	cols := ListEntityColumns(output)
 	hasPredefined := entity.Kind == metadata.KindCatalog && len(entity.Predefined) > 0
 	whereClause, args, err := db.listWhere(entityName, entity, params, true)
 	if err != nil {
@@ -1158,7 +1168,7 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 	}
 
 	scan := func(query string, args []any) ([]map[string]any, error) {
-		return db.scanListRows(ctx, entityName, entity, cols, hasPredefined, query, args)
+		return db.scanListRows(ctx, entityName, output, cols, hasPredefined, query, args)
 	}
 	if split != nil {
 		if HasTx(ctx) {
@@ -1171,7 +1181,7 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 			var result []map[string]any
 			err := db.WithReadSnapshot(ctx, func(readCtx context.Context) error {
 				readScan := func(query string, args []any) ([]map[string]any, error) {
-					return db.scanListRows(readCtx, entityName, entity, cols, hasPredefined, query, args)
+					return db.scanListRows(readCtx, entityName, output, cols, hasPredefined, query, args)
 				}
 				var err error
 				result, err = db.listNullsLast(readCtx, entityName, table, baseSelect, whereClause, args, split, params, readScan)

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"html"
 	"html/template"
 
@@ -29,19 +28,24 @@ func listCellFilters(row map[string]any, cols []metadata.Field) []listCellFilter
 // Save visible, unmasked scalar values before references become labels.
 func (s *Server) captureListCellFilters(ctx context.Context, entity *metadata.Entity, rows []map[string]any) {
 	decisions := s.fieldDecisions(ctx, entity)
-	for _, row := range rows {
-		values := map[string]string{}
-		for _, field := range resolveListColumns(entity) {
-			if d, ok := fieldDecisionByName(decisions, field.Name); ok && d.Masked() {
+	columns := resolveListColumns(entity)
+	filterFields := make([]metadata.Field, 0, len(columns))
+	for _, field := range columns {
+		if d, ok := fieldDecisionByName(decisions, field.Name); ok && d.Masked() {
+			continue
+		}
+		switch field.Type {
+		case metadata.FieldTypeString, metadata.FieldTypeNumber, metadata.FieldTypeBool, metadata.FieldTypeDate:
+		default:
+			if field.RefEntity == "" && field.EnumName == "" {
 				continue
 			}
-			switch field.Type {
-			case metadata.FieldTypeString, metadata.FieldTypeNumber, metadata.FieldTypeBool, metadata.FieldTypeDate:
-			default:
-				if field.RefEntity == "" && field.EnumName == "" {
-					continue
-				}
-			}
+		}
+		filterFields = append(filterFields, field)
+	}
+	for _, row := range rows {
+		values := map[string]string{}
+		for _, field := range filterFields {
 			value, exists := row[field.Name]
 			if !exists {
 				continue
@@ -62,5 +66,7 @@ func listCellFilterAttrs(row map[string]any, field metadata.Field) template.HTML
 		return ""
 	}
 	// Attribute names are fixed; each metadata/value string is HTML-escaped.
-	return template.HTMLAttr(fmt.Sprintf(`data-ob-cell="%s" data-ob-cell-value="%s" data-ob-cell-type="%s"`, html.EscapeString(field.Name), html.EscapeString(value), html.EscapeString(string(field.Type)))) //nolint:gosec // G203: fixed attribute names and HTML-escaped values.
+	return template.HTMLAttr(`data-ob-cell="` + html.EscapeString(field.Name) +
+		`" data-ob-cell-value="` + html.EscapeString(value) +
+		`" data-ob-cell-type="` + html.EscapeString(string(field.Type)) + `"`) //nolint:gosec // G203: fixed attribute names and HTML-escaped values.
 }

@@ -171,6 +171,18 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// In a flat legacy table only configured list columns are used for the
+	// cell display, its filters and its row actions. Keep full records for
+	// tiles, hierarchical/activity lists and data-dependent row styling.
+	if legacy && !feed && !stream && !treeView && !tilesView && entity.Kind == metadata.KindDocument &&
+		!entity.Hierarchical && entity.Activity == nil {
+		form := pickManagedFormCtx(r.Context(), entity, "list")
+		if form == nil || form.ListRowStyle == nil {
+			if columns := resolveListColumns(entity); len(columns) > 0 && len(columns) < len(entity.Fields) {
+				params.OutputFields = columns
+			}
+		}
+	}
 	rows, err := s.store.List(r.Context(), entity.Name, entity, params)
 	if err != nil {
 		s.serverError(w, r, err)

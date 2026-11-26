@@ -3334,6 +3334,7 @@ const tplList = `
   data-ob-row-can-copy="{{if $.CanCopy}}1{{end}}"
   data-ob-row-activity-enabled="{{if $.Entity.Activity}}1{{end}}"
 >
+{{$displayFields := listColumnFields $listCols}}
 {{range .Rows}}{{$row := .}}{{$isFolder := index $row "is_folder"}}
 {{$rowStyle := listRowStyle $row}}<tr {{if index $row "deletion_mark"}}style="opacity:0.45;text-decoration:line-through;cursor:pointer{{with $rowStyle}};{{.}}{{end}}"{{else}}style="cursor:pointer{{with $rowStyle}};{{.}}{{end}}"{{end}}{{if $rowStyle}} class="ob-row-styled"{{end}}
   data-ob-list-row tabindex="-1" aria-selected="false" aria-keyshortcuts="ArrowUp ArrowDown Enter F2{{if or $.CanCopy (and $.LegacyEntityUI $.CanWrite)}} F9{{end}}{{if and (or $.CanMark $.CanDelete) (not (index $row "_is_predefined"))}} Delete{{end}}"
@@ -3349,7 +3350,7 @@ const tplList = `
       {{if index $row "posted"}}<span style="color:#16a34a;font-weight:700" title="{{t $.Lang "Проведён"}}">✓</span>{{else}}<span style="color:#94a3b8" title="{{t $.Lang "Не проведён"}}">—</span>{{end}}
     </td>
   {{end}}
-  {{range listColumnFields $listCols}}
+  {{range $displayFields}}
     {{if eq (str .Type) "date"}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{fmtDate (index $row .Name)}}</td>
     {{else if eq (str .Type) "bool"}}<td {{listCellAttrs $row .}} style="white-space:nowrap">{{fmtBool (index $row .Name)}}</td>
     {{else if isImage (str .Type)}}<td {{listCellAttrs $row .}}>{{$iv := index $row .Name}}{{if $iv}}<img src="/ui/_image/{{$iv}}" style="height:34px;width:34px;object-fit:cover;border-radius:5px;vertical-align:middle" alt="">{{else}}<span style="color:#cbd5e1">—</span>{{end}}</td>
