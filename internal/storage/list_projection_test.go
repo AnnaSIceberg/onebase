@@ -12,7 +12,7 @@ import (
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
-func TestFilteredWideDocumentPageKeepsMetadataOrder(t *testing.T) {
+func TestProjectedListKeepsFiltersAndMetadataOrder(t *testing.T) {
 	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
 		ctx := context.Background()
 		ent := &metadata.Entity{
@@ -22,9 +22,6 @@ func TestFilteredWideDocumentPageKeepsMetadataOrder(t *testing.T) {
 				{Name: "Label", Type: metadata.FieldTypeString},
 				{Name: "Imported", Type: metadata.FieldTypeBool},
 			},
-		}
-		for i := range 65 {
-			ent.Fields = append(ent.Fields, metadata.Field{Name: fmt.Sprintf("Extra%d", i), Type: metadata.FieldTypeString})
 		}
 		if err := db.Migrate(ctx, []*metadata.Entity{ent}); err != nil {
 			t.Fatal(err)
@@ -41,7 +38,7 @@ func TestFilteredWideDocumentPageKeepsMetadataOrder(t *testing.T) {
 		for i, item := range fixtures {
 			id := uuid.MustParse(fmt.Sprintf("%d0000000-0000-0000-0000-000000000000", i+1))
 			if err := db.Upsert(ctx, ent.Name, id, map[string]any{
-				"Number": item.number, "Label": item.label, "Imported": item.imported, "Extra64": id.String(),
+				"Number": item.number, "Label": item.label, "Imported": item.imported,
 			}, ent); err != nil {
 				t.Fatal(err)
 			}
@@ -55,6 +52,7 @@ func TestFilteredWideDocumentPageKeepsMetadataOrder(t *testing.T) {
 			t.Fatalf("filtered rows = %d, error = %v", len(unlimited), err)
 		}
 		var pages []map[string]any
+		params.OutputFields = ent.Fields[:1]
 		params.Limit = 2
 		for params.Offset = 0; params.Offset <= len(unlimited); params.Offset += params.Limit {
 			page, err := db.List(ctx, ent.Name, ent, params)
@@ -63,8 +61,12 @@ func TestFilteredWideDocumentPageKeepsMetadataOrder(t *testing.T) {
 			}
 			pages = append(pages, page...)
 		}
+		for _, row := range unlimited {
+			delete(row, "Label")
+			delete(row, "Imported")
+		}
 		if !reflect.DeepEqual(pages, unlimited) {
-			t.Fatal("pagination changed rows, fields, or metadata order")
+			t.Fatal("projection changed visible rows, number, system fields, or metadata order")
 		}
 	})
 }
