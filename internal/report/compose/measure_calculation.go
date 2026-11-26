@@ -19,6 +19,9 @@ func validateCalculations(spec report.Composition) error {
 func aggMeasureAtLevel(rows []Row, m report.Measure, level string, wc *warnCollector) any {
 	c := m.Calculation(level)
 	m.Agg = c.Agg
+	if c.SourceField != "" {
+		m.Field = c.SourceField
+	}
 	if c.GroupBy == "" {
 		return aggMeasure(rows, m)
 	}

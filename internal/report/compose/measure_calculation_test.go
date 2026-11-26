@@ -208,3 +208,39 @@ func (calculationExprEval) EvalNum(expr string, row Row) (decimal.Decimal, bool,
 	}
 	return (exprEvalMul{}).EvalNum(expr, row)
 }
+
+func TestMeasureCalculationAlternateSource(t *testing.T) {
+	spec := report.Composition{
+		Groupings: []string{"Master", "Day"},
+		Detail:    true,
+		Measures: []report.Measure{{
+			Field: "Amount",
+			Agg:   "sum",
+			Calculations: []report.MeasureCalculation{
+				{Level: "Master", Agg: "max", SourceField: "PaymentGroup"},
+				{Level: "Day", Agg: "max", SourceField: "PaymentGroup"},
+			},
+		}},
+	}
+	rows := []Row{
+		{"Master": "M", "Day": "D1", "Amount": 100, "paymentgroup": 300},
+		{"Master": "M", "Day": "D1", "Amount": 200, "paymentgroup": 300},
+		{"Master": "M", "Day": "D1", "Amount": 290, "paymentgroup": 290},
+		{"Master": "M", "Day": "D1", "Amount": 0, "paymentgroup": nil},
+		{"Master": "M", "Day": "D1", "Amount": 0, "paymentgroup": nil},
+		{"Master": "M", "Day": "D2", "Amount": -50, "paymentgroup": -50},
+		{"Master": "M", "Day": "D2", "Amount": 0, "paymentgroup": nil},
+	}
+	result, err := Compose(rows, spec, noEval{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	master := result.Groups[0]
+	nearCalculation(t, result.Grand["Amount"], decimal.NewFromInt(540))
+	nearCalculation(t, master.Subtotals["Amount"], decimal.NewFromInt(300))
+	nearCalculation(t, master.Children[0].Subtotals["Amount"], decimal.NewFromInt(300))
+	nearCalculation(t, master.Children[1].Subtotals["Amount"], decimal.NewFromInt(-50))
+	for i, detail := range master.Children[0].Details {
+		nearCalculation(t, detail.Values["Amount"], decimal.NewFromInt(int64(rows[i]["Amount"].(int))))
+	}
+}

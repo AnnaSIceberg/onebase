@@ -39,14 +39,14 @@ func TestMeasureCalculationCheck(t *testing.T) {
 func TestMeasureCalculationRunFullYAML(t *testing.T) {
 	dir := t.TempDir()
 	mkFile(t, filepath.Join(dir, "reports", "levels.yaml"), `name: Levels
-query: SELECT 1 AS M, 2 AS B, 3 AS X
+query: SELECT 1 AS M, 2 AS B, 3 AS X, 4 AS Y
 composition:
   groupings: [M, B]
   measures:
   - field: X
     agg: avg
     calculations:
-    - {level: M, agg: avg, group_by: B, inner_agg: avg}
+    - {level: M, agg: avg, group_by: B, inner_agg: avg, source_field: Y}
     - {level: $grand, agg: avg, group_by: M, inner_agg: avg}
 `)
 	got := RunFullWithOptions(dir, Options{Lint: true})

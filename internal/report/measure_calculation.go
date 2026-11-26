@@ -9,14 +9,16 @@ import (
 // GroupBy partitions the original rows; InnerAgg is evaluated independently
 // on each partition, then Agg combines those values. It never reuses displayed
 // child resources, which may have different level-specific formulas.
-// Expr and GroupBy are mutually exclusive. No rule means legacy calculation.
+// SourceField selects another input column without changing the measure identity.
+// Expr is mutually exclusive with GroupBy and SourceField.
 // The rules are trusted report metadata, never user/preset expressions.
 type MeasureCalculation struct {
-	Level    string `yaml:"level"`
-	Agg      string `yaml:"agg,omitempty"`
-	Expr     string `yaml:"expr,omitempty"`
-	GroupBy  string `yaml:"group_by,omitempty"`
-	InnerAgg string `yaml:"inner_agg,omitempty"`
+	Level       string `yaml:"level"`
+	SourceField string `yaml:"source_field,omitempty"`
+	Agg         string `yaml:"agg,omitempty"`
+	Expr        string `yaml:"expr,omitempty"`
+	GroupBy     string `yaml:"group_by,omitempty"`
+	InnerAgg    string `yaml:"inner_agg,omitempty"`
 }
 
 func (m Measure) Calculation(level string) MeasureCalculation {
@@ -60,6 +62,9 @@ func (m Measure) CalculationErrors() []string {
 		seen[key] = true
 		if !aggs[c.Agg] || !aggs[c.InnerAgg] {
 			add("неизвестный агрегат формулы уровня " + c.Level)
+		}
+		if c.SourceField != "" && c.Expr != "" {
+			add("source_field требует агрегат без expr для уровня " + c.Level)
 		}
 		if c.GroupBy != "" {
 			if c.InnerAgg == "" || c.Expr != "" {
