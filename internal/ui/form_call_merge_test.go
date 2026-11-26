@@ -20,12 +20,15 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 		mode            string
 		concurrentEdit  bool
 		concurrentTable bool
+		tableOnly       bool
 		wrongProof      bool
 	}{
 		{name: "save", mode: "save"},
 		{name: "close handler writes", mode: "discard"},
 		{name: "competing business edit", mode: "save", concurrentEdit: true},
 		{name: "competing table part", mode: "save", concurrentTable: true},
+		{name: "table part without header change", mode: "save", concurrentTable: true, tableOnly: true},
+		{name: "close handler with table part without header change", mode: "discard", concurrentTable: true, tableOnly: true},
 		{name: "unverified opening", mode: "save", wrongProof: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -83,7 +86,9 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 			if tc.concurrentEdit {
 				second["Комментарий"] = "Чужая правка"
 			}
-			if err := srv.store.Upsert(ctx, entity.Name, id, second, entity); err != nil {
+			if tc.tableOnly {
+				second = first
+			} else if err := srv.store.Upsert(ctx, entity.Name, id, second, entity); err != nil {
 				t.Fatal(err)
 			}
 
@@ -92,6 +97,12 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 				if err := srv.store.UpsertTablePartRows(ctx, entity.Name, table.Name, id,
 					[]map[string]any{{"ИмяФайла": "new-audit-entry"}}, table); err != nil {
 					t.Fatal(err)
+				}
+			}
+			if tc.tableOnly {
+				version, exists, err := srv.store.EntityVersionExists(ctx, entity.Name, id)
+				if err != nil || !exists || version != oldVersion {
+					t.Fatalf("table part test changed the header: version=%d, err=%v", version, err)
 				}
 			}
 			body := closeIntentBody(uuid.NewString(), "close", "")
@@ -121,8 +132,15 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 				t.Fatalf("call did not save and close: status=%d, result=%+v", closeResponse.Code, result)
 			}
 			row, err = srv.store.GetByID(ctx, entity.Name, id, entity)
-			if err != nil || row["Комментарий"] != expectedComment || row["ИдЗаписи"] != "recording" || row["НомерВ1С"] != "подтверждённый" {
+			if err != nil || row["Комментарий"] != expectedComment || row["НомерВ1С"] != second["НомерВ1С"] || !tc.tableOnly && row["ИдЗаписи"] != second["ИдЗаписи"] {
 				t.Fatalf("durable call state: %v, err=%v", row, err)
+			}
+			if tc.concurrentTable {
+				table := entity.TableParts[0]
+				rows, err := srv.store.GetTablePartRows(ctx, entity.Name, table.Name, id, table)
+				if err != nil || len(rows) != 1 || rows[0]["ИмяФайла"] != "new-audit-entry" {
+					t.Fatalf("table part edit was not preserved: %v, err=%v", rows, err)
+				}
 			}
 		})
 	}

@@ -153,7 +153,8 @@ func (m *callFormMerge) bind(req *entityservice.SaveRequest, keep func(string) b
 		req.ExpectedVersion = nil
 		req.MergeExistingFields = true
 		req.PreparePartialUpdate = func(ctx context.Context, current, fields map[string]any) error {
-			if persistedEntityVersion(current) != expected {
+			// Table parts can be updated without advancing the document revision.
+			if len(m.entity.TableParts) != 0 || persistedEntityVersion(current) != expected {
 				digest, ok := m.server.storedCallDigest(ctx, m.entity, m.id, current)
 				if !ok || !m.accepts(expected, digest) {
 					return storage.ErrVersionConflict
@@ -227,7 +228,7 @@ func (w *docWriter) rebaseLoadedCall(ctx context.Context) (*int64, error) {
 		return nil, err
 	}
 	version := persistedEntityVersion(current)
-	if version == *expected {
+	if version == *expected && len(w.entity.TableParts) == 0 {
 		return expected, nil
 	}
 	digest, ok := w.s.storedCallDigest(ctx, w.entity, w.obj.ID, current)
