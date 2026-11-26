@@ -563,6 +563,11 @@ func (t *formTpProxy) CallMethod(method string, args []any) any {
 	}
 	rows := t.IterateRows()
 	switch strings.ToLower(method) {
+	case "заданавобъекте", "ispresent":
+		// An omitted part is preserved on a partial write. A supplied empty
+		// part has a map key and requests replacement with zero rows.
+		_, present := t.obj.TablePartRows[t.tpName]
+		return present
 	case "добавить", "add":
 		if t.obj.TablePartRows == nil {
 			t.obj.TablePartRows = map[string][]map[string]any{}

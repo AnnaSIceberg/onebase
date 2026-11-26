@@ -1378,6 +1378,9 @@ func (t *tpProxy) KnownMethods() (string, []string) {
 func (t *tpProxy) CallMethod(method string, args []any) any {
 	rows := t.obj.TablePartRows[t.tpName]
 	switch strings.ToLower(method) {
+	case "заданавобъекте", "ispresent":
+		_, present := t.obj.TablePartRows[t.tpName]
+		return present
 	case "добавить", "add":
 		row := map[string]any{}
 		t.obj.TablePartRows[t.tpName] = append(rows, row)
