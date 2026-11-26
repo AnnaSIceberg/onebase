@@ -977,6 +977,8 @@ input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#
   .ob-vt-resize-scroll{overflow-x:auto}
   table[data-ob-vt-layout]{table-layout:fixed;max-width:none;min-width:0}
   table[data-ob-vt-layout] th[data-ob-vt-width-field]{box-sizing:border-box;position:relative}
+  table[data-ob-vt-layout] tbody td{padding-inline:2px}
+  table[data-ob-vt-layout] tbody input[readonly]{padding-inline:0}
   .ob-vt-resize-scroll[data-ob-vt-rows] table[data-ob-vt-layout] th[data-ob-vt-width-field]{position:sticky}
   .ob-vt-width-handle{position:absolute;inset-block:0;inset-inline-end:0;width:7px;cursor:col-resize;touch-action:none;user-select:none}
   .ob-vt-width-reset{position:absolute;inset-inline-end:0;top:0;z-index:2;padding-block:1px}
