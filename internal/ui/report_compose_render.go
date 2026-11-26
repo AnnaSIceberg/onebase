@@ -154,8 +154,13 @@ func (h *htmlComposeSink) group(g *compose.Group, level int, path string) {
 		}
 		marker = fmt.Sprintf(`<button type="button" class="rc-fold" aria-expanded="%t" aria-label="%s">%s</button>`, open, html.EscapeString(h.presentation.groupLabel(g.Field, g.Key)), text)
 	}
+	label := h.presentation.groupLabel(g.Field, g.Key)
+	renderedLabel := html.EscapeString(label)
+	if g.ReferenceID != "" {
+		renderedLabel = string(h.drilldowns.Cell(g.Field, map[string]any{g.Field: g.ReferenceID}, label))
+	}
 	fmt.Fprintf(h.b, `<tr class="grp" data-group="%s" data-level="%d" style="%s"><td style="%s">%s %s</td>`,
-		html.EscapeString(path), level, html.EscapeString(rowStyle), pad, marker, html.EscapeString(h.presentation.groupLabel(g.Field, g.Key)))
+		html.EscapeString(path), level, html.EscapeString(rowStyle), pad, marker, renderedLabel)
 	h.measureCells(g.Subtotals, g.Styles)
 	if h.drilldowns.HasRows() {
 		h.b.WriteString(`<td></td>`)

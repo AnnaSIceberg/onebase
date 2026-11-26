@@ -549,3 +549,25 @@ func TestComposeCrossNaNInfNoPanic(t *testing.T) {
 		t.Fatalf("ComposeCross вернул ошибку: %v", err)
 	}
 }
+
+func TestComposeDetailRequiredFieldRetainsGroupAndTotals(t *testing.T) {
+	spec := report.Composition{
+		Groupings: []string{"Request"}, Detail: true, DetailRequiredField: "Call",
+		Measures: []report.Measure{{Field: "Count", Agg: "sum"}},
+		Totals:   report.Totals{Grand: true, Subtotals: true},
+	}
+	rows := []Row{
+		{"Request": "without call", "Count": 1},
+		{"Request": "with call", "call": "present", "Count": 2},
+		{"Request": "with call", "Call": "00000000-0000-0000-0000-000000000000", "Count": 3},
+	}
+	result, err := Compose(rows, spec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Groups) != 2 || len(result.Groups[0].Details) != 0 || len(result.Groups[1].Details) != 1 {
+		t.Fatalf("unexpected groups: %+v", result.Groups)
+	}
+	decEq(t, result.Groups[1].Subtotals["Count"], "5")
+	decEq(t, result.Grand["Count"], "6")
+}

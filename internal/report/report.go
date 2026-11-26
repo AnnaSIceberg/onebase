@@ -115,21 +115,28 @@ type ReportVariant struct {
 type Composition struct {
 	Groupings []string `yaml:"groupings"`
 	// ReferenceGroupings groups these projected references by UUID and displays their authorized labels.
-	ReferenceGroupings []string   `yaml:"reference_groupings,omitempty" json:",omitempty"`
-	Columns            []string   `yaml:"columns"` // непусто = режим кросс-таблицы: измерения в колонки
-	Measures           []Measure  `yaml:"measures"`
-	Totals             Totals     `yaml:"totals"`
-	Detail             bool       `yaml:"detail"`
-	Sort               []SortKey  `yaml:"sort"`
-	Conditional        []CondRule `yaml:"conditional"`
-	Appearance         Appearance `yaml:"appearance"` // общее оформление вывода (линии, зебра)
-	Chart              *ChartSpec `yaml:"chart"`
-	DetailLink         string     `yaml:"detail_link"`   // поле строки с UUID регистратора/ссылки
-	DetailEntity       string     `yaml:"detail_entity"` // имя сущности для перехода по ссылке
+	ReferenceGroupings []string  `yaml:"reference_groupings,omitempty" json:",omitempty"`
+	Columns            []string  `yaml:"columns"` // непусто = режим кросс-таблицы: измерения в колонки
+	Measures           []Measure `yaml:"measures"`
+	// DistinctMeasureKeys maps a measure to a projected identity. Only trusted
+	// metadata sets it, including for measures selected by older presets.
+	DistinctMeasureKeys map[string]string `yaml:"distinct_measure_keys,omitempty" json:"-"`
+	// InternalFields are query projections reserved for computing the report.
+	InternalFields []string   `yaml:"internal_fields,omitempty" json:"-"`
+	Totals         Totals     `yaml:"totals"`
+	Detail         bool       `yaml:"detail"`
+	Sort           []SortKey  `yaml:"sort"`
+	Conditional    []CondRule `yaml:"conditional"`
+	Appearance     Appearance `yaml:"appearance"` // общее оформление вывода (линии, зебра)
+	Chart          *ChartSpec `yaml:"chart"`
+	DetailLink     string     `yaml:"detail_link"`   // поле строки с UUID регистратора/ссылки
+	DetailEntity   string     `yaml:"detail_entity"` // имя сущности для перехода по ссылке
 	// DetailFields — поля детальной записи (аналог «Выбранных полей» 1С):
 	// колонки, которые в строке детализации показывают значения записи
 	// (номер, наименование, даты), а в строках групп и итогов пусты.
 	DetailFields []DetailField `yaml:"detail_fields,omitempty"`
+	// DetailRequiredField skips placeholder detail rows while retaining them in totals.
+	DetailRequiredField string `yaml:"detail_required_field,omitempty" json:"-"`
 	// Formats — формат подписи значения группировки или колонки кросс-таблицы,
 	// строкой Формат() 1С (как «Формат» поля схемы СКД): {Месяц: "ДФ='ММММ гг'"}
 	// → «Сентябрь 26». Меняет только подпись: группировка и сортировка — по
@@ -142,6 +149,18 @@ type Composition struct {
 	// RowTotals — общий итог строки справа в кросс-таблице; nil = выводится,
 	// false = нет (1С: ГоризонтальноеРасположениеОбщихИтогов = Нет).
 	RowTotals *bool `yaml:"row_totals,omitempty"`
+}
+
+// InternalField reports whether the runtime settings should offer the field.
+func (c *Composition) InternalField(field string) bool {
+	if c != nil {
+		for _, name := range c.InternalFields {
+			if strings.EqualFold(name, field) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ShowRowTotals — выводить ли общий итог строки справа в кросс-таблице.
@@ -168,6 +187,7 @@ type Measure struct {
 	// NullWhenEmpty keeps SUM empty if there are no numeric inputs.
 	NullWhenEmpty bool                 `yaml:"null_when_empty,omitempty" json:",omitempty"`
 	Calculations  []MeasureCalculation `yaml:"calculations,omitempty" json:",omitempty"`
+	DistinctKey   string               `yaml:"-" json:"-"` // resolved by the composer from DistinctMeasureKeys
 }
 
 // Totals управляет выводом итогов в отчёте.

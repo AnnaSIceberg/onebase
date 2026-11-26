@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/ivantit66/onebase/internal/auth"
@@ -69,16 +70,22 @@ func (s *Server) addReportResultFilterData(r *http.Request, data map[string]any)
 	if s.deniedQuerySource(r.Context(), res.Sources) != "" {
 		return
 	}
+	comp := effectiveComposition(rep, settings)
 	fields := s.reportResultFilterFields(r.Context(), res)
+	fields = slices.DeleteFunc(fields, func(field resultfilter.Field) bool {
+		return comp.InternalField(field.Name)
+	})
 	data["ReportFilterFields"] = fields
-	if data["ReportCols"] == nil {
+	if columns, ok := data["ReportCols"].([]string); ok && comp != nil && len(comp.InternalFields) > 0 {
+		data["ReportCols"] = slices.DeleteFunc(slices.Clone(columns), comp.InternalField)
+	} else if data["ReportCols"] == nil {
 		columns := make([]string, len(fields))
 		for i, field := range fields {
 			columns[i] = field.Name
 		}
 		data["ReportCols"] = columns
 	}
-	data["ReportHasComposition"] = effectiveComposition(rep, settings) != nil
+	data["ReportHasComposition"] = comp != nil
 	if data["ReportSettingsJSON"] == nil {
 		data["ReportSettingsJSON"] = reportSettingsPanelJSON(rep, settings)
 	}
