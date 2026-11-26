@@ -99,6 +99,7 @@ func ComposeN(rows []Row, spec report.Composition, ev Evaluator, maxRows int) (*
 	if err := validateCalculations(spec); err != nil {
 		return nil, err
 	}
+	spec.Measures = distinctMeasures(spec)
 	rows = alignRowKeys(rows, spec)
 	res := &Result{RowCount: len(rows)}
 	if maxRows > 0 && len(rows) > maxRows {
@@ -138,6 +139,7 @@ func alignRowKeys(rows []Row, spec report.Composition) []Row {
 	}
 	for _, m := range spec.Measures {
 		add(m.Field)
+		add(m.DistinctKey)
 	}
 	for _, s := range spec.Sort {
 		add(s.Field)
@@ -511,6 +513,7 @@ func GroupByField(rows []Row, spec report.Composition, field string, ev Evaluato
 	if err := validateCalculations(spec); err != nil {
 		return nil, nil
 	}
+	spec.Measures = distinctMeasures(spec)
 	rows = alignRowKeys(rows, spec)
 	buckets := map[any][]Row{}
 	for _, r := range rows {
@@ -712,14 +715,41 @@ func exprIdentDeps(expr string, exprFields map[string]bool, self string, fieldSe
 	return deps
 }
 
+// Apply trusted resource identities to the selected measures after UI settings
+// have been merged. Aggregation still works on the rows of each visible group.
+func distinctMeasures(spec report.Composition) []report.Measure {
+	if len(spec.DistinctMeasureKeys) == 0 {
+		return spec.Measures
+	}
+	keys := make(map[string]string, len(spec.DistinctMeasureKeys))
+	for field, key := range spec.DistinctMeasureKeys {
+		keys[strings.ToLower(field)] = key
+	}
+	measures := append([]report.Measure(nil), spec.Measures...)
+	for i := range measures {
+		m := &measures[i]
+		if key := keys[strings.ToLower(m.Field)]; key != "" {
+			m.DistinctKey = key
+			m.Agg = "count_distinct"
+			m.Expr = ""
+			m.Calculations = nil
+		}
+	}
+	return measures
+}
+
 func aggMeasure(rows []Row, m report.Measure) any {
 	if m.Agg == "count" {
 		return int64(len(rows))
 	}
 	if m.Agg == "count_distinct" {
+		keyField := m.Field
+		if m.DistinctKey != "" {
+			keyField = m.DistinctKey
+		}
 		seen := make(map[string]struct{})
 		for _, row := range rows {
-			v := row[m.Field]
+			v := row[keyField]
 			if v == nil {
 				continue
 			}

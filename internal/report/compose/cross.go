@@ -87,6 +87,7 @@ func ComposeCrossN(rows []Row, spec report.Composition, ev Evaluator, maxRows in
 	if err := validateCalculations(spec); err != nil {
 		return nil, err
 	}
+	spec.Measures = distinctMeasures(spec)
 	rows = alignRowKeys(rows, spec)
 	res := &CrossResult{Columns: spec.Columns, RowCount: len(rows)}
 	if maxRows > 0 && len(rows) > maxRows {
