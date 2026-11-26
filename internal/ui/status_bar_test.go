@@ -31,7 +31,7 @@ const statusBarModuleSrc = `
 Функция Строка() Экспорт
 	Кнопки = Новый Массив;
 	Кнопки.Добавить("НеБеспокоить");
-	Возврат Новый Структура("Слева,Справа,Кнопки", "Клиент: разговор 02:13", "На линии", Кнопки);
+	Возврат Новый Структура("Слева,Справа,Кнопки,Тон", "Клиент: разговор 02:13", "На линии", Кнопки, "ready");
 КонецФункции
 
 Функция Нажатие(Кнопка) Экспорт
@@ -111,7 +111,7 @@ func TestStatusBar_ContentButtonsAndRoles(t *testing.T) {
 	operator := statusBarUser("Оператор")
 
 	st := decodeStatusBar(t, statusBarRequest(t, s, http.MethodGet, operator, nil))
-	if !st.Visible || st.Left != "Клиент: разговор 02:13" || st.Right != "На линии" || st.Interval != 2 {
+	if !st.Visible || st.Left != "Клиент: разговор 02:13" || st.Right != "На линии" || st.Tone != "ready" || st.Interval != 2 {
 		t.Fatalf("содержимое строки: %+v", st)
 	}
 	// Функция вернула Кнопки — показана только перечисленная, с подписью.
@@ -120,7 +120,7 @@ func TestStatusBar_ContentButtonsAndRoles(t *testing.T) {
 	}
 
 	pressed := decodeStatusBar(t, statusBarRequest(t, s, http.MethodPost, operator, url.Values{"button": {"НеБеспокоить"}}))
-	if pressed.Message != "нажата НеБеспокоить" || !pressed.Visible {
+	if pressed.Message != "нажата НеБеспокоить" || pressed.Tone != "ready" || !pressed.Visible {
 		t.Fatalf("нажатие: %+v", pressed)
 	}
 	// Объявленная, но скрытая функцией кнопка не нажимается в обход строки.
@@ -133,7 +133,7 @@ func TestStatusBar_ContentButtonsAndRoles(t *testing.T) {
 
 	// Пользователю без роли строки нет: ни содержимого, ни кнопок.
 	other := statusBarUser("Кладовщик")
-	if st := decodeStatusBar(t, statusBarRequest(t, s, http.MethodGet, other, nil)); st.Visible || st.Left != "" {
+	if st := decodeStatusBar(t, statusBarRequest(t, s, http.MethodGet, other, nil)); st.Visible || st.Left != "" || st.Tone != "" {
 		t.Fatalf("чужая роль видит строку: %+v", st)
 	}
 	if w := statusBarRequest(t, s, http.MethodPost, other, url.Values{"button": {"НеБеспокоить"}}); w.Code != http.StatusNotFound {
