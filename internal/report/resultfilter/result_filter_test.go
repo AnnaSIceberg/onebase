@@ -173,3 +173,31 @@ func TestReportResultFilterUnaliasedNativeColumns(t *testing.T) {
 		}
 	})
 }
+
+func TestReportFilterOuterReferenceWithSubquery(t *testing.T) {
+	entity := &metadata.Entity{Name: "Request", Kind: metadata.KindDocument}
+	lookup := func(_, name string) *metadata.Entity {
+		if name == entity.Name { return entity }
+		return nil
+	}
+	opts := query.CompileOpts{Entities: []*metadata.Entity{entity}}
+	check := func(text string, want int) {
+		t.Helper()
+		res, err := query.Compile(text, opts)
+		if err != nil { t.Fatal(err) }
+		if res.Projection.Simple { t.Fatal("expected a complex projection") }
+		fields := resultfilter.Schema(res, lookup, func(_ query.SourceRef, _ *metadata.Entity, _ string, _ bool) bool { return true })
+		if len(fields) != want {
+			t.Fatalf("fields = %+v, want %d; source=%+v", fields, want, res.SourceOccurrences)
+		}
+		if want == 1 && (fields[0].Name != "request" || fields[0].RefEntity != entity.Name) {
+			t.Fatalf("unexpected reference descriptor: %+v", fields[0])
+		}
+		if fields := resultfilter.Schema(res, lookup, func(_ query.SourceRef, _ *metadata.Entity, _ string, _ bool) bool { return false }); len(fields) != 0 {
+			t.Fatalf("denied source became filterable: %+v", fields)
+		}
+	}
+	check("ВЫБРАТЬ А.Ссылка КАК request ИЗ Документ.Request КАК А ГДЕ А.Ссылка В (ВЫБРАТЬ А.Ссылка ИЗ Документ.Request КАК А)", 1)
+	check("ВЫБРАТЬ А.request КАК request ИЗ (ВЫБРАТЬ А.Ссылка КАК request ИЗ Документ.Request КАК А) КАК А", 0)
+	check("ВЫБРАТЬ А.Ссылка КАК request ИЗ Документ.Request КАК А ОБЪЕДИНИТЬ ВСЕ ВЫБРАТЬ А.Ссылка ИЗ Документ.Request КАК А", 0)
+}

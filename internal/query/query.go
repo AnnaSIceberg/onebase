@@ -127,6 +127,8 @@ type Result struct {
 type SourceOccurrence struct {
 	SourceRef
 	Qualifier string
+	// SelectScope is the compiler scope index. Zero denotes the outer SELECT.
+	SelectScope int
 	// Virtual distinguishes a generated SQL source from a physical table.
 	// OutputColumns preserves its actual projection, including derived names
 	// and duplicates. nil means the output schema could not be proved; callers
@@ -1578,7 +1580,7 @@ type pendingRowFilter struct {
 // addSource фиксирует объект-источник запроса для последующей проверки прав.
 func (tr *translator) addSource(typeUpper, name string) {
 	kind := sourcePermKind(typeUpper)
-	tr.sourceRefs = append(tr.sourceRefs, SourceOccurrence{SourceRef: SourceRef{Kind: kind, Name: name}, Qualifier: sourceToTable(typeUpper, name)})
+	tr.sourceRefs = append(tr.sourceRefs, SourceOccurrence{SourceRef: SourceRef{Kind: kind, Name: name}, Qualifier: sourceToTable(typeUpper, name), SelectScope: tr.activeSelect})
 	for _, s := range tr.sources {
 		if s.Kind == kind && s.Name == name && s.TablePart == "" {
 			return // уже зафиксирован (напр. та же сущность и в FROM, и через ссылку)
@@ -1593,7 +1595,7 @@ func (tr *translator) addTablePartSource(typeUpper, name string, tps tablePartSo
 	kind := sourcePermKind(typeUpper)
 	ref := SourceRef{Kind: kind, Name: tps.owner.Name, TablePart: tps.tp.Name}
 	tr.sourceRefs = append(tr.sourceRefs, SourceOccurrence{
-		SourceRef: ref, Qualifier: sourceToTable(typeUpper, name),
+		SourceRef: ref, Qualifier: sourceToTable(typeUpper, name), SelectScope: tr.activeSelect,
 		Virtual: true, OutputColumns: tablePartSourceColumns(tps),
 	})
 	for _, s := range tr.sources {

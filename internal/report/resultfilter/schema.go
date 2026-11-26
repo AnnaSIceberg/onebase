@@ -32,8 +32,11 @@ type Field struct {
 // Virtual tables, wildcards and reference presentations need further compiler
 // proof and deliberately do not become filterable here.
 func Schema(res query.Result, lookup Lookup, allowed Allowed) []Field {
-	if res.Limited || !res.Projection.Simple || lookup == nil || allowed == nil {
+	if res.Limited || lookup == nil || allowed == nil {
 		return nil
+	}
+	if !res.Projection.Simple {
+		return outerReferenceSchema(res, lookup, allowed)
 	}
 	counts := map[string]int{}
 	for _, col := range res.Projection.Columns {
@@ -120,6 +123,58 @@ func Schema(res query.Result, lookup Lookup, allowed Allowed) []Field {
 		if len(f.Operators) > 0 {
 			out = append(out, f)
 		}
+	}
+	return out
+}
+
+// outerReferenceSchema admits only direct self references of physical tables
+// in a single outer SELECT. Predicates and independent nested SELECTs leave
+// that output provenance intact. Derived columns and compound output stay closed.
+func outerReferenceSchema(res query.Result, lookup Lookup, allowed Allowed) []Field {
+	var columns []query.ProjectionLineage
+	counts := map[string]int{}
+	for _, line := range res.Projection.Lineage {
+		if !line.Result {
+			continue
+		}
+		if line.Branch != 0 || line.Star || line.Output == "" {
+			return nil
+		}
+		columns = append(columns, line)
+		counts[strings.ToLower(line.Output)]++
+	}
+	var out []Field
+	for _, line := range columns {
+		if !line.Plain || len(line.Paths) != 1 || len(line.Paths[0]) != 2 || counts[strings.ToLower(line.Output)] != 1 {
+			continue
+		}
+		path := line.Paths[0]
+		if !strings.EqualFold(path[1], "Ссылка") && !strings.EqualFold(path[1], "Ref") {
+			continue
+		}
+		var source query.SourceOccurrence
+		matches := 0
+		for _, one := range res.SourceOccurrences {
+			if one.SelectScope == 0 && strings.EqualFold(one.Qualifier, path[0]) {
+				source = one
+				matches++
+			}
+		}
+		if matches != 1 || source.Virtual || source.TablePart != "" || (source.Kind != "document" && source.Kind != "catalog") {
+			continue
+		}
+		meta := lookup(source.Kind, source.Name)
+		if meta == nil || !allowed(source.SourceRef, meta, path[1], true) {
+			continue
+		}
+		f := Field{Name: strings.ToLower(line.Output), Type: "reference:" + source.Name, RefEntity: source.Name, Source: source.SourceRef, SourceField: path[1]}
+		for _, one := range res.SourceOccurrences {
+			if one.SourceRef == source.SourceRef {
+				f.SourceCount++
+			}
+		}
+		f.Operators = operators(f)
+		out = append(out, f)
 	}
 	return out
 }
