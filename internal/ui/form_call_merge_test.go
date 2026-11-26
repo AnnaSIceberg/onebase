@@ -124,7 +124,13 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 			result := decodeCloseIntentResponse(t, closeResponse)
 			expectedComment := "Правка оператора"
 			if tc.concurrentEdit || tc.concurrentTable || tc.wrongProof {
-				if closeResponse.Code != http.StatusConflict || result.Close == nil || result.Close.Allowed {
+				status := http.StatusConflict
+				if tc.mode == "discard" {
+					// An exception in ПередЗакрытием is returned in the close result.
+					status = http.StatusOK
+				}
+				if closeResponse.Code != status || result.Close == nil || result.Close.Allowed || result.Close.Saved ||
+					!strings.Contains(result.Error, "объект изменён другим пользователем") {
 					t.Fatalf("unsafe rebase accepted: status=%d, result=%+v", closeResponse.Code, result)
 				}
 				expectedComment = second["Комментарий"].(string)
