@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -166,4 +167,79 @@ func TestOrderByStablePaginationMatrix(t *testing.T) {
 
 func orderByPageID(n int) uuid.UUID {
 	return uuid.MustParse(fmt.Sprintf("00000000-0000-4000-8000-%012d", n))
+}
+
+// A single indexed string key must give the same pages as CASE-based ordering.
+func TestIndexedDocumentOrderPages(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := context.Background()
+		field := "Номер"
+		entity := &metadata.Entity{
+			Name: "IndexedTask" + uuid.NewString()[:8], Kind: metadata.KindDocument,
+			OrderBy: []string{field},
+			Indexes: []metadata.IndexSpec{{Fields: []string{field}}},
+			Fields: []metadata.Field{
+				{Name: field, Type: metadata.FieldTypeString},
+				{Name: "Historical", Type: metadata.FieldTypeBool},
+			},
+		}
+		if err := db.Migrate(ctx, []*metadata.Entity{entity}); err != nil {
+			t.Fatal(err)
+		}
+		for i, number := range []any{nil, "", "20", "20", "30", "00", "", "10"} {
+			value := map[string]any{field: number}
+			if i >= 4 {
+				value["Historical"] = i == 5 || i == 6
+			}
+			if err := db.Upsert(ctx, entity.Name, orderByPageID(i+1), value, entity); err != nil {
+				t.Fatal(err)
+			}
+		}
+		params := storage.ListParams{
+			RowFilterEvaluated: true,
+			RowFilter: &storage.Predicate{Any: []storage.Predicate{
+				{Field: "Historical", Op: "empty"},
+				{Field: "Historical", Op: "eq", Value: false},
+			}},
+		}
+		check := func(ctx context.Context, want []int) {
+			t.Helper()
+			for _, size := range []int{1, 2, 3, len(want) + 1} {
+				for off := 0; off <= len(want); off++ {
+					params.Offset, params.Limit = off, size
+					rows, err := db.List(ctx, entity.Name, entity, params)
+					if err != nil {
+						t.Fatal(err)
+					}
+					got := make([]string, len(rows))
+					for i, row := range rows {
+						got[i] = fmt.Sprint(row["id"])
+					}
+					var expected []string
+					for _, i := range want[off:min(off+size, len(want))] {
+						expected = append(expected, orderByPageID(i).String())
+					}
+					if !slices.Equal(got, expected) {
+						t.Fatalf("offset=%d size=%d: ids=%v want=%v", off, size, got, expected)
+					}
+				}
+			}
+		}
+		for _, mode := range []struct {
+			order string
+			want  []int
+		}{
+			{field, []int{8, 3, 4, 5, 1, 2}},
+			{field + " desc", []int{5, 3, 4, 8, 1, 2}},
+		} {
+			entity.OrderBy = []string{mode.order}
+			check(ctx, mode.want)
+			if err := db.WithTx(ctx, func(txCtx context.Context) error {
+				check(txCtx, mode.want)
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
 }

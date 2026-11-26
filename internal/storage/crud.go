@@ -1046,6 +1046,18 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 				// конфигурация из БД — молча пропускаем, а не роняем список.
 				continue
 			}
+			if len(entity.OrderBy) == 1 && entity.Kind == metadata.KindDocument && !entity.Hierarchical &&
+				params.Limit > 0 && !HasTx(ctx) && field.Type == metadata.FieldTypeString && field.RefEntity == "" &&
+				indexedListOrderField(entity, field.Name) {
+				// The standalone index orders non-empty values directly. NULL and
+				// empty strings still share one final group with id as its only key.
+				dir := "ASC"
+				if desc {
+					dir = "DESC"
+				}
+				split = &nullsLastOrder{col: col, dir: dir, emptyString: true}
+				break
+			}
 			// Незаполненное — В КОНЕЦ, независимо от направления: «порядок не
 			// задан» это не «идёт первым». В SQLite NULL при ASC оказывается
 			// сверху, в PostgreSQL при DESC — тоже; поэтому признак пустоты
@@ -1081,8 +1093,10 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 		}
 		// Уникальный последний ключ задаёт полный порядок равных значений
 		// order_by, в том числе у папок и при устаревших именах полей.
-		parts = append(parts, "id ASC")
-		query += " ORDER BY " + strings.Join(parts, ", ")
+		if split == nil {
+			parts = append(parts, "id ASC")
+			query += " ORDER BY " + strings.Join(parts, ", ")
+		}
 	} else if entity.Hierarchical && params.Sort == "" {
 		firstStrCol := "id"
 		for _, f := range entity.Fields {
@@ -1196,11 +1210,21 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 	return scan(query, args)
 }
 
+func indexedListOrderField(entity *metadata.Entity, field string) bool {
+	for _, idx := range entity.Indexes {
+		if idx.Normalizer == "" && len(idx.Fields) == 1 && idx.Fields[0] == field {
+			return true
+		}
+	}
+	return false
+}
+
 // nullsLastOrder — порядок «col dir, id», при котором строки с пустым col идут
 // последними, а диалект без CASE в ORDER BY ставит их первыми.
 type nullsLastOrder struct {
-	col string
-	dir string
+	col         string
+	dir         string
+	emptyString bool
 }
 
 // listNullsLast читает страницу в порядке «непустые по col, затем пустые по id»
@@ -1218,8 +1242,13 @@ func (db *DB) listNullsLast(ctx context.Context, entityName, table, baseSelect, 
 		}
 		return whereClause + " AND " + cond
 	}
-	notNull := baseSelect + where(order.col+" IS NOT NULL") + fmt.Sprintf(" ORDER BY %s %s, id ASC", order.col, order.dir)
-	isNull := baseSelect + where(order.col+" IS NULL") + " ORDER BY id ASC"
+	nonEmpty, empty := order.col+" IS NOT NULL", order.col+" IS NULL"
+	if order.emptyString {
+		nonEmpty = "(" + nonEmpty + " AND " + order.col + " <> '')"
+		empty = "(" + empty + " OR " + order.col + " = '')"
+	}
+	notNull := baseSelect + where(nonEmpty) + fmt.Sprintf(" ORDER BY %s %s, id ASC", order.col, order.dir)
+	isNull := baseSelect + where(empty) + " ORDER BY id ASC"
 	if params.Limit <= 0 {
 		head, err := scan(notNull, args)
 		if err != nil {
@@ -1241,7 +1270,7 @@ func (db *DB) listNullsLast(ctx context.Context, entityName, table, baseSelect, 
 	// Страница добирается пустыми: смещение среди них — за вычетом всех
 	// непустых строк выборки.
 	var nonNull int
-	countSQL := "SELECT COUNT(*) FROM " + table + where(order.col+" IS NOT NULL")
+	countSQL := "SELECT COUNT(*) FROM " + table + where(nonEmpty)
 	if err := db.QueryRow(ctx, countSQL, args...).Scan(&nonNull); err != nil {
 		return nil, fmt.Errorf("list %s: %w", entityName, err)
 	}
