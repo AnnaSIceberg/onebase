@@ -17,7 +17,7 @@ func TestManagedFormCloseIntentRecordsEarlyPanic(t *testing.T) {
 		panic("synthetic failure before close envelope")
 	})
 	if response.Code != http.StatusInternalServerError ||
-		!strings.Contains(response.Body.String(), "Код инцидента") ||
+		!strings.Contains(response.Body.String(), "код инцидента") ||
 		strings.Contains(response.Body.String(), "synthetic failure") {
 		t.Fatalf("unexpected response: %d %s", response.Code, response.Body.String())
 	}
