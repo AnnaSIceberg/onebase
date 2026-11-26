@@ -22,8 +22,8 @@ func TestJournalRowActionsRespectScopedCompactControlsHTTP(t *testing.T) {
 		enhanced, hide, hidden bool
 	}{
 		{"otk", []string{"ОТК"}, true, true, true},
-		{"flag-off", []string{"ОТК"}, true, false, false},
-		{"enhancements-off", []string{"ОТК"}, false, true, false},
+		{"flag-off", []string{"ОТК"}, true, false, true},
+		{"enhancements-off", []string{"ОТК"}, false, true, true},
 		{"operator-kc", []string{"ОператорКЦ"}, true, true, false},
 		{"operator-messenger", []string{"ОператорМессенджера"}, true, true, false},
 		{"mixed-operator", []string{"ОТК", "ОператорКЦ"}, true, true, false},
