@@ -1371,7 +1371,7 @@ const tplAdminRoles = `{{define "admin-roles"}}` + adminHead + `
 <thead><tr><th>Роль</th><th>Описание</th><th>Справочники</th><th>Документы</th><th>Отчёты</th></tr></thead>
 <tbody>
 {{range .Roles}}<tr>
-  <td><strong>{{.Name}}</strong></td>
+  <td><strong title="{{.Name}}">{{.DisplayName}}</strong></td>
   <td style="color:#64748b">{{.Description}}</td>
   <td style="font-size:12px">{{range $k,$v := .Permissions.Catalogs}}{{$k}}: {{range $i,$op := $v}}{{if $i}}, {{end}}{{$op}}{{end}}<br>{{end}}</td>
   <td style="font-size:12px">{{range $k,$v := .Permissions.Documents}}{{$k}}: {{range $i,$op := $v}}{{if $i}}, {{end}}{{$op}}{{end}}<br>{{end}}</td>
@@ -1402,7 +1402,7 @@ const tplAdminUserRoles = `{{define "admin-user-roles"}}` + adminHead + `
 <tbody>
 {{range .AllRoles}}<tr>
   <td><input type="checkbox" name="role_id" value="{{.ID}}" {{if index $.UserRoleIDs .ID}}checked{{end}}></td>
-  <td><strong>{{.Name}}</strong></td>
+  <td><strong title="{{.Name}}">{{.DisplayName}}</strong></td>
   <td style="color:#64748b;font-size:13px">{{.Description}}</td>
 </tr>{{end}}
 </tbody>

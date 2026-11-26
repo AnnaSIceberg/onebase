@@ -32,7 +32,7 @@ const tplAdminAuth = `{{define "admin-auth"}}` + adminHead + `
     <div class="form-group">
       <label>Требовать второй фактор от ролей</label>
       <select name="require_2fa_roles" multiple size="{{.RoleSelectSize}}" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:7px">
-        {{range .Roles}}<option value="{{.Name}}" {{if index $.RoleSelected .Name}}selected{{end}}>{{.Name}}</option>{{end}}
+        {{range .Roles}}<option value="{{.Name}}" {{if index $.RoleSelected .Name}}selected{{end}}>{{.DisplayName}}</option>{{end}}
       </select>
       <div style="font-size:12px;color:#94a3b8;margin-top:4px">Учётная запись такой роли без второго фактора не войдёт: при следующем входе система потребует настроить его — по коду привязки от администратора (карточка пользователя → «Выдать код привязки»), если самопривязка ниже выключена.</div>
     </div>

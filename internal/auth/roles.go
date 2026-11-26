@@ -47,9 +47,18 @@ const (
 type Role struct {
 	ID          string
 	Name        string     `yaml:"name"`
+	Title       string     `yaml:"title,omitempty"`
 	Description string     `yaml:"description"`
 	Permissions Permission `yaml:"permissions"`
 	SourceFile  string     `yaml:"-" json:"-"` // имя исходного roles/*.yaml, если роль загружена из файла
+}
+
+// DisplayName returns the user-facing role title. Name remains the policy key.
+func (r *Role) DisplayName() string {
+	if title := strings.TrimSpace(r.Title); title != "" {
+		return title
+	}
+	return r.Name
 }
 
 func (p *Permission) UnmarshalYAML(value *yaml.Node) error {
@@ -539,12 +548,16 @@ func (r *Repo) EnsureRolesSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS _roles (
 			id %s PRIMARY KEY,
 			name TEXT UNIQUE NOT NULL,
+			title TEXT NOT NULL DEFAULT '',
 			description TEXT NOT NULL DEFAULT '',
 			permissions %s NOT NULL DEFAULT '{}',
 			updated_at %s DEFAULT %s
 		)`, d.TypeUUID(), d.TypeJSON(), d.TypeTimestamp(), d.CurrentTimestampTZ())
 	if _, err := r.db.Exec(ctx, rolesDDL); err != nil {
 		return fmt.Errorf("auth: create _roles: %w", err)
+	}
+	if err := r.db.AddColumnIfMissing(ctx, "_roles", "title", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("auth: add role title: %w", err)
 	}
 	userRolesDDL := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS _user_roles (
@@ -568,12 +581,12 @@ func (r *Repo) SyncRoles(ctx context.Context, roles []*Role) error {
 			return err
 		}
 		q := fmt.Sprintf(
-			`INSERT INTO _roles (id, name, description, permissions, updated_at)
-			 VALUES (%s, %s, %s, %s%s, %s)
-			 ON CONFLICT (name) DO UPDATE SET description=EXCLUDED.description, permissions=EXCLUDED.permissions, updated_at=%s`,
-			d.Placeholder(1), d.Placeholder(2), d.Placeholder(3), d.Placeholder(4), jc, d.Now(), d.Now())
+			`INSERT INTO _roles (id, name, title, description, permissions, updated_at)
+			 VALUES (%s, %s, %s, %s, %s%s, %s)
+			 ON CONFLICT (name) DO UPDATE SET title=EXCLUDED.title, description=EXCLUDED.description, permissions=EXCLUDED.permissions, updated_at=%s`,
+			d.Placeholder(1), d.Placeholder(2), d.Placeholder(3), d.Placeholder(4), d.Placeholder(5), jc, d.Now(), d.Now())
 		newID := uuid.New().String()
-		if _, err := r.db.Exec(ctx, q, newID, role.Name, role.Description, permJSON); err != nil {
+		if _, err := r.db.Exec(ctx, q, newID, role.Name, strings.TrimSpace(role.Title), role.Description, permJSON); err != nil {
 			return fmt.Errorf("auth: sync role %s: %w", role.Name, err)
 		}
 		var id string
@@ -591,7 +604,7 @@ func (r *Repo) SyncRoles(ctx context.Context, roles []*Role) error {
 // ListRoles returns all roles from the database.
 func (r *Repo) ListRoles(ctx context.Context) ([]*Role, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, name, description, permissions FROM _roles ORDER BY name`)
+		`SELECT id, name, title, description, permissions FROM _roles ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +613,7 @@ func (r *Repo) ListRoles(ctx context.Context) ([]*Role, error) {
 	for rows.Next() {
 		role := &Role{}
 		var permJSON []byte
-		if err := rows.Scan(&role.ID, &role.Name, &role.Description, &permJSON); err != nil {
+		if err := rows.Scan(&role.ID, &role.Name, &role.Title, &role.Description, &permJSON); err != nil {
 			return nil, err
 		}
 		role.Permissions = unmarshalPermissions(permJSON)
@@ -613,7 +626,7 @@ func (r *Repo) ListRoles(ctx context.Context) ([]*Role, error) {
 func (r *Repo) GetRolesForUser(ctx context.Context, userID string) ([]*Role, error) {
 	d := r.db.Dialect()
 	q := fmt.Sprintf(`
-		SELECT rl.id, rl.name, rl.description, rl.permissions
+		SELECT rl.id, rl.name, rl.title, rl.description, rl.permissions
 		FROM _roles rl
 		JOIN _user_roles ur ON ur.role_id = rl.id
 		WHERE ur.user_id = %s
@@ -627,7 +640,7 @@ func (r *Repo) GetRolesForUser(ctx context.Context, userID string) ([]*Role, err
 	for rows.Next() {
 		role := &Role{}
 		var permJSON []byte
-		if err := rows.Scan(&role.ID, &role.Name, &role.Description, &permJSON); err != nil {
+		if err := rows.Scan(&role.ID, &role.Name, &role.Title, &role.Description, &permJSON); err != nil {
 			return nil, err
 		}
 		role.Permissions = unmarshalPermissions(permJSON)
