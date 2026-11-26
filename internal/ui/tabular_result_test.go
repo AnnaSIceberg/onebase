@@ -369,9 +369,52 @@ func TestTabularResultProcedureForReportVariant(t *testing.T) {
 		if w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), "/ui/tabular/") {
 			t.Fatalf("variant procedure: HTTP %d %s", w.Code, w.Body.String())
 		}
-		if w := tabularHTTP(server, user, "own-session", "GET", w.Header().Get("Location")+"/xlsx", nil); w.Code != http.StatusOK {
-			t.Fatalf("variant workbook: HTTP %d", w.Code)
+		viewPath := w.Header().Get("Location")
+		checkWorkbook := func(path, expectedCell string) {
+			t.Helper()
+			response := tabularHTTP(server, user, "own-session", "GET", path, nil)
+			if response.Code != http.StatusOK {
+				t.Fatalf("workbook %s: HTTP %d %s", path, response.Code, response.Body.String())
+			}
+			book, err := excelize.OpenReader(response.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer book.Close()
+			cell, err := book.GetCellValue(book.GetSheetName(0), "A1")
+			if err != nil || cell != expectedCell {
+				t.Fatalf("workbook %s A1 = %q, %v; want %q", path, cell, err, expectedCell)
+			}
 		}
+		nativeCell := "Кириллица <script>bad()</script>"
+		checkWorkbook(viewPath+"/xlsx", nativeCell)
+		checkWorkbook(path+"/excel?__variant=Layout", nativeCell)
+		checkWorkbook(path+"/excel", "ordinary")
+		pdf := tabularHTTP(server, user, "own-session", "GET", path+"/pdf?__variant=Layout", nil)
+		if pdf.Code != http.StatusOK || !bytes.HasPrefix(pdf.Body.Bytes(), []byte("%PDF")) {
+			t.Fatalf("variant PDF: HTTP %d", pdf.Code)
+		}
+		queued := tabularHTTP(server, user, "own-session", "GET", path+"/export/excel?__variant=Layout", nil)
+		const prefix = "/ui/export-jobs/"
+		location := queued.Header().Get("Location")
+		if queued.Code != http.StatusSeeOther || !strings.HasPrefix(location, prefix) {
+			t.Fatalf("queue variant workbook: HTTP %d location %q", queued.Code, location)
+		}
+		deadline := time.Now().Add(time.Second * 3)
+		for {
+			job, ok := server.exportJobStore().get(strings.TrimPrefix(location, prefix))
+			if ok && job.Status == exportJobDone {
+				break
+			}
+			if ok && job.Status == exportJobError {
+				t.Fatalf("variant export job: %s", job.Error)
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("variant export job timed out")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		checkWorkbook(location+"/download", nativeCell)
 		if report.ResultProc != "" {
 			t.Fatal("variant modified the shared report")
 		}

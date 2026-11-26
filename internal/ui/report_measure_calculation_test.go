@@ -114,7 +114,8 @@ composition:
 		})
 	}
 	req := reqWithChi(http.MethodGet, "/ui/report/calculations/pdf", nil, map[string]string{"name": "calculations"})
-	headers, rows, stats, err := s.reportExportTable(req, rep)
+	var stats reportExportStats
+	headers, rows, err := s.reportExportRows(req.Context(), req, rep, nil, "", &stats)
 	if err != nil {
 		t.Fatal(err)
 	}

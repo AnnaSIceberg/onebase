@@ -642,6 +642,9 @@ func (s *Server) queryCompileOptionsWithAccess(ctx context.Context, text string,
 		RowFilters:      rowFilters,
 		Dialect:         s.store.Dialect(),
 		SavedPhoneMatch: match,
+		CanReadReferenceLabel: func(catalog string) bool {
+			return s.canCtx(ctx, "catalog", catalog, "read")
+		},
 	}, nil
 }
 

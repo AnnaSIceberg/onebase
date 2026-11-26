@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/ivantit66/onebase/internal/access"
 	"github.com/ivantit66/onebase/internal/excel"
 	"github.com/ivantit66/onebase/internal/incident"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
@@ -385,17 +386,67 @@ func (s *Server) exportJobStore() *exportJobStore {
 	return s.exportJobs
 }
 
+func (s *Server) serveReportExport(w http.ResponseWriter, r *http.Request, format string) {
+	rep := s.getReport(w, r)
+	if rep == nil || !s.requirePerm(w, r, "report", rep.Name, "run") {
+		return
+	}
+	ctx, finish, ok := s.beginOperation(r, opReportExport, rep.Name)
+	if !ok {
+		err := newReportExportError(http.StatusTooManyRequests, "export limit", fmt.Errorf("слишком много одновременно выполняемых выгрузок, повторите позже"))
+		s.writeReportExportError(w, r, err)
+		return
+	}
+
+	stats := &reportExportStats{}
+	opStatus := "ok"
+	defer func() { finish(opStatus, stats.rows, stats.truncated, stats.attrs...) }()
+	file, err := s.buildReportExportFile(ctx, r, rep, format, stats)
+	if err != nil {
+		opStatus = reportExportOpStatus(ctx, err)
+		s.writeReportExportError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", file.ContentType)
+	w.Header().Set("Content-Disposition", contentDisposition(file.Filename))
+	writeDownload(w, file.Filename, file.Data)
+}
+
 func (s *Server) buildReportExportFile(ctx context.Context, r *http.Request, rep *reportpkg.Report, format string, stats *reportExportStats) (reportExportFile, error) {
 	if stats == nil {
 		stats = &reportExportStats{}
 	}
-	headers, rows, err := s.reportExportRowsWithContext(ctx, r, rep, stats)
+	ctx = access.WithReportOutput(ctx)
+	r = r.WithContext(ctx)
+	rs := s.reportSettingsForRequest(r, rep)
+	if rs.Err != nil {
+		return reportExportFile{}, newReportExportError(http.StatusBadRequest, "report settings", rs.Err)
+	}
+	variant := r.FormValue("__variant")
+	if rs.Settings != nil {
+		variant = rs.Settings.Variant
+	}
+	rep = rep.WithVariantRenderer(variant)
+	var tabular *sheet.Document
+	var headers []string
+	var rows [][]any
+	var err error
+	if rep.ResultProc == "" {
+		headers, rows, err = s.reportExportRows(ctx, r, rep, rs.Settings, variant, stats)
+	} else {
+		tabular, err = s.reportTabularExportDocument(r, rep, rs.Settings, variant, stats)
+	}
 	if err != nil {
 		return reportExportFile{}, err
 	}
 	switch format {
 	case "excel":
-		data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles, stats.excelPresentation(len(headers)))
+		var data []byte
+		if tabular != nil {
+			data, err = tabular.XLSX()
+		} else {
+			data, err = excel.ExportListWithRowStyles(headers, rows, stats.rowStyles, stats.excelPresentation(len(headers)))
+		}
 		if err != nil {
 			return reportExportFile{}, newReportExportError(http.StatusInternalServerError, "Excel error", err)
 		}
@@ -405,8 +456,10 @@ func (s *Server) buildReportExportFile(ctx context.Context, r *http.Request, rep
 			ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 		}, nil
 	case "pdf":
-		doc := buildReportSheet(reportDisplayTitle(rep, s.resolveLang(r)), headers, rows, *stats)
-		data, err := doc.PDF(sheet.PDFOptions{Title: rep.Name})
+		if tabular == nil {
+			tabular = buildReportSheet(reportDisplayTitle(rep, s.resolveLang(r)), headers, rows, *stats)
+		}
+		data, err := tabular.PDF(sheet.PDFOptions{Title: rep.Name})
 		if err != nil {
 			return reportExportFile{}, newReportExportError(http.StatusInternalServerError, "PDF error", err)
 		}
@@ -422,6 +475,9 @@ func (s *Server) buildReportExportFile(ctx context.Context, r *http.Request, rep
 
 func (s *Server) reportExportErrorText(r *http.Request, err error) string {
 	if ee, ok := err.(*reportExportError); ok {
+		if ee.prefix == "" {
+			return ee.err.Error()
+		}
 		return ee.prefix + ": " + s.errText(r, ee.err)
 	}
 	return "report export error: " + s.errText(r, err)

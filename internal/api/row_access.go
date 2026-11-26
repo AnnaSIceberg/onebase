@@ -108,7 +108,10 @@ func (h *handler) compileQueryWithRowAccess(ctx context.Context, text string, pa
 		InfoRegs:    h.reg.InfoRegisters(),
 		AccountRegs: h.reg.AccountRegisters(),
 		RowFilters:  rowFilters,
-		Dialect:     h.store.Dialect(),
+		CanReadReferenceLabel: func(catalog string) bool {
+			return canREST(ctx, "catalog", catalog, "read")
+		},
+		Dialect: h.store.Dialect(),
 	})
 }
 

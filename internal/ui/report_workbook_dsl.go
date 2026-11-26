@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -13,9 +14,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"github.com/ivantit66/onebase/internal/access"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	reportpkg "github.com/ivantit66/onebase/internal/report"
+	"github.com/ivantit66/onebase/internal/sheet"
 )
 
 func (s *Server) reportWorkbookBuiltin(tx *interpreter.TxState) interpreter.BuiltinFunc {
@@ -63,14 +64,6 @@ func (s *Server) reportWorkbookBuiltin(tx *interpreter.TxState) interpreter.Buil
 			Method: http.MethodGet,
 			URL:    &url.URL{RawQuery: values.Encode()},
 		}).WithContext(ctx)
-		rep = rep.WithVariantRenderer(variant)
-		if rep.ResultProc != "" {
-			data, err := s.reportTabularWorkbook(ctx, req, rep)
-			if err != nil {
-				return nil, fmt.Errorf("%s %q: %w", function, rep.Name, err)
-			}
-			return base64.StdEncoding.EncodeToString(data), nil
-		}
 		file, err := s.buildReportExportFile(ctx, req, rep, "excel", &reportExportStats{})
 		if err != nil {
 			return nil, fmt.Errorf("%s %q: %w", function, rep.Name, err)
@@ -79,60 +72,56 @@ func (s *Server) reportWorkbookBuiltin(tx *interpreter.TxState) interpreter.Buil
 	}
 }
 
-// reportTabularWorkbook builds the same tabular result as the report form,
-// using the standard preset selected by the caller. No browser tab is published.
-func (s *Server) reportTabularWorkbook(ctx context.Context, r *http.Request, rep *reportpkg.Report) ([]byte, error) {
-	ctx = access.WithReportOutput(ctx)
-	r = r.WithContext(ctx)
-	rs := s.reportSettingsForRequest(r, rep)
-	if rs.Err != nil {
-		return nil, rs.Err
+// reportTabularExportDocument builds the selected renderer without
+// publishing a browser snapshot. Raw rows retain the screen's access checks.
+func (s *Server) reportTabularExportDocument(r *http.Request, rep *reportpkg.Report, settings *reportpkg.UserReportSettings, variant string, stats *reportExportStats) (*sheet.Document, error) {
+	ctx := r.Context()
+	if settings != nil && len(settings.Filters) > 0 {
+		return nil, newReportExportError(http.StatusUnprocessableEntity, "report filter", errReportFilterProducerUnproven)
 	}
 	params, err := s.reportExportParamValues(ctx, r, rep)
 	if err != nil {
 		return nil, err
 	}
-	variant := r.FormValue("__variant")
-	if rs.Settings != nil {
-		variant = rs.Settings.Variant
-		if len(rs.Settings.Filters) > 0 {
-			return nil, errReportFilterProducerUnproven
-		}
-	}
 	text, _, err := rep.QueryForVariant(variant, params)
 	if err != nil {
-		return nil, err
+		return nil, newReportExportError(http.StatusBadRequest, "query compile error", err)
 	}
 	var rows []map[string]any
 	if strings.TrimSpace(text) != "" {
 		compiled, err := s.compileReportVariantQuery(ctx, rep, variant, params)
 		if err != nil {
-			return nil, err
+			return nil, newReportExportError(http.StatusBadRequest, "query compile error", err)
 		}
 		if denied := s.deniedQuerySource(ctx, compiled.Sources); denied != "" {
-			return nil, fmt.Errorf("нет доступа к объекту: %s", denied)
+			return nil, newReportExportError(http.StatusForbidden, "source access", &querySourceAccessDenied{source: denied})
 		}
 		mask := s.reportOutputMaskPlan(ctx, compiled)
 		if mask.Denied != "" {
-			return nil, fmt.Errorf("отчёт содержит защищённое поле: %s", mask.Denied)
+			return nil, newReportExportError(http.StatusForbidden, "masked field", fmt.Errorf("отчёт содержит защищённое поле: %s", mask.Denied))
 		}
-		var truncated bool
-		rows, _, truncated, err = s.runReportResultRows(ctx, &compiled, rs.Settings, s.cfg.Limits.ExportMaxRows)
+		stats.attrs = []slog.Attr{slog.String("sql_hash", sqlHash(compiled.SQL))}
+		rows, _, stats.truncated, err = s.runReportResultRows(ctx, &compiled, settings, s.cfg.Limits.ExportMaxRows)
+		stats.rows = len(rows)
 		if err != nil {
-			return nil, err
+			return nil, newReportExportError(http.StatusInternalServerError, "query error", err)
 		}
-		if truncated {
-			return nil, fmt.Errorf("результат выгрузки превышает export_max_rows")
+		if stats.truncated {
+			return nil, newReportExportError(http.StatusRequestEntityTooLarge, "export limit", fmt.Errorf("результат выгрузки превышает export_max_rows"))
 		}
 		if err := mask.Apply(rows); err != nil {
-			return nil, err
+			return nil, newReportExportError(http.StatusForbidden, "masked field", err)
 		}
 	}
 	doc, err := s.buildTabularReportDocument(r, rep, params, rows)
 	if err != nil {
-		return nil, err
+		var refused *reportAccessRefused
+		if errors.As(err, &refused) {
+			return nil, &reportExportError{status: http.StatusForbidden, err: refused}
+		}
+		return nil, newReportExportError(reportResultErrorStatus(err), "report export error", err)
 	}
-	return doc.XLSX()
+	return doc, nil
 }
 
 func reportWorkbookParams(defs []reportpkg.Param, params *interpreter.Struct) (url.Values, error) {
