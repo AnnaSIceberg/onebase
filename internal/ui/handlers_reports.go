@@ -716,7 +716,7 @@ func newReportExportError(status int, prefix string, err error) error {
 
 func (s *Server) writeReportExportError(w http.ResponseWriter, r *http.Request, err error) {
 	if ee, ok := err.(*reportExportError); ok {
-		http.Error(w, ee.prefix+": "+s.errText(r, ee.err), ee.status)
+		http.Error(w, s.reportExportErrorText(r, err), ee.status)
 		return
 	}
 	http.Error(w, "report export error: "+s.errText(r, err), http.StatusInternalServerError)
@@ -749,40 +749,13 @@ func reportExportOpStatus(ctx context.Context, err error) string {
 	return operationStatus(ctx, err)
 }
 
-// reportExportTable вычисляет данные и стили отчёта для выгрузки (Excel/PDF):
-// заголовки и строки с учётом эффективной компоновки (план 70), кросс-таблицы
-// (pivot) или плоского результата. Параметры берутся из query-строки (экспорт —
-// GET). HTTP-ответ об ошибке пишет вызывающий. Общий код reportExcel и reportPDF
-// (issue #218) — чтобы обе выгрузки шли из одних и тех же данных и не расходились
-// с экраном (runReport использует те же crossSheetRows/composedRows).
-func (s *Server) reportExportTable(r *http.Request, rep *reportpkg.Report) (headers []string, rows [][]any, stats reportExportStats, err error) {
-	opCtx, finish, ok := s.beginOperation(r, opReportExport, rep.Name)
-	if !ok {
-		return nil, nil, stats, newReportExportError(http.StatusTooManyRequests, "export limit", fmt.Errorf("слишком много одновременно выполняемых выгрузок, повторите позже"))
-	}
-	opStatus := "ok"
-	defer func() { finish(opStatus, stats.rows, stats.truncated, stats.attrs...) }()
-
-	headers, rows, err = s.reportExportRowsWithContext(opCtx, r, rep, &stats)
-	if err != nil {
-		opStatus = reportExportOpStatus(opCtx, err)
-		return nil, nil, stats, err
-	}
-	return headers, rows, stats, nil
-}
-
-func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Request, rep *reportpkg.Report, stats *reportExportStats) (headers []string, rows [][]any, err error) {
+// reportExportRows produces the flat, pivot or composed export after the
+// shared export path resolves the effective settings and variant.
+func (s *Server) reportExportRows(ctx context.Context, r *http.Request, rep *reportpkg.Report, settings *reportpkg.UserReportSettings, variant string, stats *reportExportStats) (headers []string, rows [][]any, err error) {
 	if stats != nil {
 		stats.rowStyles = nil
 		stats.keepWords = !s.legacyEntityUI(r)
 	}
-	ctx = access.WithReportOutput(ctx)
-	r = r.WithContext(ctx)
-	rs := s.reportSettingsForRequest(r, rep)
-	if rs.Err != nil {
-		return nil, nil, newReportExportError(http.StatusBadRequest, "report settings", rs.Err)
-	}
-	settings := rs.Settings
 	comp := effectiveComposition(rep, settings)
 	if stats != nil {
 		stats.composition = comp
@@ -790,10 +763,6 @@ func (s *Server) reportExportRowsWithContext(ctx context.Context, r *http.Reques
 	paramValues, err := s.reportExportParamValues(ctx, r, rep)
 	if err != nil {
 		return nil, nil, err
-	}
-	variant := r.FormValue("__variant")
-	if settings != nil {
-		variant = settings.Variant
 	}
 	compiled, err := s.compileReportVariantQuery(ctx, rep, variant, paramValues)
 	if err != nil {
@@ -917,25 +886,5 @@ func (s *Server) reportExportParamValues(ctx context.Context, r *http.Request, r
 }
 
 func (s *Server) reportExcel(w http.ResponseWriter, r *http.Request) {
-	rep := s.getReport(w, r)
-	if rep == nil {
-		return
-	}
-	if !s.requirePerm(w, r, "report", rep.Name, "run") {
-		return
-	}
-	headers, rows, stats, err := s.reportExportTable(r, rep)
-	if err != nil {
-		s.writeReportExportError(w, r, err)
-		return
-	}
-	data, err := excel.ExportListWithRowStyles(headers, rows, stats.rowStyles, stats.excelPresentation(len(headers)))
-	if err != nil {
-		http.Error(w, "Excel error: "+s.errText(r, err), 500)
-		return
-	}
-	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	name := rep.Name + ".xlsx"
-	w.Header().Set("Content-Disposition", contentDisposition(name))
-	writeDownload(w, name, data)
+	s.serveReportExport(w, r, "excel")
 }

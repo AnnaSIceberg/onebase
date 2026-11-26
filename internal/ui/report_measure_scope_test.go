@@ -100,7 +100,8 @@ func TestReportMeasureScopeHTTPExports(t *testing.T) {
 	}
 	// reportPDF uses exactly these export rows as buildReportSheet input.
 	req := reqWithChi(http.MethodGet, "/ui/report/scope/pdf", nil, map[string]string{"name": "scope"})
-	headers, rows, stats, err := s.reportExportTable(req, rep)
+	var stats reportExportStats
+	headers, rows, err := s.reportExportRows(req.Context(), req, rep, nil, "", &stats)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,7 @@
 package ui
 
 // report_pdf.go — выгрузка отчёта в реальный бинарный PDF (issue #218).
-// Данные те же, что у Excel-выгрузки (reportExportTable) и экранного рендера,
+// Данные те же, что у Excel-выгрузки и экранного рендера,
 // поэтому PDF не расходится с тем, что видит пользователь. Рендер — общий движок
 // sheet.PDF, тот же, что у печатных форм документов (/print/<form>/pdf).
 
@@ -13,28 +13,7 @@ import (
 )
 
 func (s *Server) reportPDF(w http.ResponseWriter, r *http.Request) {
-	rep := s.getReport(w, r)
-	if rep == nil {
-		return
-	}
-	if !s.requirePerm(w, r, "report", rep.Name, "run") {
-		return
-	}
-	headers, rows, stats, err := s.reportExportTable(r, rep)
-	if err != nil {
-		s.writeReportExportError(w, r, err)
-		return
-	}
-	doc := buildReportSheet(reportDisplayTitle(rep, s.resolveLang(r)), headers, rows, stats)
-	pdfBytes, err := doc.PDF(sheet.PDFOptions{Title: rep.Name})
-	if err != nil {
-		http.Error(w, "PDF error: "+s.errText(r, err), 500)
-		return
-	}
-	w.Header().Set("Content-Type", "application/pdf")
-	name := rep.Name + ".pdf"
-	w.Header().Set("Content-Disposition", contentDisposition(name))
-	writeDownload(w, name, pdfBytes)
+	s.serveReportExport(w, r, "pdf")
 }
 
 // buildReportSheet строит табличный документ из заголовков и строк отчёта:
