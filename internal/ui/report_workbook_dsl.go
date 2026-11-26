@@ -63,6 +63,7 @@ func (s *Server) reportWorkbookBuiltin(tx *interpreter.TxState) interpreter.Buil
 			Method: http.MethodGet,
 			URL:    &url.URL{RawQuery: values.Encode()},
 		}).WithContext(ctx)
+		rep = rep.WithVariantRenderer(variant)
 		if rep.ResultProc != "" {
 			data, err := s.reportTabularWorkbook(ctx, req, rep)
 			if err != nil {

@@ -354,3 +354,26 @@ func TestTabularDrilldownHTTPMatrix(t *testing.T) {
 		}
 	})
 }
+
+func TestTabularResultProcedureForReportVariant(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		server, user, report := tabularFixture(t, db)
+		report.ResultProc = ""
+		report.Query = "ВЫБРАТЬ 5 КАК Ordinary"
+		report.Variants = []reportpkg.ReportVariant{{Name: "Layout", ResultProc: "Build"}}
+		path := "/ui/report/" + report.Name
+		if w := tabularHTTP(server, user, "own-session", "POST", path, nil); w.Code != http.StatusOK {
+			t.Fatalf("ordinary report: HTTP %d %s", w.Code, w.Body.String())
+		}
+		w := tabularHTTP(server, user, "own-session", "POST", path, url.Values{"__variant": {"Layout"}})
+		if w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), "/ui/tabular/") {
+			t.Fatalf("variant procedure: HTTP %d %s", w.Code, w.Body.String())
+		}
+		if w := tabularHTTP(server, user, "own-session", "GET", w.Header().Get("Location")+"/xlsx", nil); w.Code != http.StatusOK {
+			t.Fatalf("variant workbook: HTTP %d", w.Code)
+		}
+		if report.ResultProc != "" {
+			t.Fatal("variant modified the shared report")
+		}
+	})
+}
