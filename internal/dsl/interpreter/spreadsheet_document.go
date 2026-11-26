@@ -324,6 +324,10 @@ func (d *SpreadsheetDocument) Set(field string, v any) {
 		d.setMargins(v)
 	case "точныешириныexcel", "preciseexcelwidths":
 		d.Doc.XLSXPreciseWidths = truthy(v)
+	case "имялистаexcel", "excelsheetname":
+		d.Doc.XLSXSheetName = strArg([]any{v}, 0)
+	case "поляпечатиexcel", "excelprintmargins":
+		d.Doc.XLSXPrintMargins = truthy(v)
 	case "масштабпросмотра", "zoomscale":
 		value := toFloatOr0(v)
 		zoom := int(value)

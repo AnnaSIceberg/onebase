@@ -36,7 +36,12 @@ func (d *Document) XLSX() ([]byte, error) {
 		font.Color = nil
 		font.Scheme = nil
 	}
-	const sheetName = "Лист1"
+	sheetName := d.XLSXSheetName
+	if sheetName == "" {
+		sheetName = "Лист1"
+	} else if !validWorkbookSheetName(sheetName) {
+		return nil, fmt.Errorf("invalid XLSX sheet name %q", sheetName)
+	}
 	if err := f.SetSheetName("Sheet1", sheetName); err != nil {
 		return nil, err
 	}
@@ -216,6 +221,19 @@ func (d *Document) xlsxView(f *excelize.File, sh string, maxRow int) (map[int]bo
 	}
 	if err := f.SetPageLayout(sh, layout); err != nil {
 		return nil, 0, err
+	}
+	if d.XLSXPrintMargins {
+		const mmPerInch = 25.4
+		m := d.Page.MarginsMM
+		top, bottom := m.Top/mmPerInch, m.Bottom/mmPerInch
+		left, right := m.Left/mmPerInch, m.Right/mmPerInch
+		zero := 0.0
+		margins := &excelize.PageLayoutMarginsOptions{
+			Top: &top, Bottom: &bottom, Left: &left, Right: &right, Header: &zero, Footer: &zero,
+		}
+		if err := f.SetPageMargins(sh, margins); err != nil {
+			return nil, 0, err
+		}
 	}
 	if d.RepeatHeader && d.HeaderArea != nil && d.HeaderArea.Rows() > 0 {
 		ref := fmt.Sprintf("'%s'!$1:$%d", strings.ReplaceAll(sh, "'", "''"), d.HeaderArea.Rows())

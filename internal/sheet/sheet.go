@@ -197,6 +197,8 @@ type Document struct {
 	XLSXPreciseWidths   bool // Export explicit widths below one Excel character.
 	XLSXDefaultFont     string
 	XLSXDefaultFontSize float64
+	XLSXSheetName       string
+	XLSXPrintMargins    bool
 	FreezeRows          int
 	FreezeCols          int
 	HideGrid            bool
