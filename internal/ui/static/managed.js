@@ -6192,14 +6192,17 @@ function obKeepFormInstance(form, reload) {
   try {
     var state = window.history.state || {};
     var previous = state.obFormInstance;
-    if (reload && previous && previous.scope === scope && previous.path === window.location.href && typeof previous.token === 'string') {
+    var url = new URL(window.location.href);
+    url.searchParams.delete('_ob_conceal');
+    var formURL = url.toString();
+    if (reload && previous && previous.scope === scope && previous.path === formURL && typeof previous.token === 'string') {
       var pieces = previous.token.split('.');
       if (pieces.length === 3 && Number(pieces[1]) * 1000 > Date.now()) {
         token = previous.token;
         form.setAttribute('data-ob-form-instance', token);
       }
     }
-    window.history.replaceState(Object.assign({}, state, {obFormInstance: {scope: scope, path: window.location.href, token: token}}), '');
+    window.history.replaceState(Object.assign({}, state, {obFormInstance: {scope: scope, path: formURL, token: token}}), '');
   } catch (_) {
     // Event dispatch can still use the instance from the server render.
   }
