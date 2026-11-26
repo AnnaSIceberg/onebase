@@ -349,3 +349,30 @@ func TestSpreadsheetXLSXExplicitCellAppearance(t *testing.T) {
 		{Type: "bottom", Color: "CCC085", Style: 1},
 	}, style.Border)
 }
+
+func TestSpreadsheetXLSXSheetNameAndPrintMargins(t *testing.T) {
+	value := runHTTPSrc(t, `Функция Тест()
+		ТабДок = Новый ТабличныйДокумент;
+		ТабДок.ИмяЛистаExcel = "Лист_1";
+		ТабДок.ПоляПечати = 10;
+		ТабДок.ПоляПечатиExcel = Истина;
+		ТабДок.Ячейка(1, 1).Текст = "Отчет";
+		Возврат ТабДок.Записать("сверка.xlsx", "xlsx");
+	КонецФункции`, withSpreadsheet(map[string]any{}))
+	data, err := base64.StdEncoding.DecodeString(value.(string))
+	require.NoError(t, err)
+	book, err := excelize.OpenReader(bytes.NewReader(data))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, book.Close()) })
+	require.Equal(t, []string{"Лист_1"}, book.GetSheetList())
+	margins, err := book.GetPageMargins("Лист_1")
+	require.NoError(t, err)
+	for _, margin := range []*float64{margins.Top, margins.Bottom, margins.Left, margins.Right} {
+		require.NotNil(t, margin)
+		require.InDelta(t, 10.0/25.4, *margin, 0.000001)
+	}
+	require.NotNil(t, margins.Header)
+	require.NotNil(t, margins.Footer)
+	require.Zero(t, *margins.Header)
+	require.Zero(t, *margins.Footer)
+}
