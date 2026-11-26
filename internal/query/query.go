@@ -28,6 +28,8 @@ type CompileOpts struct {
 	RowFilters           map[SourceRef]*storage.Predicate
 	SavedPhoneMatch      *SavedPhoneMatch
 	CompareRequestPhones bool
+	// CanReadReferenceLabel checks catalog read for an opt-in label.
+	CanReadReferenceLabel func(catalog string) bool
 	// Dialect selects the SQL flavour. nil = PgDialect (default).
 	Dialect storage.Dialect
 
@@ -176,6 +178,10 @@ func Compile(src string, opts CompileOpts) (Result, error) {
 		return Result{}, err
 	}
 	if err := validateISODateTimeCalls(tokens); err != nil {
+		return Result{}, err
+	}
+	tokens, err = rewriteOptionalReferenceLabels(tokens, opts)
+	if err != nil {
 		return Result{}, err
 	}
 	tokens, opts = rewriteTablePartSources(tokens, opts)
@@ -3620,10 +3626,17 @@ func filterUsedRefDims(dims []refDimInfo, tokens []tok) []refDimInfo {
 		return nil
 	}
 	used := make(map[string]bool, len(tokens))
-	for _, t := range tokens {
-		if t.kind == tIdent {
-			used[lowerFast(t.val)] = true
+	for i, t := range tokens {
+		if t.kind != tIdent {
+			continue
 		}
+		if i > 0 && tokens[i-1].kind == tIdent {
+			keyword, _ := sqlKW(tokens[i-1].val)
+			if keyword == "AS" {
+				continue // a declaration is not a read of the field it names
+			}
+		}
+		used[lowerFast(t.val)] = true
 	}
 	var out []refDimInfo
 	for _, rd := range dims {
