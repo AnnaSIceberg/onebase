@@ -18,6 +18,13 @@ type UserCardDescriptor struct {
 	AccountField metadata.Field
 	Field        metadata.Field
 	TablePart    *metadata.TablePart
+	Through      *UserCardReference
+}
+
+// UserCardReference selects a field of the catalog referenced by a table-part column.
+type UserCardReference struct {
+	Catalog *metadata.Entity
+	Column  metadata.Field
 }
 
 type UserCardValue struct {
@@ -66,16 +73,30 @@ func (db *DB) ReadUserCardSource(ctx context.Context, desc UserCardDescriptor, u
 		sqlText += fmt.Sprintf(` SELECT c.n, m.id, m.value
  FROM %s AS c LEFT JOIN %s AS m ON c.n = 1`, countCTE, matched)
 	} else {
+		valueColumn := "v." + metadata.ColumnName(desc.Field)
+		join, scope := "", ""
+		if desc.Through != nil {
+			if desc.Through.Catalog == nil || desc.Through.Catalog.Kind != metadata.KindCatalog {
+				return UserCardValue{}, fmt.Errorf("invalid user_card reference")
+			}
+			valueColumn = "projected." + metadata.ColumnName(desc.Field)
+			join = fmt.Sprintf(" JOIN %s AS projected ON projected.id = v.%s",
+				metadata.TableName(desc.Through.Catalog.Name), metadata.ColumnName(desc.Through.Column))
+			scope = " AND " + valueColumn + " IS NOT NULL"
+			if desc.Through.Catalog.Hierarchical {
+				scope += " AND projected.is_folder = " + boolFalseLit(d)
+			}
+		}
 		// Limit RAW rows before deduplication. A NULL row ID after the left
 		// join denotes an empty table part, not a selected empty value.
 		sqlText += fmt.Sprintf(`, %s AS (
- SELECT v.id, v.строка AS row_number, v.%s AS value
- FROM %s AS v JOIN %s AS m ON v.parent_id = m.id
- CROSS JOIN %s AS c WHERE c.n = 1
+ SELECT v.id, v.строка AS row_number, %s AS value
+ FROM %s AS v JOIN %s AS m ON v.parent_id = m.id%s
+ CROSS JOIN %s AS c WHERE c.n = 1%s
  ORDER BY v.строка, v.id LIMIT 1001
  ) SELECT c.n, v.id, v.value
  FROM %s AS c LEFT JOIN %s AS v ON TRUE
- ORDER BY v.row_number, v.id`, valuesCTE, metadata.ColumnName(desc.Field), tpTable, matched, countCTE, countCTE, valuesCTE)
+ ORDER BY v.row_number, v.id`, valuesCTE, valueColumn, tpTable, matched, join, countCTE, scope, countCTE, valuesCTE)
 	}
 	// Keep the ordinary read-only context gate: this statically read-only
 	// statement starts with SELECT, with its CTEs inside the derived table.

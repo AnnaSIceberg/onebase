@@ -50,6 +50,9 @@ func DecideWithContext(ctx context.Context, u *auth.User, kind, entity, op strin
 			return Decision{Allowed: true, Unrestricted: true}, nil
 		}
 		policies = append(policies, policy)
+		if op == "read" && len(u.Roles) == 1 && policy.SoleRoleRead != nil {
+			policies = append(policies, *policy.SoleRoleRead)
+		}
 	}
 	if !granted {
 		return Decision{}, nil
@@ -124,6 +127,15 @@ func ValidatePolicy(p auth.RowPolicy, meta *metadata.Entity) error {
 }
 
 func ValidatePolicyWithLookup(p auth.RowPolicy, meta *metadata.Entity, lookup EntityLookup) error {
+	if p.SoleRoleRead != nil {
+		additional := *p.SoleRoleRead
+		if additional.SameAs != "" || additional.SoleRoleRead != nil {
+			return fmt.Errorf("sole_role_read must be a separate row predicate")
+		}
+		if err := ValidatePolicyWithLookup(additional, meta, lookup); err != nil {
+			return fmt.Errorf("sole_role_read: %w", err)
+		}
+	}
 	prepared, _, err := prepareCardPolicy(context.Background(), p, lintUser(), meta, DecisionContext{Lookup: lookup}, true)
 	if err != nil {
 		return err

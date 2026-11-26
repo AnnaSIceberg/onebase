@@ -19,13 +19,14 @@ func (ra RowAccess) IsZero() bool {
 type RowPolicies map[string]RowPolicy
 
 type RowPolicy struct {
-	All    []RowPolicy `yaml:"all,omitempty" json:"all,omitempty"`
-	Any    []RowPolicy `yaml:"any,omitempty" json:"any,omitempty"`
-	Not    *RowPolicy  `yaml:"not,omitempty" json:"not,omitempty"`
-	Field  string      `yaml:"field,omitempty" json:"field,omitempty"`
-	Op     string      `yaml:"op,omitempty" json:"op,omitempty"`
-	Value  RowValue    `yaml:"value,omitempty" json:"value,omitempty"`
-	SameAs string      `yaml:"same_as,omitempty" json:"same_as,omitempty"`
+	All          []RowPolicy `yaml:"all,omitempty" json:"all,omitempty"`
+	Any          []RowPolicy `yaml:"any,omitempty" json:"any,omitempty"`
+	Not          *RowPolicy  `yaml:"not,omitempty" json:"not,omitempty"`
+	Field        string      `yaml:"field,omitempty" json:"field,omitempty"`
+	Op           string      `yaml:"op,omitempty" json:"op,omitempty"`
+	Value        RowValue    `yaml:"value,omitempty" json:"value,omitempty"`
+	SoleRoleRead *RowPolicy  `yaml:"sole_role_read,omitempty" json:"sole_role_read,omitempty"`
+	SameAs       string      `yaml:"same_as,omitempty" json:"same_as,omitempty"`
 }
 
 type RowValue struct {
@@ -80,6 +81,10 @@ func normalizeRowPolicy(p RowPolicy) RowPolicy {
 	}
 	for i := range p.Any {
 		p.Any[i] = normalizeRowPolicy(p.Any[i])
+	}
+	if p.SoleRoleRead != nil {
+		policy := normalizeRowPolicy(*p.SoleRoleRead)
+		p.SoleRoleRead = &policy
 	}
 	if p.Not != nil {
 		n := normalizeRowPolicy(*p.Not)
