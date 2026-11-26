@@ -3,6 +3,8 @@ package ui
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -61,5 +63,40 @@ func TestUI_EntityList_FilterOptionsOnlyForPanelFields(t *testing.T) {
 	}
 	if _, ok := opts["Город"]; ok {
 		t.Fatal("варианты загружены полю «Город», которого нет в панели")
+	}
+}
+
+func TestUI_EntityListHiddenTechnicalField(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "task.yaml")
+	raw := []byte(`name: Task
+list_filters: [Title]
+fields:
+  - name: Title
+    type: string
+  - name: VisibleFilter
+    type: date
+  - name: HiddenSlot
+    type: date
+    list_hidden: true
+`)
+	if err := os.WriteFile(name, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entity, err := metadata.LoadFile(name, metadata.KindCatalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := newSubmitTestServer(t, []*metadata.Entity{entity})
+	req := reqWithChi(http.MethodGet, "/ui/catalog/task", nil, map[string]string{"kind": "catalog", "entity": "Task"})
+	req = req.WithContext(auth.ContextWithUser(req.Context(), &auth.User{ID: "root", Login: "admin", IsAdmin: true}))
+	rec := httptest.NewRecorder()
+	s.list(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, `name="field" value="VisibleFilter"`) {
+		t.Fatalf("visible filter missing, status %d", rec.Code)
+	}
+	if strings.Contains(body, "HiddenSlot") {
+		t.Fatal("technical field present in list settings or filters")
 	}
 }
