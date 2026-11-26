@@ -137,15 +137,18 @@ type saveEntity struct {
 	Titles       map[string]string `yaml:"titles,omitempty"`
 	Hierarchical bool              `yaml:"hierarchical,omitempty"`
 	// Owner — справочник-владелец (подчинённый справочник, 1С «Владелец»).
-	Owner              string           `yaml:"owner,omitempty"`
-	HierarchyKind      string           `yaml:"hierarchy_kind,omitempty"`
-	Posting            bool             `yaml:"posting,omitempty"`
-	PostCaption        string           `yaml:"post_caption,omitempty"`
-	PostAndCloseHidden bool             `yaml:"post_and_close_hidden,omitempty"`
-	BasedOn            []string         `yaml:"based_on,omitempty"`
-	Numerator          *saveNumerator   `yaml:"numerator,omitempty"`
-	Predefined         []savePredefined `yaml:"predefined,omitempty"`
-	ListForm           []string         `yaml:"list_form,omitempty"`
+	Owner              string `yaml:"owner,omitempty"`
+	HierarchyKind      string `yaml:"hierarchy_kind,omitempty"`
+	Posting            bool   `yaml:"posting,omitempty"`
+	PostCaption        string `yaml:"post_caption,omitempty"`
+	PostAndCloseHidden bool   `yaml:"post_and_close_hidden,omitempty"`
+
+	WriteHookReadSources []string `yaml:"write_hook_read_sources,omitempty"`
+
+	BasedOn    []string         `yaml:"based_on,omitempty"`
+	Numerator  *saveNumerator   `yaml:"numerator,omitempty"`
+	Predefined []savePredefined `yaml:"predefined,omitempty"`
+	ListForm   []string         `yaml:"list_form,omitempty"`
 	// ItemForm — []any, а не []string: запись состава формы может быть и
 	// отображением {name, readonly} (#1011). При []string правка реквизитов
 	// в конфигураторе роняла бы разбор такого YAML целиком.

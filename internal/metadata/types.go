@@ -323,9 +323,14 @@ type Entity struct {
 	// PostAndCloseHidden скрывает кнопку «Провести и закрыть». По умолчанию
 	// (false) обе кнопки видны, как прежде.
 	PostAndCloseHidden bool
-	Numerator          *Numerator        // nil if auto-numbering is disabled
-	Predefined         []*PredefinedItem // nil for most entities; populated from YAML
-	Hierarchical       bool              // catalog with parent_id / is_folder tree support
+	// WriteHookReadSources allows queries in this object's OnWrite hook to read
+	// the named catalog or info register independently of the actor's row access.
+
+	WriteHookReadSources []string
+
+	Numerator    *Numerator        // nil if auto-numbering is disabled
+	Predefined   []*PredefinedItem // nil for most entities; populated from YAML
+	Hierarchical bool              // catalog with parent_id / is_folder tree support
 	// Owner — имя справочника-ВЛАДЕЛЬЦА (1С: «подчинённый справочник»). Пусто —
 	// справочник самостоятельный. Непусто — у каждого элемента есть реквизит
 	// «Владелец» (синтезируется, если не объявлен явно), а подбор ссылки на этот

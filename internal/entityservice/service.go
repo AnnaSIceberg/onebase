@@ -52,6 +52,15 @@ func SetPeriodFromFields(mc *runtime.MovementsCollector, entity *metadata.Entity
 	}
 }
 
+type writeHookReadSourcesKey struct{}
+
+// WriteHookReadSources returns the configured query sources for the running
+// OnWrite hook. The context is created by Save after its normal write preflight.
+func WriteHookReadSources(ctx context.Context) []string {
+	sources, _ := ctx.Value(writeHookReadSourcesKey{}).([]string)
+	return sources
+}
+
 // Service выполняет сохранение объектов вместе с побочными эффектами.
 type Service struct {
 	// Store — порт хранилища (ports.go), включая lifecycle записи/проведения.
@@ -606,7 +615,8 @@ func (s *Service) Save(ctx context.Context, req SaveRequest) (SaveResult, error)
 			writeMovements = runtime.NewMovementsCollector(req.Entity.Name, req.ID).WillPersist()
 			SetPeriodFromFields(writeMovements, req.Entity, obj.Fields)
 		}
-		if err := s.runSaveHook(txCtx, req.Entity, obj, writeProc, writeMovements, &msgs, lockCollector, serverAssigned); err != nil {
+		writeCtx := context.WithValue(txCtx, writeHookReadSourcesKey{}, req.Entity.WriteHookReadSources)
+		if err := s.runSaveHook(writeCtx, req.Entity, obj, writeProc, writeMovements, &msgs, lockCollector, serverAssigned); err != nil {
 			return err
 		}
 		if isPosting {
