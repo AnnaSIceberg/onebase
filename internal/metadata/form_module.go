@@ -277,6 +277,7 @@ type FormElement struct {
 	WorkbookSavePicker     string `yaml:"workbook_save_picker,omitempty"`      // proposed XLSX filename for a processor field
 	WorkbookUpdateOnAnswer bool   `yaml:"workbook_update_on_answer,omitempty"` // trusted processor button may replace workbook on its own answer
 	WorkbookSave           bool   `yaml:"workbook_save,omitempty"`             // processor button saves the returned book locally
+	SingleFlight           bool   `yaml:"single_flight,omitempty"`             // ignore a second click before the first settles
 	TabularPlainRows       bool   `yaml:"tabular_plain_rows,omitempty"`
 	TabularCompact         bool   `yaml:"tabular_compact,omitempty"`
 	TabularResultTab       bool   `yaml:"tabular_result_tab,omitempty"`

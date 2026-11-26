@@ -3558,6 +3558,20 @@ function obManagedPostRefSaved(decision) {
 }
 window.obManagedPostRefSaved = obManagedPostRefSaved;
 
+async function obFireManagedClick(button) {
+  if (!window.obFire) return;
+  var singleFlight = button.hasAttribute('data-ob-single-flight');
+  if (singleFlight && button.getAttribute('aria-busy') === 'true') return;
+  var table = button.getAttribute('data-ob-fire-tp');
+  var params = table ? {_tp: table} : {};
+  if (singleFlight) button.setAttribute('aria-busy', 'true');
+  try {
+    await window.obFire(button.getAttribute('data-ob-fire-click') || '', 'Нажатие', params);
+  } finally {
+    if (singleFlight) button.removeAttribute('aria-busy');
+  }
+}
+
 function obManagedInitDelegates() {
   document.addEventListener('click', function (e) {
     // data-ob-toggle-next НЕ обрабатываем здесь: managed-форма всегда грузит и
@@ -3658,10 +3672,7 @@ function obManagedInitDelegates() {
     }
     if (btn.hasAttribute('data-ob-fire-click')) {
       e.preventDefault();
-      var params = {};
-      var tp = btn.getAttribute('data-ob-fire-tp') || '';
-      if (tp) params._tp = tp;
-      if (window.obFire) window.obFire(btn.getAttribute('data-ob-fire-click') || '', 'Нажатие', params);
+      obFireManagedClick(btn);
       return;
     }
     if (btn.hasAttribute('data-ob-grid-add')) {
