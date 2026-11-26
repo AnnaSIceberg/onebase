@@ -5,6 +5,7 @@ package ui
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -270,6 +271,33 @@ func TestServiceCache_PanicNotCached(t *testing.T) {
 	}
 	if n := c.cache.Size(); n != 0 {
 		t.Fatalf("паника оставила запись в кэше (size=%d)", n)
+	}
+}
+
+func TestServiceClientCanceledRead(t *testing.T) {
+	c := newCacheTestServer(t)
+	r := httptest.NewRequest(http.MethodGet, "/hs/pub/boom", nil)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	c.srv.interp.LookupModuleProc = func(_, _ string) *ast.ProcedureDecl {
+		cancel()
+		return nil
+	}
+
+	w := httptest.NewRecorder()
+	c.srv.serviceDispatch(w, r.WithContext(ctx))
+	if w.Code != 499 || !strings.Contains(w.Body.String(), "Клиент отменил запрос") {
+		t.Fatalf("canceled request: status=%d body=%s", w.Code, w.Body)
+	}
+	if n := c.cache.Size(); n != 0 {
+		t.Fatalf("canceled response entered cache: size=%d", n)
+	}
+
+	c.srv.interp.LookupModuleProc = func(_, _ string) *ast.ProcedureDecl { return nil }
+	w = httptest.NewRecorder()
+	c.srv.serviceDispatch(w, r)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("uncanceled handler error: status=%d body=%s", w.Code, w.Body)
 	}
 }
 
