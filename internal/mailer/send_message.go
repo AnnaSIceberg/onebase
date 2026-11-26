@@ -30,12 +30,32 @@ var tlsConfigFor = func(host string) *tls.Config {
 
 const defaultSendTimeout = 30 * time.Second
 
+// ValidateMessageSender is the SMTP-free preflight for the same sender used in SendMessage.
+func (m *Mailer) ValidateMessageSender(p *interpreter.EmailProfile, msg interpreter.EmailMessage) error {
+	_, err := m.messageSender(p, msg)
+	return err
+}
+
+func (m *Mailer) messageSender(p *interpreter.EmailProfile, msg interpreter.EmailMessage) (*mail.Address, error) {
+	if m == nil {
+		return interpreter.ResolveEmailMessageFrom(p, msg, "", "")
+	}
+	return interpreter.ResolveEmailMessageFrom(p, msg, m.cfg.FromAddress, m.cfg.FromName)
+}
+
 // SendMessage отправляет письмо: с профилем SMTP из DSL или, без профиля, через
 // секцию email из app.yaml. Несколько получателей и копия уходят одним письмом.
 // Ошибки строятся из адреса сервера, логина и ответа сервера — пароль в них
 // не попадает.
 func (m *Mailer) SendMessage(p *interpreter.EmailProfile, msg interpreter.EmailMessage) error {
 	if err := interpreter.ValidateEmailMessageFull(msg); err != nil {
+		return fmt.Errorf("email: %w", err)
+	}
+	if p == nil && !m.Configured() {
+		return errors.New("email не настроен — добавьте секцию email в config/app.yaml или передайте Профиль")
+	}
+	from, err := m.messageSender(p, msg)
+	if err != nil {
 		return fmt.Errorf("email: %w", err)
 	}
 	conn := sendParams{timeout: defaultSendTimeout}
@@ -53,14 +73,7 @@ func (m *Mailer) SendMessage(p *interpreter.EmailProfile, msg interpreter.EmailM
 			return errors.New("email: пароль профиля не расшифрован (допустимы строка и enc:-секрет)")
 		}
 		conn.pass = pass
-		conn.from, conn.fromName = p.From, p.FromName
-		if conn.from == "" {
-			conn.from = p.User
-		}
 	} else {
-		if !m.Configured() {
-			return errors.New("email не настроен — добавьте секцию email в config/app.yaml или передайте Профиль")
-		}
 		conn.host, conn.port, conn.user = m.cfg.SMTPHost, m.cfg.SMTPPort, m.cfg.SMTPUser
 		if conn.port == 0 {
 			conn.port = 587
@@ -76,21 +89,6 @@ func (m *Mailer) SendMessage(p *interpreter.EmailProfile, msg interpreter.EmailM
 			}
 			conn.pass = pass
 		}
-		conn.from, conn.fromName = m.cfg.FromAddress, m.cfg.FromName
-	}
-	if msg.From != "" {
-		conn.from = msg.From
-	}
-	if msg.FromName != "" {
-		conn.fromName = msg.FromName
-	}
-	from, err := mail.ParseAddress(strings.TrimSpace(conn.from))
-	if err != nil {
-		return fmt.Errorf("email: неверный адрес отправителя: %w", err)
-	}
-	fromName := from.Name
-	if conn.fromName != "" {
-		fromName = conn.fromName
 	}
 	var to, cc, rcpts []string
 	for _, list := range []struct {
@@ -106,7 +104,7 @@ func (m *Mailer) SendMessage(p *interpreter.EmailProfile, msg interpreter.EmailM
 			rcpts = append(rcpts, addr.Address)
 		}
 	}
-	data := buildMsgFull(formatAddressHeader(fromName, from.Address), strings.Join(to, ", "), strings.Join(cc, ", "),
+	data := buildMsgFull(formatAddressHeader(from.Name, from.Address), strings.Join(to, ", "), strings.Join(cc, ", "),
 		msg.Subject, msg.Text, msg.HTML, msg.Files)
 	if err := deliver(conn, from.Address, rcpts, data); err != nil {
 		return fmt.Errorf("почта %s: %w", conn.host, err)
@@ -119,7 +117,6 @@ type sendParams struct {
 	port             int
 	security, auth   string // security: tls | starttls | none | opportunistic
 	timeout          time.Duration
-	from, fromName   string
 }
 
 func deliver(p sendParams, envFrom string, rcpts []string, data []byte) error {

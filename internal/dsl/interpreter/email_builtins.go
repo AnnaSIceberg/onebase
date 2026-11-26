@@ -310,7 +310,7 @@ func NewEmailFunctionsWithContext(sender EmailSender, guard NetGuard, ctxSource 
 			panic(userError{Msg: "ОтправитьПисьмо: " + err.Error(), File: file, Line: line})
 		}
 		if params.validateOnly {
-			if err := ValidateEmailMessageFull(params.msg); err != nil {
+			if err := validateEmailMessageForDelivery(sender, params.profile, params.msg); err != nil {
 				panic(userError{Msg: "ОтправитьПисьмо: " + err.Error(), File: file, Line: line})
 			}
 			return nil, nil

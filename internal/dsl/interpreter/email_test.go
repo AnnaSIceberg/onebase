@@ -62,6 +62,22 @@ func TestEmailShorthandValidationDoesNotSend(t *testing.T) {
 	assert.Zero(t, stub.calls)
 }
 
+func TestEmailShorthandValidationRejectsExplicitInvalidSender(t *testing.T) {
+	stub := &stubSender{}
+	src := `Процедура Тест()
+  Параметры = Новый Структура("ТолькоПроверка,Отправитель", Истина, "incorrect sender");
+  Попытка
+    ОтправитьПисьмо("subscriber@example.test", "Письмо", "Проверка", Параметры);
+  Исключение
+    Возврат ОписаниеОшибки();
+  КонецПопытки;
+  Возврат "";
+КонецПроцедуры`
+	result := runHTTPSrc(t, src, interpreter.NewEmailFunctions(stub, nil))
+	assert.Contains(t, result, "неверный адрес отправителя")
+	assert.Zero(t, stub.calls)
+}
+
 func TestEmailObject(t *testing.T) {
 	stub := &stubSender{}
 	src := `Процедура Тест()
