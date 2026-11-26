@@ -383,12 +383,13 @@ type FormElement struct {
 	// формы или шапки объекта, строковое значение которого заменяет заголовок
 	// колонки, пока оно не пусто. Обновляется и после событий формы — аналог
 	// Колонка.ТекстШапки 1С: шапка «1 пн … 31 ср» под выбранный месяц.
-	TitleFrom string `yaml:"title_from,omitempty"`
-	UseGrid   bool   `yaml:"use_grid,omitempty"`   // (устар.) SlickGrid теперь включён по умолчанию
-	FixedRows bool   `yaml:"fixed_rows,omitempty"` // запрет изменения состава строк в интерфейсе ТЧ
-	NoGrid    bool   `yaml:"no_grid,omitempty"`    // отключить SlickGrid у ТЧ (вернуть простую таблицу)
-	AutoSum   bool   `yaml:"auto_sum,omitempty"`   // ТЧ: авто Сумма = Количество × Цена по именам колонок — opt-in (#215.1)
-	Hint      string `yaml:"hint,omitempty"`       // всплывающая подсказка
+	TitleFrom     string `yaml:"title_from,omitempty"`
+	UseGrid       bool   `yaml:"use_grid,omitempty"`       // (устар.) SlickGrid теперь включён по умолчанию
+	FixedRows     bool   `yaml:"fixed_rows,omitempty"`     // запрет изменения состава строк в интерфейсе ТЧ
+	ResizeColumns bool   `yaml:"resize_columns,omitempty"` // личные ширины колонок HTML ValueTable
+	NoGrid        bool   `yaml:"no_grid,omitempty"`        // отключить SlickGrid у ТЧ (вернуть простую таблицу)
+	AutoSum       bool   `yaml:"auto_sum,omitempty"`       // ТЧ: авто Сумма = Количество × Цена по именам колонок — opt-in (#215.1)
+	Hint          string `yaml:"hint,omitempty"`           // всплывающая подсказка
 	// RowKey is the stable column identifying a native ValueTable row across events.
 	RowKey string `yaml:"row_key,omitempty"`
 	// HintFrom — всплывающая подсказка из реквизита формы (`hint_from`): текст

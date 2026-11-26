@@ -721,8 +721,9 @@ const tplManagedForm = `
   {{$vtRows := index $ctx.TablePartRows $tpName}}
   {{$vtCmds := tpCommandButtons $el}}
   {{$vtLayout := elLayout $tableLayout}}
+  {{$vtWidthKey := ""}}{{if $el.ResizeColumns}}{{$vtWidthKey = gridLayoutAttr $ctx $el.Name}}{{end}}
   {{/* Заданная высота ограничивает весь блок ValueTable, включая строки и команды. */}}
-  {{if $vtLayout}}<div class="managed-vt-layout{{if and (elFill $tableLayout) $ctx.LegacyEntityUI}} managed-vt-scroll{{end}}{{if not $ctx.LegacyEntityUI}} ob-managed-vt{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{$vtLayout}}">{{end}}
+  {{if or $vtLayout $vtWidthKey}}<div class="managed-vt-layout{{if $vtWidthKey}} ob-vt-resize-layout{{end}}{{if and (elFill $tableLayout) $ctx.LegacyEntityUI}} managed-vt-scroll{{end}}{{if not $ctx.LegacyEntityUI}} ob-managed-vt{{end}}" data-ob-el="{{$el.Name}}"{{with elPath $ctx $el}} data-ob-el-path="{{.}}"{{end}} style="{{$vtLayout}}">{{end}}
   {{/* Заголовок ValueTable находится в том же контейнере высоты, что и таблица. */}}
   {{/* show_count — число записей в заголовке: «Заявки клиента (5)»; после событий
        формы его обновляет перерисовка таблицы (applyFormTables). */}}
@@ -748,13 +749,14 @@ const tplManagedForm = `
        прокручивается внутри, высота блока не зависит от числа записей (пустая
        таблица той же высоты). Высоту по реальным строкам досчитывает клиент
        (obFitVtRows), здесь — оценка, чтобы форма не прыгала при загрузке. */}}
+  {{if $vtWidthKey}}<button type="button" class="btn btn-sm ob-vt-width-reset" data-ob-vt-width-reset hidden>{{t $ctx.Lang "Стандартные колонки"}}</button>{{end}}
   {{$vtRowsN := managedVTVisibleRows $el}}
   {{if and (not $ctx.LegacyEntityUI) $tableLayout.FitWindow}}{{$vtRowsN = 0}}{{end}}
-  {{if or $vtRowsN (not $ctx.LegacyEntityUI)}}<div class="{{if $vtRowsN}}managed-vt-rows{{end}}{{if not $ctx.LegacyEntityUI}} ob-table-rows ob-object-table-scroll{{end}}"{{if $vtRowsN}} data-ob-vt-rows="{{$vtRowsN}}" style="height:{{managedVTRowsHeight $vtRowsN}}px"{{else if and (not $ctx.LegacyEntityUI) $tableLayout.FitWindow}} data-ob-fit-grid="1"{{end}}>{{end}}
-  <table class="tp-table{{tableHeaderClass $el}}" data-vt="{{$tpName}}"{{if $el.FixedRows}} data-ob-fixed-rows="1"{{end}}{{with tableHeaderVars $el}} style="{{.}}"{{end}}>
+  {{if or $vtRowsN (not $ctx.LegacyEntityUI) $vtWidthKey}}<div class="{{if $vtWidthKey}}ob-vt-resize-scroll {{end}}{{if $vtRowsN}}managed-vt-rows{{end}}{{if not $ctx.LegacyEntityUI}} ob-table-rows ob-object-table-scroll{{end}}"{{if $vtRowsN}} data-ob-vt-rows="{{$vtRowsN}}" style="height:{{managedVTRowsHeight $vtRowsN}}px"{{else if and (not $ctx.LegacyEntityUI) $tableLayout.FitWindow}} data-ob-fit-grid="1"{{end}}>{{end}}
+  <table class="tp-table{{tableHeaderClass $el}}" data-vt="{{$tpName}}"{{if $vtWidthKey}} data-ob-vt-layout="{{$vtWidthKey}}"{{with gridWidthsAttr $ctx $el.Name}} data-ob-vt-widths="{{.}}"{{end}}{{end}}{{if $el.FixedRows}} data-ob-fixed-rows="1"{{end}}{{with tableHeaderVars $el}} style="{{.}}"{{end}}>
     <thead>
       <tr>
-        {{range $vtPlan}}{{if not .Hidden}}<th{{with .ElPath}} data-ob-vt-col="{{.}}"{{end}}{{with .HeaderStyle}} style="{{.}}"{{end}}>{{.Title}}</th>{{end}}{{end}}
+        {{range $vtPlan}}{{if not .Hidden}}<th{{if $vtWidthKey}} data-ob-vt-width-field="{{.Column.Name}}"{{end}}{{with .ElPath}} data-ob-vt-col="{{.}}"{{end}}{{with .HeaderStyle}} style="{{.}}"{{end}}>{{.Title}}</th>{{end}}{{end}}
         {{if $vtEditable}}<th style="width:40px"></th>{{end}}
       </tr>
     </thead>
@@ -781,14 +783,14 @@ const tplManagedForm = `
     {{if and (not $vtRows) $el.EmptyText}}<tr class="ob-vt-empty"><td colspan="{{managedVTVisibleCount $vtPlan $vtEditable}}">{{$el.EmptyText}}</td></tr>{{end}}
     </tbody>
   </table>
-  {{if or $vtRowsN (not $ctx.LegacyEntityUI)}}</div>{{end}}
+  {{if or $vtRowsN (not $ctx.LegacyEntityUI) $vtWidthKey}}</div>{{end}}
   {{if $vtEditable}}
   <button type="button" class="btn btn-sm{{if not $ctx.LegacyEntityUI}} ob-table-row-toolbar{{end}}" style="background:#e2e8f0;color:#475569;margin:0 0 12px"{{if $tpReadOnly}} disabled{{else}}
     data-ob-add-vt="{{$tpName}}"{{end}}>
     + Добавить строку
   </button>
   {{end}}
-  {{if $vtLayout}}</div>{{end}}
+  {{if or $vtLayout $vtWidthKey}}</div>{{end}}
   {{else}}
   <div style="background:#fef9c3;padding:8px;border-radius:6px;font-size:12px;color:#92400e">
     Табличная часть «{{$tpName}}» не найдена в метаданных сущности.
@@ -1012,6 +1014,14 @@ input.ob-deadline-over,.form-group input.ob-deadline-over[readonly]{background:#
    колонок остаётся на месте. overflow:hidden таблицы (скругление углов)
    сделал бы её саму контейнером прокрутки, и sticky шапка не держалась бы. */
 .ob-hint{display:inline-block;margin-left:4px;color:#94a3b8;font-size:12px;font-weight:400;cursor:help}
+  .ob-vt-resize-layout{position:relative}
+  .ob-vt-resize-scroll{overflow-x:auto}
+  table[data-ob-vt-layout]{table-layout:fixed;max-width:none;min-width:0}
+  table[data-ob-vt-layout] th[data-ob-vt-width-field]{box-sizing:border-box;position:relative}
+  .ob-vt-resize-scroll[data-ob-vt-rows] table[data-ob-vt-layout] th[data-ob-vt-width-field]{position:sticky}
+  .ob-vt-width-handle{position:absolute;inset-block:0;inset-inline-end:0;width:7px;cursor:col-resize;touch-action:none;user-select:none}
+  .ob-vt-width-reset{position:absolute;inset-inline-end:0;top:0;z-index:2;padding-block:1px}
+  .ob-vt-width-reset[hidden]{display:none}
 .managed-vt-scroll{overflow-y:auto}
 .managed-vt-scroll>.tp-table{overflow:visible;margin-bottom:0}
 .managed-vt-scroll>.tp-table thead th{position:sticky;top:0;z-index:1}
