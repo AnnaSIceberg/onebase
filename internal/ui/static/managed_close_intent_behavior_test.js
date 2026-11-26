@@ -2914,8 +2914,8 @@ test('BeforeClose question recovers a lost answer without losing saved picker id
 
 
 test('single-flight managed command discards repeated clicks until the queued command settles', async () => {
-  const first = managed.indexOf('  async function fireManagedClick(');
-  const last = managed.indexOf('  // One close controller', first);
+  const first = managed.indexOf('async function obFireManagedClick(');
+  const last = managed.indexOf('function obManagedInitDelegates()', first);
   assert.ok(first >= 0 && last > first);
   const attrs = new Map([['data-ob-single-flight', ''], ['data-ob-fire-click', 'Accept']]);
   const button = {
@@ -2931,14 +2931,14 @@ test('single-flight managed command discards repeated clicks until the queued co
     return new Promise(resolve => { finish = resolve; });
   }}});
   vm.runInContext(managed.slice(first, last), context);
-  const initial = context.fireManagedClick(button);
+  const initial = context.obFireManagedClick(button);
   assert.equal(attrs.get('aria-busy'), 'true');
-  await context.fireManagedClick(button);
+  await context.obFireManagedClick(button);
   assert.equal(calls, 1);
   finish();
   await initial;
   assert.equal(attrs.has('aria-busy'), false);
-  const retry = context.fireManagedClick(button);
+  const retry = context.obFireManagedClick(button);
   assert.equal(calls, 2);
   finish();
   await retry;

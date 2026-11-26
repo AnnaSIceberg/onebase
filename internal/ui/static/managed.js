@@ -2211,20 +2211,6 @@ window.obManagedApplyHints = obManagedApplyHints;
     return fireFormEvent(elementName, eventName, extraParams, pickerRequest);
   };
 
-  async function fireManagedClick(button) {
-    if (!window.obFire) return;
-    var singleFlight = button.hasAttribute('data-ob-single-flight');
-    if (singleFlight && button.getAttribute('aria-busy') === 'true') return;
-    var table = button.getAttribute('data-ob-fire-tp');
-    var params = table ? {_tp: table} : {};
-    if (singleFlight) button.setAttribute('aria-busy', 'true');
-    try {
-      await window.obFire(button.getAttribute('data-ob-fire-click') || '', 'Нажатие', params);
-    } finally {
-      if (singleFlight) button.removeAttribute('aria-busy');
-    }
-  }
-
   // One close controller for every managed-form adapter. It snapshots the
   // current form exactly like obFire, calls the dedicated lifecycle endpoint,
   // applies returned state/messages first and only then returns a decision.
@@ -3572,6 +3558,20 @@ function obManagedPostRefSaved(decision) {
 }
 window.obManagedPostRefSaved = obManagedPostRefSaved;
 
+async function obFireManagedClick(button) {
+  if (!window.obFire) return;
+  var singleFlight = button.hasAttribute('data-ob-single-flight');
+  if (singleFlight && button.getAttribute('aria-busy') === 'true') return;
+  var table = button.getAttribute('data-ob-fire-tp');
+  var params = table ? {_tp: table} : {};
+  if (singleFlight) button.setAttribute('aria-busy', 'true');
+  try {
+    await window.obFire(button.getAttribute('data-ob-fire-click') || '', 'Нажатие', params);
+  } finally {
+    if (singleFlight) button.removeAttribute('aria-busy');
+  }
+}
+
 function obManagedInitDelegates() {
   document.addEventListener('click', function (e) {
     // data-ob-toggle-next НЕ обрабатываем здесь: managed-форма всегда грузит и
@@ -3672,7 +3672,7 @@ function obManagedInitDelegates() {
     }
     if (btn.hasAttribute('data-ob-fire-click')) {
       e.preventDefault();
-      fireManagedClick(btn);
+      obFireManagedClick(btn);
       return;
     }
     if (btn.hasAttribute('data-ob-grid-add')) {
