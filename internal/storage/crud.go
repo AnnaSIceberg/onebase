@@ -1072,7 +1072,19 @@ func (db *DB) List(ctx context.Context, entityName string, entity *metadata.Enti
 		// Уникальный последний ключ задаёт полный порядок равных значений
 		// order_by, в том числе у папок и при устаревших именах полей.
 		parts = append(parts, "id ASC")
-		query += " ORDER BY " + strings.Join(parts, ", ")
+		order := " ORDER BY " + strings.Join(parts, ", ")
+		if db.dialect.Name() == "postgres" && entity.Kind == metadata.KindDocument &&
+			params.RowFilter != nil && params.Limit > 0 && len(cols) >= 64 {
+			// Sort keys and identifiers first: sorting full rows from a wide
+			// document can dominate a filtered page. Both stages share one SQL
+			// snapshot, and only ids from the original predicates reach the join.
+			page := fmt.Sprintf("SELECT id AS ob_list_page_id FROM %s%s%s LIMIT %d OFFSET %d",
+				table, whereClause, order, params.Limit, params.Offset)
+			query = baseSelect + " JOIN (" + page + ") AS ob_list_page ON " + table +
+				".id = ob_list_page.ob_list_page_id" + order
+			return db.scanListRows(ctx, entityName, entity, cols, hasPredefined, query, args)
+		}
+		query += order
 	} else if entity.Hierarchical && params.Sort == "" {
 		firstStrCol := "id"
 		for _, f := range entity.Fields {
