@@ -247,14 +247,13 @@ func (el *FormElement) FooterButton() bool {
 
 // FormPresentation overrides visual properties in the enhanced interface.
 type FormPresentation struct {
-	Primary      bool              `yaml:"primary,omitempty"`
-	SingleFlight bool              `yaml:"single_flight,omitempty"` // ignore another click until the first one settles
-	Enhanced     *FormPresentation `yaml:"enhanced,omitempty"`
-	Height       int               `yaml:"height,omitempty"`
-	Background   string            `yaml:"background,omitempty"`
-	DateOnly     bool              `yaml:"date_only,omitempty"`
-	Rows         int               `yaml:"rows,omitempty"`       // visual rows of an existing multiline input
-	FitWindow    bool              `yaml:"fit_window,omitempty"` // table viewport takes the available height
+	Primary    bool              `yaml:"primary,omitempty"`
+	Enhanced   *FormPresentation `yaml:"enhanced,omitempty"`
+	Height     int               `yaml:"height,omitempty"`
+	Background string            `yaml:"background,omitempty"`
+	DateOnly   bool              `yaml:"date_only,omitempty"`
+	Rows       int               `yaml:"rows,omitempty"`       // visual rows of an existing multiline input
+	FitWindow  bool              `yaml:"fit_window,omitempty"` // table viewport takes the available height
 }
 
 type FormElement struct {
@@ -278,6 +277,7 @@ type FormElement struct {
 	WorkbookSavePicker     string `yaml:"workbook_save_picker,omitempty"`      // proposed XLSX filename for a processor field
 	WorkbookUpdateOnAnswer bool   `yaml:"workbook_update_on_answer,omitempty"` // trusted processor button may replace workbook on its own answer
 	WorkbookSave           bool   `yaml:"workbook_save,omitempty"`             // processor button saves the returned book locally
+	SingleFlight           bool   `yaml:"single_flight,omitempty"`             // ignore a second click before the first settles
 	TabularPlainRows       bool   `yaml:"tabular_plain_rows,omitempty"`
 	TabularCompact         bool   `yaml:"tabular_compact,omitempty"`
 	TabularResultTab       bool   `yaml:"tabular_result_tab,omitempty"`
