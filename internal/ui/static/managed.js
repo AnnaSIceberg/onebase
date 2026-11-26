@@ -2516,6 +2516,14 @@ window.obManagedApplyHints = obManagedApplyHints;
 	  if (location.search && new URLSearchParams(location.search).get('_popup') === '1') {
 		savedURL += '?_popup=1';
 	  }
+    } else if (form && data.ok && !data.error && !data.cancel && data.formInstance && form.hasAttribute('data-ob-retain-instance')) {
+      var currentInstance = (form.getAttribute('data-ob-form-instance') || '').split('.');
+      var renewedInstance = data.formInstance.split('.');
+      if (renewedInstance.length === 3 && renewedInstance[0] === currentInstance[0] &&
+          Number(renewedInstance[1]) > Number(currentInstance[1])) {
+        form.setAttribute('data-ob-form-instance', data.formInstance);
+        obKeepFormInstance(form, false);
+      }
     }
     if (data.version && form) {
 	  var versionName = serviceField('_version');
@@ -2527,12 +2535,23 @@ window.obManagedApplyHints = obManagedApplyHints;
         form.appendChild(verInput);
       }
       verInput.value = String(data.version);
+      if (data.callFormBusinessProof) {
+        var callProof = form.querySelector('[name="_ob_call_business"]');
+        if (!callProof) {
+          callProof = document.createElement('input');
+          callProof.type = 'hidden';
+          callProof.name = '_ob_call_business';
+          form.appendChild(callProof);
+        }
+        callProof.value = data.callFormBusinessProof;
+      }
     }
 	// URL/shell synchronization is deliberately last and guarded: even a host
 	// history shim that throws cannot prevent adoption of the durable id/version.
 	if (savedURL) {
 	  try {
 		if (window.history && history.replaceState) history.replaceState(null, '', savedURL);
+		obKeepFormInstance(form, false);
 	  } catch (_) {}
 	  try {
 		if (window.parent && window.parent !== window) {
@@ -3553,6 +3572,20 @@ function obManagedPostRefSaved(decision) {
 }
 window.obManagedPostRefSaved = obManagedPostRefSaved;
 
+async function obFireManagedClick(button) {
+  if (!window.obFire) return;
+  var singleFlight = button.hasAttribute('data-ob-single-flight');
+  if (singleFlight && button.getAttribute('aria-busy') === 'true') return;
+  var table = button.getAttribute('data-ob-fire-tp');
+  var params = table ? {_tp: table} : {};
+  if (singleFlight) button.setAttribute('aria-busy', 'true');
+  try {
+    await window.obFire(button.getAttribute('data-ob-fire-click') || '', 'Нажатие', params);
+  } finally {
+    if (singleFlight) button.removeAttribute('aria-busy');
+  }
+}
+
 function obManagedInitDelegates() {
   document.addEventListener('click', function (e) {
     // data-ob-toggle-next НЕ обрабатываем здесь: managed-форма всегда грузит и
@@ -3653,10 +3686,7 @@ function obManagedInitDelegates() {
     }
     if (btn.hasAttribute('data-ob-fire-click')) {
       e.preventDefault();
-      var params = {};
-      var tp = btn.getAttribute('data-ob-fire-tp') || '';
-      if (tp) params._tp = tp;
-      if (window.obFire) window.obFire(btn.getAttribute('data-ob-fire-click') || '', 'Нажатие', params);
+      obFireManagedClick(btn);
       return;
     }
     if (btn.hasAttribute('data-ob-grid-add')) {
@@ -6196,7 +6226,36 @@ function obStartDeferredLoads() {
     Promise.resolve(window.obFire(name, 'ПослеОткрытия', {_deferred: '1'})).then(done, done);
   });
 }
+// The token stays in this history entry. A separately opened card gets the
+// token from its own server render. The server validates every submitted token.
+function obKeepFormInstance(form, reload) {
+  if (!form || !window.history || !window.history.replaceState) return;
+  var scope = form.getAttribute('data-ob-retain-instance');
+  var token = form.getAttribute('data-ob-form-instance');
+  if (!scope || !token) return;
+  try {
+    var state = window.history.state || {};
+    var previous = state.obFormInstance;
+    var url = new URL(window.location.href);
+    url.searchParams.delete('_ob_conceal');
+    var formURL = url.toString();
+    if (reload && previous && previous.scope === scope && previous.path === formURL && typeof previous.token === 'string') {
+      var pieces = previous.token.split('.');
+      if (pieces.length === 3 && Number(pieces[1]) * 1000 > Date.now()) {
+        token = previous.token;
+        form.setAttribute('data-ob-form-instance', token);
+      }
+    }
+    window.history.replaceState(Object.assign({}, state, {obFormInstance: {scope: scope, path: formURL, token: token}}), '');
+  } catch (_) {
+    // Event dispatch can still use the instance from the server render.
+  }
+}
+
 obManagedReady(function () {
+  var navigation = window.performance && window.performance.getEntriesByType
+    ? window.performance.getEntriesByType('navigation')[0] : null;
+  obKeepFormInstance(document.getElementById('main-form'), navigation && navigation.type === 'reload');
   var cfg = obManagedConfig();
   if (!cfg.autoOpen) { setTimeout(obStartDeferredLoads, 0); return; }
   setTimeout(function () {

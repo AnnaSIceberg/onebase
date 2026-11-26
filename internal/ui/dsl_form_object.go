@@ -352,7 +352,7 @@ func (f *formObjectThis) save(action string) error {
 	hookCtx := context.WithValue(ctx, hookXDTOOriginKey{}, hookXDTOOrigin{
 		entity: f.entity.Name, id: f.obj.ID, state: hookState,
 	})
-	result, err := f.srv.entitySvc.Save(hookCtx, entityservice.SaveRequest{
+	request := entityservice.SaveRequest{
 		Entity:            f.entity,
 		ID:                f.obj.ID,
 		IsNew:             isNew,
@@ -395,7 +395,14 @@ func (f *formObjectThis) save(action string) error {
 				f.onCommitted(result)
 			}
 		},
-	})
+	}
+	if merge, _ := ctx.Value(operatorCallFormKey{}).(*callFormMerge); merge != nil {
+		merge.bind(&request, func(field string) bool {
+			_, assigned := f.assigned[strings.ToLower(field)]
+			return assigned
+		})
+	}
+	result, err := f.srv.entitySvc.Save(hookCtx, request)
 	if err != nil {
 		return err
 	}

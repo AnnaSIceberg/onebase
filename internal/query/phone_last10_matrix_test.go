@@ -176,3 +176,40 @@ func TestPhoneLast10RestrictedToPredicates(t *testing.T) {
 		require.ErrorContains(t, err, tc.message)
 	}
 }
+
+func TestPhoneDigitsLast10PreservesLegacyExceptions(t *testing.T) {
+	dbtest.ForEachDialect(t, func(t *testing.T, db *storage.DB) {
+		ctx := t.Context()
+		phones := &metadata.Entity{Name: "LegacyPhones", Kind: metadata.KindCatalog, Fields: []metadata.Field{
+			{Name: "Label", Type: metadata.FieldTypeString},
+			{Name: "Phone", Type: metadata.FieldTypeString},
+		}}
+		entities := []*metadata.Entity{phones}
+		require.NoError(t, db.Migrate(ctx, entities))
+		for label, phone := range map[string]any{
+			"plain":   "9012345678",
+			"nbsp":    "8\u00a0(901) 234-56-78",
+			"tab":     "8\t901-234-56-78",
+			"foreign": "+1 (901) 234-56-78",
+			"long":    "тел: 987-19012345678",
+			"unicode": "９０12345678",
+			"short":   "901234567",
+			"other":   "9012345679",
+			"null":    nil,
+		} {
+			require.NoError(t, db.Upsert(ctx, phones.Name, uuid.New(), map[string]any{"Label": label, "Phone": phone}, phones))
+		}
+		queryText := "ВЫБРАТЬ Т.Label КАК Метка ИЗ Справочник.LegacyPhones КАК Т ГДЕ PHONE_DIGITS_LAST10(Т.Phone) В (&Номера)"
+		compiled, err := query.Compile(queryText, query.CompileOpts{
+			Entities: entities, Dialect: db.Dialect(), Params: map[string]any{"Номера": []any{"9012345678", "0000000000"}},
+		})
+		require.NoError(t, err)
+		rows, _, err := query.Run(ctx, db, &compiled)
+		require.NoError(t, err)
+		labels := make([]string, 0, len(rows))
+		for _, row := range rows {
+			labels = append(labels, row["метка"].(string))
+		}
+		require.ElementsMatch(t, []string{"plain", "nbsp", "tab", "foreign", "long"}, labels)
+	})
+}

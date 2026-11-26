@@ -7,7 +7,7 @@ import (
 )
 
 func TestResultCapabilityPublicCheck(t *testing.T) {
-	for _, mode := range []string{"valid", "typo", "bad-type", "no-source", "no-param", "bad-ttl"} {
+	for _, mode := range []string{"valid", "valid-until-change", "typo", "bad-type", "no-source", "no-param", "bad-ttl"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
 			mkFile(t, filepath.Join(dir, "catalogs", "parent.yaml"), "name: Parent\nfields: [{name: Name, type: string}]\n")
@@ -41,6 +41,8 @@ result_capabilities:
     max_age_seconds: 300
 `
 			switch mode {
+			case "valid-until-change":
+				definition = strings.Replace(definition, "max_age_seconds: 300", "valid_until_source_change: true", 1)
 			case "typo":
 				definition = strings.Replace(definition, "observed_at_field:", "observed_at_filed:", 1)
 			case "no-source":
@@ -52,8 +54,11 @@ result_capabilities:
 			}
 			mkFile(t, filepath.Join(dir, "processors", "result.yaml"), definition)
 			result := RunFull(dir)
-			if result.OK != (mode == "valid") {
+			if result.OK != (mode == "valid" || mode == "valid-until-change") {
 				t.Fatalf("check OK=%v issues=%+v", result.OK, result.Issues)
+			}
+			if mode == "valid-until-change" && len(result.Warnings) != 0 {
+				t.Fatalf("valid_until_source_change emitted lint warnings: %+v", result.Warnings)
 			}
 			if mode == "typo" && len(result.Warnings) == 0 && len(result.Issues) == 0 {
 				t.Fatal("unknown binding key was silently accepted")

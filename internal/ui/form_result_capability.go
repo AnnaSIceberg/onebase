@@ -80,7 +80,8 @@ func (s *Server) resultCapabilityBuiltin(r *http.Request, proc *processor.Proces
 		}
 		observed := runtime.AsTime(row[binding.ObservedAtField])
 		now := time.Now()
-		if observed.IsZero() || observed.After(now) || now.Sub(observed) > time.Duration(binding.MaxAgeSeconds)*time.Second {
+		if observed.IsZero() || observed.After(now) ||
+			(!binding.ValidUntilSourceChange && now.Sub(observed) > time.Duration(binding.MaxAgeSeconds)*time.Second) {
 			return false, nil
 		}
 		id, err := uuid.Parse(fmt.Sprint(row[binding.SourceIDField]))

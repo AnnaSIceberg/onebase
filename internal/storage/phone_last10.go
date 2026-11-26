@@ -4,6 +4,29 @@ import "strings"
 
 const phoneSeparators = " ()-+."
 
+// PhoneDigitsLast10SQL implements the legacy matching rule in list predicates.
+func PhoneDigitsLast10SQL(column string, dialect Dialect) string {
+	if dialect.Name() == "postgres" {
+		return "SUBSTRING(REGEXP_REPLACE(" + column + ", '[^0123456789]', '', 'g') FROM '[0123456789]{10}$')"
+	}
+	return "ob_phone_digits_last10(" + column + ")"
+}
+
+func phoneDigitsLast10(value string) string {
+	var digits [10]byte
+	next := len(digits)
+	for i := len(value) - 1; i >= 0 && next > 0; i-- {
+		if ch := value[i]; ch >= '0' && ch <= '9' {
+			next--
+			digits[next] = ch
+		}
+	}
+	if next != 0 {
+		return ""
+	}
+	return string(digits[:])
+}
+
 // PhoneLast10SQL uses the same immutable expression in index definitions and
 // query predicates. column is a resolved SQL column, optionally qualified.
 func PhoneLast10SQL(column string) string {

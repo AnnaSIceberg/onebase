@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 
 	"github.com/ivantit66/onebase/internal/auth"
@@ -381,6 +382,14 @@ func (s *Server) serviceDispatch(w http.ResponseWriter, r *http.Request) {
 	err = finishDSLExecution(txState, err)
 	if err != nil {
 		opStatus = operationStatus(opCtx, err)
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && errors.Is(r.Context().Err(), context.Canceled) {
+			// The proxy may already have closed the connection. Record the same
+			// status internally without treating the aborted read as a server error.
+			oblog.Component("http-service").Info("клиент отменил HTTP-запрос",
+				"service", svc.RootURL, "handler", handlerName, "request_id", middleware.GetReqID(r.Context()))
+			writeServiceError(w, statusClientClosedRequest, "Клиент отменил запрос")
+			return
+		}
 		writeServiceError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

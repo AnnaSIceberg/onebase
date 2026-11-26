@@ -415,7 +415,7 @@ func entityYAMLSchema() *yamlLintSchema {
 	return with(obj(
 		"name", "title", "description", "posting", "post_caption", "post_and_close_hidden", "hierarchical", "hierarchy_kind",
 		// owner — справочник-владелец (подчинённый справочник, 1С «Владелец»).
-		"owner",
+		"owner", "write_hook_read_sources",
 		"presentation", "order_by", "choice_preview", "choice_preview_proc", "choice_search_proc",
 		"list_form", "item_form", "based_on", "list_mode", "list_filters", "interactive_create", "allow_copy", "notify_changes", "list_refresh_on",
 		"fulltext", "search_fields", "detail_panel", "choice_show_deleted",
@@ -554,7 +554,7 @@ func roleYAMLSchema() *yamlLintSchema {
 }
 
 func processorYAMLSchema() *yamlLintSchema {
-	capability := obj("register", "reference_field", "owner_field", "enabled_field", "source_entity", "source_id_field", "source_version_field", "observed_at_field", "max_age_seconds")
+	capability := obj("register", "reference_field", "owner_field", "enabled_field", "source_entity", "source_id_field", "source_version_field", "observed_at_field", "max_age_seconds", "valid_until_source_change")
 	param := with(obj("name", "type", "label", "default", "options", "required", "choice_show_deleted", "multiple"), map[string]*yamlLintSchema{"labels": freeMap()})
 	return with(obj("name", "title", "kind"), map[string]*yamlLintSchema{
 		"result_capabilities": {values: capability},
@@ -733,7 +733,7 @@ func formModuleYAMLSchema() *yamlLintSchema {
 
 	// filter — постоянный отбор формы списка (поле ListFilter), читается
 	// загрузчиком внутри блока form:.
-	formHeader := with(obj("entity", "name", "kind", "title_proc", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "ref_card_button", "ref_card_button_admin_only", "enter_submits_form", "density", "tab_skip_readonly", "autofocus", "group_titles", "header_inline", "close_confirmation", "instance_context", "write_actions_readonly_when", "order_by"), map[string]*yamlLintSchema{
+	formHeader := with(obj("entity", "name", "kind", "title_proc", "original_id", "auto_save_settings", "auto_save_data_in_settings", "vertical_scroll", "ref_card_button", "ref_card_button_admin_only", "enter_submits_form", "density", "tab_skip_readonly", "autofocus", "group_titles", "header_inline", "close_confirmation", "instance_context", "retain_instance_on_reload", "write_actions_readonly_when", "order_by"), map[string]*yamlLintSchema{
 		"saved_phone_match": obj("source_fields", "target_document", "target_fields", "link_command"),
 		"roles":             seq(obj()),
 		"except_roles":      seq(obj()),

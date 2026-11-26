@@ -24,6 +24,16 @@ import (
 // strings.ToLower (полная таблица Unicode) и применяется в LowerLike SQLite-
 // диалекта. Регистрация глобальна и действует на все коннекты, открытые позже.
 func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("ob_phone_digits_last10", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		value, ok := args[0].(string)
+		if !ok {
+			return nil, nil
+		}
+		if digits := phoneDigitsLast10(value); digits != "" {
+			return digits, nil
+		}
+		return nil, nil
+	})
 	sqlite.MustRegisterDeterministicScalarFunction("ob_iso_datetime", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
 		value, ok := args[0].(string)
 		if !ok {

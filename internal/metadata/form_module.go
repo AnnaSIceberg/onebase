@@ -277,6 +277,7 @@ type FormElement struct {
 	WorkbookSavePicker     string `yaml:"workbook_save_picker,omitempty"`      // XLSX picker default for a field or an override on a save button
 	WorkbookUpdateOnAnswer bool   `yaml:"workbook_update_on_answer,omitempty"` // trusted processor button may replace workbook on its own answer
 	WorkbookSave           bool   `yaml:"workbook_save,omitempty"`             // processor button saves the returned book locally
+	SingleFlight           bool   `yaml:"single_flight,omitempty"`             // ignore a second click before the first settles
 	TabularPlainRows       bool   `yaml:"tabular_plain_rows,omitempty"`
 	TabularCompact         bool   `yaml:"tabular_compact,omitempty"`
 	TabularResultTab       bool   `yaml:"tabular_result_tab,omitempty"`
@@ -908,6 +909,8 @@ type FormModule struct {
 
 	// InstanceContext provides a verified identity for each rendered managed form.
 	InstanceContext bool `yaml:"instance_context,omitempty"`
+	// RetainInstanceOnReload keeps the verified identity on reload of the same entry.
+	RetainInstanceOnReload bool `yaml:"retain_instance_on_reload,omitempty"`
 
 	SavedPhoneMatch *SavedPhoneMatchSpec `yaml:"saved_phone_match,omitempty"`
 

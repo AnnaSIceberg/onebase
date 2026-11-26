@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/access"
 	"github.com/ivantit66/onebase/internal/auth"
+	"github.com/ivantit66/onebase/internal/entityservice"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/query"
 	"github.com/ivantit66/onebase/internal/storage"
@@ -655,11 +656,40 @@ func (s *Server) compileDSLQueryWithRowAccess(ctx context.Context, text string, 
 			Dialect:     s.store.Dialect(),
 		})
 	}
-	res, err := s.compileQueryWithRowAccess(ctx, text, params)
+	opts, err := s.queryCompileOptionsWithAccess(ctx, text, params)
 	if err != nil {
 		return query.Result{}, err
 	}
-	if denied := deniedDSLQuerySource(ctx, res.Sources); denied != "" {
+	allowed := entityservice.WriteHookReadSources(ctx)
+	canReadInHook := func(source query.SourceRef) bool {
+		for _, name := range allowed {
+			if strings.EqualFold(name, source.Kind+":"+source.Name) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(allowed) > 0 {
+		for source := range opts.RowFilters {
+			if canReadInHook(source) {
+				delete(opts.RowFilters, source)
+			}
+		}
+	}
+	res, err := query.Compile(text, opts)
+	if err != nil {
+		return query.Result{}, err
+	}
+	sources := res.Sources
+	if len(allowed) > 0 {
+		sources = make([]query.SourceRef, 0, len(res.Sources))
+		for _, source := range res.Sources {
+			if !canReadInHook(source) {
+				sources = append(sources, source)
+			}
+		}
+	}
+	if denied := deniedDSLQuerySource(ctx, sources); denied != "" {
 		return query.Result{}, &querySourceAccessDenied{source: denied}
 	}
 	return res, nil

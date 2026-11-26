@@ -2,12 +2,15 @@ package ui
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
+	"github.com/ivantit66/onebase/internal/entityservice"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/runtime"
 )
@@ -212,5 +215,56 @@ func TestDSLQuery_RowAccessReferencePredicate(t *testing.T) {
 КонецФункции`)
 	if result != float64(1) {
 		t.Fatalf("DSL query row count = %v, want 1", result)
+	}
+}
+
+func TestWriteHookReadSources(t *testing.T) {
+	s, ctx, cat := dslRLSTestServer(t)
+	for _, name := range []string{"AllowedSource", "UnlistedSource", "OrdinaryWrite"} {
+		t.Run(name, func(t *testing.T) {
+			doc := &metadata.Entity{
+				Name: name, Kind: metadata.KindDocument,
+				Fields: []metadata.Field{{Name: "Count", Type: metadata.FieldTypeNumber}},
+			}
+			if name != "OrdinaryWrite" {
+				doc.WriteHookReadSources = []string{"catalog:" + cat.Name}
+			}
+			source := cat.Name
+			entities := []*metadata.Entity{cat, doc}
+			if name == "UnlistedSource" {
+				other := &metadata.Entity{Name: "OtherCatalog", Kind: metadata.KindCatalog}
+				source = other.Name
+				entities = append(entities, other)
+			}
+			if err := s.store.Migrate(ctx, entities); err != nil {
+				t.Fatal(err)
+			}
+			s.reg.Load(runtime.LoadOptions{Entities: entities, Programs: map[string]*ast.Program{
+				doc.Name: mustParse(t, `Процедура OnWrite() Экспорт
+  З = Новый Запрос;
+  З.Текст = "ВЫБРАТЬ Наименование ИЗ Справочник.`+source+`";
+  this.Count = З.Выполнить().Количество();
+КонецПроцедуры`),
+			}})
+			actor := auth.ContextWithUser(ctx, &auth.User{Login: "operator"})
+			id := uuid.New()
+			result, err := s.newEntityService(nil).Save(actor, entityservice.SaveRequest{Entity: doc, ID: id, IsNew: true, Fields: map[string]any{}})
+			if name != "AllowedSource" {
+				if err != nil || !strings.Contains(result.DSLError, "нет доступа к объекту") {
+					t.Fatalf("expected source access denial, got %q, %v", result.DSLError, err)
+				}
+				return
+			}
+			if err != nil || result.DSLError != "" {
+				t.Fatalf("save failed: %q, %v", result.DSLError, err)
+			}
+			row, err := s.store.GetByID(ctx, doc.Name, id, doc)
+			if err != nil || fmt.Sprint(row["count"]) != "2" && fmt.Sprint(row["Count"]) != "2" {
+				t.Fatalf("OnWrite must read both server rows: %v, %v", row, err)
+			}
+			if _, err := s.compileDSLQueryWithRowAccess(actor, "ВЫБРАТЬ Наименование ИЗ Справочник."+source, nil); err == nil {
+				t.Fatal("source became visible to interactive DSL")
+			}
+		})
 	}
 }

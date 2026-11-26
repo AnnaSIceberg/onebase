@@ -125,7 +125,10 @@ type rawEntity struct {
 	Posting            bool              `yaml:"posting"`
 	PostCaption        string            `yaml:"post_caption"`
 	PostAndCloseHidden bool              `yaml:"post_and_close_hidden"`
-	Numerator          *rawNumerator     `yaml:"numerator"`
+
+	WriteHookReadSources []string `yaml:"write_hook_read_sources"`
+
+	Numerator *rawNumerator `yaml:"numerator"`
 	// Presentation принимает и строку, и список: «одно поле» — частый случай,
 	// а список задаёт запасной вариант, если основной реквизит пуст.
 	Presentation stringOrList `yaml:"presentation"`
@@ -236,6 +239,13 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 		return nil, fmt.Errorf("%s: missing name", path)
 	}
 	e := &Entity{Name: raw.Name, Title: raw.Title, Description: raw.Description, Titles: raw.Titles, Kind: kind, Posting: raw.Posting, PostCaption: raw.PostCaption, PostAndCloseHidden: raw.PostAndCloseHidden, Hierarchical: raw.Hierarchical}
+	for _, source := range raw.WriteHookReadSources {
+		group, name, ok := strings.Cut(source, ":")
+		if !ok || (group != "catalog" && group != "inforeg") || name == "" || name != strings.TrimSpace(name) || strings.Contains(name, ":") {
+			return nil, fmt.Errorf("%s: write_hook_read_sources: expected catalog:Name or inforeg:Name, got %q", path, source)
+		}
+	}
+	e.WriteHookReadSources = raw.WriteHookReadSources
 	if raw.Hierarchical {
 		e.HierarchyKind = raw.HierarchyKind
 		if e.HierarchyKind == "" {

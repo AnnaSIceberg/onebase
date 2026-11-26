@@ -206,12 +206,12 @@ func (db *DB) SetIntakeLogProcessed(ctx context.Context, intake, scope, key, res
 	return nil
 }
 
-// DeleteIntakeLog удаляет строку идемпотентности. Нужен, когда причина сбоя не
+// DeleteIntakeLog удаляет только незавершённую строку идемпотентности. Нужен, когда причина сбоя не
 // входит в dlq.on: событие отклоняется без карантина, а осиротевшую received-
 // строку надо снять, чтобы корректный повтор обработался заново.
 func (db *DB) DeleteIntakeLog(ctx context.Context, intake, scope, key string) error {
 	d := db.dialect
-	q := fmt.Sprintf(`DELETE FROM _intake_log WHERE intake = %s AND scope = %s AND key = %s`,
+	q := fmt.Sprintf(`DELETE FROM _intake_log WHERE intake = %s AND scope = %s AND key = %s AND status = 'received'`,
 		d.Placeholder(1), d.Placeholder(2), d.Placeholder(3))
 	if _, err := db.Exec(ctx, q, intake, scope, key); err != nil {
 		return fmt.Errorf("intake: delete log: %w", err)

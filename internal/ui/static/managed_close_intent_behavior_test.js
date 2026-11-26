@@ -2911,3 +2911,35 @@ test('BeforeClose question recovers a lost answer without losing saved picker id
   assert.deepEqual(bodies.map((body) => body.closeMode), ['save_and_select', 'discard', 'discard']);
   assert.equal(bodies[2].closeIntent, bodies[1].closeIntent, 'unknown answer must reuse its own intent');
 });
+
+
+test('single-flight managed command discards repeated clicks until the queued command settles', async () => {
+  const first = managed.indexOf('async function obFireManagedClick(');
+  const last = managed.indexOf('function obManagedInitDelegates()', first);
+  assert.ok(first >= 0 && last > first);
+  const attrs = new Map([['data-ob-single-flight', ''], ['data-ob-fire-click', 'Accept']]);
+  const button = {
+    getAttribute: key => attrs.get(key),
+    hasAttribute: key => attrs.has(key),
+    setAttribute: (key, value) => attrs.set(key, value),
+    removeAttribute: key => attrs.delete(key),
+  };
+  let calls = 0;
+  let finish;
+  const context = vm.createContext({window: {obFire() {
+    calls++;
+    return new Promise(resolve => { finish = resolve; });
+  }}});
+  vm.runInContext(managed.slice(first, last), context);
+  const initial = context.obFireManagedClick(button);
+  assert.equal(attrs.get('aria-busy'), 'true');
+  await context.obFireManagedClick(button);
+  assert.equal(calls, 1);
+  finish();
+  await initial;
+  assert.equal(attrs.has('aria-busy'), false);
+  const retry = context.obFireManagedClick(button);
+  assert.equal(calls, 2);
+  finish();
+  await retry;
+});

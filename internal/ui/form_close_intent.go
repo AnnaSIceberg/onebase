@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +22,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/ast"
+	"github.com/ivantit66/onebase/internal/incident"
+	oblog "github.com/ivantit66/onebase/internal/logging"
 	"github.com/ivantit66/onebase/internal/metadata"
 	processorpkg "github.com/ivantit66/onebase/internal/processor"
 	"github.com/shopspring/decimal"
@@ -928,8 +931,15 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 	// correlated response that is stored for an exact replay.
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			text := fmt.Sprint(recovered)
+			stack := string(debug.Stack())
+			where := incident.WhereOf(r)
+			code := s.recordBackgroundPanic(where, text, stack, currentUserLogin(r))
+			oblog.Component("ui").Error("паника в обработчике закрытия формы",
+				"where", where, "intent", inv.intentID, "incident", code, "error", text, "stack", stack)
 			recheckFormCloseAccess(inv)
-			body := marshalFormCloseFailure(inv, inv.version, "внутренняя ошибка проверки закрытия формы")
+			body := marshalFormCloseFailure(inv, inv.version,
+				incident.WithCode("внутренняя ошибка проверки закрытия формы", code))
 			status := http.StatusInternalServerError
 			if inv.terminal {
 				status = http.StatusOK
@@ -958,6 +968,7 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 
 	status := captured.status
 	var response formEventResponse
+	var failure error
 	if captured.tooLarge {
 		if inv.saved {
 			inv.forceReload = true
@@ -969,7 +980,11 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 		}
 	} else if err := json.Unmarshal(captured.body.Bytes(), &response); err != nil {
 		status = http.StatusInternalServerError
+		failure = fmt.Errorf("не удалось декодировать ответ закрытия формы: %w", err)
 		response = formEventResponse{Error: "внутренняя ошибка ответа закрытия формы"}
+	}
+	if failure == nil && status >= http.StatusInternalServerError && response.Error != "" {
+		failure = errors.New(response.Error)
 	}
 	// BeforeClose may persist a previously-new object even in discard mode.
 	// Treat the handler's canonical identity as a saved result so a concurrent
@@ -1046,9 +1061,18 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 	body, err := json.Marshal(response)
 	if err != nil {
 		status = http.StatusInternalServerError
+		failure = fmt.Errorf("не удалось закодировать ответ закрытия формы: %w", err)
 		body = marshalFormCloseFailure(inv, response.Version, "внутренняя ошибка ответа закрытия формы")
 	} else {
 		body = append(body, '\n')
+	}
+	if status >= http.StatusInternalServerError {
+		if failure == nil {
+			failure = errors.New(response.Error)
+		}
+		oblog.Component("ui").Error("ошибка обработчика закрытия формы",
+			"where", incident.WhereOf(r), "intent", inv.intentID, "status", status,
+			"error", failure, "incident", s.recordIncident(r, failure))
 	}
 	header := captured.header.Clone()
 	header.Set("Content-Type", "application/json; charset=utf-8")
@@ -1218,6 +1242,7 @@ func sanitizeFormCloseReplay(inv *formCloseInvocation, replay formCloseReplayRes
 }
 
 func redactUnreadableSavedFormResponse(response *formEventResponse) {
+	response.CallFormBusinessProof = ""
 	if response == nil {
 		return
 	}

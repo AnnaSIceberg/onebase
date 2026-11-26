@@ -72,6 +72,7 @@ type statusBarState struct {
 	Visible  bool              `json:"visible"`
 	Left     string            `json:"left,omitempty"`
 	Right    string            `json:"right,omitempty"`
+	Tone     string            `json:"tone,omitempty"`
 	Buttons  []statusBarButton `json:"buttons,omitempty"`
 	Message  string            `json:"message,omitempty"`
 	Error    string            `json:"error,omitempty"`
@@ -160,6 +161,11 @@ func (s *Server) statusBarCompute(r *http.Request, bar *metadata.StatusBar) stat
 	state.Visible = true
 	state.Left = statusBarText(fields["слева"])
 	state.Right = statusBarText(fields["справа"])
+	// Конфигурация может выбрать цвет строки через необязательное поле «Тон».
+	switch tone := statusBarText(fields["тон"]); tone {
+	case "active", "ready", "pause", "neutral":
+		state.Tone = tone
+	}
 	// Кнопки: без поля — все объявленные, с массивом — только перечисленные,
 	// в порядке объявления.
 	allowed, filter := map[string]bool{}, false

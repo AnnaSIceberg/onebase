@@ -333,11 +333,14 @@ func allSchemas() map[string]map[string]any {
 				"posting":               map[string]any{"type": "boolean"},
 				"post_caption":          stringSchema("Подпись кнопки проведения (пусто → «Провести»)"),
 				"post_and_close_hidden": map[string]any{"type": "boolean"},
-				"audio_player":          boolSchema("Аудиоплеер вместо общей панели вложений; по умолчанию false"),
-				"hierarchical":          map[string]any{"type": "boolean"},
-				"hierarchy_kind":        stringSchema("folders_and_items|items_only"),
-				"based_on":              arrayOf(stringSchema("Имя исходного объекта")),
-				"list_form":             arrayOf(stringSchema("Имя поля")),
+
+				"write_hook_read_sources": arrayOf(stringSchema("Источник запроса в ПриЗаписи: catalog:Имя или inforeg:Имя")),
+
+				"audio_player":   boolSchema("Аудиоплеер вместо общей панели вложений; по умолчанию false"),
+				"hierarchical":   map[string]any{"type": "boolean"},
+				"hierarchy_kind": stringSchema("folders_and_items|items_only"),
+				"based_on":       arrayOf(stringSchema("Имя исходного объекта")),
+				"list_form":      arrayOf(stringSchema("Имя поля")),
 				// item_form принимает обе формы записи: имя строкой и
 				// `{name: X, readonly: true}` — «показывать, но не давать
 				// править» (#1011). Без oneOf редактор подчёркивал бы

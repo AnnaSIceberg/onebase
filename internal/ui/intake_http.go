@@ -25,12 +25,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 
 	"github.com/ivantit66/onebase/internal/auth"
 	"github.com/ivantit66/onebase/internal/dsl/ast"
 	"github.com/ivantit66/onebase/internal/dsl/interpreter"
 	"github.com/ivantit66/onebase/internal/intake"
+	oblog "github.com/ivantit66/onebase/internal/logging"
 	"github.com/ivantit66/onebase/internal/metadata"
 	"github.com/ivantit66/onebase/internal/runtime"
 	"github.com/ivantit66/onebase/internal/storage"
@@ -101,7 +103,19 @@ func (s *Server) dispatchIntake(w http.ResponseWriter, r *http.Request) bool {
 	res, err := intake.New(s.store).Ingest(opCtx, in, handler, env)
 	if err != nil {
 		opStatus = operationStatus(opCtx, err)
-		writeServiceError(w, http.StatusInternalServerError, err.Error())
+		log := oblog.Component("intake")
+		reqID := middleware.GetReqID(r.Context())
+		switch {
+		case errors.Is(r.Context().Err(), context.Canceled):
+			log.Info("отправитель закрыл соединение при приёмке", "intake", in.Name, "request_id", reqID)
+			writeServiceError(w, statusClientClosedRequest, "Отправитель отменил запрос")
+		case errors.Is(err, intake.ErrInFlight) || errors.Is(opCtx.Err(), context.DeadlineExceeded):
+			log.Warn("приёмка ещё не подтверждена, нужен повтор", "intake", in.Name, "request_id", reqID, "status", opStatus)
+			w.Header().Set("Retry-After", "5")
+			writeServiceError(w, http.StatusServiceUnavailable, "Приёмка не завершена. Повторите событие с тем же ключом")
+		default:
+			writeServiceError(w, http.StatusInternalServerError, err.Error())
+		}
 		return true
 	}
 	if res.Status == intake.StatusQuarantined {
