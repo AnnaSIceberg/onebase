@@ -6125,10 +6125,91 @@ function obGridColumnWidths(columns) {
     resizeGrid(gridState);
   }
 
+  function setupValueTableWidths(table) {
+    var key = table.dataset.obVtLayout;
+    var container = table.parentElement;
+    var reset = table.closest(".ob-vt-resize-layout").querySelector("[data-ob-vt-width-reset]");
+    var columns = Array.from(table.querySelectorAll("th[data-ob-vt-width-field]")).map(function(header) {
+      return {header: header, id: header.dataset.obVtWidthField, width: parseInt(header.style.width, 10) || 0};
+    });
+    var saved = Object.create(null);
+    var initial;
+    try { initial = JSON.parse(table.dataset.obVtWidths || "{}"); } catch (_) { initial = {}; }
+    for (var column of columns) {
+      var width = initial && initial[column.id];
+      if (Number.isInteger(width) && width >= OB_GRID_WIDTH_MIN && width <= OB_GRID_WIDTH_MAX) saved[column.id] = width;
+    }
+
+    function apply() {
+      var available = container.clientWidth;
+      if (!available) return;
+      var visible = columns.filter(function(col) { return col.header.style.display !== "none"; });
+      var fixed = 0, auto = 0;
+      for (var col of visible) {
+        var width = saved[col.id] || col.width;
+        if (width) fixed += width; else auto++;
+      }
+      var flexible = auto ? Math.max(OB_GRID_WIDTH_MIN, Math.floor((available - fixed) / auto)) : 0;
+      for (var col of visible) col.header.style.width = (saved[col.id] || col.width || flexible) + "px";
+      table.style.width = Math.max(available, fixed + auto * flexible) + "px";
+    }
+
+    function save() {
+      var hasWidths = Object.keys(saved).length > 0;
+      if (reset) reset.hidden = !hasWidths;
+      queueGridSave(gridWidthSaves, "/ui/_grid-widths", key, "widths", hasWidths ? JSON.stringify(saved) : "");
+    }
+
+    for (let col of columns) {
+      var handle = document.createElement("span");
+      handle.className = "ob-vt-width-handle";
+      handle.setAttribute("aria-hidden", "true");
+      col.header.appendChild(handle);
+      let drag = null;
+      handle.addEventListener("pointerdown", function(event) {
+        if (event.button !== 0 || drag) return;
+        drag = {pointer: event.pointerId, left: event.clientX, width: col.header.getBoundingClientRect().width, saved: saved[col.id]};
+        this.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      });
+      handle.addEventListener("pointermove", function(event) {
+        if (!drag || drag.pointer !== event.pointerId || event.clientX === drag.left && saved[col.id] === drag.saved) return;
+        saved[col.id] = obGridClampWidth(drag.width + event.clientX - drag.left);
+        apply();
+      });
+      handle.addEventListener("pointerup", function(event) {
+        if (!drag || drag.pointer !== event.pointerId) return;
+        if (event.clientX === drag.left) {
+          if (drag.saved) saved[col.id] = drag.saved; else delete saved[col.id];
+          apply();
+        }
+        if (saved[col.id] !== drag.saved) save();
+        drag = null;
+      });
+      handle.addEventListener("lostpointercapture", function() {
+        if (!drag) return;
+        if (drag.saved) saved[col.id] = drag.saved; else delete saved[col.id];
+        drag = null;
+        apply();
+      });
+    }
+    if (reset) {
+      reset.hidden = Object.keys(saved).length === 0;
+      reset.addEventListener("click", function() {
+        saved = Object.create(null);
+        apply();
+        save();
+      });
+    }
+    if (typeof ResizeObserver === "function") new ResizeObserver(apply).observe(container);
+    apply();
+  }
+
   // Initialize all grids
   function initGrids() {
     var divs = document.querySelectorAll(".ob-grid[data-sg-tp]");
     for (var d = 0; d < divs.length; d++) setupGrid(divs[d]);
+    document.querySelectorAll("table[data-ob-vt-layout]").forEach(setupValueTableWidths);
   }
 
   // При переключении вкладки managed-формы её содержимое становится видимым —
