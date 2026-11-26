@@ -33,8 +33,13 @@ func TestResultCapabilityHTTPMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 		binding := processor.ResultCapability{Register: ir.Name, ReferenceField: "Parent", OwnerField: "Owner", EnabledField: "Enabled", SourceEntity: source.Name, SourceIDField: "SourceID", SourceVersionField: "SourceVersion", ObservedAtField: "Observed", MaxAgeSeconds: 300}
-		for _, mode := range []string{"valid", "valid-admin", "open", "answer", "transaction", "false-flag", "wrong-owner", "wrong-parent", "stale-proof", "future-proof", "bad-source-id", "wrong-source-version", "unknown-name", "ordinary", "foreign", "expired-context", "forged-parent", "index-read-denied", "index-rls-denied", "parent-rls-denied", "masked-index", "writable-index", "save-headless", "mark-headless", "unmark-headless", "delete-headless", "save-rollback", "mark-rollback"} {
+		for _, mode := range []string{"valid", "valid-admin", "open", "answer", "transaction", "false-flag", "wrong-owner", "wrong-parent", "stale-proof", "future-proof", "version-bound-old-proof", "version-bound-stale-version", "version-bound-future", "version-bound-wrong-owner", "bad-source-id", "wrong-source-version", "unknown-name", "ordinary", "foreign", "expired-context", "forged-parent", "index-read-denied", "index-rls-denied", "parent-rls-denied", "masked-index", "writable-index", "save-headless", "mark-headless", "unmark-headless", "delete-headless", "save-rollback", "mark-rollback"} {
 			t.Run(mode, func(t *testing.T) {
+				binding := binding
+				if strings.HasPrefix(mode, "version-bound-") {
+					binding.MaxAgeSeconds = 0
+					binding.ValidUntilSourceChange = true
+				}
 				form := processorExecutionForm(&metadata.FormElement{Kind: metadata.FormElementButton, Name: "Probe", Handlers: map[metadata.FormEventType]string{metadata.FormEventOnClick: "Probe", metadata.FormEventOnAnswer: "Probe"}})
 				form.Handlers = map[metadata.FormEventType]string{metadata.FormEventOnOpen: "Probe"}
 				name := "Note"
@@ -84,13 +89,15 @@ func TestResultCapabilityHTTPMatrix(t *testing.T) {
 				switch mode {
 				case "false-flag":
 					proof["Enabled"] = false
-				case "wrong-owner":
+				case "wrong-owner", "version-bound-wrong-owner":
 					dims["Owner"] = uuid.NewString()
 				case "wrong-parent":
 					dims["Parent"] = uuid.NewString()
 				case "stale-proof":
 					proof["Observed"] = time.Now().Add(-301 * time.Second)
-				case "future-proof":
+				case "version-bound-old-proof", "version-bound-stale-version":
+					proof["Observed"] = time.Now().Add(-11 * time.Minute)
+				case "future-proof", "version-bound-future":
 					proof["Observed"] = time.Now().Add(time.Minute)
 				case "bad-source-id":
 					proof["SourceID"] = "not-a-uuid"
@@ -113,7 +120,7 @@ func TestResultCapabilityHTTPMatrix(t *testing.T) {
 				}
 				mutation := func(tx context.Context) error {
 					switch mode {
-					case "save-headless", "save-rollback":
+					case "save-headless", "save-rollback", "version-bound-stale-version":
 						return db.Upsert(tx, source.Name, sourceID, map[string]any{"Наименование": "changed source"}, source)
 					case "mark-headless", "mark-rollback":
 						return db.MarkForDeletion(tx, source.Name, sourceID, true)
@@ -166,7 +173,8 @@ func TestResultCapabilityHTTPMatrix(t *testing.T) {
 					body.Set("Parent", uuid.NewString())
 				}
 				response := resultContextEvent(t, s, proc, payload, body, actor)
-				want := mode == "valid" || mode == "valid-admin" || mode == "open" || mode == "answer" || mode == "transaction" || strings.HasSuffix(mode, "-rollback")
+				want := mode == "valid" || mode == "valid-admin" || mode == "open" || mode == "answer" || mode == "transaction" ||
+					mode == "version-bound-old-proof" || strings.HasSuffix(mode, "-rollback")
 				got := response.OK && len(response.Messages) == 1 && response.Messages[0] == "enabled"
 				if got != want {
 					t.Fatalf("capability=%v want%v, response=%+v", got, want, response)

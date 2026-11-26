@@ -19,6 +19,9 @@ type ResultCapability struct {
 	SourceVersionField string `yaml:"source_version_field"`
 	ObservedAtField    string `yaml:"observed_at_field"`
 	MaxAgeSeconds      int    `yaml:"max_age_seconds"`
+	// Opt-in for durable evidence invalidated by a source revision. The
+	// observation date and result context still have to be valid.
+	ValidUntilSourceChange bool `yaml:"valid_until_source_change"`
 }
 
 func ResultCapabilityField(fields []metadata.Field, name string) *metadata.Field {
@@ -31,8 +34,15 @@ func ResultCapabilityField(fields []metadata.Field, name string) *metadata.Field
 }
 
 func (c ResultCapability) Validate(ir *metadata.InfoRegister, source *metadata.Entity) error {
-	if ir == nil || source == nil || source.Kind != metadata.KindCatalog || c.MaxAgeSeconds < 1 || c.MaxAgeSeconds > 300 {
-		return fmt.Errorf("result_capabilities requires an existing register, a catalog source and max_age_seconds 1..300")
+	if ir == nil || source == nil || source.Kind != metadata.KindCatalog {
+		return fmt.Errorf("result_capabilities requires an existing register and a catalog source")
+	}
+	if c.ValidUntilSourceChange {
+		if c.MaxAgeSeconds != 0 {
+			return fmt.Errorf("valid_until_source_change cannot be combined with max_age_seconds")
+		}
+	} else if c.MaxAgeSeconds < 1 || c.MaxAgeSeconds > 300 {
+		return fmt.Errorf("result_capabilities requires max_age_seconds 1..300 or valid_until_source_change")
 	}
 	if ir.Periodic || ir.Recorder || len(ir.Dimensions) != 2 || c.ReferenceField == c.OwnerField {
 		return fmt.Errorf("result_capabilities index must be independent/non-periodic with exactly reference and owner dimensions")
