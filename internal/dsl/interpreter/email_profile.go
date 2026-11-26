@@ -47,6 +47,40 @@ type EmailMessageSender interface {
 	SendMessage(profile *EmailProfile, msg EmailMessage) error
 }
 
+// emailMessageSenderValidator validates the effective address without opening an SMTP connection.
+type emailMessageSenderValidator interface {
+	ValidateMessageSender(profile *EmailProfile, msg EmailMessage) error
+}
+
+// ResolveEmailMessageFrom applies the same address priority for validation and delivery.
+func ResolveEmailMessageFrom(profile *EmailProfile, msg EmailMessage, configuredFrom, configuredName string) (*mail.Address, error) {
+	from, name := configuredFrom, configuredName
+	if profile != nil {
+		from, name = profile.From, profile.FromName
+		if from == "" {
+			from = profile.User
+		}
+	}
+	if msg.From != "" {
+		from = msg.From
+	}
+	if msg.FromName != "" {
+		name = msg.FromName
+	}
+	if hasEmailHeaderControl(from) || hasEmailHeaderControl(name) ||
+		len(from) > MaxEmailRecipientBytes || len(name) > MaxEmailRecipientBytes {
+		return nil, errors.New("отправитель содержит недопустимое значение")
+	}
+	address, err := mail.ParseAddress(strings.TrimSpace(from))
+	if err != nil {
+		return nil, errors.New("неверный адрес отправителя")
+	}
+	if name != "" {
+		address.Name = name
+	}
+	return address, nil
+}
+
 // ProfileMailer — отправитель для писем с профилем, когда секции email в
 // app.yaml нет и штатного отправителя у DSL нет вовсе. Регистрирует пакет
 // mailer (init); nil — отправка с профилем недоступна.
@@ -246,8 +280,9 @@ func emailMimeByName(name string) string {
 
 // emailParams — четвёртый аргумент ОтправитьПисьмо.
 type emailParams struct {
-	profile *EmailProfile
-	msg     EmailMessage
+	profile      *EmailProfile
+	msg          EmailMessage
+	validateOnly bool
 }
 
 func parseEmailParams(v any, msg EmailMessage) (emailParams, error) {
@@ -258,6 +293,13 @@ func parseEmailParams(v any, msg EmailMessage) (emailParams, error) {
 	s, ok := v.(*Struct)
 	if !ok || s == nil {
 		return out, errors.New("параметры — Структура {HTML, Копия, Вложения, Профиль, Отправитель, ИмяОтправителя}")
+	}
+	if flag := firstNonNil(s.Get("толькопроверка"), s.Get("validateonly")); flag != nil {
+		value, ok := flag.(bool)
+		if !ok {
+			return out, errors.New("ТолькоПроверка — булево значение")
+		}
+		out.validateOnly = value
 	}
 	if h := firstNonNil(s.Get("html"), s.Get("htmlтело"), s.Get("htmlbody")); h != nil {
 		out.msg.HTML = fmt.Sprint(h)
@@ -294,19 +336,39 @@ func parseEmailParams(v any, msg EmailMessage) (emailParams, error) {
 	return out, nil
 }
 
+func fullEmailSender(sender EmailSender, profile *EmailProfile) EmailMessageSender {
+	if s, ok := sender.(EmailMessageSender); ok && (profile != nil || sender.Configured()) {
+		return s
+	}
+	if profile != nil {
+		return ProfileMailer
+	}
+	return nil
+}
+
+func validateEmailMessageForDelivery(sender EmailSender, profile *EmailProfile, msg EmailMessage) error {
+	if err := ValidateEmailMessageFull(msg); err != nil {
+		return err
+	}
+	if validator, ok := fullEmailSender(sender, profile).(emailMessageSenderValidator); ok {
+		return validator.ValidateMessageSender(profile, msg)
+	}
+	// A custom sender may not expose defaults. Explicit From and profile
+	// fallback are still available to validate without sending a message.
+	if msg.From != "" || profile != nil {
+		_, err := ResolveEmailMessageFrom(profile, msg, "", "")
+		return err
+	}
+	return nil
+}
+
 // sendEmailMessage — общий путь отправки письма с профилем/копией/вложениями.
 // Без профиля, копии и с одним получателем годится и старый EmailSender.
 func sendEmailMessage(sender EmailSender, profile *EmailProfile, msg EmailMessage) error {
 	if err := ValidateEmailMessageFull(msg); err != nil {
 		return err
 	}
-	var ms EmailMessageSender
-	if s, ok := sender.(EmailMessageSender); ok && (profile != nil || sender.Configured()) {
-		ms = s
-	} else if profile != nil {
-		ms = ProfileMailer
-	}
-	if ms != nil {
+	if ms := fullEmailSender(sender, profile); ms != nil {
 		if profile == nil && (sender == nil || !sender.Configured()) {
 			return errors.New("email не настроен — добавьте секцию email: в config/app.yaml или передайте Профиль")
 		}

@@ -255,3 +255,39 @@ func TestSendMessage_NoProfileNoConfig(t *testing.T) {
 		t.Fatalf("ожидалась ошибка настройки, получено %v", err)
 	}
 }
+
+func TestMessagePreflightUsesDeliverySender(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		configured  string
+		profile     *interpreter.EmailProfile
+		override    string
+		wantFailure bool
+	}{
+		{"configuration invalid", "bad configured sender", nil, "", true},
+		{"profile invalid", "default@example.test", &interpreter.EmailProfile{From: "bad profile sender", User: "user@example.test"}, "", true},
+		{"profile fallback invalid", "default@example.test", &interpreter.EmailProfile{User: "bad fallback sender"}, "", true},
+		{"override invalid", "default@example.test", &interpreter.EmailProfile{User: "user@example.test"}, "bad override sender", true},
+		{"override wins", "bad configured sender", &interpreter.EmailProfile{From: "bad profile sender"}, "override@example.test", false},
+		{"profile fallback wins", "bad configured sender", &interpreter.EmailProfile{User: "user@example.test"}, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := New(Config{SMTPHost: "127.0.0.1", SMTPPort: 1, FromAddress: tc.configured})
+			msg := interpreter.EmailMessage{To: []string{"recipient@example.test"}, Subject: "Test", Text: "Test", From: tc.override}
+			err := m.ValidateMessageSender(tc.profile, msg)
+			if !tc.wantFailure {
+				if err != nil {
+					t.Fatalf("preflight: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "неверный адрес отправителя") {
+				t.Fatalf("preflight failed to reject invalid sender: %v", err)
+			}
+			err = m.SendMessage(tc.profile, msg)
+			if err == nil || !strings.Contains(err.Error(), "неверный адрес отправителя") {
+				t.Fatalf("delivery did not reject sender before connecting: %v", err)
+			}
+		})
+	}
+}
