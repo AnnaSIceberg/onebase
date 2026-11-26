@@ -36,6 +36,9 @@ func (s *Server) issueManagedFormInstance(r *http.Request, data map[string]any) 
 	}
 	if token := s.newManagedFormInstance(r, schema, scope, time.Now()); token != "" {
 		data["FormInstance"] = token
+		if form.InstanceContext && form.RetainInstanceOnReload {
+			data["FormInstanceReloadScope"] = s.managedFormInstanceSignature(r, schema, "", "reload-scope")
+		}
 		entity, _ := data["Entity"].(*metadata.Entity)
 		nonce, _, _ := strings.Cut(token, ".")
 		if s.bindFormOpenContext(r, entity, scope, nonce, s.concealNow()) {

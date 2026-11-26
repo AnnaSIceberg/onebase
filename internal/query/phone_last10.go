@@ -6,7 +6,7 @@ import (
 	"github.com/ivantit66/onebase/internal/storage"
 )
 
-func (tr *translator) emitPhoneLast10() error {
+func (tr *translator) emitPhoneLast10(function string) error {
 	call := tr.pos - 1
 	scope, ok := tr.sourceCtx.scopeIDAt(call)
 	section := tr.sourceCtx.sectionAt(call)
@@ -30,7 +30,14 @@ func (tr *translator) emitPhoneLast10() error {
 		return i18nerr.New("НОРМАЛИЗОВАТЬТЕЛЕФОН ожидает строковое поле в виде Алиас.Поле")
 	}
 
-	tr.emit("(" + storage.PhoneLast10SQL(source.qualifier+"."+physical) + ")")
+	column := source.qualifier + "." + physical
+	var expression string
+	if function == "phone_digits_last10" {
+		expression = storage.PhoneDigitsLast10SQL(column, dialectOrDefault(tr.opts.Dialect))
+	} else {
+		expression = storage.PhoneLast10SQL(column)
+	}
+	tr.emit("(" + expression + ")")
 	tr.pos += 5
 	return nil
 }

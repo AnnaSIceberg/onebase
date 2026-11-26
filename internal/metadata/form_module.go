@@ -906,6 +906,8 @@ type FormModule struct {
 
 	// InstanceContext provides a verified identity for each rendered managed form.
 	InstanceContext bool `yaml:"instance_context,omitempty"`
+	// RetainInstanceOnReload keeps the verified identity on reload of the same entry.
+	RetainInstanceOnReload bool `yaml:"retain_instance_on_reload,omitempty"`
 
 	SavedPhoneMatch *SavedPhoneMatchSpec `yaml:"saved_phone_match,omitempty"`
 

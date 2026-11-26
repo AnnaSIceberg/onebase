@@ -188,6 +188,7 @@ type formYAMLDoc struct {
 		TitleProc              string                        `yaml:"title_proc"`
 		CloseConfirmation      string                        `yaml:"close_confirmation"`
 		InstanceContext        bool                          `yaml:"instance_context"`
+		RetainInstanceOnReload bool                          `yaml:"retain_instance_on_reload"`
 		SavedPhoneMatch        *metadata.SavedPhoneMatchSpec `yaml:"saved_phone_match"`
 		Title                  map[string]string             `yaml:"title"`
 		OriginalID             string                        `yaml:"original_id"`
@@ -267,6 +268,7 @@ func (mfl *ManagedFormLoader) parseYAML(data []byte, entityNameFallback string) 
 		TitleProc:              doc.Form.TitleProc,
 		CloseConfirmation:      doc.Form.CloseConfirmation,
 		InstanceContext:        doc.Form.InstanceContext,
+		RetainInstanceOnReload: doc.Form.RetainInstanceOnReload,
 		SavedPhoneMatch:        doc.Form.SavedPhoneMatch,
 		Title:                  doc.Form.Title,
 		OriginalID:             doc.Form.OriginalID,

@@ -6737,8 +6737,8 @@ func translate(tokens []tok, opts CompileOpts) (Result, error) {
 				}
 				continue
 			}
-			if !prevDot && !prevAlias && tr.peek(0).kind == tLParen && (lower == "нормализоватьтелефон" || lower == "phone_last10") {
-				if err := tr.emitPhoneLast10(); err != nil {
+			if !prevDot && !prevAlias && tr.peek(0).kind == tLParen && (lower == "нормализоватьтелефон" || lower == "phone_last10" || lower == "phone_digits_last10") {
+				if err := tr.emitPhoneLast10(lower); err != nil {
 					return Result{}, err
 				}
 				continue

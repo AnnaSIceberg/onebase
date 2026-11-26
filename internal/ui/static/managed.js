@@ -2538,6 +2538,7 @@ window.obManagedApplyHints = obManagedApplyHints;
 	if (savedURL) {
 	  try {
 		if (window.history && history.replaceState) history.replaceState(null, '', savedURL);
+		obKeepFormInstance(form, false);
 	  } catch (_) {}
 	  try {
 		if (window.parent && window.parent !== window) {
@@ -6181,7 +6182,33 @@ function obStartDeferredLoads() {
     Promise.resolve(window.obFire(name, 'ПослеОткрытия', {_deferred: '1'})).then(done, done);
   });
 }
+// The token stays in this history entry. A separately opened card gets the
+// token from its own server render. The server validates every submitted token.
+function obKeepFormInstance(form, reload) {
+  if (!form || !window.history || !window.history.replaceState) return;
+  var scope = form.getAttribute('data-ob-retain-instance');
+  var token = form.getAttribute('data-ob-form-instance');
+  if (!scope || !token) return;
+  try {
+    var state = window.history.state || {};
+    var previous = state.obFormInstance;
+    if (reload && previous && previous.scope === scope && previous.path === window.location.href && typeof previous.token === 'string') {
+      var pieces = previous.token.split('.');
+      if (pieces.length === 3 && Number(pieces[1]) * 1000 > Date.now()) {
+        token = previous.token;
+        form.setAttribute('data-ob-form-instance', token);
+      }
+    }
+    window.history.replaceState(Object.assign({}, state, {obFormInstance: {scope: scope, path: window.location.href, token: token}}), '');
+  } catch (_) {
+    // Event dispatch can still use the instance from the server render.
+  }
+}
+
 obManagedReady(function () {
+  var navigation = window.performance && window.performance.getEntriesByType
+    ? window.performance.getEntriesByType('navigation')[0] : null;
+  obKeepFormInstance(document.getElementById('main-form'), navigation && navigation.type === 'reload');
   var cfg = obManagedConfig();
   if (!cfg.autoOpen) { setTimeout(obStartDeferredLoads, 0); return; }
   setTimeout(function () {

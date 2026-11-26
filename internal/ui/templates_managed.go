@@ -1295,7 +1295,7 @@ main:has(#main-form .ob-equal-columns.ob-equal-columns-conditional)>.card,
 {{end}}
 
 <div class="card{{if .ObjectFormLayout}} ob-object-form-card{{end}}">
-<form id="main-form"{{with .WriteActionsReadOnly}} data-ob-managed-write-readonly="{{.}}"{{end}}{{if not .LegacyEntityUI}} class="ob-form-action-spacing"{{end}} method="POST" autocomplete="off"{{with .FormInstance}} data-ob-form-instance="{{.}}"{{end}}{{if .ConcealContext}} data-ob-conceal-context="{{.ConcealContext}}" action="{{.ConcealAction}}"{{end}} data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}{{formKeyboardAttrs (index . "Form")}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
+<form id="main-form"{{with .WriteActionsReadOnly}} data-ob-managed-write-readonly="{{.}}"{{end}}{{if not .LegacyEntityUI}} class="ob-form-action-spacing"{{end}} method="POST" autocomplete="off"{{with .FormInstance}} data-ob-form-instance="{{.}}"{{end}}{{with .FormInstanceReloadScope}} data-ob-retain-instance="{{.}}"{{end}}{{if .ConcealContext}} data-ob-conceal-context="{{.ConcealContext}}" action="{{.ConcealAction}}"{{end}} data-ob-grid-sync{{if enterSubmitsForm (index . "Form")}} data-ob-enter-submits="1"{{end}}{{formKeyboardAttrs (index . "Form")}} {{if .IsProcessor}}action="/ui/processor/{{lower .Processor.Name}}" enctype="multipart/form-data"{{end}}>
 {{with .FormOpeningInstanceField}}<input type="hidden" name="{{.}}" value="{{$.FormInstance}}">{{end}}
 {{if and (not .IsNew) (index .Values "_version")}}<input type="hidden" name="_version" value="{{index .Values "_version"}}">{{end}}
 {{with .CallFormBusinessProof}}<input type="hidden" name="_ob_call_business" value="{{.}}">{{end}}
