@@ -29,8 +29,8 @@ import (
 // слышной, а поднимать ошибку сам пакет не может — зависимость runtime от
 // интерпретатора замкнула бы импорты (его тесты уже импортируют runtime).
 var tablePartMethods = []string{
-	"Количество", "Добавить", "Очистить", "Получить", "Удалить", "Итог",
-	"Count", "Add", "Clear", "Get", "Delete", "Total",
+	"Количество", "Добавить", "Очистить", "Получить", "Удалить", "Итог", "ЗаданаВОбъекте",
+	"Count", "Add", "Clear", "Get", "Delete", "Total", "IsPresent",
 }
 
 // TablePart — доступ к строкам табличной части объекта из DSL.
@@ -82,6 +82,9 @@ func (t *TablePart) KnownMethods() (string, []string) {
 
 func (t *TablePart) CallMethod(method string, args []any) any {
 	switch strings.ToLower(method) {
+	case "заданавобъекте", "ispresent":
+		_, present := t.obj.TablePartRows[t.name]
+		return present
 	case "количество", "count":
 		return float64(len(t.rows()))
 	case "добавить", "add":
