@@ -605,7 +605,12 @@ func (p *docProxy) LoadObject(uuidStr string) (any, error) {
 	}
 	if merge, _ := p.ctx().Value(operatorCallFormKey{}).(*callFormMerge); merge != nil &&
 		merge.id == id && merge.entity == p.entity {
-		w.callBaseline = row
+		if digest, ok := p.s.storedCallDigest(p.ctx(), p.entity, id, row); ok {
+			current, exists, err := p.s.store.EntityVersionExists(p.ctx(), p.entity.Name, id)
+			if err == nil && exists && current == version {
+				w.callBaseline, w.callBaselineDigest = row, digest
+			}
+		}
 	}
 	w.setStandardAttrs(row)
 	return w, nil
@@ -627,10 +632,11 @@ type docWriter struct {
 	messages *[]string
 	// loaded — объект получен из БД (Ссылка.ПолучитьОбъект), а не создан.
 	// saved — объект уже записан в этой сессии. Оба используются ЭтоНовый().
-	loaded          bool
-	saved           bool
-	expectedVersion *int64
-	callBaseline    map[string]any
+	loaded             bool
+	saved              bool
+	expectedVersion    *int64
+	callBaseline       map[string]any
+	callBaselineDigest string
 	// assigned — реквизиты, присвоенные модулем в этой сессии: их чтение не
 	// маскируется, значение принадлежит текущей операции (план 88E).
 	assigned map[string]bool

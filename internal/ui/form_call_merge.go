@@ -32,10 +32,10 @@ func isCallServiceField(name string) bool {
 }
 
 // Only the operator call card has concurrent integrations which own these fields.
-// Table parts, posting and unrelated documents retain the ordinary version check.
+// Table parts and posting state are protected by the same baseline as the header.
 func operatorCall(ctx context.Context, entity *metadata.Entity) bool {
 	if entity == nil || entity.Kind != metadata.KindDocument || !strings.EqualFold(entity.Name, "А_Звонок") ||
-		entity.Posting || len(entity.TableParts) != 0 {
+		entity.Posting {
 		return false
 	}
 	user := auth.UserFromContext(ctx)
@@ -50,8 +50,8 @@ func operatorCall(ctx context.Context, entity *metadata.Entity) bool {
 	return false
 }
 
-func callBusinessDigest(entity *metadata.Entity, row map[string]any) (string, bool) {
-	if persistedEntityVersion(row) < 1 {
+func callBusinessDigest(entity *metadata.Entity, row map[string]any, tables map[string][]map[string]any) (string, bool) {
+	if persistedEntityVersion(row) < 1 || len(tables) != len(entity.TableParts) {
 		return "", false
 	}
 	values := map[string]any{"posted": asBool(row["posted"]), "deletion_mark": asBool(row["deletion_mark"])}
@@ -62,12 +62,24 @@ func callBusinessDigest(entity *metadata.Entity, row map[string]any) (string, bo
 			values[field.Name] = value
 		}
 	}
-	data, err := json.Marshal(values)
+	data, err := json.Marshal([]any{values, tables})
 	if err != nil {
 		return "", false
 	}
 	digest := sha256.Sum256(data)
 	return hex.EncodeToString(digest[:]), true
+}
+
+func (s *Server) storedCallDigest(ctx context.Context, entity *metadata.Entity, id uuid.UUID, row map[string]any) (string, bool) {
+	tables := make(map[string][]map[string]any, len(entity.TableParts))
+	for _, table := range entity.TableParts {
+		rows, err := s.store.GetTablePartRows(ctx, entity.Name, table.Name, id, table)
+		if err != nil {
+			return "", false
+		}
+		tables[table.Name] = rows
+	}
+	return callBusinessDigest(entity, row, tables)
 }
 
 // The browser may carry the proof, but cannot select the baseline fields or
@@ -142,7 +154,7 @@ func (m *callFormMerge) bind(req *entityservice.SaveRequest, keep func(string) b
 		req.MergeExistingFields = true
 		req.PreparePartialUpdate = func(ctx context.Context, current, fields map[string]any) error {
 			if persistedEntityVersion(current) != expected {
-				digest, ok := callBusinessDigest(m.entity, current)
+				digest, ok := m.server.storedCallDigest(ctx, m.entity, m.id, current)
 				if !ok || !m.accepts(expected, digest) {
 					return storage.ErrVersionConflict
 				}
@@ -165,7 +177,7 @@ func (m *callFormMerge) bind(req *entityservice.SaveRequest, keep func(string) b
 		if err != nil {
 			return err
 		}
-		digest, _ := callBusinessDigest(m.entity, row)
+		digest, _ := m.server.storedCallDigest(ctx, m.entity, m.id, row)
 		version := persistedEntityVersion(row)
 		storage.DeferUntilTxCommit(ctx, func() {
 			m.savedDigest, m.savedVersion = digest, version
@@ -188,11 +200,11 @@ func (m *callFormMerge) accepts(version int64, digest string) bool {
 	return proof != "" && hmac.Equal([]byte(m.proof), []byte(proof))
 }
 
-func (m *callFormMerge) acceptsCommitted(row map[string]any) bool {
+func (m *callFormMerge) acceptsCommitted(ctx context.Context, row map[string]any) bool {
 	if m == nil || m.savedDigest == "" {
 		return false
 	}
-	digest, ok := callBusinessDigest(m.entity, row)
+	digest, ok := m.server.storedCallDigest(ctx, m.entity, m.id, row)
 	return ok && digest == m.savedDigest
 }
 
@@ -218,9 +230,8 @@ func (w *docWriter) rebaseLoadedCall(ctx context.Context) (*int64, error) {
 	if version == *expected {
 		return expected, nil
 	}
-	baseDigest, baseOK := callBusinessDigest(w.entity, w.callBaseline)
-	digest, ok := callBusinessDigest(w.entity, current)
-	if !baseOK || !ok || baseDigest != digest {
+	digest, ok := w.s.storedCallDigest(ctx, w.entity, w.obj.ID, current)
+	if !ok || w.callBaselineDigest != digest {
 		return nil, storage.ErrVersionConflict
 	}
 	mergeCallServiceFields(w.entity, current, w.obj.Fields, func(name string) bool {

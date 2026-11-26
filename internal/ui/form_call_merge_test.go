@@ -16,19 +16,22 @@ import (
 
 func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 	for _, tc := range []struct {
-		name           string
-		mode           string
-		concurrentEdit bool
-		wrongProof     bool
+		name            string
+		mode            string
+		concurrentEdit  bool
+		concurrentTable bool
+		wrongProof      bool
 	}{
 		{name: "save", mode: "save"},
 		{name: "close handler writes", mode: "discard"},
 		{name: "competing business edit", mode: "save", concurrentEdit: true},
+		{name: "competing table part", mode: "save", concurrentTable: true},
 		{name: "unverified opening", mode: "save", wrongProof: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			entity := &metadata.Entity{
 				Name: "А_Звонок", Kind: metadata.KindDocument,
+				TableParts: []metadata.TablePart{{Name: "ЛогПрослушки", Fields: []metadata.Field{{Name: "ИмяФайла", Type: metadata.FieldTypeString}}}},
 				Fields: []metadata.Field{
 					{Name: "Комментарий", Type: metadata.FieldTypeString},
 					{Name: "ИдЗаписи", Type: metadata.FieldTypeString},
@@ -84,6 +87,13 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			if tc.concurrentTable {
+				table := entity.TableParts[0]
+				if err := srv.store.UpsertTablePartRows(ctx, entity.Name, table.Name, id,
+					[]map[string]any{{"ИмяФайла": "new-audit-entry"}}, table); err != nil {
+					t.Fatal(err)
+				}
+			}
 			body := closeIntentBody(uuid.NewString(), "close", "")
 			body.Set("_id", id.String())
 			body.Set("_version", strconv.FormatInt(oldVersion, 10))
@@ -102,7 +112,7 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 			router.ServeHTTP(closeResponse, req)
 			result := decodeCloseIntentResponse(t, closeResponse)
 			expectedComment := "Правка оператора"
-			if tc.concurrentEdit || tc.wrongProof {
+			if tc.concurrentEdit || tc.concurrentTable || tc.wrongProof {
 				if closeResponse.Code != http.StatusConflict || result.Close == nil || result.Close.Allowed {
 					t.Fatalf("unsafe rebase accepted: status=%d, result=%+v", closeResponse.Code, result)
 				}

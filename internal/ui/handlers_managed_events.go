@@ -1171,7 +1171,7 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 			closeInv.suppressState = true
 			closeInv.terminal = true
 		}
-		if persistedEntityVersion(persisted) != canonicalVersion && !callMerge.acceptsCommitted(persisted) {
+		if persistedEntityVersion(persisted) != canonicalVersion && !callMerge.acceptsCommitted(r.Context(), persisted) {
 			w.WriteHeader(http.StatusConflict)
 			resp := s.serializeManagedFormEventState(r.Context(), form, entity, obj, nil, msgs).response(false)
 			resp.Error = "объект изменён другим пользователем после записи"
