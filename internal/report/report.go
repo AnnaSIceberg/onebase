@@ -118,14 +118,16 @@ type Composition struct {
 	// DistinctMeasureKeys maps a measure to a projected identity. Only trusted
 	// metadata sets it, including for measures selected by older presets.
 	DistinctMeasureKeys map[string]string `yaml:"distinct_measure_keys,omitempty" json:"-"`
-	Totals              Totals            `yaml:"totals"`
-	Detail              bool              `yaml:"detail"`
-	Sort                []SortKey         `yaml:"sort"`
-	Conditional         []CondRule        `yaml:"conditional"`
-	Appearance          Appearance        `yaml:"appearance"` // общее оформление вывода (линии, зебра)
-	Chart               *ChartSpec        `yaml:"chart"`
-	DetailLink          string            `yaml:"detail_link"`   // поле строки с UUID регистратора/ссылки
-	DetailEntity        string            `yaml:"detail_entity"` // имя сущности для перехода по ссылке
+	// InternalFields are query projections reserved for computing the report.
+	InternalFields []string   `yaml:"internal_fields,omitempty" json:"-"`
+	Totals         Totals     `yaml:"totals"`
+	Detail         bool       `yaml:"detail"`
+	Sort           []SortKey  `yaml:"sort"`
+	Conditional    []CondRule `yaml:"conditional"`
+	Appearance     Appearance `yaml:"appearance"` // общее оформление вывода (линии, зебра)
+	Chart          *ChartSpec `yaml:"chart"`
+	DetailLink     string     `yaml:"detail_link"`   // поле строки с UUID регистратора/ссылки
+	DetailEntity   string     `yaml:"detail_entity"` // имя сущности для перехода по ссылке
 	// DetailFields — поля детальной записи (аналог «Выбранных полей» 1С):
 	// колонки, которые в строке детализации показывают значения записи
 	// (номер, наименование, даты), а в строках групп и итогов пусты.
@@ -144,6 +146,18 @@ type Composition struct {
 	// RowTotals — общий итог строки справа в кросс-таблице; nil = выводится,
 	// false = нет (1С: ГоризонтальноеРасположениеОбщихИтогов = Нет).
 	RowTotals *bool `yaml:"row_totals,omitempty"`
+}
+
+// InternalField reports whether the runtime settings should offer the field.
+func (c *Composition) InternalField(field string) bool {
+	if c != nil {
+		for _, name := range c.InternalFields {
+			if strings.EqualFold(name, field) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ShowRowTotals — выводить ли общий итог строки справа в кросс-таблице.

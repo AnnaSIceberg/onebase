@@ -191,6 +191,12 @@ func (h *handler) configuratorSaveReport(w http.ResponseWriter, r *http.Request)
 		if c, present := parseCompositionForm(r.Form); present {
 			var cv any
 			if c != nil {
+				// These rules have no form controls. Keep the original metadata
+				// when applying changes to the visible composition.
+				if previous := existing.Composition; previous != nil {
+					c.DistinctMeasureKeys = previous.DistinctMeasureKeys
+					c.InternalFields = previous.InternalFields
+				}
 				cv = c
 			}
 			if err := setYAMLMapField(doc, "composition", cv); err != nil {
