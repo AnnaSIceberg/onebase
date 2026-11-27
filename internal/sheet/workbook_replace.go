@@ -98,6 +98,13 @@ func (b *Workbook) ReplaceXLSX(src io.Reader) (data []byte, err error) {
 		if p == "" {
 			return nil, fmt.Errorf("вкладка %q не является листом с ячейками", sh.name)
 		}
+		if sh.summary != nil && before[sh.name] != "" {
+			delete(keep, p)
+			if err := patchPeriodSummary(f, sh); err != nil {
+				return nil, fmt.Errorf("не удалось дописать лист %q: %w", sh.name, err)
+			}
+			continue
+		}
 		if before[sh.name] != "" {
 			delete(keep, p)
 			f.Pkg.Store(p, []byte(emptyWorksheet))

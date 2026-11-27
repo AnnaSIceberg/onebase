@@ -25,8 +25,9 @@ const (
 )
 
 type workbookSheet struct {
-	name string
-	doc  *Document
+	name    string
+	doc     *Document
+	summary *PeriodSummary
 }
 
 // Workbook owns snapshots: a caller can clear/reuse the source document after
