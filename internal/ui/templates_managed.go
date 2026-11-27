@@ -52,7 +52,7 @@ func formButtonBackground(el *metadata.FormElement, legacy any) *metadata.FormEl
 }
 
 func formDateOnly(el *metadata.FormElement, legacy any) bool {
-	return legacy != true && el.Enhanced != nil && el.Enhanced.DateOnly
+	return el.DateOnly || (legacy != true && el.Enhanced != nil && el.Enhanced.DateOnly)
 }
 
 func formTextareaRows(el *metadata.FormElement, legacy any) int {

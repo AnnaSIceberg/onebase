@@ -356,7 +356,10 @@ type FormElement struct {
 	// Нужна формам, где штатный ряд «Записать / ОК / Закрыть» скрыт и
 	// единственное действие объявлено своей кнопкой — без акцента она теряется
 	// среди вспомогательных.
-	Primary  bool              `yaml:"primary,omitempty"`
+	Primary bool `yaml:"primary,omitempty"`
+	// DateOnly sets calendar precision in every interface. Enhanced.DateOnly
+	// remains available for forms which keep date and time in the legacy UI.
+	DateOnly bool              `yaml:"date_only,omitempty"`
 	Enhanced *FormPresentation `yaml:"enhanced,omitempty"`
 	// ComparePhoneField enables request-local phone comparison for this
 	// built-in processor button. It names one document string PII field.
