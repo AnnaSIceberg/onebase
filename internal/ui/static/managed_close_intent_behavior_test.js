@@ -2943,3 +2943,27 @@ test('single-flight managed command discards repeated clicks until the queued co
   finish();
   await retry;
 });
+
+test('queued operator call actions send the proof of the adopted version', () => {
+  const start = eventController.indexOf('  function refreshQueuedFormEventIdentity(');
+  const end = eventController.indexOf('  async function dispatchFormEvent(', start);
+  assert.ok(start >= 0 && end > start);
+  const live = new Map([['_version', '8'], ['_ob_call_business', 'proof-of-8']]);
+  const form = {
+    querySelector(selector) {
+      const name = selector.slice(7, -2);
+      return live.has(name) ? {value: live.get(name)} : null;
+    },
+  };
+  const context = vm.createContext({DOC_ID: 'call', serviceField: (name) => name});
+  vm.runInContext(eventController.slice(start, end), context);
+  const body = new URLSearchParams({_version: '7', _ob_call_business: 'proof-of-7', Comment: 'keep'});
+  context.refreshQueuedFormEventIdentity({form, body});
+  assert.deepEqual(Object.fromEntries(body), {
+    _id: 'call', _version: '8', _ob_call_business: 'proof-of-8', Comment: 'keep',
+  });
+  live.delete('_ob_call_business');
+  live.set('_version', '9');
+  context.refreshQueuedFormEventIdentity({form, body});
+  assert.deepEqual(Object.fromEntries(body), {_id: 'call', _version: '9', Comment: 'keep'});
+});

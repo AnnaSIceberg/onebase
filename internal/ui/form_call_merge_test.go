@@ -22,8 +22,10 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 		concurrentTable bool
 		tableOnly       bool
 		wrongProof      bool
+		leaveOpen       bool
 	}{
 		{name: "save", mode: "save"},
+		{name: "save with cancelled close then service update", mode: "save", leaveOpen: true},
 		{name: "close handler writes", mode: "discard"},
 		{name: "competing business edit", mode: "save", concurrentEdit: true},
 		{name: "competing table part", mode: "save", concurrentTable: true},
@@ -38,6 +40,10 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 				Fields: []metadata.Field{
 					{Name: "Комментарий", Type: metadata.FieldTypeString},
 					{Name: "ИдЗаписи", Type: metadata.FieldTypeString},
+					{Name: "ПереведёнНа", Type: metadata.FieldTypeString},
+					{Name: "ИдКанала", Type: metadata.FieldTypeString},
+					{Name: "СтадияЗавершения", Type: metadata.FieldTypeString},
+					{Name: "ПричинаЗавершения", Type: metadata.FieldTypeString},
 					{Name: "НомерВ1С", Type: metadata.FieldTypeString},
 					{Name: "Блокировка", Type: metadata.FieldTypeBool},
 				},
@@ -51,6 +57,10 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 				Handlers:   map[metadata.FormEventType]string{metadata.FormEventBeforeClose: "ПроверитьЗакрытие"},
 				ProgramAST: mustParse(t, "Процедура ПроверитьЗакрытие(Отказ)\nОбъект.Блокировка = Истина;\nОбъект.Записать();\nКонецПроцедуры"),
 			}}
+			if tc.leaveOpen {
+				entity.Forms[0].ProgramAST = mustParse(t, "Процедура ПроверитьЗакрытие(Отказ)\nОтказ = Истина;\nКонецПроцедуры")
+			}
+
 			srv, ctx := newSubmitTestServer(t, []*metadata.Entity{entity})
 			id := uuid.New()
 			first := map[string]any{"Комментарий": "Исходный", "НомерВ1С": "старый"}
@@ -82,7 +92,11 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 				t.Fatal(err)
 			}
 			oldVersion := persistedEntityVersion(row)
-			second := map[string]any{"Комментарий": "Исходный", "НомерВ1С": "подтверждённый", "ИдЗаписи": "recording"}
+			second := map[string]any{
+				"Комментарий": "Исходный", "НомерВ1С": "подтверждённый", "ИдЗаписи": "recording",
+				"ПереведёнНа": "test-transfer-target", "ИдКанала": "transferred-channel",
+				"СтадияЗавершения": "operator", "ПричинаЗавершения": "NORMAL_CLEARING",
+			}
 			if tc.concurrentEdit {
 				second["Комментарий"] = "Чужая правка"
 			}
@@ -122,6 +136,37 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 			closeResponse := httptest.NewRecorder()
 			router.ServeHTTP(closeResponse, req)
 			result := decodeCloseIntentResponse(t, closeResponse)
+			if tc.leaveOpen {
+				if closeResponse.Code != http.StatusOK || result.Close == nil || result.Close.Allowed || !result.Close.Saved ||
+					result.Version <= oldVersion || len(result.CallFormBusinessProof) != 64 {
+					t.Fatalf("the open card must receive proof of its saved version: status=%d saved=%t version=%d proof=%t",
+						closeResponse.Code, result.Close != nil && result.Close.Saved, result.Version, result.CallFormBusinessProof != "")
+				}
+				second["Комментарий"] = "Правка оператора"
+				second["ИдЗаписи"] = "later recording"
+				if err := srv.store.Upsert(ctx, entity.Name, id, second, entity); err != nil {
+					t.Fatal(err)
+				}
+				body.Set("_close_intent_id", uuid.NewString())
+				body.Set("_version", strconv.FormatInt(result.Version, 10))
+				body.Set(callFormProofField, result.CallFormBusinessProof)
+				body.Set("Комментарий", "Вторая правка")
+				req = request(http.MethodPost, base+"/form-close-intent", body.Encode())
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				setEntityCloseIntentHeaders(req, body)
+				closeResponse = httptest.NewRecorder()
+				router.ServeHTTP(closeResponse, req)
+				result = decodeCloseIntentResponse(t, closeResponse)
+				if closeResponse.Code != http.StatusOK || result.Close == nil || !result.Close.Saved {
+					t.Fatalf("retry after a service write failed: HTTP%d %s", closeResponse.Code, result.Error)
+				}
+				final, err := srv.store.GetByID(ctx, entity.Name, id, entity)
+				if err != nil || final["Комментарий"] != "Вторая правка" || final["ИдЗаписи"] != "later recording" {
+					t.Fatalf("retry did not preserve the operator edit and recording: %v", err)
+				}
+				return
+			}
+
 			expectedComment := "Правка оператора"
 			if tc.concurrentEdit || tc.concurrentTable || tc.wrongProof {
 				status := http.StatusConflict
@@ -141,6 +186,14 @@ func TestOperatorCallCloseReconcilesOnlyServiceUpdates(t *testing.T) {
 			if err != nil || row["Комментарий"] != expectedComment || row["НомерВ1С"] != second["НомерВ1С"] || !tc.tableOnly && row["ИдЗаписи"] != second["ИдЗаписи"] {
 				t.Fatalf("durable call state: %v, err=%v", row, err)
 			}
+			if !tc.tableOnly {
+				for _, field := range []string{"ПереведёнНа", "ИдКанала", "СтадияЗавершения", "ПричинаЗавершения"} {
+					if row[field] != second[field] {
+						t.Fatalf("Callista field %s was lost", field)
+					}
+				}
+			}
+
 			if tc.concurrentTable {
 				table := entity.TableParts[0]
 				rows, err := srv.store.GetTablePartRows(ctx, entity.Name, table.Name, id, table)

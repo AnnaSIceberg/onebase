@@ -1757,7 +1757,12 @@ window.obManagedApplyHints = obManagedApplyHints;
     var form = snapshot.form || document.getElementById('main-form');
     var versionName = serviceField('_version');
     var versionInput = form && form.querySelector('[name="' + versionName + '"]');
-    if (versionInput && versionInput.value) snapshot.body.set(versionName, String(versionInput.value));
+    if (versionInput && versionInput.value) {
+      snapshot.body.set(versionName, String(versionInput.value));
+      var callProof = form.querySelector('[name="_ob_call_business"]');
+      if (callProof && callProof.value) snapshot.body.set('_ob_call_business', callProof.value);
+      else snapshot.body.delete('_ob_call_business');
+    }
   }
 
   async function dispatchFormEvent(snapshot){
@@ -2529,9 +2534,10 @@ window.obManagedApplyHints = obManagedApplyHints;
 		verInput.name = versionName;
         form.appendChild(verInput);
       }
+      var versionChanged = verInput.value !== String(data.version);
       verInput.value = String(data.version);
+      var callProof = form.querySelector('[name="_ob_call_business"]');
       if (data.callFormBusinessProof) {
-        var callProof = form.querySelector('[name="_ob_call_business"]');
         if (!callProof) {
           callProof = document.createElement('input');
           callProof.type = 'hidden';
@@ -2539,6 +2545,8 @@ window.obManagedApplyHints = obManagedApplyHints;
           form.appendChild(callProof);
         }
         callProof.value = data.callFormBusinessProof;
+      } else if (versionChanged && callProof) {
+        callProof.value = '';
       }
     }
 	// URL/shell synchronization is deliberately last and guarded: even a host

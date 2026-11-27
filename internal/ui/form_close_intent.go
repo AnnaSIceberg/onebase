@@ -127,6 +127,7 @@ type formCloseInvocation struct {
 	savedID    string
 	savedLabel string
 	version    int64
+	callMerge  *callFormMerge
 	formURL    string
 	// suppressState is set after a durable write when the caller cannot read
 	// the resulting row. The lifecycle may still finish server-side, but no
@@ -1017,6 +1018,9 @@ func (s *Server) captureFormCloseResponse(w http.ResponseWriter, r *http.Request
 		// immediately after the first save.
 		if response.Version < inv.version {
 			response.Version = inv.version
+		}
+		if inv.callMerge != nil {
+			response.CallFormBusinessProof = inv.callMerge.nextProof(response.Version)
 		}
 	}
 	if inv.suppressState {

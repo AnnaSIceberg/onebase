@@ -930,6 +930,9 @@ func (s *Server) handleManagedFormEventMode(w http.ResponseWriter, r *http.Reque
 	if callMerge != nil {
 		r = r.WithContext(context.WithValue(r.Context(), operatorCallFormKey{}, callMerge))
 		dslCtx = context.WithValue(dslCtx, operatorCallFormKey{}, callMerge)
+		if closeInv != nil {
+			closeInv.callMerge = callMerge
+		}
 	}
 	if closeInv != nil {
 		// Observe the entire close lifecycle, not only BeforeClose. In
