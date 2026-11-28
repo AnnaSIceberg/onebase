@@ -199,6 +199,7 @@ type saveEntity struct {
 	// ChoiceRowStyle — choice_row_style справочника; редактор его не
 	// показывает, блок переносится как есть.
 	ChoiceRowStyle yaml.Node `yaml:"choice_row_style,omitempty"`
+	ChoiceLabel    yaml.Node `yaml:"choice_label,omitempty"`
 	TileView       yaml.Node `yaml:"tile_view,omitempty"`
 	// DetailPanel — состав боковой панели деталей (план 118C). Конфигуратор его
 	// не редактирует (прецедент tile_view), но обязан сохранить: иначе правка

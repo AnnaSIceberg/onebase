@@ -50,6 +50,9 @@ func Validate(entities []*Entity, enums []*Enum) error {
 		if err := validateChoiceRowStyle(e, byName); err != nil {
 			return err
 		}
+		if err := validateChoiceLabel(e); err != nil {
+			return err
+		}
 		for _, f := range e.Fields {
 			if f.RefEntity != "" && !entityNames[f.RefEntity] && !IsSystemRefTarget(f.RefEntity) {
 				return fmt.Errorf("entity %s: field %s references unknown entity %s", e.Name, f.Name, f.RefEntity)

@@ -368,6 +368,7 @@ func (s *Server) referenceOptionsWithParams(ctx context.Context, refEntity *meta
 	if !params.ExcludeMarked {
 		s.markRefOptionLabels(ctx, rows)
 	}
+	s.applyCatalogChoiceLabels(ctx, refEntity, rows)
 	// choice_row_style: оформление строк выбора (по реквизитам строки и
 	// текущему пользователю) — до сжатия строк до id/_label.
 	s.applyChoiceRowStyles(ctx, refEntity, rows)
@@ -750,6 +751,7 @@ func (s *Server) appendSelectedRefOptions(ctx context.Context, rows []map[string
 			appended = append(appended, row)
 		}
 		s.applyChoiceRowStyles(ctx, refEntity, appended)
+		s.applyCatalogChoiceLabels(ctx, refEntity, appended)
 		rows = append(rows, appended...)
 	}
 	return rows

@@ -156,6 +156,7 @@ type rawEntity struct {
 	ChoiceShowDeleted *bool `yaml:"choice_show_deleted"`
 	// ChoiceRowStyle — choice_row_style (см. Entity.ChoiceRowStyle).
 	ChoiceRowStyle *rawChoiceRowStyle `yaml:"choice_row_style"`
+	ChoiceLabel    *ChoiceLabel       `yaml:"choice_label"`
 	ListMode       string             `yaml:"list_mode"`
 	ListRefreshOn  []string           `yaml:"list_refresh_on"`
 	ListFilters    []string           `yaml:"list_filters"`
@@ -372,6 +373,7 @@ func LoadFile(path string, kind Kind) (*Entity, error) {
 	e.ChoicePreviewProc = strings.TrimSpace(raw.ChoicePreviewProc)
 	e.ChoiceShowDeleted = raw.ChoiceShowDeleted
 	e.ChoiceRowStyle = parseChoiceRowStyle(raw.ChoiceRowStyle)
+	e.ChoiceLabel = raw.ChoiceLabel
 	e.ChoiceSearchProc = strings.TrimSpace(raw.ChoiceSearchProc)
 	if raw.Numerator != nil {
 		n := &Numerator{

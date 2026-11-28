@@ -363,6 +363,8 @@ type Entity struct {
 	// ChoiceRowStyle — оформление строк выбора ссылок на справочник
 	// (`choice_row_style`, см. choice_row_style.go). nil — без оформления.
 	ChoiceRowStyle *ChoiceRowStyle
+	// ChoiceLabel adds a reference presentation to options in the reference picker.
+	ChoiceLabel *ChoiceLabel
 	// ListMode — режим загрузки списка по умолчанию: "" / "pages" (постранично)
 	// или "feed" (лента с догрузкой по скроллу, как динамический список 1С).
 	// Пользователь может переопределить тумблером (запоминается per-сущность).
